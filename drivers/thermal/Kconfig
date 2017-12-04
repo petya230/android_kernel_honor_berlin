@@ -120,7 +120,6 @@ config THERMAL_GOV_USER_SPACE
 
 config THERMAL_GOV_POWER_ALLOCATOR
 	bool "Power allocator thermal governor"
-	select THERMAL_POWER_ACTOR
 	help
 	  Enable this to manage platform thermals by dynamically
 	  allocating and limiting power to devices.
@@ -139,29 +138,6 @@ config CPU_THERMAL
 	  If you want this support, you should say Y here.
 
 config DEVFREQ_THERMAL
-	bool "generic device cooling support"
-	depends on PM_DEVFREQ
-	depends on PM_OPP
-	help
-	  This implements the generic devfreq cooling mechanism through
-	  frequency reduction for devices using devfreq.
-
-	  This will throttle the device by limiting the maximum allowed DVFS
-	  frequency corresponding to the cooling level.
-
-	  If you want this support, you should say Y here.
-
-config CLOCK_THERMAL
-	bool "Generic clock cooling support"
-	depends on COMMON_CLK
-	depends on PM_OPP
-	help
-	  This entry implements the generic clock cooling mechanism through
-	  frequency clipping. Typically used to cool off co-processors. The
-	  device that is configured to use this cooling mechanism will be
-	  controlled to reduce clock frequency whenever temperature is high.
-
-config DEVFREQ_THERMAL
 	bool "Generic device cooling support"
 	depends on PM_DEVFREQ
 	depends on PM_OPP
@@ -176,6 +152,16 @@ config DEVFREQ_THERMAL
 	  devfreq should use the simple_ondemand governor.
 
 	  If you want this support, you should say Y here.
+
+config CLOCK_THERMAL
+	bool "Generic clock cooling support"
+	depends on COMMON_CLK
+	depends on PM_OPP
+	help
+	  This entry implements the generic clock cooling mechanism through
+	  frequency clipping. Typically used to cool off co-processors. The
+	  device that is configured to use this cooling mechanism will be
+	  controlled to reduce clock frequency whenever temperature is high.
 
 config THERMAL_EMULATION
 	bool "Thermal emulation mode support"
@@ -202,7 +188,7 @@ config IMX_THERMAL
 
 config SPEAR_THERMAL
 	bool "SPEAr thermal sensor driver"
-	depends on PLAT_SPEAR
+	depends on PLAT_SPEAR || COMPILE_TEST
 	depends on OF
 	help
 	  Enable this to plug the SPEAr thermal sensor driver into the Linux
@@ -210,7 +196,7 @@ config SPEAR_THERMAL
 
 config ROCKCHIP_THERMAL
 	tristate "Rockchip thermal driver"
-	depends on ARCH_ROCKCHIP
+	depends on ARCH_ROCKCHIP || COMPILE_TEST
 	depends on RESET_CONTROLLER
 	help
 	  Rockchip thermal driver provides support for Temperature sensor
@@ -228,7 +214,7 @@ config RCAR_THERMAL
 
 config KIRKWOOD_THERMAL
 	tristate "Temperature sensor on Marvell Kirkwood SoCs"
-	depends on MACH_KIRKWOOD
+	depends on MACH_KIRKWOOD || COMPILE_TEST
 	depends on OF
 	help
 	  Support for the Kirkwood thermal sensor driver into the Linux thermal
@@ -236,7 +222,7 @@ config KIRKWOOD_THERMAL
 
 config DOVE_THERMAL
 	tristate "Temperature sensor on Marvell Dove SoCs"
-	depends on ARCH_DOVE || MACH_DOVE
+	depends on ARCH_DOVE || MACH_DOVE || COMPILE_TEST
 	depends on OF
 	help
 	  Support for the Dove thermal sensor driver in the Linux thermal
@@ -254,7 +240,7 @@ config DB8500_THERMAL
 
 config ARMADA_THERMAL
 	tristate "Armada 370/XP thermal management"
-	depends on ARCH_MVEBU
+	depends on ARCH_MVEBU || COMPILE_TEST
 	depends on OF
 	help
 	  Enable this option if you want to have support for thermal management
@@ -339,11 +325,12 @@ config ACPI_THERMAL_REL
 	depends on ACPI
 
 menu "Texas Instruments thermal drivers"
+depends on ARCH_HAS_BANDGAP || COMPILE_TEST
 source "drivers/thermal/ti-soc-thermal/Kconfig"
 endmenu
 
 menu "Samsung thermal drivers"
-depends on ARCH_EXYNOS
+depends on ARCH_EXYNOS || COMPILE_TEST
 source "drivers/thermal/samsung/Kconfig"
 endmenu
 

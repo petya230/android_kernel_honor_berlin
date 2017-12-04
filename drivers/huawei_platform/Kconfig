@@ -9,7 +9,6 @@ menuconfig HUAWEI_PLATFORM
 if HUAWEI_PLATFORM
 
 source "drivers/huawei_platform/antenna_board_match/Kconfig"
-source "drivers/huawei_platform/antenna_fpga/Kconfig"
 source "drivers/huawei_platform/audio/Kconfig"
 source "drivers/huawei_platform/chr/Kconfig"
 source "drivers/huawei_platform/connectivity/Kconfig"
@@ -21,7 +20,6 @@ source "drivers/huawei_platform/inputhub/iom7/Kconfig"
 source "drivers/huawei_platform/irda/Kconfig"
 source "drivers/huawei_platform/lcd/Kconfig"
 source "drivers/huawei_platform/log/Kconfig"
-source "drivers/huawei_platform/mm/Kconfig"
 source "drivers/huawei_platform/net/Kconfig"
 source "drivers/huawei_platform/nfc/Kconfig"
 source "drivers/huawei_platform/power/Kconfig"

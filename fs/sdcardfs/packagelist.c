@@ -31,12 +31,12 @@
 struct hashtable_entry {
 	struct hlist_node hlist;
 	void *key;
-	int value;
+	unsigned int value;
 };
 
 struct packagelist_data {
-	DECLARE_HASHTABLE(package_to_appid, 8);
-	DECLARE_HASHTABLE(appid_with_rw, 7);
+	DECLARE_HASHTABLE(package_to_appid,8);
+	DECLARE_HASHTABLE(appid_with_rw,7);
 	struct mutex hashtable_lock;
 	struct task_struct *thread_id;
 	gid_t write_gid;
@@ -50,12 +50,11 @@ struct packagelist_data {
 static struct kmem_cache *hashtable_entry_cachep;
 
 /* Path to system-provided mapping of package name to appIds */
-static const char *const kpackageslist_file = "/data/system/packages.list";
+static const char* const kpackageslist_file = "/data/system/packages.list";
 /* Supplementary groups to execute with */
 static const gid_t kgroups[1] = { AID_PACKAGE_INFO };
 
-static unsigned int str_hash(void *key)
-{
+static unsigned int str_hash(const char *key) {
 	int i;
 	unsigned int h = strlen(key);
 	char *data = (char *)key;
@@ -67,20 +66,18 @@ static unsigned int str_hash(void *key)
 	return h;
 }
 
-static int contain_appid_key(struct packagelist_data *pkgl_dat, void *appid)
-{
+static int contain_appid_key(struct packagelist_data *pkgl_dat, unsigned int appid) {
 	struct hashtable_entry *hash_cur;
 
-	hash_for_each_possible(pkgl_dat->appid_with_rw, hash_cur, hlist,
-			       (uintptr_t) appid)
-	    if (appid == hash_cur->key)
-		return 1;
+	hash_for_each_possible(pkgl_dat->appid_with_rw, hash_cur, hlist, appid)
+		if ((void *)(uintptr_t)appid == hash_cur->key)
+			return 1;
+
 	return 0;
 }
 
 /* Return if the calling UID holds sdcard_rw. */
-int get_caller_has_rw_locked(void *pkgl_id, derive_t derive)
-{
+int get_caller_has_rw_locked(void *pkgl_id, derive_t derive) {
 #if 0
 	struct packagelist_data *pkgl_dat = (struct packagelist_data *)pkgl_id;
 	appid_t appid;
@@ -93,7 +90,7 @@ int get_caller_has_rw_locked(void *pkgl_id, derive_t derive)
 
 	appid = multiuser_get_app_id(xfs_kuid_to_uid(current_fsuid()));
 	mutex_lock(&pkgl_dat->hashtable_lock);
-	ret = contain_appid_key(pkgl_dat, (void *)(uintptr_t) appid);
+	ret = contain_appid_key(pkgl_dat, appid);
 	mutex_unlock(&pkgl_dat->hashtable_lock);
 	return ret;
 #endif
@@ -104,34 +101,36 @@ appid_t get_appid(void *pkgl_id, const char *app_name)
 {
 	struct packagelist_data *pkgl_dat = (struct packagelist_data *)pkgl_id;
 	struct hashtable_entry *hash_cur;
-	unsigned int hash = str_hash((void *)app_name);
+	unsigned int hash = str_hash(app_name);
 	appid_t ret_id;
 
+	//printk(KERN_INFO "sdcardfs: %s: %s, %u\n", __func__, (char *)app_name, hash);
 	mutex_lock(&pkgl_dat->hashtable_lock);
-	hash_for_each_possible(pkgl_dat->package_to_appid, hash_cur, hlist,
-			       hash) {
+	hash_for_each_possible(pkgl_dat->package_to_appid, hash_cur, hlist, hash) {
+		//printk(KERN_INFO "sdcardfs: %s: %s\n", __func__, (char *)hash_cur->key);
 		if (!strcasecmp(app_name, hash_cur->key)) {
-			ret_id = (appid_t) hash_cur->value;
+			ret_id = (appid_t)hash_cur->value;
 			mutex_unlock(&pkgl_dat->hashtable_lock);
+			//printk(KERN_INFO "=> app_id: %d\n", (int)ret_id);
 			return ret_id;
 		}
 	}
 	mutex_unlock(&pkgl_dat->hashtable_lock);
+	//printk(KERN_INFO "=> app_id: %d\n", 0);
 	return 0;
 }
 
 /* Kernel has already enforced everything we returned through
  * derive_permissions_locked(), so this is used to lock down access
  * even further, such as enforcing that apps hold sdcard_rw. */
-int check_caller_access_to_name(struct inode *parent_node, const char *name,
-				derive_t derive, int w_ok, int has_rw)
-{
+int check_caller_access_to_name(struct inode *parent_node, const char* name,
+					derive_t derive, int w_ok, int has_rw) {
 
 	/* Always block security-sensitive files at root */
 	if (parent_node && SDCARDFS_I(parent_node)->perm == PERM_ROOT) {
 		if (!strcasecmp(name, "autorun.inf")
-		    || !strcasecmp(name, ".android_secure")
-		    || !strcasecmp(name, "android_secure")) {
+			|| !strcasecmp(name, ".android_secure")
+			|| !strcasecmp(name, "android_secure")) {
 			return 0;
 		}
 	}
@@ -151,8 +150,8 @@ int check_caller_access_to_name(struct inode *parent_node, const char *name,
 	 * parent or holds sdcard_rw. */
 	if (w_ok) {
 		if (parent_node &&
-		    (xfs_kuid_to_uid(current_fsuid()) ==
-		     SDCARDFS_I(parent_node)->d_uid)) {
+			(xfs_kuid_to_uid(current_fsuid()) ==
+			 SDCARDFS_I(parent_node)->d_uid)) {
 			return 1;
 		}
 		return 1;
@@ -164,28 +163,26 @@ int check_caller_access_to_name(struct inode *parent_node, const char *name,
 
 /* This function is used when file opening. The open flags must be
  * checked before calling check_caller_access_to_name() */
-int open_flags_to_access_mode(int open_flags)
-{
-	if ((open_flags & O_ACCMODE) == O_RDONLY) {
-		return 0;	/* R_OK */
+int open_flags_to_access_mode(int open_flags) {
+	if((open_flags & O_ACCMODE) == O_RDONLY) {
+		return 0; /* R_OK */
 	} else if ((open_flags & O_ACCMODE) == O_WRONLY) {
-		return 1;	/* W_OK */
+		return 1; /* W_OK */
 	} else {
 		/* Probably O_RDRW, but treat as default to be safe */
-		return 1;	/* R_OK | W_OK */
+		return 1; /* R_OK | W_OK */
 	}
 }
 
-static int insert_str_to_int(struct packagelist_data *pkgl_dat, void *key,
-			     int value)
+static int insert_str_to_int(struct packagelist_data *pkgl_dat, char *key,
+		unsigned int value)
 {
 	struct hashtable_entry *hash_cur;
 	struct hashtable_entry *new_entry;
 	unsigned int hash = str_hash(key);
 
-	/* printk(KERN_INFO "sdcardfs: %s: %s: %d, %u\n", __func__, (char *)key, value, hash); */
-	hash_for_each_possible(pkgl_dat->package_to_appid, hash_cur, hlist,
-			       hash) {
+	//printk(KERN_INFO "sdcardfs: %s: %s: %d, %u\n", __func__, (char *)key, value, hash);
+	hash_for_each_possible(pkgl_dat->package_to_appid, hash_cur, hlist, hash) {
 		if (!strcasecmp(key, hash_cur->key)) {
 			hash_cur->value = value;
 			return 0;
@@ -200,23 +197,21 @@ static int insert_str_to_int(struct packagelist_data *pkgl_dat, void *key,
 	return 0;
 }
 
-static void remove_str_to_int(struct hashtable_entry *h_entry)
-{
-	/* printk(KERN_INFO "sdcardfs: %s: %s: %d\n", __func__, (char *)h_entry->key, h_entry->value); */
+static void remove_str_to_int(struct hashtable_entry *h_entry) {
+	//printk(KERN_INFO "sdcardfs: %s: %s: %d\n", __func__, (char *)h_entry->key, h_entry->value);
 	kfree(h_entry->key);
 	kmem_cache_free(hashtable_entry_cachep, h_entry);
 }
 
-static int insert_int_to_null(struct packagelist_data *pkgl_dat, void *key,
-			      int value)
+static int insert_int_to_null(struct packagelist_data *pkgl_dat, unsigned int key,
+		unsigned int value)
 {
 	struct hashtable_entry *hash_cur;
 	struct hashtable_entry *new_entry;
 
-	/* printk(KERN_INFO "sdcardfs: %s: %d: %d\n", __func__, (int)key, value); */
-	hash_for_each_possible(pkgl_dat->appid_with_rw, hash_cur, hlist,
-			       (uintptr_t) key) {
-		if (key == hash_cur->key) {
+	//printk(KERN_INFO "sdcardfs: %s: %d: %d\n", __func__, (int)key, value);
+	hash_for_each_possible(pkgl_dat->appid_with_rw,	hash_cur, hlist, key) {
+		if ((void *)(uintptr_t)key == hash_cur->key) {
 			hash_cur->value = value;
 			return 0;
 		}
@@ -224,16 +219,14 @@ static int insert_int_to_null(struct packagelist_data *pkgl_dat, void *key,
 	new_entry = kmem_cache_alloc(hashtable_entry_cachep, GFP_KERNEL);
 	if (!new_entry)
 		return -ENOMEM;
-	new_entry->key = key;
+	new_entry->key = (void *)(uintptr_t)key;
 	new_entry->value = value;
-	hash_add(pkgl_dat->appid_with_rw, &new_entry->hlist,
-		 (uintptr_t) new_entry->key);
+	hash_add(pkgl_dat->appid_with_rw, &new_entry->hlist, key);
 	return 0;
 }
 
-static void remove_int_to_null(struct hashtable_entry *h_entry)
-{
-	/* printk(KERN_INFO "sdcardfs: %s: %d: %d\n", __func__, (int)h_entry->key, h_entry->value); */
+static void remove_int_to_null(struct hashtable_entry *h_entry) {
+	//printk(KERN_INFO "sdcardfs: %s: %d: %d\n", __func__, (int)h_entry->key, h_entry->value);
 	kmem_cache_free(hashtable_entry_cachep, h_entry);
 }
 
@@ -244,16 +237,15 @@ static void remove_all_hashentrys(struct packagelist_data *pkgl_dat)
 	int i;
 
 	hash_for_each_safe(pkgl_dat->package_to_appid, i, h_t, hash_cur, hlist)
-	    remove_str_to_int(hash_cur);
+		remove_str_to_int(hash_cur);
 	hash_for_each_safe(pkgl_dat->appid_with_rw, i, h_t, hash_cur, hlist)
-	    remove_int_to_null(hash_cur);
+		remove_int_to_null(hash_cur);
 
 	hash_init(pkgl_dat->package_to_appid);
 	hash_init(pkgl_dat->appid_with_rw);
 }
 
-static int read_package_list(struct packagelist_data *pkgl_dat)
-{
+static int read_package_list(struct packagelist_data *pkgl_dat) {
 	int ret;
 	int fd;
 	int read_amount;
@@ -272,8 +264,8 @@ static int read_package_list(struct packagelist_data *pkgl_dat)
 	}
 
 	while ((read_amount = sys_read(fd, pkgl_dat->read_buf,
-				       sizeof(pkgl_dat->read_buf))) > 0) {
-		int appid;
+					sizeof(pkgl_dat->read_buf))) > 0) {
+		unsigned int appid;
 		char *token;
 		int one_line_len = 0;
 		int additional_read;
@@ -290,7 +282,7 @@ static int read_package_list(struct packagelist_data *pkgl_dat)
 		if (additional_read > 0)
 			sys_lseek(fd, -additional_read, SEEK_CUR);
 
-		if (sscanf(pkgl_dat->read_buf, "%s %d %*d %*s %*s %s",
+		if (sscanf(pkgl_dat->read_buf, "%s %u %*d %*s %*s %s",
 				pkgl_dat->app_name_buf, &appid,
 				pkgl_dat->gids_buf) == 3) {
 			ret = insert_str_to_int(pkgl_dat, pkgl_dat->app_name_buf, appid);
@@ -304,7 +296,7 @@ static int read_package_list(struct packagelist_data *pkgl_dat)
 			while (token != NULL) {
 				if (!kstrtoul(token, 10, &ret_gid) &&
 						(ret_gid == pkgl_dat->write_gid)) {
-					ret = insert_int_to_null(pkgl_dat, (void *)(uintptr_t)appid, 1);
+					ret = insert_int_to_null(pkgl_dat, appid, 1);
 					if (ret) {
 						sys_close(fd);
 						mutex_unlock(&pkgl_dat->hashtable_lock);
@@ -350,17 +342,13 @@ static int packagelist_reader(void *thread_data)
 			res = sys_inotify_add_watch(nfd, kpackageslist_file, IN_DELETE_SELF);
 			if (res < 0) {
 				if (res == -ENOENT || res == -EACCES) {
-					/* Framework may not have created yet, sleep and retry */
-					printk(KERN_ERR
-					       "sdcardfs: missing packages.list; retrying\n");
+				/* Framework may not have created yet, sleep and retry */
+					printk(KERN_ERR "sdcardfs: missing packages.list; retrying\n");
 					ssleep(2);
-					printk(KERN_ERR
-					       "sdcardfs: missing packages.list_end; retrying\n");
+					printk(KERN_ERR "sdcardfs: missing packages.list_end; retrying\n");
 					continue;
 				} else {
-					printk(KERN_ERR
-					       "sdcardfs: inotify_add_watch failed: %d\n",
-					       res);
+					printk(KERN_ERR "sdcardfs: inotify_add_watch failed: %d\n", res);
 					goto interruptable_sleep;
 				}
 			}
@@ -368,9 +356,7 @@ static int packagelist_reader(void *thread_data)
 			 * read the current state. */
 			res = read_package_list(pkgl_dat);
 			if (res) {
-				printk(KERN_ERR
-				       "sdcardfs: read_package_list failed: %d\n",
-				       res);
+				printk(KERN_ERR "sdcardfs: read_package_list failed: %d\n", res);
 				goto interruptable_sleep;
 			}
 			active = true;
@@ -381,17 +367,14 @@ static int packagelist_reader(void *thread_data)
 		if (res < (int) sizeof(*event)) {
 			if (res == -EINTR)
 				continue;
-			printk(KERN_ERR
-			       "sdcardfs: failed to read inotify event: %d\n",
-			       res);
+			printk(KERN_ERR "sdcardfs: failed to read inotify event: %d\n", res);
 			goto interruptable_sleep;
 		}
 
 		while (res >= (int) sizeof(*event)) {
 			event = (struct inotify_event *) (pkgl_dat->event_buf + event_pos);
 
-			printk(KERN_INFO "sdcardfs: inotify event: %08x\n",
-			       event->mask);
+			printk(KERN_INFO "sdcardfs: inotify event: %08x\n", event->mask);
 			if ((event->mask & IN_IGNORED) == IN_IGNORED) {
 				/* Previously watched file was deleted, probably due to move
 				 * that swapped in new data; re-arm the watch and read. */
@@ -413,14 +396,14 @@ interruptable_sleep:
 	return res;
 }
 
-void *packagelist_create(gid_t write_gid)
+void * packagelist_create(gid_t write_gid)
 {
 	struct packagelist_data *pkgl_dat;
-	struct task_struct *packagelist_thread;
+        struct task_struct *packagelist_thread;
 
 	pkgl_dat = kmalloc(sizeof(*pkgl_dat), GFP_KERNEL | __GFP_ZERO);
 	if (!pkgl_dat) {
-		printk(KERN_ERR "sdcardfs: creating kthread failed\n");
+                printk(KERN_ERR "sdcardfs: creating kthread failed\n");
 		return ERR_PTR(-ENOMEM);
 	}
 
@@ -429,17 +412,16 @@ void *packagelist_create(gid_t write_gid)
 	hash_init(pkgl_dat->appid_with_rw);
 	pkgl_dat->write_gid = write_gid;
 
-	packagelist_thread =
-	    kthread_run(packagelist_reader, (void *)pkgl_dat, "pkgld");
-	if (IS_ERR(packagelist_thread)) {
-		printk(KERN_ERR "sdcardfs: creating kthread failed\n");
+        packagelist_thread = kthread_run(packagelist_reader, (void *)pkgl_dat, "pkgld");
+        if (IS_ERR(packagelist_thread)) {
+                printk(KERN_ERR "sdcardfs: creating kthread failed\n");
 		kfree(pkgl_dat);
 		return packagelist_thread;
-	}
+        }
 	pkgl_dat->thread_id = packagelist_thread;
 
 	printk(KERN_INFO "sdcardfs: created packagelist pkgld/%d\n",
-	       (int)pkgl_dat->thread_id->pid);
+				(int)pkgl_dat->thread_id->pid);
 
 	return (void *)pkgl_dat;
 }
@@ -452,23 +434,21 @@ void packagelist_destroy(void *pkgl_id)
 	force_sig_info(SIGINT, SEND_SIG_PRIV, pkgl_dat->thread_id);
 	kthread_stop(pkgl_dat->thread_id);
 	remove_all_hashentrys(pkgl_dat);
-	printk(KERN_INFO "sdcardfs: destroyed packagelist pkgld/%d\n",
-	       (int)pkgl_pid);
+	printk(KERN_INFO "sdcardfs: destroyed packagelist pkgld/%d\n", (int)pkgl_pid);
 	kfree(pkgl_dat);
 }
 
 int packagelist_init(void)
 {
 	hashtable_entry_cachep =
-	    kmem_cache_create("packagelist_hashtable_entry",
-			      sizeof(struct hashtable_entry), 0, 0, NULL);
+		kmem_cache_create("packagelist_hashtable_entry",
+					sizeof(struct hashtable_entry), 0, 0, NULL);
 	if (!hashtable_entry_cachep) {
-		printk(KERN_ERR
-		       "sdcardfs: failed creating pkgl_hashtable entry slab cache\n");
+		printk(KERN_ERR "sdcardfs: failed creating pkgl_hashtable entry slab cache\n");
 		return -ENOMEM;
 	}
 
-	return 0;
+        return 0;
 }
 
 void packagelist_exit(void)

@@ -1,4 +1,20 @@
-
+/*
+ * Copyright (C) 2012 Alexander Block.  All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public
+ * License v2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public
+ * License along with this program; if not, write to the
+ * Free Software Foundation, Inc., 59 Temple Place - Suite 330,
+ * Boston, MA 021110-1307, USA.
+ */
 
 #include <linux/bsearch.h>
 #include <linux/fs.h>
@@ -1402,7 +1418,12 @@ verbose_printk(KERN_DEBUG "btrfs: find_extent_clone: data_offset=%llu, "
 
 	if (cur_clone_root) {
 		if (compressed != BTRFS_COMPRESS_NONE) {
-			
+			/*
+			 * Offsets given by iterate_extent_inodes() are relative
+			 * to the start of the extent, we need to add logical
+			 * offset from the file extent item.
+			 * (See why at backref.c:check_extent_in_eb())
+			 */
 			cur_clone_root->offset += btrfs_file_extent_offset(eb,
 									   fi);
 		}
@@ -1441,7 +1462,21 @@ static int read_symlink(struct btrfs_root *root,
 	ret = btrfs_search_slot(NULL, root, &key, path, 0, 0);
 	if (ret < 0)
 		goto out;
-	BUG_ON(ret);
+	if (ret) {
+		/*
+		 * An empty symlink inode. Can happen in rare error paths when
+		 * creating a symlink (transaction committed before the inode
+		 * eviction handler removed the symlink inode items and a crash
+		 * happened in between or the subvol was snapshoted in between).
+		 * Print an informative message to dmesg/syslog so that the user
+		 * can delete the symlink.
+		 */
+		btrfs_err(root->fs_info,
+			  "Found empty symlink inode %llu at root %llu",
+			  ino, root->root_key.objectid);
+		ret = -EIO;
+		goto out;
+	}
 
 	ei = btrfs_item_ptr(path->nodes[0], path->slots[0],
 			struct btrfs_file_extent_item);
@@ -1605,6 +1640,9 @@ out:
 static int is_inode_existent(struct send_ctx *sctx, u64 ino, u64 gen)
 {
 	int ret;
+
+	if (ino == BTRFS_FIRST_FREE_OBJECTID)
+		return 1;
 
 	ret = get_cur_inode_state(sctx, ino, gen);
 	if (ret < 0)
@@ -1791,7 +1829,7 @@ static int will_overwrite_ref(struct send_ctx *sctx, u64 dir, u64 dir_gen,
 	 * not delted and then re-created, if it was then we have no overwrite
 	 * and we can just unlink this entry.
 	 */
-	if (sctx->parent_root) {
+	if (sctx->parent_root && dir != BTRFS_FIRST_FREE_OBJECTID) {
 		ret = get_inode_info(sctx->parent_root, dir, NULL, &gen, NULL,
 				     NULL, NULL, NULL);
 		if (ret < 0 && ret != -ENOENT)

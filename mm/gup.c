@@ -12,10 +12,8 @@
 #include <linux/sched.h>
 #include <linux/rwsem.h>
 #include <linux/hugetlb.h>
+
 #include <asm/pgtable.h>
-#ifdef CONFIG_HW_STAT_MM
-#include <huawei_platform/linux/stat_mm.h>
-#endif
 
 #include "internal.h"
 
@@ -278,11 +276,6 @@ static int faultin_page(struct task_struct *tsk, struct vm_area_struct *vma,
 	unsigned int fault_flags = 0;
 	int ret;
 
-	/* For mm_populate(), just skip the stack guard page. */
-	if ((*flags & FOLL_POPULATE) &&
-			(stack_guard_page_start(vma, address) ||
-			 stack_guard_page_end(vma, address + PAGE_SIZE)))
-		return -ENOENT;
 	if (*flags & FOLL_WRITE)
 		fault_flags |= FAULT_FLAG_WRITE;
 	if (nonblocking)
@@ -946,9 +939,6 @@ int __mm_populate(unsigned long start, unsigned long len, int ignore_errors)
 	}
 	if (locked)
 		up_read(&mm->mmap_sem);
-#ifdef CONFIG_HW_STAT_MM
-	STAT_MM_MLOCK_IF(start, len, current->mm->locked_vm);
-#endif
 	return ret;	/* 0 or negative error code */
 }
 

@@ -1,4 +1,43 @@
-
+/*
+ *   ALSA driver for RME Hammerfall DSP MADI audio interface(s)
+ *
+ *      Copyright (c) 2003 Winfried Ritsch (IEM)
+ *      code based on hdsp.c   Paul Davis
+ *                             Marcus Andersson
+ *                             Thomas Charbonnel
+ *      Modified 2006-06-01 for AES32 support by Remy Bruno
+ *                                               <remy.bruno@trinnov.com>
+ *
+ *      Modified 2009-04-13 for proper metering by Florian Faber
+ *                                               <faber@faberman.de>
+ *
+ *      Modified 2009-04-14 for native float support by Florian Faber
+ *                                               <faber@faberman.de>
+ *
+ *      Modified 2009-04-26 fixed bug in rms metering by Florian Faber
+ *                                               <faber@faberman.de>
+ *
+ *      Modified 2009-04-30 added hw serial number support by Florian Faber
+ *
+ *      Modified 2011-01-14 added S/PDIF input on RayDATs by Adrian Knoth
+ *
+ *	Modified 2011-01-25 variable period sizes on RayDAT/AIO by Adrian Knoth
+ *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
+ *
+ *   This program is distributed in the hope that it will be useful,
+ *   but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *   GNU General Public License for more details.
+ *
+ *   You should have received a copy of the GNU General Public License
+ *   along with this program; if not, write to the Free Software
+ *   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
+ *
+ */
 
 /* *************    Register Documentation   *******************************************************
  *
@@ -1562,6 +1601,9 @@ static void hdspm_set_dds_value(struct hdspm *hdspm, int rate)
 {
 	u64 n;
 
+	if (snd_BUG_ON(rate <= 0))
+		return;
+
 	if (rate >= 112000)
 		rate /= 4;
 	else if (rate >= 56000)
@@ -2176,6 +2218,8 @@ static int hdspm_get_system_sample_rate(struct hdspm *hdspm)
 		} else {
 			/* slave mode, return external sample rate */
 			rate = hdspm_external_sample_rate(hdspm);
+			if (!rate)
+				rate = hdspm->system_sample_rate;
 		}
 	}
 
@@ -2221,8 +2265,11 @@ static int snd_hdspm_put_system_sample_rate(struct snd_kcontrol *kcontrol,
 					    ucontrol)
 {
 	struct hdspm *hdspm = snd_kcontrol_chip(kcontrol);
+	int rate = ucontrol->value.integer.value[0];
 
-	hdspm_set_dds_value(hdspm, ucontrol->value.enumerated.item[0]);
+	if (rate < 27000 || rate > 207000)
+		return -EINVAL;
+	hdspm_set_dds_value(hdspm, ucontrol->value.integer.value[0]);
 	return 0;
 }
 
@@ -4410,7 +4457,7 @@ static int snd_hdspm_get_tco_word_term(struct snd_kcontrol *kcontrol,
 {
 	struct hdspm *hdspm = snd_kcontrol_chip(kcontrol);
 
-	ucontrol->value.enumerated.item[0] = hdspm->tco->term;
+	ucontrol->value.integer.value[0] = hdspm->tco->term;
 
 	return 0;
 }
@@ -4421,8 +4468,8 @@ static int snd_hdspm_put_tco_word_term(struct snd_kcontrol *kcontrol,
 {
 	struct hdspm *hdspm = snd_kcontrol_chip(kcontrol);
 
-	if (hdspm->tco->term != ucontrol->value.enumerated.item[0]) {
-		hdspm->tco->term = ucontrol->value.enumerated.item[0];
+	if (hdspm->tco->term != ucontrol->value.integer.value[0]) {
+		hdspm->tco->term = ucontrol->value.integer.value[0];
 
 		hdspm_tco_write(hdspm);
 

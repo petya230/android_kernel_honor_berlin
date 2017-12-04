@@ -116,7 +116,7 @@ out:
 static void sdcardfs_d_release(struct dentry *dentry)
 {
 	/* release and reset the lower paths */
-	if (has_graft_path(dentry)) {
+	if(has_graft_path(dentry)) {
 		sdcardfs_put_reset_orig_path(dentry);
 	}
 	sdcardfs_put_reset_lower_path(dentry);
@@ -124,13 +124,8 @@ static void sdcardfs_d_release(struct dentry *dentry)
 	return;
 }
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 11, 0))
 static int sdcardfs_hash_ci(const struct dentry *dentry,
 				struct qstr *qstr)
-#else
-static int sdcardfs_hash_ci(const struct dentry *dentry,
-		const struct inode *inode, struct qstr *qstr)
-#endif
 {
 	/*
 	 * This function is copy of vfat_hashi.
@@ -143,10 +138,12 @@ static int sdcardfs_hash_ci(const struct dentry *dentry,
 	unsigned long hash;
 
 	name = qstr->name;
+	//len = vfat_striptail_len(qstr);
 	len = qstr->len;
 
 	hash = init_name_hash();
 	while (len--)
+		//hash = partial_name_hash(nls_tolower(t, *name++), hash);
 		hash = partial_name_hash(tolower(*name++), hash);
 	qstr->hash = end_name_hash(hash);
 
@@ -156,17 +153,15 @@ static int sdcardfs_hash_ci(const struct dentry *dentry,
 /*
  * Case insensitive compare of two vfat names.
  */
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 11, 0))
 static int sdcardfs_cmp_ci(const struct dentry *parent,
 		const struct dentry *dentry,
 		unsigned int len, const char *str, const struct qstr *name)
-#else
-static int sdcardfs_cmp_ci(const struct dentry *parent,
-		const struct inode *pinode,
-		const struct dentry *dentry, const struct inode *inode,
-		unsigned int len, const char *str, const struct qstr *name)
-#endif
 {
+	/* This function is copy of vfat_cmpi */
+	// FIXME Should we support national language?
+	//struct nls_table *t = MSDOS_SB(parent->d_sb)->nls_io;
+	//unsigned int alen, blen;
+
 	/* A filename cannot end in '.' or we treat it like it has none */
 	/*
 	alen = vfat_striptail_len(name);
@@ -183,9 +178,17 @@ static int sdcardfs_cmp_ci(const struct dentry *parent,
 	return 1;
 }
 
+static void sdcardfs_canonical_path(const struct path *path,
+				struct path *actual_path)
+{
+	sdcardfs_get_real_lower(path->dentry, actual_path);
+}
+
 const struct dentry_operations sdcardfs_ci_dops = {
 	.d_revalidate	= sdcardfs_d_revalidate,
 	.d_release	= sdcardfs_d_release,
-	.d_hash	= sdcardfs_hash_ci,
+	.d_hash 	= sdcardfs_hash_ci,
 	.d_compare	= sdcardfs_cmp_ci,
+	.d_canonical_path = sdcardfs_canonical_path,
 };
+

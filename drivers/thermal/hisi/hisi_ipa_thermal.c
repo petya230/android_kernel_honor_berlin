@@ -123,8 +123,8 @@ struct thermal {
 struct capacitances g_caps;
 struct thermal thermal_info;
 
-extern int ipa_get_sensor_value(u32 sensor, unsigned long *val);
-extern int ipa_get_periph_value(u32 sensor, long *val);
+extern int ipa_get_sensor_value(u32 sensor, int *val);
+extern int ipa_get_periph_value(u32 sensor, int *val);
 extern int ipa_get_tsensor_id(char *name);
 extern int ipa_get_periph_id(char *name);
 
@@ -368,7 +368,7 @@ static u32 get_cache_static_power_coeff(enum cluster_type cluster)
 	return caps->cache_capacitance[cluster];
 }
 
-static unsigned long get_temperature_scale(unsigned long temp)
+static unsigned long get_temperature_scale(int temp)
 {
 	int i, t_exp = 1, t_scale = 0, ret = 0;
 	struct capacitances *caps = &g_caps;
@@ -424,7 +424,7 @@ static int hisi_cluster_get_static_power(cpumask_t *cpumask, int interval,
 }
 
 #ifdef CONFIG_HISI_THERMAL_SPM
-int hisi_calc_static_power(const struct cpumask *cpumask, unsigned long temp,
+int hisi_calc_static_power(const struct cpumask *cpumask, int temp,
 				unsigned long u_volt, u32 *static_power)
 {
 	unsigned long temperature, t_scale, v_scale;
@@ -570,15 +570,15 @@ void hisi_thermal_hotplug_check(long *temp)
 }
 #endif
 
-static int get_temp_value(void *data, long *temp)
+static int get_temp_value(void *data, int *temp)
 {
-	long sensor_val[IPA_SENSOR_NUM] = {0};
+	int sensor_val[IPA_SENSOR_NUM] = {0};
 	struct ipa_sensor *sensor = (struct ipa_sensor *)data;
-	long val = 0;
-	long val_max = 0;
+	int val = 0;
+	int val_max = 0;
 	int ret = -EINVAL;
 	int id = 0;
-	long est_temp = 0;
+	int est_temp = 0;
 
 	if (IPA_SENSOR_MAXID == sensor->sensor_id) {
 		/*read all sensor*/

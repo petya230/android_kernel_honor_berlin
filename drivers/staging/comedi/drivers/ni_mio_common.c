@@ -1,6 +1,56 @@
+/*
+    comedi/drivers/ni_mio_common.c
+    Hardware driver for DAQ-STC based boards
 
+    COMEDI - Linux Control and Measurement Device Interface
+    Copyright (C) 1997-2001 David A. Schleef <ds@schleef.org>
+    Copyright (C) 2002-2006 Frank Mori Hess <fmhess@users.sourceforge.net>
 
+    This program is free software; you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation; either version 2 of the License, or
+    (at your option) any later version.
 
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+*/
+
+/*
+	This file is meant to be included by another file, e.g.,
+	ni_atmio.c or ni_pcimio.c.
+
+	Interrupt support originally added by Truxton Fulton
+	<trux@truxton.com>
+
+	References (from ftp://ftp.natinst.com/support/manuals):
+
+	   340747b.pdf  AT-MIO E series Register Level Programmer Manual
+	   341079b.pdf  PCI E Series RLPM
+	   340934b.pdf  DAQ-STC reference manual
+	67xx and 611x registers (from ftp://ftp.ni.com/support/daq/mhddk/documentation/)
+	release_ni611x.pdf
+	release_ni67xx.pdf
+	Other possibly relevant info:
+
+	   320517c.pdf  User manual (obsolete)
+	   320517f.pdf  User manual (new)
+	   320889a.pdf  delete
+	   320906c.pdf  maximum signal ratings
+	   321066a.pdf  about 16x
+	   321791a.pdf  discontinuation of at-mio-16e-10 rev. c
+	   321808a.pdf  about at-mio-16e-10 rev P
+	   321837a.pdf  discontinuation of at-mio-16de-10 rev d
+	   321838a.pdf  about at-mio-16de-10 rev N
+
+	ISSUES:
+
+	 - the interrupt routine needs to be cleaned up
+
+	2006-02-07: S-Series PCI-6143: Support has been added but is not
+		fully tested as yet. Terry Barnaby, BEAM Ltd.
+*/
 
 #include <linux/interrupt.h>
 #include <linux/sched.h>
@@ -197,24 +247,24 @@ static void ni_writel(struct comedi_device *dev, uint32_t data, int reg)
 {
 	if (dev->mmio)
 		writel(data, dev->mmio + reg);
-
-	outl(data, dev->iobase + reg);
+	else
+		outl(data, dev->iobase + reg);
 }
 
 static void ni_writew(struct comedi_device *dev, uint16_t data, int reg)
 {
 	if (dev->mmio)
 		writew(data, dev->mmio + reg);
-
-	outw(data, dev->iobase + reg);
+	else
+		outw(data, dev->iobase + reg);
 }
 
 static void ni_writeb(struct comedi_device *dev, uint8_t data, int reg)
 {
 	if (dev->mmio)
 		writeb(data, dev->mmio + reg);
-
-	outb(data, dev->iobase + reg);
+	else
+		outb(data, dev->iobase + reg);
 }
 
 static uint32_t ni_readl(struct comedi_device *dev, int reg)
@@ -2029,7 +2079,7 @@ static int ni_ai_insn_read(struct comedi_device *dev,
 			   unsigned int *data)
 {
 	struct ni_private *devpriv = dev->private;
-	unsigned int mask = (s->maxdata + 1) >> 1;
+	unsigned int mask = s->maxdata;
 	int i, n;
 	unsigned signbits;
 	unsigned int d;
@@ -2070,7 +2120,7 @@ static int ni_ai_insn_read(struct comedi_device *dev,
 				return -ETIME;
 			}
 			d += signbits;
-			data[n] = d;
+			data[n] = d & 0xffff;
 		}
 	} else if (devpriv->is_6143) {
 		for (n = 0; n < insn->n; n++) {
@@ -2113,8 +2163,8 @@ static int ni_ai_insn_read(struct comedi_device *dev,
 				data[n] = dl;
 			} else {
 				d = ni_readw(dev, ADC_FIFO_Data_Register);
-				d += signbits;	/* subtle: needs to be short addition */
-				data[n] = d;
+				d += signbits;
+				data[n] = d & 0xffff;
 			}
 		}
 	}
@@ -2937,7 +2987,15 @@ static int ni_ao_inttrig(struct comedi_device *dev,
 	int i;
 	static const int timeout = 1000;
 
-	if (trig_num != cmd->start_arg)
+	/*
+	 * Require trig_num == cmd->start_arg when cmd->start_src == TRIG_INT.
+	 * For backwards compatibility, also allow trig_num == 0 when
+	 * cmd->start_src != TRIG_INT (i.e. when cmd->start_src == TRIG_EXT);
+	 * in that case, the internal trigger is being used as a pre-trigger
+	 * before the external trigger.
+	 */
+	if (!(trig_num == cmd->start_arg ||
+	      (trig_num == 0 && cmd->start_src != TRIG_INT)))
 		return -EINVAL;
 
 	/* Null trig at beginning prevent ao start trigger from executing more than
@@ -5585,7 +5643,7 @@ static int ni_E_init(struct comedi_device *dev,
 		s->maxdata	= (devpriv->is_m_series) ? 0xffffffff
 							 : 0x00ffffff;
 		s->insn_read	= ni_tio_insn_read;
-		s->insn_write	= ni_tio_insn_read;
+		s->insn_write	= ni_tio_insn_write;
 		s->insn_config	= ni_tio_insn_config;
 #ifdef PCIDMA
 		if (dev->irq && devpriv->mite) {

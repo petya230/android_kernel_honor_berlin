@@ -1,4 +1,23 @@
-
+/* -*- mode: c; c-basic-offset: 8; -*-
+ * vim: noexpandtab sw=8 ts=8 sts=0:
+ *
+ * xattr.c
+ *
+ * Copyright (C) 2004, 2008 Oracle.  All rights reserved.
+ *
+ * CREDITS:
+ * Lots of code in this file is copy from linux/fs/ext3/xattr.c.
+ * Copyright (C) 2001-2003 Andreas Gruenbacher, <agruen@suse.de>
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public
+ * License version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * General Public License for more details.
+ */
 
 #include <linux/capability.h>
 #include <linux/fs.h>
@@ -5188,7 +5207,13 @@ static int ocfs2_extend_xattr_bucket(struct inode *inode,
 	/* end_blk points to the last existing bucket */
 	end_blk = bucket_blkno(first) + ((new_bucket - 1) * blk_per_bucket);
 
-	
+	/*
+	 * end_blk is the start of the last existing bucket.
+	 * Thus, (end_blk - target_blk) covers the target bucket and
+	 * every bucket after it up to, but not including, the last
+	 * existing bucket.  Then we add the last existing bucket, the
+	 * new bucket, and the first bucket (3 * blk_per_bucket).
+	 */
 	credits = (end_blk - target_blk) + (3 * blk_per_bucket);
 	ret = ocfs2_extend_trans(handle, credits);
 	if (ret) {
@@ -6736,7 +6761,17 @@ static int ocfs2_lock_reflink_xattr_rec_allocators(
 
 	*credits = metas.credits;
 
-	
+	/*
+	 * Calculate we need for refcount tree change.
+	 *
+	 * We need to add/modify num_recs in refcount tree, so just calculate
+	 * an approximate number we need for refcount tree change.
+	 * Sometimes we need to split the tree, and after split,  half recs
+	 * will be moved to the new block, and a new block can only provide
+	 * half number of recs. So we multiple new blocks by 2.
+	 * In the end, we have to add credits for modifying the already
+	 * existed refcount block.
+	 */
 	rb = (struct ocfs2_refcount_block *)args->reflink->ref_root_bh->b_data;
 	metas.num_recs =
 		(metas.num_recs + ocfs2_refcount_recs_per_rb(osb->sb) - 1) /
@@ -7170,12 +7205,10 @@ out:
  */
 int ocfs2_init_security_and_acl(struct inode *dir,
 				struct inode *inode,
-				const struct qstr *qstr,
-				struct posix_acl *default_acl,
-				struct posix_acl *acl)
+				const struct qstr *qstr)
 {
-	struct buffer_head *dir_bh = NULL;
 	int ret = 0;
+	struct buffer_head *dir_bh = NULL;
 
 	ret = ocfs2_init_security_get(inode, dir, qstr, NULL);
 	if (ret) {
@@ -7188,11 +7221,9 @@ int ocfs2_init_security_and_acl(struct inode *dir,
 		mlog_errno(ret);
 		goto leave;
 	}
-
-	if (!ret && default_acl)
-		ret = ocfs2_iop_set_acl(inode, default_acl, ACL_TYPE_DEFAULT);
-	if (!ret && acl)
-		ret = ocfs2_iop_set_acl(inode, acl, ACL_TYPE_ACCESS);
+	ret = ocfs2_init_acl(NULL, inode, dir, NULL, dir_bh, NULL, NULL);
+	if (ret)
+		mlog_errno(ret);
 
 	ocfs2_inode_unlock(dir, 0);
 	brelse(dir_bh);

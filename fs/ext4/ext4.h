@@ -224,6 +224,7 @@ struct ext4_io_submit {
 #define	EXT4_MAX_BLOCK_SIZE		65536
 #define EXT4_MIN_BLOCK_LOG_SIZE		10
 #define EXT4_MAX_BLOCK_LOG_SIZE		16
+#define EXT4_MAX_CLUSTER_LOG_SIZE	30
 #ifdef __KERNEL__
 # define EXT4_BLOCK_SIZE(s)		((s)->s_blocksize)
 #else
@@ -1008,6 +1009,7 @@ struct ext4_inode_info {
 /*
  * Mount flags set via mount options or defaults
  */
+#define EXT4_MOUNT_NO_MBCACHE		0x00001 /* Disable mbcache */
 #define EXT4_MOUNT_GRPID		0x00004	/* Create files with directory's group */
 #define EXT4_MOUNT_DEBUG		0x00008	/* Some debugging messages */
 #define EXT4_MOUNT_ERRORS_CONT		0x00010	/* Continue on errors */
@@ -1164,7 +1166,7 @@ struct ext4_super_block {
 /*D0*/	__u8	s_journal_uuid[16];	/* uuid of journal superblock */
 /*E0*/	__le32	s_journal_inum;		/* inode number of journal file */
 	__le32	s_journal_dev;		/* device number of journal file */
-	__le32	s_last_orphan;
+	__le32	s_last_orphan;		/* start of list of inodes to delete */
 	__le32	s_hash_seed[4];		/* HTREE hash seed */
 	__u8	s_def_hash_version;	/* Default hash version to use */
 	__u8	s_jnl_backup_type;
