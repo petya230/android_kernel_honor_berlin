@@ -65,11 +65,6 @@
 #include <linux/freezer.h>
 #include <linux/bootmem.h>
 
-#ifdef CONFIG_FUTEX_DEBUG
-#define CREATE_TRACE_POINTS
-#include <trace/events/futex.h>
-#endif
-
 #include <asm/futex.h>
 
 #include "locking/rtmutex_common.h"
@@ -2950,7 +2945,7 @@ long do_futex(u32 __user *uaddr, int op, u32 val, ktime_t *timeout,
 {
 	int cmd = op & FUTEX_CMD_MASK;
 	unsigned int flags = 0;
-	long ret = -ENOSYS;
+
 	if (!(op & FUTEX_PRIVATE_FLAG))
 		flags |= FLAGS_SHARED;
 
@@ -2969,53 +2964,36 @@ long do_futex(u32 __user *uaddr, int op, u32 val, ktime_t *timeout,
 		if (!futex_cmpxchg_enabled)
 			return -ENOSYS;
 	}
-#ifdef CONFIG_FUTEX_DEBUG
-	trace_futex_enter(op, cmd, uaddr);
-#endif
 
 	switch (cmd) {
 	case FUTEX_WAIT:
 		val3 = FUTEX_BITSET_MATCH_ANY;
 	case FUTEX_WAIT_BITSET:
-		ret = futex_wait(uaddr, flags, val, timeout, val3);
-		break;
+		return futex_wait(uaddr, flags, val, timeout, val3);
 	case FUTEX_WAKE:
 		val3 = FUTEX_BITSET_MATCH_ANY;
 	case FUTEX_WAKE_BITSET:
-		ret = futex_wake(uaddr, flags, val, val3);
-		break;
+		return futex_wake(uaddr, flags, val, val3);
 	case FUTEX_REQUEUE:
-		ret = futex_requeue(uaddr, flags, uaddr2, val, val2, NULL, 0);
-		break;
+		return futex_requeue(uaddr, flags, uaddr2, val, val2, NULL, 0);
 	case FUTEX_CMP_REQUEUE:
-		ret = futex_requeue(uaddr, flags, uaddr2, val, val2, &val3, 0);
-		break;
+		return futex_requeue(uaddr, flags, uaddr2, val, val2, &val3, 0);
 	case FUTEX_WAKE_OP:
-		ret = futex_wake_op(uaddr, flags, uaddr2, val, val2, val3);
-		break;
+		return futex_wake_op(uaddr, flags, uaddr2, val, val2, val3);
 	case FUTEX_LOCK_PI:
-		ret = futex_lock_pi(uaddr, flags, timeout, 0);
-		break;
+		return futex_lock_pi(uaddr, flags, timeout, 0);
 	case FUTEX_UNLOCK_PI:
-		ret = futex_unlock_pi(uaddr, flags);
-		break;
+		return futex_unlock_pi(uaddr, flags);
 	case FUTEX_TRYLOCK_PI:
-		ret = futex_lock_pi(uaddr, flags, NULL, 1);
-		break;
+		return futex_lock_pi(uaddr, flags, NULL, 1);
 	case FUTEX_WAIT_REQUEUE_PI:
 		val3 = FUTEX_BITSET_MATCH_ANY;
-		ret = futex_wait_requeue_pi(uaddr, flags, val, timeout, val3,
+		return futex_wait_requeue_pi(uaddr, flags, val, timeout, val3,
 					     uaddr2);
-		break;
 	case FUTEX_CMP_REQUEUE_PI:
-		ret = futex_requeue(uaddr, flags, uaddr2, val, val2, &val3, 1);
-		break;
+		return futex_requeue(uaddr, flags, uaddr2, val, val2, &val3, 1);
 	}
-
-#ifdef CONFIG_FUTEX_DEBUG
-	trace_futex_exit(op, cmd, uaddr);
-#endif
-	return ret;
+	return -ENOSYS;
 }
 
 

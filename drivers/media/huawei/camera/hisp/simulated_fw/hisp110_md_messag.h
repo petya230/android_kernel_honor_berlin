@@ -471,18 +471,18 @@ typedef struct
 
 typedef struct
 {
-    WB_gain_struct     wb_gain_param;
-    struct_light_point wp_before_shift;
-    struct_light_point wp_for_lsc;
-    struct_light_point wp_for_cc;
-    HI_U16             CCT_value;
-    struct_light_point wp_cast_vector;
-    HI_S32             BV_value;
-    HI_U32             current_time_sec;
-    HI_U32             current_time_us;
-    float              rgbg_flash[2];
-    HI_U32             awb_mode;
-    HI_U32             awb_state;
+    WB_gain_struct      wb_gain_param;
+    struct_light_point  wp_before_shift;
+    struct_light_point  wp_for_lsc;
+    struct_light_point  wp_for_cc;
+    HI_U16              CCT_value;
+    struct_light_point  wp_cast_vector;
+    HI_S32              BV_value;
+    HI_U32              current_time_sec;
+    HI_U32              current_time_us;
+    float               rgbg_flash[2];
+    HI_U32              awb_mode;
+    HI_U32              awb_state;
 } awb_out_param_t;
 
 typedef struct _gsensor_data_t

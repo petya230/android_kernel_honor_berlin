@@ -1,4 +1,22 @@
+/******************************************************************************
 
+Copyright (C), PrimISP(R), 2010-2020, Huawei Tech. Co., Ltd.
+
+******************************************************************************
+File Name     : AWB_fw_aux_extra_calib.h
+Version       : Initial Draft
+Author        : z57139
+Created       : 2014/04/25
+Last Modified : 2014/04/25
+Description   : header file, some extra calibration information of auto white balance algorithm.
+
+
+Function List : .
+
+History       :
+
+
+******************************************************************************/
 #ifndef _CHROMATIX_AWB_H
 #define _CHROMATIX_AWB_H
 #include "algo_common_3660.h"
