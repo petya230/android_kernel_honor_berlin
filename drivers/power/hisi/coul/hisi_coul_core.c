@@ -4080,6 +4080,7 @@ enum coul_sysfs_type{
     COUL_SYSFS_RBATT,
     COUL_SYSFS_REAL_SOC,
     COUL_SYSFS_CALI_ADC,
+    COUL_SYSFS_RESET
 };
 
 #define COUL_SYSFS_FIELD(_name, n, m, store)                \
@@ -4121,9 +4122,10 @@ static struct coul_sysfs_field_info coul_sysfs_field_tbl[] = {
     COUL_SYSFS_FIELD_RO(abs_cc,                 ABS_CC),
     COUL_SYSFS_FIELD_RO(battery_id_voltage,     BATTERY_ID_VOLTAGE),
     COUL_SYSFS_FIELD_RO(battery_brand_name,     BATTERY_BRAND_NAME),
-    COUL_SYSFS_FIELD_RO(rbatt, RBATT),
-    COUL_SYSFS_FIELD_RO(real_soc, REAL_SOC),
-    COUL_SYSFS_FIELD_RW(cali_adc,         CALI_ADC),
+    COUL_SYSFS_FIELD_RO(rbatt,                  RBATT),
+    COUL_SYSFS_FIELD_RO(real_soc,               REAL_SOC),
+    COUL_SYSFS_FIELD_RW(cali_adc,               CALI_ADC),
+    COUL_SYSFS_FIELD_RW(reset,                  RESET),
 };
 /*lint +e665*/
 static struct attribute *coul_sysfs_attrs[ARRAY_SIZE(coul_sysfs_field_tbl) + 1];
@@ -4246,6 +4248,8 @@ static ssize_t coul_sysfs_show(struct device *dev,
         return snprintf(buf, PAGE_SIZE, "%d\n", ufcapacity);
     case COUL_SYSFS_CALI_ADC:
         return snprintf(buf, PAGE_SIZE, "%d\n", 0);
+    case COUL_SYSFS_RESET:
+        return snprintf(buf, PAGE_SIZE, "%d\n", 0);
     default:
         hwlog_err("(%s)NODE ERR!!HAVE NO THIS NODE:(%d)\n",__func__,info->name);
         break;
@@ -4348,6 +4352,14 @@ static ssize_t coul_sysfs_store(struct device *dev,
         hwlog_info("cali_adc =  %ld\n", val);
         if (1 == val)
             di->coul_dev_ops->cali_adc();
+        break;
+    case COUL_SYSFS_RESET:
+        if ((strict_strtol(buf, 10, &val) < 0) || (val < 0) || (val > 100))
+            return -EINVAL;
+        hwlog_info("reset =  %ld\n", val);
+        if (1 == val) {
+            battery_plug_in(di);
+        }
         break;
     default:
         hwlog_err("(%s)NODE ERR!!HAVE NO THIS NODE:(%d)\n",__func__,info->name);
