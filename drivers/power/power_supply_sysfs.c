@@ -42,6 +42,7 @@ static struct device_attribute power_supply_attrs[];
 
 #ifdef CONFIG_ADVANCED_CHARGE_CONTROL
 extern int coul_get_battery_rm(void);
+extern int coul_get_battery_fcc(void);
 #endif
 
 static ssize_t power_supply_show_property(struct device *dev,
@@ -96,8 +97,8 @@ static ssize_t power_supply_show_property(struct device *dev,
 #ifdef CONFIG_ADVANCED_CHARGE_CONTROL
 	// overwrite wrong value with real capacity
 	if (off == POWER_SUPPLY_PROP_CAPACITY) {
-		// assume battery gives 3270mAh
-		value.intval = (coul_get_battery_rm() * 100) / 3270;
+		// use measured remaining capacity vs measured full charge capacity
+		value.intval = (coul_get_battery_rm() * 100) / coul_get_battery_fcc();
 
 		if (value.intval > 100) {
 			// if we go off, fall back to 100%
