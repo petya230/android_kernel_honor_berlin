@@ -381,7 +381,7 @@ static inline int put_page_unless_one(struct page *page)
 }
 
 extern int page_is_ram(unsigned long pfn);
-extern bool page_is_cma(struct page *page);
+
 extern int region_is_ram(resource_size_t phys_addr, unsigned long size);
 
 /* Support for virtually mapped pages */
@@ -1454,7 +1454,7 @@ static inline void mm_nr_pmds_init(struct mm_struct *mm)
 
 static inline unsigned long mm_nr_pmds(struct mm_struct *mm)
 {
-	return atomic_long_read(&mm->nr_pmds);
+	return atomic_long_read(&mm->nr_pmds);  /* [false alarm]:return value is correct */
 }
 
 static inline void mm_inc_nr_pmds(struct mm_struct *mm)
