@@ -258,7 +258,7 @@ void __send_nmi(void)
         writel(0x2, sysctrl_base + nmi_reg);
     }
     else
-        hwlog_err("sysctrl_base is %p, nmi_reg is %d!\n", sysctrl_base,
+        hwlog_err("sysctrl_base is %Kp, nmi_reg is %d!\n", sysctrl_base,
                   nmi_reg);
 }
 
@@ -405,7 +405,7 @@ static int __sh_create_dir(char* path)
 
     if (path == NULL)
     {
-        hwlog_err("invalid  parameter. path:%p.\n", path);
+        hwlog_err("invalid  parameter. path:%Kp.\n", path);
         return -1;
     }
 
@@ -469,7 +469,7 @@ int sh_savebuf2fs(char* logpath, char* filename,
 
     if (logpath == NULL || filename == NULL || buf == NULL || len <= 0)
     {
-        hwlog_err("invalid  parameter. path:%p, name:%p buf:%p len:0x%x\n",
+        hwlog_err("invalid  parameter. path:%Kp, name:%Kp buf:%Kp len:0x%x\n",
                   logpath, filename, buf, len);
         ret = -1;
         goto out2;
@@ -505,7 +505,7 @@ int sh_savebuf2fs(char* logpath, char* filename,
 out1:
     filp_close(fp, NULL);
 
-    /*根据权限要求，hisi_logs目录及子目录群组调整为root-system */
+    /*hisi_logs root-system */
     ret = (int)bbox_chown((const char __user*)path, ROOT_UID,
                           SYSTEM_GID, false);
 
@@ -530,7 +530,7 @@ int sh_readfs2buf(char* logpath, char* filename,
 
     if (logpath == NULL || filename == NULL || buf == NULL || len <= 0)
     {
-        hwlog_err("invalid  parameter. path:%p, name:%p buf:%p len:0x%x\n",
+        hwlog_err("invalid  parameter. path:%Kp, name:%Kp buf:%Kp len:0x%x\n",
                   logpath, filename, buf, len);
         goto out2;
     }
@@ -578,7 +578,7 @@ static int sh_create_dir(const char* path)
 
     if (path == NULL)
     {
-        hwlog_err("invalid  parameter. path:%p\n", path);
+        hwlog_err("invalid  parameter. path:%Kp\n", path);
         return -1;
     }
 
