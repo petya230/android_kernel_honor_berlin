@@ -234,6 +234,14 @@ static inline void stat(const struct kmem_cache *s, enum stat_item si)
  * 			Core slab cache functions
  *******************************************************************/
 
+static inline void *restore_red_left(struct kmem_cache *s, void *p)
+{
+	if (s->flags & SLAB_RED_ZONE)
+		p -= s->red_left_pad;
+
+	return p;
+}
+
 /* Verify that a pointer has an address that is valid within a slab page */
 static inline int check_valid_pointer(struct kmem_cache *s,
 				struct page *page, void *object)
@@ -475,14 +483,6 @@ static inline int size_from_object(struct kmem_cache *s)
 		return s->size - s->red_left_pad;
 
 	return s->size;
-}
-
-static inline void *restore_red_left(struct kmem_cache *s, void *p)
-{
-	if (s->flags & SLAB_RED_ZONE)
-		p -= s->red_left_pad;
-
-	return p;
 }
 
 /*
