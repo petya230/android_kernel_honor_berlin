@@ -333,6 +333,18 @@ static struct hi6522_sysfs_field_info *hi6522_sysfs_field_lookup(const char
 	return &hi6522_sysfs_field_tbl[i];
 }
 
+#ifdef CONFIG_ADVANCED_CHARGE_CONTROL
+/**********************************************************
+*  Function:       isTerminalVoltageLimited
+*  Discription:    returns true if the terminal voltage is limited
+*  Parameters:   NULL
+*  return value:  true-limited or false-unlimited/stock value
+**********************************************************/
+bool isTerminalVoltageLimited(void) {
+	return limiter_terminal_voltage != 4350;
+}
+#endif
+
 /**********************************************************
 *  Function:       hi6522_sysfs_show
 *  Discription:    show the value for all HI6523 device's node
@@ -2110,6 +2122,12 @@ int hi6522_get_ibus_ma(void)
 int hi6522_set_charger_hiz(int enable)
 {
 	struct hi6522_device_info *di = g_hi6522_dev;
+
+	if(NULL == di){
+		SCHARGER_ERR("[%s] di is NULL!\n", __func__);
+		return 0;
+	}
+
 	if (di->ovlo_flag == 1) {
 		SCHARGER_ERR("[%s] HIZ,ovlo is not used\n", __func__);
 		return 0;

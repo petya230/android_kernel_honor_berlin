@@ -19,5 +19,6 @@
 #define USB_NORMALCHARGE_CHARGE_LIMIT  500
 
 void setFastcharge(bool active);
+bool isTerminalVoltageLimited(void);
 
 #endif
