@@ -2487,7 +2487,7 @@ static void hi6522_dpm_check_work(struct work_struct *work)
 		}
 	}
 
-	schedule_delayed_work(&di->hi6522_dpm_check_work,
+	queue_delayed_work(system_power_efficient_wq, &di->hi6522_dpm_check_work,
 			      msecs_to_jiffies(dpm_check_delay_time_ms));
 }
 
@@ -2589,7 +2589,7 @@ struct charge_device_ops hi6522_ops = {
 static irqreturn_t hi6522_irq_handle(int irq, void *data)
 {
 	struct hi6522_device_info *di = (struct hi6522_device_info *)data;
-	schedule_work(&di->irq_work);
+	queue_work(system_power_efficient_wq, &di->irq_work);
 	disable_irq_nosync(di->irq_int);
 
 	return IRQ_HANDLED;
@@ -2974,7 +2974,7 @@ static int hi6522_dpm_switch_notifier_call(struct notifier_block *usb_nb,
 	case CHARGER_TYPE_UNKNOWN:
         di->ico_en = 1;
         batteryBufferFirst = 1;
-		schedule_delayed_work(&di->hi6522_dpm_check_work,
+		queue_delayed_work(system_power_efficient_wq, &di->hi6522_dpm_check_work,
 				      msecs_to_jiffies(0));
 		di->batfet_disable_flag = FALSE;
 		break;
@@ -3175,7 +3175,7 @@ static int hi6522_charger_probe(struct i2c_client *client,
 	if (type < CHARGER_TYPE_NONE) {
         di->ico_en = 1;
         di->ico_iin = IIN_LIMIT_2A;
-		schedule_delayed_work(&di->hi6522_dpm_check_work,
+		queue_delayed_work(system_power_efficient_wq, &di->hi6522_dpm_check_work,
 				      msecs_to_jiffies(0));
 	}
 	ret = hi6522_sysfs_create_group(di);

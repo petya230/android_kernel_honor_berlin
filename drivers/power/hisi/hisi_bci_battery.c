@@ -945,7 +945,7 @@ static void hisi_bci_battery_work(struct work_struct *work)
 #if defined (CONFIG_HUAWEI_DSM)
 	hisi_get_error_info(di);
 #endif
-	schedule_delayed_work(&di->hisi_bci_monitor_work, msecs_to_jiffies(di->monitoring_interval));
+	queue_delayed_work(system_power_efficient_wq, &di->hisi_bci_monitor_work, msecs_to_jiffies(di->monitoring_interval));
 
 	if (capacity_changed(di)) {
 		#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 13, 0))
@@ -1482,7 +1482,7 @@ static int hisi_bci_battery_probe(struct platform_device *pdev)
 	hisi_bci_parse_dts(np, di);
 
 	INIT_DELAYED_WORK(&di->hisi_bci_monitor_work, hisi_bci_battery_work);
-	schedule_delayed_work(&di->hisi_bci_monitor_work, 0);
+	queue_delayed_work(system_power_efficient_wq, &di->hisi_bci_monitor_work, 0);
 
 	di->nb.notifier_call = hisi_charger_event;
 	hisi_register_notifier(&di->nb, 1);
@@ -1603,7 +1603,7 @@ static int hisi_bci_battery_resume(struct platform_device *pdev)
 #if defined (CONFIG_HUAWEI_DSM)
 	g_curr_zero_times = 0;
 #endif
-	schedule_delayed_work(&di->hisi_bci_monitor_work, 0);
+	queue_delayed_work(system_power_efficient_wq, &di->hisi_bci_monitor_work, 0);
 	hwlog_info("%s:-\n", __func__);
 	return 0;
 }

@@ -3122,7 +3122,7 @@ static void battery_plug_in(struct smartstar_coul_device *di)
     coul_set_low_vol_int(di, LOW_INT_STATE_RUNNING);
 
     /*schedule calculate_soc_work*/
-    schedule_delayed_work(&di->calculate_soc_delayed_work,
+    queue_delayed_work(system_power_efficient_wq, &di->calculate_soc_delayed_work,
                         round_jiffies_relative(msecs_to_jiffies(di->soc_work_interval)));
 
     // save battery plug in magic number
@@ -3172,7 +3172,7 @@ static void battery_check_work(struct work_struct *work)
         }
     }
 
-    schedule_delayed_work(&di->battery_check_delayed_work,
+    queue_delayed_work(system_power_efficient_wq, &di->battery_check_delayed_work,
                 round_jiffies_relative(msecs_to_jiffies(BATTERY_CHECK_TIME_MS)));
 }
 static int calculate_real_fcc_uah(struct smartstar_coul_device *di,int *ret_fcc_uah);
@@ -3513,7 +3513,7 @@ FuncEnd:
 
 
 	}
-    schedule_delayed_work(&di->calculate_soc_delayed_work,
+    queue_delayed_work(system_power_efficient_wq, &di->calculate_soc_delayed_work,
     		round_jiffies_relative(msecs_to_jiffies(di->soc_work_interval)) );
 
 }
@@ -3523,7 +3523,7 @@ static void read_temperature_work(struct work_struct *work)
     struct smartstar_coul_device *di = container_of(work, struct smartstar_coul_device,
                 read_temperature_delayed_work.work);
     update_battery_temperature(di, TEMPERATURE_UPDATE_STATUS);
-    schedule_delayed_work(&di->read_temperature_delayed_work, round_jiffies_relative(msecs_to_jiffies(READ_TEMPERATURE_MS)) );
+    queue_delayed_work(system_power_efficient_wq, &di->read_temperature_delayed_work, round_jiffies_relative(msecs_to_jiffies(READ_TEMPERATURE_MS)) );
 }
 
  /*******************************************************
@@ -4418,7 +4418,7 @@ static int coul_fault_notifier_call(struct notifier_block *fault_nb,unsigned lon
     struct smartstar_coul_device *di = container_of(fault_nb, struct smartstar_coul_device, fault_nb);
 
     di->coul_fault = (enum coul_fault_type)event;
-    schedule_work(&di->fault_work);
+    queue_work(system_power_efficient_wq, &di->fault_work);
     return NOTIFY_OK;
 }
 
@@ -4909,8 +4909,8 @@ static int  hisi_coul_probe(struct platform_device *pdev)
     DI_UNLOCK();
 
     /*schedule calculate_soc_work*/
-    schedule_delayed_work(&di->calculate_soc_delayed_work, round_jiffies_relative(msecs_to_jiffies(di->soc_work_interval)));
-    schedule_delayed_work(&di->read_temperature_delayed_work, round_jiffies_relative(msecs_to_jiffies(READ_TEMPERATURE_MS)) );
+    queue_delayed_work(system_power_efficient_wq, &di->calculate_soc_delayed_work, round_jiffies_relative(msecs_to_jiffies(di->soc_work_interval)));
+    queue_delayed_work(system_power_efficient_wq, &di->read_temperature_delayed_work, round_jiffies_relative(msecs_to_jiffies(READ_TEMPERATURE_MS)) );
 
 coul_no_battery:
     coul_ops = (struct hisi_coul_ops*) kzalloc(sizeof (*coul_ops), GFP_KERNEL);
@@ -5041,7 +5041,7 @@ static int hisi_coul_pm_notify(struct notifier_block * nb, unsigned long mode, v
     case PM_POST_SUSPEND:
 	hwlog_info("%s:+n",__func__);
 	di->batt_soc = calculate_state_of_charge(di);
-	schedule_delayed_work(&di->calculate_soc_delayed_work,
+	queue_delayed_work(system_power_efficient_wq, &di->calculate_soc_delayed_work,
 			round_jiffies_relative(msecs_to_jiffies((unsigned int)di->soc_work_interval)));
 	break;
     case PM_HIBERNATION_PREPARE:
@@ -5304,11 +5304,11 @@ static int hisi_coul_resume(struct platform_device *pdev)
 
     DI_UNLOCK();
     if (di->batt_exist){
-        schedule_delayed_work(&di->read_temperature_delayed_work, round_jiffies_relative(msecs_to_jiffies(READ_TEMPERATURE_MS)));
-        schedule_delayed_work(&di->calculate_soc_delayed_work, round_jiffies_relative(msecs_to_jiffies(CALCULATE_SOC_MS/2)));
+        queue_delayed_work(system_power_efficient_wq, &di->read_temperature_delayed_work, round_jiffies_relative(msecs_to_jiffies(READ_TEMPERATURE_MS)));
+        queue_delayed_work(system_power_efficient_wq, &di->calculate_soc_delayed_work, round_jiffies_relative(msecs_to_jiffies(CALCULATE_SOC_MS/2)));
     }
 	if (battery_is_removable) {
-	    schedule_delayed_work(&di->battery_check_delayed_work,
+	    queue_delayed_work(system_power_efficient_wq, &di->battery_check_delayed_work,
                 round_jiffies_relative(msecs_to_jiffies(BATTERY_CHECK_TIME_MS)));
 	}
     hwlog_info("%s:-\n",__func__);

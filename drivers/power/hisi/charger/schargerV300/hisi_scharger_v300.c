@@ -2514,7 +2514,7 @@ static void hi6523_plugout_check_process(enum hisi_charger_type type)
 	case CHARGER_TYPE_DCP:
 	case CHARGER_TYPE_CDP:
 	case CHARGER_TYPE_UNKNOWN:
-		schedule_delayed_work(&di->plugout_check_work,
+		queue_delayed_work(system_power_efficient_wq, &di->plugout_check_work,
 				      msecs_to_jiffies(0));
 		break;
 	case CHARGER_TYPE_NONE:
@@ -2537,6 +2537,11 @@ static int hi6523_usb_notifier_call(struct notifier_block *usb_nb,
 				    unsigned long event, void *data)
 {
 	struct hi6523_device_info *di = g_hi6523_dev;
+
+	if(NULL == di){
+		SCHARGER_ERR("%s : di is NULL!\n",__func__);
+		return NOTIFY_OK;
+	}
 
 	di->charger_type = (enum hisi_charger_type)event;
 	hi6523_plugout_check_process(di->charger_type);
@@ -2576,7 +2581,7 @@ static void hi6523_plugout_check_work(struct work_struct *work)
 			}
 		}
 	}
-	schedule_delayed_work(&di->plugout_check_work,
+	queue_delayed_work(system_power_efficient_wq, &di->plugout_check_work,
 			      msecs_to_jiffies(plugout_check_delay_ms));
 }
 
@@ -2596,7 +2601,7 @@ static void hi6523_irq_work(struct work_struct *work)
 	u8 reg_read = 0;
 	static u8 otg_scp_cnt;
 	static u8 otg_uvp_cnt;
-	u8 vbat_ovp_cnt = 0;
+	u8 vbat_ovp_cnt = 0;/*lint !e64*/
 	int i = 0;
 
 	hi6523_read_byte(CHG_IRQ0, &reg0);
@@ -2707,7 +2712,7 @@ static irqreturn_t hi6523_interrupt(int irq, void *_di)
 {
 	struct hi6523_device_info *di = _di;
 	disable_irq_nosync(di->irq_int);
-	schedule_work(&di->irq_work);
+	queue_work(system_power_efficient_wq, &di->irq_work);
 	return IRQ_HANDLED;
 }
 

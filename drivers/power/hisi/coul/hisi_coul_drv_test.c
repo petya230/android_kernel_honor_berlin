@@ -386,6 +386,7 @@ static void hisi_coul_drv_test_shutdown(struct platform_device *pdev)
 		return;
 	}
 	kfree(di);
+	di = NULL;
 	return;
 }
 

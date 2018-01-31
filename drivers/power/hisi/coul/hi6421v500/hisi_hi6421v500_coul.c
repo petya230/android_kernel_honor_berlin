@@ -968,7 +968,7 @@ static irqreturn_t hi6421v500_coul_irq_cb(int irq,  void *_di)
 
     di->irq_mask |= val;
 
-    schedule_delayed_work(&di->irq_work, msecs_to_jiffies(0));
+    queue_delayed_work(system_power_efficient_wq, &di->irq_work, msecs_to_jiffies(0));
 
     return IRQ_HANDLED;
 }
@@ -1049,7 +1049,6 @@ static void hi6421v500_coul_enter_eco(void)
     reg_val = HI6421V500_REG_READ(HI6421V500_COUL_STATE_REG);
     if (COUL_CALI_ING == reg_val) {
     	HI6421V500_COUL_INF("cali ing, don't do it again!\n");
-
         reg_val= ECO_COUL_CTRL_VAL;
     } else {
         HI6421V500_COUL_INF("calibrate!\n");

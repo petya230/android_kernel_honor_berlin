@@ -957,7 +957,7 @@ static irqreturn_t hi6421v600_coul_irq_cb(int irq,  void *_di)
 
     di->irq_mask |= val;
 
-    schedule_delayed_work(&di->irq_work, msecs_to_jiffies(0));
+    queue_delayed_work(system_power_efficient_wq, &di->irq_work, msecs_to_jiffies(0));
 
     return IRQ_HANDLED;
 }
