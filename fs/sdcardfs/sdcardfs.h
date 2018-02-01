@@ -90,11 +90,11 @@ typedef __uint32_t __psunsigned_t;
 */
 
 /* OVERRIDE_CRED() and REVERT_CRED()
- * 	OVERRID_CRED()
- * 		backup original task->cred
- * 		and modifies task->cred->fsuid/fsgid to specified value.
+ *	OVERRID_CRED()
+ *		backup original task->cred
+ *		and modifies task->cred->fsuid/fsgid to specified value.
  *	REVERT_CRED()
- * 		restore original task->cred->fsuid/fsgid.
+ *		restore original task->cred->fsuid/fsgid.
  * These two macro should be used in pair, and OVERRIDE_CRED() should be
  * placed at the beginning of a function, right after variable declaration.
  */
@@ -109,9 +109,9 @@ typedef __uint32_t __psunsigned_t;
 #define REVERT_CRED(saved_cred)	revert_fsids(saved_cred)
 
 #define DEBUG_CRED()		\
-	printk("KAKJAGI: %s:%d fsuid %d fsgid %d\n", 	\
-		__FUNCTION__, __LINE__, 		\
-		(int)current->cred->fsuid, 		\
+	printk("KAKJAGI: %s:%d fsuid %d fsgid %d\n",	\
+		__FUNCTION__, __LINE__,			\
+		(int)current->cred->fsuid,		\
 		(int)current->cred->fsgid);
 
 /* Android 4.4 support */
@@ -154,9 +154,9 @@ struct sdcardfs_sb_info;
 struct sdcardfs_mount_options;
 
 /* Do not directly use this function. Use OVERRIDE_CRED() instead. */
-const struct cred * override_fsids(struct sdcardfs_sb_info* sbi);
+const struct cred *override_fsids(struct sdcardfs_sb_info *sbi);
 /* Do not directly use this function, use REVERT_CRED() instead. */
-void revert_fsids(const struct cred * old_cred);
+void revert_fsids(const struct cred *old_cred);
 
 /* operations vectors defined in specific files */
 extern const struct file_operations sdcardfs_main_fops;
@@ -176,9 +176,9 @@ extern void sdcardfs_destroy_dentry_cache(void);
 extern int new_dentry_private_data(struct dentry *dentry);
 extern void free_dentry_private_data(struct dentry *dentry);
 extern struct dentry *sdcardfs_lookup(struct inode *dir, struct dentry *dentry,
-				unsigned int flags);
+				      unsigned int flags);
 extern int sdcardfs_interpose(struct dentry *dentry, struct super_block *sb,
-			    struct path *lower_path, userid_t id);
+			      struct path *lower_path, userid_t id);
 /*
  *  namei.c
  */
@@ -251,6 +251,7 @@ struct sdcardfs_sb_info {
 	char *devpath;
 };
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 12, 0))
 /* Kernel uid/gid conversion. These are used to convert to/from the on disk
  * uid_t/gid_t types to the kuid_t/kgid_t types that the kernel uses internally.
  * The conversion here is type only, the value will remain the same since we
@@ -276,6 +277,27 @@ static inline kgid_t xfs_gid_to_kgid(__uint32_t gid)
 {
 	return make_kgid(&init_user_ns, gid);
 }
+#else
+static inline __uint32_t xfs_kuid_to_uid(kuid_t uid)
+{
+	return uid;
+}
+
+static inline kuid_t xfs_uid_to_kuid(__uint32_t uid)
+{
+	return uid;
+}
+
+static inline __uint32_t xfs_kgid_to_gid(kgid_t gid)
+{
+	return gid;
+}
+
+static inline kgid_t xfs_gid_to_kgid(__uint32_t gid)
+{
+	return gid;
+}
+#endif
 
 /*
  * inode to private data
@@ -335,14 +357,14 @@ static inline void sdcardfs_copy_inode_attr(struct inode *dest,
 }
 
 /* superblock to lower superblock */
-static inline struct super_block *sdcardfs_lower_super(
-	const struct super_block *sb)
+static inline struct super_block *sdcardfs_lower_super(const struct super_block
+						       *sb)
 {
 	return SDCARDFS_SB(sb)->lower_sb;
 }
 
 static inline void sdcardfs_set_lower_super(struct super_block *sb,
-					  struct super_block *val)
+					    struct super_block *val)
 {
 	SDCARDFS_SB(sb)->lower_sb = val;
 }
@@ -393,7 +415,7 @@ static inline void sdcardfs_put_reset_##pname(const struct dentry *dent) \
 { \
 	struct path pname; \
 	spin_lock(&SDCARDFS_D(dent)->lock); \
-	if(SDCARDFS_D(dent)->pname.dentry) { \
+	if (SDCARDFS_D(dent)->pname.dentry) { \
 		pathcpy(&pname, &SDCARDFS_D(dent)->pname); \
 		SDCARDFS_D(dent)->pname.dentry = NULL; \
 		SDCARDFS_D(dent)->pname.mnt = NULL; \
@@ -405,7 +427,7 @@ static inline void sdcardfs_put_reset_##pname(const struct dentry *dent) \
 }
 
 SDCARDFS_DENT_FUNC(lower_path)
-SDCARDFS_DENT_FUNC(orig_path)
+    SDCARDFS_DENT_FUNC(orig_path)
 
 static inline void sdcardfs_copy_lower_path(const struct dentry *dent,
 					    struct path *lower_path)
@@ -429,21 +451,21 @@ static inline int has_graft_path(const struct dentry *dent)
 }
 
 static inline void sdcardfs_get_real_lower(const struct dentry *dent,
-						struct path *real_lower)
+					   struct path *real_lower)
 {
 	/* in case of a local obb dentry
 	 * the orig_path should be returned
 	 */
-	if(has_graft_path(dent))
+	if (has_graft_path(dent))
 		sdcardfs_get_orig_path(dent, real_lower);
 	else
 		sdcardfs_get_lower_path(dent, real_lower);
 }
 
 static inline void sdcardfs_put_real_lower(const struct dentry *dent,
-						struct path *real_lower)
+					   struct path *real_lower)
 {
-	if(has_graft_path(dent))
+	if (has_graft_path(dent))
 		sdcardfs_put_orig_path(dent, real_lower);
 	else
 		sdcardfs_put_lower_path(dent, real_lower);
@@ -452,22 +474,24 @@ static inline void sdcardfs_put_real_lower(const struct dentry *dent,
 void sdcardfs_drop_shared_icache(struct super_block *, struct super_block *, unsigned long);
 void sdcardfs_drop_sb_icache(struct super_block *, unsigned long);
 void sdcardfs_add_super(struct sdcardfs_sb_info *, struct super_block *);
-
 /* for packagelist.c */
 extern int get_caller_has_rw_locked(void *pkgl_id, derive_t derive);
 extern appid_t get_appid(void *pkgl_id, const char *app_name);
-extern int check_caller_access_to_name(struct inode *parent_node, const char* name,
-                                        derive_t derive, int w_ok, int has_rw);
+extern int check_caller_access_to_name(struct inode *parent_node,
+				       const char *name, derive_t derive,
+				       int w_ok, int has_rw);
 extern int open_flags_to_access_mode(int open_flags);
-extern void * packagelist_create(gid_t write_gid);
+extern void *packagelist_create(gid_t write_gid);
 extern void packagelist_destroy(void *pkgl_id);
 extern int packagelist_init(void);
 extern void packagelist_exit(void);
 
 /* for derived_perm.c */
 extern void setup_derived_state(struct inode *inode, perm_t perm,
-			userid_t userid, uid_t uid, gid_t gid, mode_t mode);
-extern void get_derived_permission(struct dentry *parent, struct dentry *dentry);
+				userid_t userid, uid_t uid, gid_t gid,
+				mode_t mode);
+extern void get_derived_permission(struct dentry *parent,
+				   struct dentry *dentry);
 extern void update_derived_permission(struct dentry *dentry);
 extern int need_graft_path(struct dentry *dentry);
 extern int is_base_obbpath(struct dentry *dentry);
@@ -488,13 +512,16 @@ static inline void unlock_dir(struct dentry *dir)
 	dput(dir);
 }
 
-static inline int prepare_dir(const char *path_s, uid_t uid, gid_t gid, mode_t mode)
+static inline int prepare_dir(const char *path_s, uid_t uid, gid_t gid,
+			      mode_t mode)
 {
 	int err;
 	struct dentry *dent;
-	struct iattr attrs;
 	struct path parent;
+	struct iattr attrs;
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 13, 0))
 	struct inode *delegated_inode = NULL;
+#endif
 
 	dent = kern_path_create(AT_FDCWD, path_s, &parent, LOOKUP_DIRECTORY);
 	if (IS_ERR(dent)) {
@@ -518,6 +545,7 @@ static inline int prepare_dir(const char *path_s, uid_t uid, gid_t gid, mode_t m
 	attrs.ia_uid = xfs_uid_to_kuid(uid);
 	attrs.ia_gid = xfs_gid_to_kgid(gid);
 	attrs.ia_valid = ATTR_UID | ATTR_GID;
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 13, 0))
 retry_deleg:
 	mutex_lock(&d_inode(dent)->i_mutex);
 	err = notify_change(dent, &attrs, &delegated_inode);
@@ -527,6 +555,11 @@ retry_deleg:
 		if (!err)
 			goto retry_deleg;
 	}
+#else
+	mutex_lock(&dent->d_inode->i_mutex);
+	notify_change(dent, &attrs);
+	mutex_unlock(&dent->d_inode->i_mutex);
+#endif
 
 out_drop:
 	mnt_drop_write(parent.mnt);
@@ -588,7 +621,8 @@ static inline void fix_derived_permission(struct inode *x)
  * Return 1, if a disk has enough free space, otherwise 0.
  * We assume that any files can not be overwritten.
  */
-static inline int check_min_free_space(struct dentry *dentry, size_t size, int dir)
+static inline int check_min_free_space(struct dentry *dentry, size_t size,
+				       int dir)
 {
 	int err;
 	struct path lower_path;
@@ -617,7 +651,7 @@ static inline int check_min_free_space(struct dentry *dentry, size_t size, int d
 		avail = statfs.f_bavail * statfs.f_bsize;
 
 		/* not enough space */
-		if ((u64)size > avail)
+		if ((u64) size > avail)
 			goto out_nospc;
 
 		/* enough space */
@@ -652,4 +686,4 @@ out_nospc:
 	return 0;
 }
 
-#endif	/* not _SDCARDFS_H_ */
+#endif /* not _SDCARDFS_H_ */
