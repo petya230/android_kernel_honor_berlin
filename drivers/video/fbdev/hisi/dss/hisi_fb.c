@@ -23,6 +23,8 @@
 #include "lcdkit_fb_util.h"
 #endif
 
+#include <linux/lcd_notify.h>
+
 u8 color_temp_cal_buf[32] = {0};
 #if 0
 /dev/graphics/fb0
@@ -655,6 +657,17 @@ static int hisi_fb_blank(int blank_mode, struct fb_info *info)
 		HISI_FB_INFO("fb%d, blank_mode(%d) +.\n", hisifd->index, blank_mode);
 	}
 
+	if (hisifd->index == PRIMARY_PANEL_IDX) {
+		if (FB_BLANK_UNBLANK == blank_mode) {
+			// send event LCD_EVENT_ON_START in hisi_fb_utils instead of hisi_fb.c because it is earlier (to boost cluster_plug)
+			// HISI_FB_ERR("lcd_notifier: LCD_EVENT_ON_START\n");
+			// lcd_notifier_call_chain(LCD_EVENT_ON_START, NULL);
+		} else if (FB_BLANK_POWERDOWN == blank_mode) {
+			HISI_FB_ERR("lcd_notifier: LCD_EVENT_OFF_START\n");
+			lcd_notifier_call_chain(LCD_EVENT_OFF_START, NULL);
+		}
+	}
+
 	if (FB_BLANK_UNBLANK == blank_mode) {
 		if ((hisifd->panel_power_on)
 		    && (hisifd->secure_ctrl.secure_blank_flag)) {
@@ -680,6 +693,16 @@ static int hisi_fb_blank(int blank_mode, struct fb_info *info)
 		HISI_FB_DEBUG("fb%d, blank_mode(%d) -.\n", hisifd->index, blank_mode);
 	} else {
 		HISI_FB_INFO("fb%d, blank_mode(%d) -.\n", hisifd->index, blank_mode);
+	}
+
+	if (hisifd->index == PRIMARY_PANEL_IDX) {
+		if (FB_BLANK_UNBLANK == blank_mode) {
+			HISI_FB_ERR("lcd_notifier: LCD_EVENT_ON_END\n");
+			lcd_notifier_call_chain(LCD_EVENT_ON_END, NULL);
+		} else if (FB_BLANK_POWERDOWN == blank_mode) {
+			HISI_FB_ERR("lcd_notifier: LCD_EVENT_OFF_END\n");
+			lcd_notifier_call_chain(LCD_EVENT_OFF_END, NULL);
+		}
 	}
 
 	return 0;

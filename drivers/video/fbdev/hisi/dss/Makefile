@@ -145,7 +145,8 @@ endif
 hisifb-objs += \
 	panel/lcdc_fake_panel.o \
 	panel/mipi_fake_panel.o \
-	panel/hdmi_fake_panel.o
+	panel/hdmi_fake_panel.o \
+	lcd_notify.o
 
 hisifb-objs += voltage/tps65132.o
 hisifb-objs += voltage/ina231.o

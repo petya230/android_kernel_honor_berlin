@@ -23,6 +23,8 @@
 #include "lcdkit_fb_util.h"
 #endif
 
+#include <linux/lcd_notify.h>
+
 #define MAX_BUF 60
 
 void set_reg(char __iomem *addr, uint32_t val, uint8_t bw, uint8_t bs)
@@ -1938,6 +1940,11 @@ static ssize_t hisifb_lcd_support_mode_show(struct device *dev,
 	down(&hisifd->blank_sem);
 	if (!hisifd->panel_power_on) {
 		HISI_FB_ERR("fb%d, panel power off!\n", hisifd->index);
+
+		// send event LCD_EVENT_ON_START in hisi_fb_utils instead of hisi_fb.c because it is earlier (to boost cluster_plug)
+		HISI_FB_ERR("lcd_notifier: LCD_EVENT_ON_START\n");
+		lcd_notifier_call_chain(LCD_EVENT_ON_START, NULL);
+
 		ret = -EINVAL;
 		goto err_out;
 	}
