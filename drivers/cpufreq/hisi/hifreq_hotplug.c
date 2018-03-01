@@ -107,6 +107,8 @@ extern int set_hmp_boostpulse(int duration);
 extern int get_hmp_boost(void);
 #endif
 
+#define HIFREQ_HOTPLUG_SYSFS_ENABLE 1
+
 /*********************************************************************
  *                          SYSFS INTERFACE                          *
  *********************************************************************/
@@ -574,6 +576,18 @@ static void inc_down_req(s64 now)
 		now - bL_cpufreq_data.last_up_time >= bL_cpufreq_data.stay_up_delay)
 		bL_cpufreq_data.need_down = true;
 }
+#ifdef CONFIG_CLUSTER_PLUG
+extern bool isClusterPlugEnabled(void);
+
+static bool isHifreqHotplugEnabled(void) {
+	if (isClusterPlugEnabled() == false) {
+		pr_err("%s: CLUSTER_PLUG_ENABLED is false, return hifreq_hotplug_enabled %d \n", __func__, hifreq_hotplug_enabled);
+		return hifreq_hotplug_enabled;
+	}
+	pr_err("%s: CLUSTER_PLUG_ENABLED is true, false \n", __func__);
+	return false;
+}
+#endif
 
 int bL_hifreq_hotplug_set_target(struct cpufreq_policy *policy,
 	unsigned int cluster, unsigned int target_freq)
@@ -591,7 +605,11 @@ int bL_hifreq_hotplug_set_target(struct cpufreq_policy *policy,
 		goto set_freq;
 
 	/* only warsaw support */
+#ifdef CONFIG_CLUSTER_PLUG
+	if (!isHifreqHotplugEnabled())
+#else
 	if (!hifreq_hotplug_enabled)
+#endif
 		goto set_freq;
 
 	if (IS_ERR_OR_NULL(hotplug_task))
