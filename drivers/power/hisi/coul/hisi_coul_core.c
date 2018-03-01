@@ -3,6 +3,10 @@
 #include "hisi_coul_core.h"
 #include "huawei_platform/inputhub/iom7/inputhub_bridge.h"
 
+#ifdef CONFIG_ADVANCED_CHARGE_CONTROL
+#include <linux/advanced_charge_control.h>
+#endif
+
 #ifdef CONFIG_HUAWEI_PLATFORM
 #include <huawei_platform/log/hw_log.h>
 #define HWLOG_TAG hisi_coul_core
@@ -2234,6 +2238,11 @@ static void get_ocv_by_fcc(struct smartstar_coul_device *di,int batt_temp)
     new_ocv = interpolate_ocv(di->batt_data->pc_temp_ocv_lut, batt_temp_degc, 1000);
     new_ocv *=1000;
 
+#ifdef CONFIG_ADVANCED_CHARGE_CONTROL
+    if (isTerminalVoltageLimited()) {
+        hwlog_info("STATS get_ocv_by_fcc: new_ocv %d refused because limiter is set \n", new_ocv);
+    } else
+#endif
     if ((new_ocv - di->batt_ocv) > 0) {
         DBG_CNT_INC(dbg_ocv_cng_1);
         hwlog_info("full charged, and OCV change, "
@@ -2687,7 +2696,6 @@ out:
     soc_new = bound_soc(soc_new);
     return soc_new;
 }
-/* 电量平滑修正*/
 /*******************************************************
   Function:        limit_soc
   Description:     limt soc
@@ -2961,7 +2969,6 @@ static int calculate_state_of_charge(struct smartstar_coul_device *di)
     /* calculate remaining usable charge */
     //eco_leak_uah = calculate_eco_leak_uah();
 
-	/* 退出ECO模式后 */
     //remaining_charge_uah = remaining_charge_uah - eco_leak_uah;
 
     remaining_usable_charge_uah = remaining_charge_uah
@@ -3490,7 +3497,6 @@ FuncEnd:
     }
 
     DI_UNLOCK();
-/* work faster when capacity <3% */
     if (di->batt_soc>30){
         di->soc_work_interval = CALCULATE_SOC_MS;
     }
@@ -3498,6 +3504,7 @@ FuncEnd:
         di->soc_work_interval = CALCULATE_SOC_MS/2;
     }
 
+    /* work faster when capacity <3% */
     if(di->batt_soc <= BATTERY_CC_LOW_LEV)
     {
 		evt = BATTERY_LOW_SHUTDOWN;
@@ -4080,6 +4087,7 @@ enum coul_sysfs_type{
     COUL_SYSFS_RBATT,
     COUL_SYSFS_REAL_SOC,
     COUL_SYSFS_CALI_ADC,
+    COUL_SYSFS_RESET
 };
 
 #define COUL_SYSFS_FIELD(_name, n, m, store)                \
@@ -4121,9 +4129,10 @@ static struct coul_sysfs_field_info coul_sysfs_field_tbl[] = {
     COUL_SYSFS_FIELD_RO(abs_cc,                 ABS_CC),
     COUL_SYSFS_FIELD_RO(battery_id_voltage,     BATTERY_ID_VOLTAGE),
     COUL_SYSFS_FIELD_RO(battery_brand_name,     BATTERY_BRAND_NAME),
-    COUL_SYSFS_FIELD_RO(rbatt, RBATT),
-    COUL_SYSFS_FIELD_RO(real_soc, REAL_SOC),
-    COUL_SYSFS_FIELD_RW(cali_adc,         CALI_ADC),
+    COUL_SYSFS_FIELD_RO(rbatt,                  RBATT),
+    COUL_SYSFS_FIELD_RO(real_soc,               REAL_SOC),
+    COUL_SYSFS_FIELD_RW(cali_adc,               CALI_ADC),
+    COUL_SYSFS_FIELD_RW(reset,                  RESET),
 };
 /*lint +e665*/
 static struct attribute *coul_sysfs_attrs[ARRAY_SIZE(coul_sysfs_field_tbl) + 1];
@@ -4246,6 +4255,8 @@ static ssize_t coul_sysfs_show(struct device *dev,
         return snprintf(buf, PAGE_SIZE, "%d\n", ufcapacity);
     case COUL_SYSFS_CALI_ADC:
         return snprintf(buf, PAGE_SIZE, "%d\n", 0);
+    case COUL_SYSFS_RESET:
+        return snprintf(buf, PAGE_SIZE, "%d\n", 0);
     default:
         hwlog_err("(%s)NODE ERR!!HAVE NO THIS NODE:(%d)\n",__func__,info->name);
         break;
@@ -4348,6 +4359,14 @@ static ssize_t coul_sysfs_store(struct device *dev,
         hwlog_info("cali_adc =  %ld\n", val);
         if (1 == val)
             di->coul_dev_ops->cali_adc();
+        break;
+    case COUL_SYSFS_RESET:
+        if ((strict_strtol(buf, 10, &val) < 0) || (val < 0) || (val > 100))
+            return -EINVAL;
+        hwlog_info("reset =  %ld\n", val);
+        if (1 == val) {
+            battery_plug_in(di);
+        }
         break;
     default:
         hwlog_err("(%s)NODE ERR!!HAVE NO THIS NODE:(%d)\n",__func__,info->name);
