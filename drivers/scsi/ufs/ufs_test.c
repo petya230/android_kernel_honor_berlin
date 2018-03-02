@@ -2639,7 +2639,7 @@ static ssize_t ufs_query_write(struct file *file, const char __user *buf,
 
 	digit_len = pSpace - lbuf;
 	if ((digit_len <= 0) || (digit_len >= 64)) {
-		pr_info("[ufs_test_query_write]: %d, %p, %p\n", digit_len,
+		pr_info("[ufs_test_query_write]: %d, %pK, %pK\n", digit_len,
 		       pSpace, lbuf);
 		return -EINVAL;
 	}

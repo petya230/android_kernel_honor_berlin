@@ -1,4 +1,20 @@
-
+/*
+ *  Copyright (C) 2003-2013 Altera Corporation
+ *  All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
 
 
 #include <linux/linkage.h>
@@ -39,7 +55,67 @@ ENTRY(instruction_trap)
 
 	addi	sp, sp, PT_REGS_SIZE
 
-	
+	/* INSTRUCTION EMULATION
+	*  ---------------------
+	*
+	* Nios II processors generate exceptions for unimplemented instructions.
+	* The routines below emulate these instructions.  Depending on the
+	* processor core, the only instructions that might need to be emulated
+	* are div, divu, mul, muli, mulxss, mulxsu, and mulxuu.
+	*
+	* The emulations match the instructions, except for the following
+	* limitations:
+	*
+	* 1) The emulation routines do not emulate the use of the exception
+	*    temporary register (et) as a source operand because the exception
+	*    handler already has modified it.
+	*
+	* 2) The routines do not emulate the use of the stack pointer (sp) or
+	*    the exception return address register (ea) as a destination because
+	*    modifying these registers crashes the exception handler or the
+	*    interrupted routine.
+	*
+	* Detailed Design
+	* ---------------
+	*
+	* The emulation routines expect the contents of integer registers r0-r31
+	* to be on the stack at addresses sp, 4(sp), 8(sp), ... 124(sp).  The
+	* routines retrieve source operands from the stack and modify the
+	* destination register's value on the stack prior to the end of the
+	* exception handler.  Then all registers except the destination register
+	* are restored to their previous values.
+	*
+	* The instruction that causes the exception is found at address -4(ea).
+	* The instruction's OP and OPX fields identify the operation to be
+	* performed.
+	*
+	* One instruction, muli, is an I-type instruction that is identified by
+	* an OP field of 0x24.
+	*
+	* muli   AAAAA,BBBBB,IIIIIIIIIIIIIIII,-0x24-
+	*           27    22                6      0    <-- LSB of field
+	*
+	* The remaining emulated instructions are R-type and have an OP field
+	* of 0x3a.  Their OPX fields identify them.
+	*
+	* R-type AAAAA,BBBBB,CCCCC,XXXXXX,NNNNN,-0x3a-
+	*           27    22    17     11     6      0  <-- LSB of field
+	*
+	*
+	* Opcode Encoding.  muli is identified by its OP value.  Then OPX & 0x02
+	* is used to differentiate between the division opcodes and the
+	* remaining multiplication opcodes.
+	*
+	* Instruction   OP      OPX    OPX & 0x02
+	* -----------   ----    ----   ----------
+	* muli          0x24
+	* divu          0x3a    0x24         0
+	* div           0x3a    0x25         0
+	* mul           0x3a    0x27      != 0
+	* mulxuu        0x3a    0x07      != 0
+	* mulxsu        0x3a    0x17      != 0
+	* mulxss        0x3a    0x1f      != 0
+	*/
 
 
 	/*

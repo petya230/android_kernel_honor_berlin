@@ -320,9 +320,13 @@ static int mmc_ext_csd_open(struct inode *inode, struct file *filp)
 	if (err)
 		goto out_free;
 
+	/*lint -save -e421*/
 	for (i = 0; i < 512; i++)
+		/*cppcheck-suppress * */
 		n += sprintf(buf + n, "%02x", ext_csd[i]);
+	/*cppcheck-suppress * */
 	n += sprintf(buf + n, "\n");
+	/*lint -restore*/
 	BUG_ON(n != EXT_CSD_STR_LEN);
 
 	filp->private_data = buf;
@@ -422,6 +426,7 @@ static ssize_t mmc_test_st_write(struct file *filp,
         return cnt;
     }
 
+	/*cppcheck-suppress * */
 	sscanf(ubuf, "%d", &value);
     card->host->test_status = value;
 
@@ -433,8 +438,10 @@ static const struct file_operations mmc_dbg_test_st_fops = {
 	.read		= mmc_test_st_read,
 	.write		= mmc_test_st_write,
 };
+#endif /* CONFIG_HW_MMC_TEST */
+#ifdef CONFIG_HISI_DEBUG_FS
+extern int hisi_mmc_add_card_debugfs(struct mmc_card *card, struct dentry *root);
 #endif
-
 void mmc_add_card_debugfs(struct mmc_card *card)
 {
 	struct mmc_host	*host = card->host;
@@ -444,11 +451,11 @@ void mmc_add_card_debugfs(struct mmc_card *card)
 	if (!host->debugfs_root)
 		return;
 
-        sdxc_root = debugfs_create_dir("sdxc_root", host->debugfs_root);
-        if (IS_ERR(sdxc_root))
-            return;
-        if (!sdxc_root)
-            goto err;
+    sdxc_root = debugfs_create_dir("sdxc_root", host->debugfs_root);
+    if (IS_ERR(sdxc_root))
+		return;
+    if (!sdxc_root)
+        goto err;
 
 	root = debugfs_create_dir(mmc_card_id(card), host->debugfs_root);
 	if (IS_ERR(root))
@@ -492,6 +499,10 @@ void mmc_add_card_debugfs(struct mmc_card *card)
             goto err;
 #endif
 
+#ifdef CONFIG_HISI_DEBUG_FS
+	if (hisi_mmc_add_card_debugfs(card, root))
+		goto err;
+#endif
 	return;
 
 err:

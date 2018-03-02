@@ -272,7 +272,7 @@ int scsi_execute_req_flags(struct scsi_device *sdev, const unsigned char *cmd,
 {
 	char *sense = NULL;
 	int result;
-	
+
 	if (sshdr) {
 		sense = kzalloc(SCSI_SENSE_BUFFERSIZE, GFP_NOIO);
 		if (!sense)
@@ -375,7 +375,7 @@ static void scsi_single_lun_run(struct scsi_device *current_sdev)
 		spin_unlock_irqrestore(shost->host_lock, flags);
 		scsi_kick_queue(sdev->request_queue);
 		spin_lock_irqsave(shost->host_lock, flags);
-	
+
 		scsi_device_put(sdev);
 	}
  out:
@@ -1090,7 +1090,7 @@ static int scsi_init_sgtable(struct request *req, struct scsi_data_buffer *sdb)
 					req->mq_ctx != NULL)))
 		return BLKPREP_DEFER;
 
-	/* 
+	/*
 	 * Next, walk the list, and fill in the addresses and sizes of
 	 * each segment.
 	 */
@@ -1842,7 +1842,7 @@ static void scsi_request_fn(struct request_queue *q)
 
 		if (!scsi_host_queue_ready(q, shost, sdev))
 			goto host_not_ready;
-	
+
 		if (sdev->simple_tags)
 			cmd->flags |= SCMD_TAGGED;
 		else
@@ -2107,6 +2107,32 @@ static u64 scsi_calculate_bounce_limit(struct Scsi_Host *shost)
 	return bounce_limit;
 }
 
+#ifdef CONFIG_SCSI_HISI_MQ
+static void scsi_queue_statistics(struct request_queue *q,struct blkdev_statistics_info *info)
+{
+	struct scsi_device *sdev = q->queuedata;
+	struct Scsi_Host *shost = sdev->host;
+	shost->hostt->statistics_report(shost,info);
+}
+
+static int scsi_io_schedule(struct blk_dispatch_decision_para *p,int (* condition)(struct blk_dispatch_decision_para *))
+{
+	struct scsi_device *sdev = p->queue->queuedata;
+	struct Scsi_Host *shost = sdev->host;
+	return shost->hostt->wait_io_schedule(shost,p,condition);
+}
+
+static int scsi_direct_flush(struct request_queue *q, int normal)
+{
+	struct scsi_device *sdev = q->queuedata;
+	if(sdev->type != TYPE_DISK || sdev->host->hostt->direct_flush == NULL)
+		return BLK_MQ_RQ_QUEUE_ERROR;
+	if(sdev->host->host_self_blocked || sdev->sdev_state != SDEV_RUNNING)
+		return BLK_MQ_RQ_QUEUE_ERROR;
+	return sdev->host->hostt->direct_flush(sdev,normal);
+}
+#endif
+
 static void __scsi_init_queue(struct Scsi_Host *shost, struct request_queue *q)
 {
 	struct device *dev = shost->dma_dev;
@@ -2151,12 +2177,19 @@ static void __scsi_init_queue(struct Scsi_Host *shost, struct request_queue *q)
 	if(shost->mq_quirk_flag & SHOST_MQ_QUIRK(SHOST_MQ_QUIRK_FORCE_SOFT_IRQ)){
 		hisi_blk_mq_set_queue_quirk(q, HISI_MQ_FORCE_SOFTIRQ);
 	}
-	if(shost->mq_quirk_flag & SHOST_MQ_QUIRK(SHOST_MQ_QUIRK_FLUSH_REDUCING)){
-		hisi_blk_mq_set_queue_quirk(q, HISI_MQ_FLUSH_REDUCING);
-	}
 	if(shost->mq_quirk_flag & SHOST_MQ_QUIRK(SHOST_MQ_QUIRK_DISPATCH_DICISION)){
 		hisi_blk_mq_set_queue_quirk(q, HISI_MQ_DISPATCH_DICISION);
 	}
+	blk_direct_flush_register(q,shost->hostt->direct_flush ? scsi_direct_flush : NULL);
+	blk_flush_reduce(q,(shost->mq_quirk_flag & SHOST_MQ_QUIRK(SHOST_MQ_QUIRK_FLUSH_REDUCING)) ? 1U : 0U);
+#endif
+#ifdef CONFIG_HISI_BLK_CORE
+	if(shost->hisi_scsi_host_flag & HISI_SCSI_HOST_BUSY_IDLE_EN)
+		blk_queue_busy_idle_enable(q,1);
+	else
+		blk_queue_busy_idle_enable(q,0);
+
+	blk_queue_hw_bkops_support(q,0);
 #endif
 }
 
@@ -2197,22 +2230,6 @@ static struct blk_mq_ops scsi_mq_ops = {
 	.init_request	= scsi_init_request,
 	.exit_request	= scsi_exit_request,
 };
-
-#ifdef CONFIG_SCSI_HISI_MQ
-static void scsi_queue_statistics(struct request_queue *q,struct blkdev_statistics_info *info)
-{
-	struct scsi_device *sdev = q->queuedata;
-	struct Scsi_Host *shost = sdev->host;
-	shost->hostt->statistics_report(shost,info);
-}
-
-static int scsi_io_schedule(struct blk_dispatch_decision_para *p,int (* condition)(struct blk_dispatch_decision_para *))
-{
-	struct scsi_device *sdev = p->queue->queuedata;
-	struct Scsi_Host *shost = sdev->host;
-	return shost->hostt->wait_io_schedule(shost,p,condition);
-}
-#endif
 
 struct request_queue *scsi_mq_alloc_queue(struct scsi_device *sdev)
 {
@@ -2449,7 +2466,7 @@ scsi_mode_select(struct scsi_device *sdev, int pf, int sp, int modepage,
 		real_buffer[1] = data->medium_type;
 		real_buffer[2] = data->device_specific;
 		real_buffer[3] = data->block_descriptor_length;
-		
+
 
 		cmd[0] = MODE_SELECT;
 		cmd[4] = len;
@@ -2533,7 +2550,7 @@ scsi_mode_sense(struct scsi_device *sdev, int dbd, int modepage,
 		if (scsi_sense_valid(sshdr)) {
 			if ((sshdr->sense_key == ILLEGAL_REQUEST) &&
 			    (sshdr->asc == 0x20) && (sshdr->ascq == 0)) {
-				/* 
+				/*
 				 * Invalid command operation code
 				 */
 				sdev->use_10_for_ms = 0;
@@ -2620,7 +2637,7 @@ EXPORT_SYMBOL(scsi_test_unit_ready);
  *	@sdev:	scsi device to change the state of.
  *	@state:	state to change to.
  *
- *	Returns zero if unsuccessful or an error if the requested 
+ *	Returns zero if unsuccessful or an error if the requested
  *	transition is illegal.
  */
 int
@@ -2640,7 +2657,7 @@ scsi_device_set_state(struct scsi_device *sdev, enum scsi_device_state state)
 			goto illegal;
 		}
 		break;
-			
+
 	case SDEV_RUNNING:
 		switch (oldstate) {
 		case SDEV_CREATED:
@@ -2913,7 +2930,7 @@ EXPORT_SYMBOL_GPL(sdev_evt_send_simple);
  *	(which must be a legal transition).  When the device is in this
  *	state, only special requests will be accepted, all others will
  *	be deferred.  Since special requests may also be requeued requests,
- *	a successful return doesn't guarantee the device will be 
+ *	a successful return doesn't guarantee the device will be
  *	totally quiescent.
  *
  *	Must be called with user context, may sleep.
@@ -2994,7 +3011,7 @@ EXPORT_SYMBOL(scsi_target_resume);
  *
  * Returns zero if successful or error if not
  *
- * Notes:       
+ * Notes:
  *	This routine transitions the device to the SDEV_BLOCK state
  *	(which must be a legal transition).  When the device is in this
  *	state, all commands are deferred until the scsi lld reenables
@@ -3015,10 +3032,10 @@ scsi_internal_device_block(struct scsi_device *sdev)
 			return err;
 	}
 
-	/* 
+	/*
 	 * The device has transitioned to SDEV_BLOCK.  Stop the
 	 * block layer from calling the midlayer with this device's
-	 * request queue. 
+	 * request queue.
 	 */
 	if (q->mq_ops) {
 		blk_mq_stop_hw_queues(q);
@@ -3031,7 +3048,7 @@ scsi_internal_device_block(struct scsi_device *sdev)
 	return 0;
 }
 EXPORT_SYMBOL_GPL(scsi_internal_device_block);
- 
+
 /**
  * scsi_internal_device_unblock - resume a device after a block request
  * @sdev:	device to resume
@@ -3043,7 +3060,7 @@ EXPORT_SYMBOL_GPL(scsi_internal_device_block);
  *
  * Returns zero if successful or error if not.
  *
- * Notes:       
+ * Notes:
  *	This routine transitions the device to the SDEV_RUNNING state
  *	or to one of the offline states (which must be a legal transition)
  *	allowing the midlayer to goose the queue for this device.
@@ -3052,7 +3069,7 @@ int
 scsi_internal_device_unblock(struct scsi_device *sdev,
 			     enum scsi_device_state new_state)
 {
-	struct request_queue *q = sdev->request_queue; 
+	struct request_queue *q = sdev->request_queue;
 	unsigned long flags;
 
 	/*

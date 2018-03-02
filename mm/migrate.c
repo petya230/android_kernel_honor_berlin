@@ -413,6 +413,7 @@ int migrate_page_move_mapping(struct address_space *mapping,
 
 	return MIGRATEPAGE_SUCCESS;
 }
+EXPORT_SYMBOL(migrate_page_move_mapping);
 
 /*
  * The expected number of remaining references is the same as that
@@ -569,6 +570,7 @@ void migrate_page_copy(struct page *newpage, struct page *page)
 	if (PageWriteback(newpage))
 		end_page_writeback(newpage);
 }
+EXPORT_SYMBOL(migrate_page_copy);
 
 /************************************************************
  *                    Migration functions
@@ -755,6 +757,15 @@ static int move_to_new_page(struct page *newpage, struct page *page,
 	if (PageSwapBacked(page))
 		SetPageSwapBacked(newpage);
 
+	/*
+	 * Indirectly called below, migrate_page_copy() copies PG_dirty and thus
+	 * needs newpage's memcg set to transfer memcg dirty page accounting.
+	 * So perform memcg migration in two steps:
+	 * 1. set newpage->mem_cgroup (here)
+	 * 2. clear page->mem_cgroup (below)
+	 */
+	set_page_memcg(newpage, page_memcg(page));
+
 	mapping = page_mapping(page);
 	if (!mapping)
 		rc = migrate_page(mapping, newpage, page, mode);
@@ -771,9 +782,10 @@ static int move_to_new_page(struct page *newpage, struct page *page,
 		rc = fallback_migrate_page(mapping, newpage, page, mode);
 
 	if (rc != MIGRATEPAGE_SUCCESS) {
+		set_page_memcg(newpage, NULL);
 		newpage->mapping = NULL;
 	} else {
-		mem_cgroup_migrate(page, newpage, false);
+		set_page_memcg(page, NULL);
 		if (page_was_mapped)
 			remove_migration_ptes(page, newpage);
 		page->mapping = NULL;
@@ -1130,7 +1142,6 @@ int migrate_pages(struct list_head *from, new_page_t get_new_page,
 	int nr_failed = 0;
 	int nr_succeeded = 0;
 	int pass = 0;
-	int max_time = 10;
 	struct page *page;
 	struct page *page2;
 	int swapwrite = current->flags & PF_SWAPWRITE;
@@ -1139,10 +1150,7 @@ int migrate_pages(struct list_head *from, new_page_t get_new_page,
 	if (!swapwrite)
 		current->flags |= PF_SWAPWRITE;
 
-	if (mode == MIGRATE_SYNC)
-		max_time = 10000;
-
-	for(pass = 0; pass < max_time && retry; pass++) {
+	for(pass = 0; pass < 10 && retry; pass++) {
 		retry = 0;
 
 		list_for_each_entry_safe(page, page2, from, lru) {

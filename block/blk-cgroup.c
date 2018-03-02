@@ -9,6 +9,10 @@
  *
  * Copyright (C) 2009 Vivek Goyal <vgoyal@redhat.com>
  * 	              Nauman Rafique <nauman@google.com>
+ *
+ * For policy-specific per-blkcg data:
+ * Copyright (C) 2015 Paolo Valente <paolo.valente@unimore.it>
+ *                    Arianna Avanzini <avanzini.arianna@gmail.com>
  */
 #include <linux/ioprio.h>
 #include <linux/kdev_t.h>
@@ -22,20 +26,28 @@
 #include <linux/blk-cgroup.h>
 #include "blk.h"
 
+/*
+ * blkcg_pol_mutex protects blkcg_policy[] and policy [de]activation.
+ * blkcg_pol_register_mutex nests outside of it and synchronizes entire
+ * policy [un]register operations including cgroup file additions /
+ * removals.  Putting cgroup file registration outside blkcg_pol_mutex
+ * allows grabbing it from cgroup callbacks.
+ */
+static DEFINE_MUTEX(blkcg_pol_register_mutex);
 /*lint -save -e64 -e570 -e651 -e708 -e785*/
 static DEFINE_MUTEX(blkcg_pol_mutex);
 /*lint -restore*/
 
 /*lint -save -e785*/
-struct blkcg blkcg_root = { .cfq_weight = 2 * CFQ_WEIGHT_DEFAULT,
-			    .cfq_leaf_weight = 2 * CFQ_WEIGHT_DEFAULT,
-			    .weight = 2 * BLKIO_WEIGHT_DEFAULT, };
+struct blkcg blkcg_root;
 /*lint -restore*/
 EXPORT_SYMBOL_GPL(blkcg_root);
 
 struct cgroup_subsys_state * const blkcg_root_css = &blkcg_root.css;
 
 static struct blkcg_policy *blkcg_policy[BLKCG_MAX_POLS];
+
+static LIST_HEAD(all_blkcgs);		/* protected by blkcg_pol_mutex */
 
 static bool blkcg_policy_enabled(struct request_queue *q,
 				 const struct blkcg_policy *pol)
@@ -57,10 +69,12 @@ static void blkg_free(struct blkcg_gq *blkg)
 		return;
 
 	for (i = 0; i < BLKCG_MAX_POLS; i++)
-		kfree(blkg->pd[i]);
+		if (blkg->pd[i])
+			blkcg_policy[i]->pd_free_fn(blkg->pd[i]);
 
 	percpu_counter_destroy(&blkg->nr_dirtied);
-	blk_exit_rl(&blkg->rl);
+	if (blkg->blkcg != &blkcg_root)
+		blk_exit_rl(&blkg->rl);
 	kfree(blkg);
 }
 
@@ -105,7 +119,7 @@ static struct blkcg_gq *blkg_alloc(struct blkcg *blkcg, struct request_queue *q,
 			continue;
 
 		/* alloc per-policy data and attach it to blkg */
-		pd = kzalloc_node(pol->pd_size, gfp_mask, q->node);
+		pd = pol->pd_alloc_fn(gfp_mask, q->node);
 		if (!pd)
 			goto err_free;
 
@@ -126,27 +140,10 @@ err_free:
 	return NULL;
 }
 
-/**
- * __blkg_lookup - internal version of blkg_lookup()
- * @blkcg: blkcg of interest
- * @q: request_queue of interest
- * @update_hint: whether to update lookup hint with the result or not
- *
- * This is internal version and shouldn't be used by policy
- * implementations.  Looks up blkgs for the @blkcg - @q pair regardless of
- * @q's bypass state.  If @update_hint is %true, the caller should be
- * holding @q->queue_lock and lookup hint is updated on success.
- */
-struct blkcg_gq *__blkg_lookup(struct blkcg *blkcg, struct request_queue *q,
-			       bool update_hint)
+struct blkcg_gq *blkg_lookup_slowpath(struct blkcg *blkcg,
+				      struct request_queue *q, bool update_hint)
 {
 	struct blkcg_gq *blkg;
-
-	/*lint -save -e50 -e64 -e529 -e1058*/
-	blkg = rcu_dereference(blkcg->blkg_hint);
-	/*lint -restore*/
-	if (blkg && blkg->q == q)
-		return blkg;
 
 	/*
 	 * Hint didn't match.  Look up from the radix tree.  Note that the
@@ -170,27 +167,6 @@ struct blkcg_gq *__blkg_lookup(struct blkcg *blkcg, struct request_queue *q,
 	return NULL;
 }
 
-/**
- * blkg_lookup - lookup blkg for the specified blkcg - q pair
- * @blkcg: blkcg of interest
- * @q: request_queue of interest
- *
- * Lookup blkg for the @blkcg - @q pair.  This function should be called
- * under RCU read lock and is guaranteed to return %NULL if @q is bypassing
- * - see blk_queue_bypass_start() for details.
- */
-struct blkcg_gq *blkg_lookup(struct blkcg *blkcg, struct request_queue *q)
-{
-	/*lint -save -e727 -e730 -e747*/
-	WARN_ON_ONCE(!rcu_read_lock_held());
-
-	if (unlikely(blk_queue_bypass(q)))
-		return NULL;
-	return __blkg_lookup(blkcg, q, false);
-	/*lint -restore*/
-}
-EXPORT_SYMBOL_GPL(blkg_lookup);
-
 /*
  * If @new_blkg is %NULL, this function tries to allocate a new one as
  * necessary using %GFP_ATOMIC.  @new_blkg is always consumed on return.
@@ -208,7 +184,7 @@ static struct blkcg_gq *blkg_create(struct blkcg *blkcg,
 
 	/* blkg holds a reference to blkcg */
 	if (!css_tryget_online(&blkcg->css)) {
-		ret = -EINVAL;
+		ret = -ENODEV;
 		goto err_free_blkg;
 	}
 
@@ -226,7 +202,7 @@ static struct blkcg_gq *blkg_create(struct blkcg *blkcg,
 	if (blkcg_parent(blkcg)) {
 		blkg->parent = __blkg_lookup(blkcg_parent(blkcg), q, false);
 		if (WARN_ON_ONCE(!blkg->parent)) {
-			ret = -EINVAL;
+			ret = -ENODEV;
 			goto err_put_css;
 		}
 		blkg_get(blkg->parent);
@@ -300,7 +276,7 @@ struct blkcg_gq *blkg_lookup_create(struct blkcg *blkcg,
 	 * we shouldn't allow anything to go through for a bypassing queue.
 	 */
 	if (unlikely(blk_queue_bypass(q)))
-		return ERR_PTR(blk_queue_dying(q) ? -EINVAL : -EBUSY);
+		return ERR_PTR(blk_queue_dying(q) ? -ENODEV : -EBUSY);
 
 	blkg = __blkg_lookup(blkcg, q, true);
 	if (blkg)
@@ -391,6 +367,9 @@ static void blkg_destroy_all(struct request_queue *q)
 		blkg_destroy(blkg);
 		spin_unlock(&blkcg->lock);
 	}
+
+	q->root_blkg = NULL;
+	q->root_rl.blkg = NULL;
 }
 
 /*
@@ -471,20 +450,7 @@ static int blkcg_reset_stats(struct cgroup_subsys_state *css,
 	struct blkcg_gq *blkg;
 	int i;
 
-	/*
-	 * XXX: We invoke cgroup_add/rm_cftypes() under blkcg_pol_mutex
-	 * which ends up putting cgroup's internal cgroup_tree_mutex under
-	 * it; however, cgroup_tree_mutex is nested above cgroup file
-	 * active protection and grabbing blkcg_pol_mutex from a cgroup
-	 * file operation creates a possible circular dependency.  cgroup
-	 * internal locking is planned to go through further simplification
-	 * and this issue should go away soon.  For now, let's trylock
-	 * blkcg_pol_mutex and restart the write on failure.
-	 *
-	 * http://lkml.kernel.org/g/5363C04B.4010400@oracle.com
-	 */
-	if (!mutex_trylock(&blkcg_pol_mutex))
-		return restart_syscall();
+	mutex_lock(&blkcg_pol_mutex);
 	spin_lock_irq(&blkcg->lock);
 
 	/*
@@ -653,30 +619,39 @@ EXPORT_SYMBOL_GPL(blkg_prfill_rwstat);
 
 /**
  * blkg_stat_recursive_sum - collect hierarchical blkg_stat
- * @pd: policy private data of interest
- * @off: offset to the blkg_stat in @pd
+ * @blkg: blkg of interest
+ * @pol: blkcg_policy which contains the blkg_stat
+ * @off: offset to the blkg_stat in blkg_policy_data or @blkg
  *
- * Collect the blkg_stat specified by @off from @pd and all its online
- * descendants and return the sum.  The caller must be holding the queue
- * lock for online tests.
+ * Collect the blkg_stat specified by @blkg, @pol and @off and all its
+ * online descendants and their aux counts.  The caller must be holding the
+ * queue lock for online tests.
+ *
+ * If @pol is NULL, blkg_stat is at @off bytes into @blkg; otherwise, it is
+ * at @off bytes into @blkg's blkg_policy_data of the policy.
  */
-u64 blkg_stat_recursive_sum(struct blkg_policy_data *pd, int off)
+u64 blkg_stat_recursive_sum(struct blkcg_gq *blkg,
+			    struct blkcg_policy *pol, int off)
 {
-	struct blkcg_policy *pol = blkcg_policy[pd->plid];
 	struct blkcg_gq *pos_blkg;
 	struct cgroup_subsys_state *pos_css;
 	u64 sum = 0;
 
-	lockdep_assert_held(pd->blkg->q->queue_lock);
+	lockdep_assert_held(blkg->q->queue_lock);
 
 	rcu_read_lock();
-	/*lint -save -e124 -e666 -e747 -e820*/
-	blkg_for_each_descendant_pre(pos_blkg, pos_css, pd_to_blkg(pd)) {
-		struct blkg_policy_data *pos_pd = blkg_to_pd(pos_blkg, pol);
-		struct blkg_stat *stat = (void *)pos_pd + off;
+	blkg_for_each_descendant_pre(pos_blkg, pos_css, blkg) {
+		struct blkg_stat *stat;
 
-		if (pos_blkg->online)
-			sum += blkg_stat_read(stat);
+		if (!pos_blkg->online)
+			continue;
+
+		if (pol)
+			stat = (void *)blkg_to_pd(pos_blkg, pol) + off;
+		else
+			stat = (void *)blkg + off;
+
+		sum += blkg_stat_read(stat) + atomic64_read(&stat->aux_cnt);
 	}
 	/*lint -restore*/
 	rcu_read_unlock();
@@ -687,17 +662,20 @@ EXPORT_SYMBOL_GPL(blkg_stat_recursive_sum);
 
 /**
  * blkg_rwstat_recursive_sum - collect hierarchical blkg_rwstat
- * @pd: policy private data of interest
- * @off: offset to the blkg_stat in @pd
+ * @blkg: blkg of interest
+ * @pol: blkcg_policy which contains the blkg_rwstat
+ * @off: offset to the blkg_rwstat in blkg_policy_data or @blkg
  *
- * Collect the blkg_rwstat specified by @off from @pd and all its online
- * descendants and return the sum.  The caller must be holding the queue
- * lock for online tests.
+ * Collect the blkg_rwstat specified by @blkg, @pol and @off and all its
+ * online descendants and their aux counts.  The caller must be holding the
+ * queue lock for online tests.
+ *
+ * If @pol is NULL, blkg_rwstat is at @off bytes into @blkg; otherwise, it
+ * is at @off bytes into @blkg's blkg_policy_data of the policy.
  */
-struct blkg_rwstat blkg_rwstat_recursive_sum(struct blkg_policy_data *pd,
-					     int off)
+struct blkg_rwstat blkg_rwstat_recursive_sum(struct blkcg_gq *blkg,
+					     struct blkcg_policy *pol, int off)
 {
-	struct blkcg_policy *pol = blkcg_policy[pd->plid];
 	struct blkcg_gq *pos_blkg;
 	struct cgroup_subsys_state *pos_css;
 	/*lint -save -e785*/
@@ -705,22 +683,25 @@ struct blkg_rwstat blkg_rwstat_recursive_sum(struct blkg_policy_data *pd,
 	/*lint -restore*/
 	int i;
 
-	lockdep_assert_held(pd->blkg->q->queue_lock);
+	lockdep_assert_held(blkg->q->queue_lock);
 
 	rcu_read_lock();
-	/*lint -save -e124 -e666 -e747 -e820*/
-	blkg_for_each_descendant_pre(pos_blkg, pos_css, pd_to_blkg(pd)) {
-		struct blkg_policy_data *pos_pd = blkg_to_pd(pos_blkg, pol);
-		struct blkg_rwstat *rwstat = (void *)pos_pd + off;
-		struct blkg_rwstat tmp;
+	blkg_for_each_descendant_pre(pos_blkg, pos_css, blkg) {
+		struct blkg_rwstat *rwstat, tmp;
 
 		if (!pos_blkg->online)
 			continue;
 
+		if (pol)
+			rwstat = (void *)blkg_to_pd(pos_blkg, pol) + off;
+		else
+			rwstat = (void *)pos_blkg + off;
+
 		tmp = blkg_rwstat_read(rwstat);
 
 		for (i = 0; i < BLKG_RWSTAT_NR; i++)
-			sum.cnt[i] += tmp.cnt[i];
+			sum.cnt[i] += tmp.cnt[i] +
+				atomic64_read(&rwstat->aux_cnt[i]);
 	}
 	/*lint -restore*/
 	rcu_read_unlock();
@@ -747,6 +728,7 @@ int blkg_conf_prep(struct blkcg *blkcg, const struct blkcg_policy *pol,
 {
 	struct gendisk *disk;
 	struct blkcg_gq *blkg;
+	struct module *owner;
 	unsigned int major, minor;
 	unsigned long long v;
 	int part, ret;
@@ -756,10 +738,12 @@ int blkg_conf_prep(struct blkcg *blkcg, const struct blkcg_policy *pol,
 
 	disk = get_gendisk(MKDEV(major, minor), &part);
 	if (!disk)
-		return -EINVAL;
+		return -ENODEV;
 	if (part) {
+		owner = disk->fops->owner;
 		put_disk(disk);
-		return -EINVAL;
+		module_put(owner);
+		return -ENODEV;
 	}
 
 	rcu_read_lock();
@@ -769,7 +753,7 @@ int blkg_conf_prep(struct blkcg *blkcg, const struct blkcg_policy *pol,
 		blkg = blkg_lookup_create(blkcg, disk->queue);
 	else
 		/*lint -save -e747*/
-		blkg = ERR_PTR(-EINVAL);
+		blkg = ERR_PTR(-EOPNOTSUPP);
 		/*lint -restore*/
 
 	if (IS_ERR(blkg)) {
@@ -778,7 +762,9 @@ int blkg_conf_prep(struct blkcg *blkcg, const struct blkcg_policy *pol,
 		/*lint -restore*/
 		rcu_read_unlock();
 		spin_unlock_irq(disk->queue->queue_lock);
+		owner = disk->fops->owner;
 		put_disk(disk);
+		module_put(owner);
 		/*
 		 * If queue was bypassing, we should retry.  Do so after a
 		 * short msleep().  It isn't strictly necessary but queue
@@ -809,9 +795,13 @@ EXPORT_SYMBOL_GPL(blkg_conf_prep);
 void blkg_conf_finish(struct blkg_conf_ctx *ctx)
 	__releases(ctx->disk->queue->queue_lock) __releases(rcu)
 {
+	struct module *owner;
+
 	spin_unlock_irq(ctx->disk->queue->queue_lock);
 	rcu_read_unlock();
+	owner = ctx->disk->fops->owner;
 	put_disk(ctx->disk);
+	module_put(owner);
 }
 EXPORT_SYMBOL_GPL(blkg_conf_finish);
 
@@ -865,36 +855,82 @@ static void blkcg_css_offline(struct cgroup_subsys_state *css)
 static void blkcg_css_free(struct cgroup_subsys_state *css)
 {
 	struct blkcg *blkcg = css_to_blkcg(css);
+	int i;
 
-	if (blkcg != &blkcg_root)
-		kfree(blkcg);
+	mutex_lock(&blkcg_pol_mutex);
+
+	list_del(&blkcg->all_blkcgs_node);
+
+	for (i = 0; i < BLKCG_MAX_POLS; i++)
+		if (blkcg->cpd[i])
+			blkcg_policy[i]->cpd_free_fn(blkcg->cpd[i]);
+
+	mutex_unlock(&blkcg_pol_mutex);
+
+	kfree(blkcg);
 }
 
 static struct cgroup_subsys_state *
 blkcg_css_alloc(struct cgroup_subsys_state *parent_css)
 {
 	struct blkcg *blkcg;
+	struct cgroup_subsys_state *ret;
+	int i;
+
+	mutex_lock(&blkcg_pol_mutex);
 
 	if (!parent_css) {
 		blkcg = &blkcg_root;
-		goto done;
+	} else {
+		blkcg = kzalloc(sizeof(*blkcg), GFP_KERNEL);
+		if (!blkcg) {
+			ret = ERR_PTR(-ENOMEM);
+			goto free_blkcg;
+		}
 	}
 
-	blkcg = kzalloc(sizeof(*blkcg), GFP_KERNEL);
-	if (!blkcg)
-		/*lint -save -e747*/
-		return ERR_PTR(-ENOMEM);
-		/*lint -restore*/
+	for (i = 0; i < BLKCG_MAX_POLS ; i++) {
+		struct blkcg_policy *pol = blkcg_policy[i];
+		struct blkcg_policy_data *cpd;
 
-	blkcg->weight = BLKIO_WEIGHT_DEFAULT;
-	blkcg->cfq_weight = CFQ_WEIGHT_DEFAULT;
-	blkcg->cfq_leaf_weight = CFQ_WEIGHT_DEFAULT;
-done:
+		/*
+		 * If the policy hasn't been attached yet, wait for it
+		 * to be attached before doing anything else. Otherwise,
+		 * check if the policy requires any specific per-cgroup
+		 * data: if it does, allocate and initialize it.
+		 */
+		if (!pol || !pol->cpd_alloc_fn)
+			continue;
+
+		cpd = pol->cpd_alloc_fn(GFP_KERNEL);
+		if (!cpd) {
+			ret = ERR_PTR(-ENOMEM);
+			goto free_pd_blkcg;
+		}
+		blkcg->cpd[i] = cpd;
+		cpd->blkcg = blkcg;
+		cpd->plid = i;
+		if (pol->cpd_init_fn)
+			pol->cpd_init_fn(cpd);
+	}
+
 	spin_lock_init(&blkcg->lock);
 	INIT_RADIX_TREE(&blkcg->blkg_tree, GFP_ATOMIC);
 	INIT_HLIST_HEAD(&blkcg->blkg_list);
 
+	list_add_tail(&blkcg->all_blkcgs_node, &all_blkcgs);
+
+	mutex_unlock(&blkcg_pol_mutex);
 	return &blkcg->css;
+
+free_pd_blkcg:
+	for (i--; i >= 0; i--)
+		if (blkcg->cpd[i])
+			blkcg_policy[i]->cpd_free_fn(blkcg->cpd[i]);
+free_blkcg:
+	kfree(blkcg);
+	mutex_unlock(&blkcg_pol_mutex);
+	return ret;
 }
 
 /**
@@ -934,7 +970,7 @@ int blkcg_init_queue(struct request_queue *q)
 		radix_tree_preload_end();
 
 	if (IS_ERR(blkg)) {
-		kfree(new_blkg);
+		blkg_free(new_blkg);
 		/*lint -save -e712*/
 		return PTR_ERR(blkg);
 		/*lint -restore*/
@@ -998,6 +1034,7 @@ static void blkcg_attach(struct cgroup_subsys_state *css,
 	rcu_read_lock();
 
 	cgroup_taskset_for_each(task, tset) {
+		wake_up_process(task);
 		if (!task->mm)
 			continue;
 
@@ -1137,70 +1174,56 @@ EXPORT_SYMBOL_GPL(blkio_cgrp_subsys);
 int blkcg_activate_policy(struct request_queue *q,
 			  const struct blkcg_policy *pol)
 {
-	LIST_HEAD(pds);
+	struct blkg_policy_data *pd_prealloc = NULL;
 	struct blkcg_gq *blkg;
-	struct blkg_policy_data *pd, *n;
-	int cnt = 0, ret;
+	int ret;
 
 	if (blkcg_policy_enabled(q, pol))
 		return 0;
 
-	/* count and allocate policy_data for all existing blkgs */
 	blk_queue_bypass_start(q);
-	spin_lock_irq(q->queue_lock);
-	/*lint -save -e64 -e826*/
-	list_for_each_entry(blkg, &q->blkg_list, q_node)
-	/*lint -restore*/
-		cnt++;
-	spin_unlock_irq(q->queue_lock);
-
-	while (cnt--) {
-		pd = kzalloc_node(pol->pd_size, GFP_KERNEL, q->node);
-		if (!pd) {
+pd_prealloc:
+	if (!pd_prealloc) {
+		pd_prealloc = pol->pd_alloc_fn(GFP_KERNEL, q->node);
+		if (!pd_prealloc) {
 			ret = -ENOMEM;
-			goto out_free;
+			goto out_bypass_end;
 		}
-		list_add_tail(&pd->alloc_node, &pds);
 	}
 
-	/*
-	 * Install the allocated pds.  With @q bypassing, no new blkg
-	 * should have been created while the queue lock was dropped.
-	 */
 	spin_lock_irq(q->queue_lock);
 
 	/*lint -save -e64 -e730 -e826*/
 	list_for_each_entry(blkg, &q->blkg_list, q_node) {
-		if (WARN_ON(list_empty(&pds))) {
-			/* umm... this shouldn't happen, just abort */
-			ret = -ENOMEM;
-			goto out_unlock;
-		}
-		pd = list_first_entry(&pds, struct blkg_policy_data, alloc_node);
-		list_del_init(&pd->alloc_node);
+		struct blkg_policy_data *pd;
 
-		/* grab blkcg lock too while installing @pd on @blkg */
-		spin_lock(&blkg->blkcg->lock);
+		if (blkg->pd[pol->plid])
+			continue;
+
+		pd = pol->pd_alloc_fn(GFP_NOWAIT, q->node);
+		if (!pd)
+			swap(pd, pd_prealloc);
+		if (!pd) {
+			spin_unlock_irq(q->queue_lock);
+			goto pd_prealloc;
+		}
 
 		blkg->pd[pol->plid] = pd;
 		pd->blkg = blkg;
 		pd->plid = pol->plid;
-		pol->pd_init_fn(blkg);
-
-		spin_unlock(&blkg->blkcg->lock);
+		if (pol->pd_init_fn)
+			pol->pd_init_fn(blkg);
 	}
 	/*lint -restore*/
 
 	__set_bit(pol->plid, q->blkcg_pols);
 	ret = 0;
-out_unlock:
+
 	spin_unlock_irq(q->queue_lock);
-out_free:
+out_bypass_end:
 	blk_queue_bypass_end(q);
-	/*lint -save -e64 -e613 -e771 -e826*/
-	list_for_each_entry_safe(pd, n, &pds, alloc_node)
-	/*lint -restore*/
-		kfree(pd);
+	if (pd_prealloc)
+		pol->pd_free_fn(pd_prealloc);
 	return ret;
 }
 EXPORT_SYMBOL_GPL(blkcg_activate_policy);
@@ -1237,8 +1260,10 @@ void blkcg_deactivate_policy(struct request_queue *q,
 		if (pol->pd_exit_fn)
 			pol->pd_exit_fn(blkg);
 
-		kfree(blkg->pd[pol->plid]);
-		blkg->pd[pol->plid] = NULL;
+		if (blkg->pd[pol->plid]) {
+			pol->pd_free_fn(blkg->pd[pol->plid]);
+			blkg->pd[pol->plid] = NULL;
+		}
 
 		spin_unlock(&blkg->blkcg->lock);
 	}
@@ -1257,13 +1282,10 @@ EXPORT_SYMBOL_GPL(blkcg_deactivate_policy);
  */
 int blkcg_policy_register(struct blkcg_policy *pol)
 {
+	struct blkcg *blkcg;
 	int i, ret;
 
-	/*lint -save -e730*/
-	if (WARN_ON(pol->pd_size < sizeof(struct blkg_policy_data)))
-	/*lint -restore*/
-		return -EINVAL;
-
+	mutex_lock(&blkcg_pol_register_mutex);
 	mutex_lock(&blkcg_pol_mutex);
 
 	/* find an empty slot */
@@ -1272,11 +1294,31 @@ int blkcg_policy_register(struct blkcg_policy *pol)
 		if (!blkcg_policy[i])
 			break;
 	if (i >= BLKCG_MAX_POLS)
-		goto out_unlock;
+		goto err_unlock;
 
-	/* register and update blkgs */
+	/* register @pol */
 	pol->plid = i;
-	blkcg_policy[i] = pol;
+	blkcg_policy[pol->plid] = pol;
+
+	/* allocate and install cpd's */
+	if (pol->cpd_alloc_fn) {
+		list_for_each_entry(blkcg, &all_blkcgs, all_blkcgs_node) {
+			struct blkcg_policy_data *cpd;
+
+			cpd = pol->cpd_alloc_fn(GFP_KERNEL);
+			if (!cpd) {
+				mutex_unlock(&blkcg_pol_mutex);
+				goto err_free_cpds;
+			}
+
+			blkcg->cpd[pol->plid] = cpd;
+			cpd->blkcg = blkcg;
+			cpd->plid = pol->plid;
+			pol->cpd_init_fn(cpd);
+		}
+	}
+
+	mutex_unlock(&blkcg_pol_mutex);
 
 	/* everything is in place, add intf files for the new policy */
 	if (pol->cftypes)
@@ -1284,9 +1326,22 @@ int blkcg_policy_register(struct blkcg_policy *pol)
 		WARN_ON(cgroup_add_legacy_cftypes(&blkio_cgrp_subsys,
 						  pol->cftypes));
 		/*lint -restore*/
-	ret = 0;
-out_unlock:
+	mutex_unlock(&blkcg_pol_register_mutex);
+	return 0;
+
+err_free_cpds:
+	if (pol->cpd_alloc_fn) {
+		list_for_each_entry(blkcg, &all_blkcgs, all_blkcgs_node) {
+			if (blkcg->cpd[pol->plid]) {
+				pol->cpd_free_fn(blkcg->cpd[pol->plid]);
+				blkcg->cpd[pol->plid] = NULL;
+			}
+		}
+	}
+	blkcg_policy[pol->plid] = NULL;
+err_unlock:
 	mutex_unlock(&blkcg_pol_mutex);
+	mutex_unlock(&blkcg_pol_register_mutex);
 	return ret;
 }
 EXPORT_SYMBOL_GPL(blkcg_policy_register);
@@ -1299,7 +1354,9 @@ EXPORT_SYMBOL_GPL(blkcg_policy_register);
  */
 void blkcg_policy_unregister(struct blkcg_policy *pol)
 {
-	mutex_lock(&blkcg_pol_mutex);
+	struct blkcg *blkcg;
+
+	mutex_lock(&blkcg_pol_register_mutex);
 
 	/*lint -save -e730*/
 	if (WARN_ON(blkcg_policy[pol->plid] != pol))
@@ -1310,9 +1367,21 @@ void blkcg_policy_unregister(struct blkcg_policy *pol)
 	if (pol->cftypes)
 		cgroup_rm_cftypes(pol->cftypes);
 
-	/* unregister and update blkgs */
+	/* remove cpds and unregister */
+	mutex_lock(&blkcg_pol_mutex);
+
+	if (pol->cpd_alloc_fn) {
+		list_for_each_entry(blkcg, &all_blkcgs, all_blkcgs_node) {
+			if (blkcg->cpd[pol->plid]) {
+				pol->cpd_free_fn(blkcg->cpd[pol->plid]);
+				blkcg->cpd[pol->plid] = NULL;
+			}
+		}
+	}
 	blkcg_policy[pol->plid] = NULL;
-out_unlock:
+
 	mutex_unlock(&blkcg_pol_mutex);
+out_unlock:
+	mutex_unlock(&blkcg_pol_register_mutex);
 }
 EXPORT_SYMBOL_GPL(blkcg_policy_unregister);

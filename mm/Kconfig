@@ -702,4 +702,79 @@ config DEBUG_VMALLOC
 
 	  Disabling these can result in savings in code size.
 
+config HISI_FALLBACK_MOVEABLE
+	bool "Steal memory from moveable's fallbacks"
+	help
+	  If this option is enabled,when migratetype is movable,
+	  we can steal memory form  fallbacks[movable].
+	  This may have a performance impact on alloc stall.
+
+	  If in doubt, say N
+
+config HISI_STRONG_BALANCE
+	bool "Strong pgdat balance"
+	help
+	  If this option is enabled, the total of balanced pages must be at least 50%
+	  of the zones allowed by classzone_idx for the node to be considered balanced.
+	  It can cause excessive reclaim when there are imbalanced zones.
+	  This may have a performance impact.
+
+	  If in doubt, say N
+config HISI_THREADINFO_NORMAL_ZONE
+	bool "Alloc threadinfo in  normal zone"
+	help
+	  If this option is enabled,  we can use the normal zone for threadinfo,
+	  otherwise,we can only use the dma zone.
+	  This may have a performance impact and reduce fragmentation.
+
+	  If in doubt, say N
+
+config HUAWEI_UNMOVABLE_ISOLATE
+	bool "Isolate the unmovable memory."
+	depends on ARM64
+	default n
+	  help
+	  Isolate the unmovable memory from others migrate types.
+	  So that we can improve the success rate of compact.
+
+	  If unsure, say "n".
+
+config HUAWEI_UNMOVABLE_ISOLATE1_SIZE_MBYTES
+	int "Size in Mega Bytes For UNMOVABLE_ISOLATE1"
+	depends on HUAWEI_UNMOVABLE_ISOLATE
+	default 64
+	help
+	  Defines the size (in MiB) of the default memory area for
+	  MIGRATE_UNMOVABLE_ISOLATE1 Memory Allocator. However,
+	  we should parse the size from /proc/cmdline firstly.
+
+config HUAWEI_UNMOVABLE_ISOLATE2_SIZE_MBYTES
+	int "Size in Mega Bytes For UNMOVABLE_ISOLATE2"
+	depends on HUAWEI_UNMOVABLE_ISOLATE
+	default 64
+	help
+	  Defines the size (in MiB) of the default memory area for
+	  MIGRATE_UNMOVABLE_ISOLATE2 Memory Allocator. However,
+	  we should parse the size from /proc/cmdline firstly.
+
+config HUAWEI_ENHANCED_RESERVE
+	bool "Reduce the MIGRATE_RESERVE fragmentat."
+	depends on HUAWEI_UNMOVABLE_ISOLATE
+	default n
+	help
+	  Allow allocate memory from RESERVE when the order is between
+	  RESERVE_MIN_ORDER and RESERVE_MAX_ORDER.
+	  So that improve the compact success rate.
+
+	  If unsure, say "n".
+
+config HUAWEI_ENHANCED_RESERVE_SIZE_MBYTES
+	int "Size in Mega Bytes For ENHANCED_RESERVE"
+	depends on HUAWEI_ENHANCED_RESERVE
+	default 2
+	help
+	  Defines the multiple size of the MIGRATE_RESERVE area.
+	  If the value of 1 is selected, use the default RESERVE area size.
+	  we should parse the size from /proc/cmdline firstly.
+
 source "mm/hisi/Kconfig"

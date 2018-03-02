@@ -48,6 +48,8 @@
 #include "hisi_freq_ctl.h"
 #endif
 
+#include <linux/math64.h>
+
 EXPORT_TRACEPOINT_SYMBOL_GPL(block_bio_remap);
 EXPORT_TRACEPOINT_SYMBOL_GPL(block_rq_remap);
 EXPORT_TRACEPOINT_SYMBOL_GPL(block_bio_complete);
@@ -493,7 +495,9 @@ EXPORT_SYMBOL_GPL(blk_queue_bypass_end);
 
 void blk_set_queue_dying(struct request_queue *q)
 {
-	queue_flag_set_unlocked(QUEUE_FLAG_DYING, q);
+	spin_lock_irq(q->queue_lock);
+	queue_flag_set(QUEUE_FLAG_DYING, q);
+	spin_unlock_irq(q->queue_lock);
 
 	if (q->mq_ops)
 		blk_mq_wake_waiters(q);
@@ -682,7 +686,10 @@ struct request_queue *blk_alloc_queue_node(gfp_t gfp_mask, int node_id)
 
 	if (blkcg_init_queue(q))
 		goto fail_bdi;
-
+	q->blk_part_tbl_exist = 0;
+#ifdef CONFIG_HISI_BLK_CORE
+	hisi_blk_allocated_queue_init(q);
+#endif
 	return q;
 
 fail_bdi:
@@ -1458,6 +1465,13 @@ void __blk_put_request(struct request_queue *q, struct request *req)
 {
 	if (unlikely(!q))
 		return;
+#ifdef CONFIG_HISI_IO_LATENCY_TRACE
+	while (req->bio){
+		struct bio *bio = req->bio;
+		bio->io_req = NULL;
+		req->bio = bio->bi_next;
+	}
+#endif
 
 	if (q->mq_ops) {
 		blk_mq_free_request(req);
@@ -1662,6 +1676,7 @@ void init_request_from_bio(struct request *req, struct bio *bio)
 	req->cmd_type = REQ_TYPE_FS;
 #ifdef CONFIG_HISI_IO_LATENCY_TRACE
 	req->dispatch_task = NULL;
+	smp_mb();
 	bio->io_req = (void*)req;
 #endif
 	req_latency_check(req,REQ_PROC_STAGE_INIT_FROM_BIO);
@@ -1972,6 +1987,9 @@ static void blk_update_perf(struct request_queue *q,
 /*lint -save -e550*/
 }
 /*lint -restore*/
+#ifdef CONFIG_HUAWEI_IO_MONITOR
+extern void io_monitor_perf(struct hd_struct *p);
+#endif
 
 static noinline_for_stack bool
 generic_make_request_checks(struct bio *bio)
@@ -2058,6 +2076,10 @@ generic_make_request_checks(struct bio *bio)
 	blk_update_perf(q,
 		part->partno ? &part_to_disk(part)->part0 : part);
 
+#ifdef CONFIG_HUAWEI_IO_MONITOR
+	io_monitor_perf(part->partno ? &part_to_disk(part)->part0 : part);
+#endif
+
 	if (blk_throtl_bio(q, bio))
 		return false;	/* throttled, will be resubmitted later */
 
@@ -2096,8 +2118,30 @@ end_io:
 void generic_make_request(struct bio *bio)
 {
 	struct bio_list bio_list_on_stack;
-
+#ifdef CONFIG_HISI_BLK_CORE
+	blk_bio_in_count_set(bdev_get_queue(bio->bi_bdev),bio);
 	bio_latency_check(bio,BIO_PROC_STAGE_SUBMIT);
+#ifdef CONFIG_HISI_BLK_FLUSH_REDUCE
+	if(!flush_sync_dispatch(bdev_get_queue(bio->bi_bdev),bio)){
+		bio_endio(bio, 0);
+		return;
+	}
+#endif
+#endif
+
+#ifdef CONFIG_HW_SYSTEM_WR_PROTECT
+	if (likely(bio_has_data(bio))) {
+		unsigned int count;
+
+		if (unlikely(bio->bi_rw & REQ_WRITE_SAME))
+			count = bdev_logical_block_size(bio->bi_bdev) >> 9;
+		else
+			count = bio_sectors(bio);
+
+		if (unlikely(should_trap_this_bio(bio->bi_rw, bio, count)))
+			return;
+	}
+#endif
 
 	if (!generic_make_request_checks(bio))
 		return;
@@ -2136,7 +2180,6 @@ void generic_make_request(struct bio *bio)
 	current->bio_list = &bio_list_on_stack;
 	do {
 		struct request_queue *q = bdev_get_queue(bio->bi_bdev);
-
 		bio_latency_check(bio,BIO_PROC_STAGE_GENERIC_MAKE_REQ);
 		q->make_request_fn(q, bio);
 
@@ -2180,11 +2223,6 @@ void submit_bio(int rw, struct bio *bio)
 			task_io_account_read(bio->bi_iter.bi_size);
 			count_vm_events(PGPGIN, count);
 		}
-
-#ifdef CONFIG_HW_SYSTEM_WR_PROTECT
-		if (should_trap_this_bio(rw, bio, count))
-			return;
-#endif
 
 		if (unlikely(block_dump)) {
 			char b[BDEVNAME_SIZE];
@@ -2264,6 +2302,9 @@ int blk_insert_cloned_request(struct request_queue *q, struct request *rq)
 	if (rq->rq_disk &&
 	    should_fail_request(&rq->rq_disk->part0, blk_rq_bytes(rq)))
 		return -EIO;
+#ifdef CONFIG_HISI_BLK_CORE
+	blk_request_bio_in_count_check(q,rq);
+#endif
 
 	if (q->mq_ops) {
 		if (blk_queue_io_stat(q))
@@ -2342,6 +2383,14 @@ EXPORT_SYMBOL_GPL(blk_rq_err_bytes);
 
 void blk_account_io_completion(struct request *req, unsigned int bytes)
 {
+#ifdef CONFIG_HUAWEI_IO_MONITOR
+	if (!req || !req->bio || !req->part)
+		return;
+
+	if (req->bio->bi_rw & REQ_DISCARD)
+		return;
+#endif
+
 	if (blk_do_io_stat(req)) {
 		const int rw = rq_data_dir(req);
 		struct hd_struct *part;
@@ -2374,6 +2423,7 @@ void blk_account_io_done(struct request *req)
 		part_stat_add(cpu, part, ticks[rw], duration);
 		part_round_stats(cpu, part);
 		part_dec_in_flight(part, rw);
+
 
 		hd_struct_put(part);
 		part_stat_unlock();
@@ -2650,11 +2700,18 @@ EXPORT_SYMBOL(blk_fetch_request);
  *     %false - this request doesn't have any more data
  *     %true  - this request has more data
  **/
+#ifdef CONFIG_HUAWEI_IO_MONITOR
+extern void io_monitor_latency(struct request *req, unsigned int len);
+#endif
 bool blk_update_request(struct request *req, int error, unsigned int nr_bytes)
 {
 	int total_bytes;
 
 	trace_block_rq_complete(req->q, req, nr_bytes);
+
+#ifdef CONFIG_HUAWEI_IO_MONITOR
+    io_monitor_latency(req, nr_bytes);
+#endif
 
 	blk_mq_debug_rq_processing_state_update(req, MQ_PROCESS_UPDATE_RQ);
 
@@ -3392,6 +3449,8 @@ void blk_flush_plug_list(struct blk_plug *plug, bool from_schedule)
 			spin_lock(q->queue_lock);
 		}
 
+		if (!q)
+			continue;
 		/*
 		 * Short-circuit if @q is dead
 		 */
@@ -3572,6 +3631,44 @@ void blk_post_runtime_resume(struct request_queue *q, int err)
 EXPORT_SYMBOL(blk_post_runtime_resume);
 #endif
 
+char* io_type_parse(unsigned long io_flag)
+{
+	char* io_type;
+	if(io_flag & REQ_WRITE){
+		if(io_flag & REQ_FLUSH)
+			io_type = "WF";
+		else if(io_flag & REQ_DISCARD)
+			io_type = "WD";
+		else if(io_flag & REQ_SYNC){
+			if(io_flag & REQ_META)
+				io_type = "WSM";
+			else
+				io_type = "WS";
+		}
+		else{
+			if(io_flag & REQ_META)
+				io_type = "WM";
+			else
+				io_type = "W";
+		}
+	}
+	else{
+		if(io_flag & REQ_SYNC){
+			if(io_flag & REQ_META)
+				io_type = "RSM";
+			else
+				io_type = "RS";
+		}
+		else{
+			if(io_flag & REQ_META)
+				io_type = "RM";
+			else
+				io_type = "R";
+		}
+	}
+	return io_type;
+}
+
 #ifdef CONFIG_HISI_IO_LATENCY_TRACE
 #define LATENCY_LOG_BUF_SIZE 500UL
 #define BLK_LATENCY_WARNING_THRESHOLD_MS	2000
@@ -3629,48 +3726,10 @@ const struct req_delay_stage_config req_stage_cfg[REQ_PROC_STAGE_MAX]=
 	{"REQ_MQ_REQUEUE",					NULL},
 };
 
-static char* io_type_parse(unsigned long io_flag)
-{
-	char* io_type;
-	if(io_flag & REQ_WRITE){
-		if(io_flag & REQ_FLUSH)
-			io_type = "WF";
-		else if(io_flag & REQ_DISCARD)
-			io_type = "WD";
-		else if(io_flag & REQ_SYNC){
-			if(io_flag & REQ_META)
-				io_type = "WSM";
-			else
-				io_type = "WS";
-		}
-		else{
-			if(io_flag & REQ_META)
-				io_type = "WM";
-			else
-				io_type = "W";
-		}
-	}
-	else{
-		if(io_flag & REQ_SYNC){
-			if(io_flag & REQ_META)
-				io_type = "RSM";
-			else
-				io_type = "RS";
-		}
-		else{
-			if(io_flag & REQ_META)
-				io_type = "RM";
-			else
-				io_type = "R";
-		}
-	}
-	return io_type;
-}
-
 /*lint -save -e715 -e529 -e438*/
 static void blk_latency_protect_timer_expire(unsigned long data)
 {
-	if(atomic_read(&latency_log_skip_count)) 
+	if(atomic_read(&latency_log_skip_count))
 		printk(KERN_EMERG "io-latency: skip %d latency logs !!\r\n",atomic_read(&latency_log_skip_count));
 	atomic_set(&latency_log_count,0);
 	atomic_set(&latency_log_skip_count,0);
@@ -3701,15 +3760,14 @@ static void bio_latency_check_timer_expire(unsigned long data)
 	spin_lock_irqsave(&latency_log_protect_lock,flags);/*lint !e550*/
 	if(bio->from_submit_bio_flag != IO_FROM_SUBMIT_BIO_MAGIC){
 		spin_unlock_irqrestore(&latency_log_protect_lock,flags);/*lint !e550*/
-		return;
+		goto put_bio;
 	}
-	atomic_set(&bio->bio_latency_timer_executing, 1);
+
 	atomic_inc(&latency_warning_total);
 	if(atomic_read(&latency_log_count) >= BLK_LATENCY_LOG_MAX){/*lint !e529 !e438*/
 		atomic_inc(&latency_log_skip_count);
-		atomic_set(&bio->bio_latency_timer_executing, 0);
 		spin_unlock_irqrestore(&latency_log_protect_lock,flags);/*lint !e550*/
-		return;
+		goto put_bio;
 	}
 	fix_style_count = snprintf(log,LATENCY_LOG_BUF_SIZE,"io-latency: ");/*lint !e737 !e732*/
 	bio_disk_name = (bio->bi_bdev_part && bio->bi_bdev_part->bd_disk && bio->bi_bdev_part->bd_part) ? bdevname(bio->bi_bdev_part, b) : "-";
@@ -3731,6 +3789,8 @@ static void bio_latency_check_timer_expire(unsigned long data)
 
 	if(bio->io_req){
 		struct request *req = (struct request *)bio->io_req;
+		if(req->from_submit_bio_flag != IO_FROM_SUBMIT_BIO_MAGIC)
+			goto exit;
 		if(req->dispatch_task)
 			snprintf(log+fix_style_count,(LATENCY_LOG_BUF_SIZE-count), "Dispatch PID: %d <%s>, REQ:0x%llx, task:0x%llx \r\n",req->dispatch_task->pid,req->dispatch_task->comm,(long long unsigned int)req,(long long unsigned int)req->dispatch_task);
 		else
@@ -3744,22 +3804,24 @@ static void bio_latency_check_timer_expire(unsigned long data)
 		}
 		printk(KERN_EMERG "%s \r\n",log);
 	}
-
+exit:
 	if(atomic_inc_return(&latency_log_count) == 1)
 		mod_timer(&latency_log_protect_timer,jiffies + msecs_to_jiffies(BLK_LATENCY_LOG_SILENCE_PERIOD_MS));
 
-	atomic_set(&bio->bio_latency_timer_executing, 0);
 	spin_unlock_irqrestore(&latency_log_protect_lock,flags);/*lint !e550*/
+put_bio:
+	bio_put(bio);
 }
 
 static void bio_latency_submit_func(struct bio* bio)
 {
 	int i;
 	if(bio->from_submit_bio_flag != IO_FROM_SUBMIT_BIO_MAGIC){
-		atomic_set(&bio->bio_latency_timer_executing, 0);
 		init_timer(&bio->bio_latency_check_timer);
 		bio->bio_latency_check_timer.data = (unsigned long)bio;
 		bio->bio_latency_check_timer.function = bio_latency_check_timer_expire;
+		/* bio_latency_check_timer will access bio, get it first */
+		bio_get(bio);
 		mod_timer(&bio->bio_latency_check_timer,jiffies + msecs_to_jiffies(BLK_LATENCY_WARNING_THRESHOLD_MS));
 		bio->bi_bdev_part = bio->bi_bdev;
 		bio->dispatch_task = current;
@@ -3773,10 +3835,11 @@ static void bio_latency_submit_func(struct bio* bio)
 static void bio_latency_endio_func(struct bio* bio)
 {
 	bio->from_submit_bio_flag = 0;
-	if(!del_timer(&bio->bio_latency_check_timer)){
-		while(atomic_read(&bio->bio_latency_timer_executing))/*lint !e529 !e438*/
-			udelay(10ul);/*lint !e778 !e774 !e516*/
+	/* bio_latency_check_timer was deleted successfully */
+	if (likely(del_timer(&bio->bio_latency_check_timer))) {
+		bio_put(bio);
 	}
+	bio->io_req = NULL;
 }
 
 static void req_latency_init_from_bio_func(struct request *req)
@@ -3791,6 +3854,7 @@ static void req_latency_init_from_bio_func(struct request *req)
 static void req_latency_rq_complete_func(struct request *req)
 {
 	req->from_submit_bio_flag = 0;
+	req->dispatch_task = NULL;
 }
 
 void req_latency_check(struct request *req,enum req_process_stage_enum req_stage)
@@ -3834,7 +3898,9 @@ int __init blk_dev_init(void)
 
 	blk_requestq_cachep = kmem_cache_create("blkdev_queue",
 			sizeof(struct request_queue), 0, SLAB_PANIC, NULL);
-
+#ifdef CONFIG_HISI_BLK_CORE
+	hisi_blk_dev_init();
+#endif
 #ifdef CONFIG_HISI_BLOCK_FREQUENCE_CONTROL
 	hisi_blk_freq_ctrl_init();
 #endif
@@ -3842,3 +3908,85 @@ int __init blk_dev_init(void)
 
 	return 0;
 }
+
+/*
+ * Blk IO latency support. We want this to be as cheap as possible, so doing
+ * this lockless (and avoiding atomics), a few off by a few errors in this
+ * code is not harmful, and we don't want to do anything that is
+ * perf-impactful.
+ * TODO : If necessary, we can make the histograms per-cpu and aggregate
+ * them when printing them out.
+ */
+void
+blk_zero_latency_hist(struct io_latency_state *s)
+{
+	memset(s->latency_y_axis_read, 0,
+	       sizeof(s->latency_y_axis_read));
+	memset(s->latency_y_axis_write, 0,
+	       sizeof(s->latency_y_axis_write));
+	s->latency_reads_elems = 0;
+	s->latency_writes_elems = 0;
+}
+EXPORT_SYMBOL(blk_zero_latency_hist);
+
+ssize_t
+blk_latency_hist_show(struct io_latency_state *s, char *buf)
+{
+	int i;
+	int bytes_written = 0;
+	u_int64_t num_elem, elem;
+	int pct;
+
+	num_elem = s->latency_reads_elems;
+	if (num_elem > 0) {
+		bytes_written += scnprintf(buf + bytes_written,
+			   PAGE_SIZE - bytes_written,
+			   "IO svc_time Read Latency Histogram (n = %llu):\n",
+			   num_elem);
+		for (i = 0;
+		     i < ARRAY_SIZE(latency_x_axis_us);
+		     i++) {
+			elem = s->latency_y_axis_read[i];
+			pct = div64_u64(elem * 100, num_elem);
+			bytes_written += scnprintf(buf + bytes_written,
+						   PAGE_SIZE - bytes_written,
+						   "\t< %5lluus%15llu%15d%%\n",
+						   latency_x_axis_us[i],
+						   elem, pct);
+		}
+		/* Last element in y-axis table is overflow */
+		elem = s->latency_y_axis_read[i];
+		pct = div64_u64(elem * 100, num_elem);
+		bytes_written += scnprintf(buf + bytes_written,
+					   PAGE_SIZE - bytes_written,
+					   "\t> %5dms%15llu%15d%%\n", 10,
+					   elem, pct);
+	}
+	num_elem = s->latency_writes_elems;
+	if (num_elem > 0) {
+		bytes_written += scnprintf(buf + bytes_written,
+			   PAGE_SIZE - bytes_written,
+			   "IO svc_time Write Latency Histogram (n = %llu):\n",
+			   num_elem);
+		for (i = 0;
+		     i < ARRAY_SIZE(latency_x_axis_us);
+		     i++) {
+			elem = s->latency_y_axis_write[i];
+			pct = div64_u64(elem * 100, num_elem);
+			bytes_written += scnprintf(buf + bytes_written,
+						   PAGE_SIZE - bytes_written,
+						   "\t< %5lluus%15llu%15d%%\n",
+						   latency_x_axis_us[i],
+						   elem, pct);
+		}
+		/* Last element in y-axis table is overflow */
+		elem = s->latency_y_axis_write[i];
+		pct = div64_u64(elem * 100, num_elem);
+		bytes_written += scnprintf(buf + bytes_written,
+					   PAGE_SIZE - bytes_written,
+					   "\t> %5dms%15llu%15d%%\n", 10,
+					   elem, pct);
+	}
+	return bytes_written;
+}
+EXPORT_SYMBOL(blk_latency_hist_show);

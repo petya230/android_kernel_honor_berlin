@@ -200,12 +200,13 @@ int mmc_io_rw_extended(struct mmc_card *card, int write, unsigned fn,
              }
 		data.sg = sgtable.sgl;
 		data.sg_len = nents;
-
+		/*lint -save -e648 -e679*/
 		for_each_sg(data.sg, sg_ptr, data.sg_len, i) {
 			sg_set_page(sg_ptr, virt_to_page(buf + (i * seg_size)),
 					min(seg_size, left_size),
 					offset_in_page(buf + (i * seg_size)));
 			left_size = left_size - seg_size;
+		/*lint -restore*/
 		}
 	} else {
 		data.sg = &sg;

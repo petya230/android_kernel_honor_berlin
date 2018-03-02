@@ -8,6 +8,7 @@ obj-$(CONFIG_MMC_PXA)		+= pxamci.o
 obj-$(CONFIG_MMC_MXC)		+= mxcmmc.o
 obj-$(CONFIG_MMC_MXS)		+= mxs-mmc.o
 obj-$(CONFIG_MMC_SDHCI)		+= sdhci.o
+obj-$(CONFIG_MMC_SDHCI)		+= sdhci_hisi.o
 obj-$(CONFIG_MMC_SDHCI_OF_ARASAN)	+= sdhci-of-arasan.o
 obj-$(CONFIG_MMC_SDHCI_PCI)	+= sdhci-pci.o
 obj-$(subst m,y,$(CONFIG_MMC_SDHCI_PCI))	+= sdhci-pci-data.o
@@ -67,6 +68,7 @@ obj-$(CONFIG_MMC_SDHCI_OF_HLWD)		+= sdhci-of-hlwd.o
 obj-$(CONFIG_MMC_SDHCI_BCM2835)		+= sdhci-bcm2835.o
 obj-$(CONFIG_MMC_CQ_HCI)		+= cmdq_hci.o
 obj-$(CONFIG_MMC_CQ_HCI)        += hisi_sdhci_cmdq.o
+obj-$(CONFIG_MMC_SDHCI_DWC_MSHC)	+= sdhci-dwc-mshc.o
 
 obj-$(CONFIG_MMC_HISI_TRACE)    += mmc_trace.o
 obj-$(CONFIG_HISI_DEBUG_FS)    += hisi_mmc_debug.o

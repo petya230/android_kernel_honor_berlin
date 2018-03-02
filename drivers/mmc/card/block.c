@@ -43,7 +43,6 @@
 #include <linux/pm_runtime.h>
 #include <linux/version.h>
 
-#define CREATE_TRACE_POINTS
 #include <trace/events/mmc.h>
 
 #include <linux/mmc/ioctl.h>
@@ -80,6 +79,10 @@
 
 #ifdef CONFIG_HUAWEI_EMMC_DSM
 #include <linux/mmc/dsm_emmc.h>
+#endif
+
+#ifdef CONFIG_HW_MMC_MAINTENANCE_CMD
+#include <linux/mmc/hw_mmc_maintenance.h>
 #endif
 
 MODULE_ALIAS("mmc:block");
@@ -119,6 +122,11 @@ static DEFINE_MUTEX(block_mutex);
  * or bootarg options.
  */
 static int perdev_minors = CONFIG_MMC_BLOCK_MINORS;
+
+#define MMC_GET_CARD_OP 310
+#define MMC_PUT_CARD_OP 311
+static int g_get_card=0;
+pid_t g_get_card_pid=0;
 
 /*
  * We've only got one major, so number of mmcblk devices is
@@ -523,16 +531,17 @@ static int mmc_blk_ioctl_cmd(struct block_device *bdev,
 	struct mmc_request mrq = {NULL};
 	struct scatterlist sg;
 	int err;
+	struct task_struct *tsk = current;
 #ifndef CONFIG_HISI_MMC_SECURE_RPMB
 	int is_rpmb = false;
 	u32 status = 0;
 #endif
 	/*
-	 * The caller must have CAP_SYS_RAWIO, and must be calling this on the
+	 * The caller must have CAP_SYS_ADMIN or CAP_SYS_RAWIO, and must be calling this on the
 	 * whole block device, not on a partition.  This prevents overspray
 	 * between sibling partitions.
 	 */
-	if ((!capable(CAP_SYS_RAWIO)) || (bdev != bdev->bd_contains))
+	if ((!capable(CAP_SYS_ADMIN) && !capable(CAP_SYS_RAWIO)) || (bdev != bdev->bd_contains))
 		return -EPERM;
 
 	idata = mmc_blk_ioctl_copy_from_user(ic_ptr);
@@ -609,7 +618,24 @@ static int mmc_blk_ioctl_cmd(struct block_device *bdev,
 
 	mrq.cmd = &cmd;
 
-	mmc_get_card(card);
+
+	if((!g_get_card && g_get_card_pid==0) || (g_get_card && g_get_card_pid != tsk->pid))
+		mmc_get_card(card);
+
+	if (cmd.opcode == MMC_GET_CARD_OP) {
+		pr_err("storage_info: %s cmd.opcode == MMC_GET_CARD_OP\n", __func__);
+		g_get_card=1;
+		g_get_card_pid = tsk->pid;
+		err = 0;
+		goto cmd_done;
+	}
+	if(cmd.opcode == MMC_PUT_CARD_OP) {
+		pr_err("storage_info: %s cmd.opcode == MMC_PUT_CARD_OP\n", __func__);
+		g_get_card=0;
+		g_get_card_pid=0;
+		err = 0;
+		goto cmd_rel_host;
+	}
 
     if (cmd.opcode == MMC_FFU_DOWNLOAD_OP) {
         pr_debug("[emmc5.0]:%s cmd.opcode == MMC_FFU_DOWNLOAD_OP\n", __func__);
@@ -713,10 +739,12 @@ static int mmc_blk_ioctl_cmd(struct block_device *bdev,
 	}
 #endif
 cmd_rel_host:
-	mmc_put_card(card);
+	if(!g_get_card)
+		mmc_put_card(card);
 
 cmd_done:
 	mmc_blk_put(md);
+
 cmd_err:
 	kfree(idata->buf);
 	kfree(idata);
@@ -1910,8 +1938,8 @@ static void mmc_blk_packed_hdr_wrq_prep(struct mmc_queue_req *mqrq,
 
 	packed_cmd_hdr = packed->cmd_hdr;
 	memset(packed_cmd_hdr, 0, sizeof(packed->cmd_hdr));
-	packed_cmd_hdr[0] = (packed->nr_entries << 16) |
-		(PACKED_CMD_WR << 8) | PACKED_CMD_VER;
+	packed_cmd_hdr[0] = cpu_to_le32((packed->nr_entries << 16) |
+		(PACKED_CMD_WR << 8) | PACKED_CMD_VER);
 	hdr_blocks = mmc_large_sector(card) ? 8 : 1;
 
 	/*
@@ -1925,14 +1953,14 @@ static void mmc_blk_packed_hdr_wrq_prep(struct mmc_queue_req *mqrq,
 			((brq->data.blocks * brq->data.blksz) >=
 			 card->ext_csd.data_tag_unit_size);
 		/* Argument of CMD23 */
-		packed_cmd_hdr[(i * 2)] =
+		packed_cmd_hdr[(i * 2)] = cpu_to_le32(
 			(do_rel_wr ? MMC_CMD23_ARG_REL_WR : 0) |
 			(do_data_tag ? MMC_CMD23_ARG_TAG_REQ : 0) |
-			blk_rq_sectors(prq);
+			blk_rq_sectors(prq));
 		/* Argument of CMD18 or CMD25 */
-		packed_cmd_hdr[((i * 2)) + 1] =
+		packed_cmd_hdr[((i * 2)) + 1] = cpu_to_le32(
 			mmc_card_blockaddr(card) ?
-			blk_rq_pos(prq) : blk_rq_pos(prq) << 9;
+			blk_rq_pos(prq) : blk_rq_pos(prq) << 9);
 		packed->blocks += blk_rq_sectors(prq);
 		i++;
 	}
@@ -2709,7 +2737,19 @@ force_ro_fail:
 	return ret;
 }
 
+#ifdef CONFIG_HISI_MMC_FLUSH_REDUCE_WHITE_LIST
+static inline void __maybe_unused en_emmc_flush_reduce(struct mmc_card *card, int data)
+{
+	/*only eMMC support flush reduce*/
+	if (0 == card->host->index)
+		card->host->mmc_flush_reduce_enable = 1;
+} /*lint !e715*/
+#endif
+
 #define CID_MANFID_SANDISK	0x2
+/*lint -e750 -esym(750,CID_MANFID_SANDISK_V2)*/
+#define CID_MANFID_SANDISK_V2	0x45
+/*lint -e750 +esym(750,CID_MANFID_SANDISK_V2)*/
 #define CID_MANFID_TOSHIBA	0x11
 #define CID_MANFID_MICRON	0x13
 #define CID_MANFID_SAMSUNG	0x15
@@ -2771,8 +2811,60 @@ static const struct mmc_fixup blk_fixups[] =
 	MMC_FIXUP("VZL00M", CID_MANFID_SAMSUNG, CID_OEMID_ANY, add_quirk_mmc,
 		  MMC_QUIRK_SEC_ERASE_TRIM_BROKEN),
 
+#ifdef CONFIG_HISI_MMC_FLUSH_REDUCE_WHITE_LIST
+	/*lint -e501*/
+	MMC_FIXUP("Q3J97V", CID_MANFID_MICRON, CID_OEMID_ANY, en_emmc_flush_reduce,
+		  0),
+	MMC_FIXUP("HAG4a2", CID_MANFID_HYNIX, CID_OEMID_ANY, en_emmc_flush_reduce,
+		  0),
+	MMC_FIXUP("HDG8a4", CID_MANFID_HYNIX, CID_OEMID_ANY, en_emmc_flush_reduce,
+		  0),
+	MMC_FIXUP("HCG4a2", CID_MANFID_HYNIX, CID_OEMID_ANY, en_emmc_flush_reduce,
+		  0),
+	MMC_FIXUP("DF4064", CID_MANFID_SANDISK_V2, CID_OEMID_ANY, en_emmc_flush_reduce,
+		  0),
+	MMC_FIXUP("064G30", CID_MANFID_TOSHIBA, CID_OEMID_ANY, en_emmc_flush_reduce,
+		  0),
+	MMC_FIXUP("128G32", CID_MANFID_TOSHIBA, CID_OEMID_ANY, en_emmc_flush_reduce,
+		  0),
+	/*lint +e501*/
+#endif
+
 	END_FIXUP
 };
+
+#ifdef CONFIG_HISI_MMC_FLUSH_REDUCE
+static int mmc_blk_direct_flush(struct request_queue *q, int normal)
+{
+	struct mmc_queue *mq = q->queuedata;
+	struct mmc_card *card = mq->card;
+	int ret = 0;
+	printk(KERN_EMERG "<%s> normal = %d \r\n", __func__, normal);
+
+	ret = mmc_get_card_hisi(card, (bool)!!normal);/*lint !e838*/
+	/*mmc is suspended,no need to flush*/
+	if (-EHOSTDOWN == ret)
+		return 0;
+	else if (ret)
+		return ret;
+
+	ret = mmc_flush_cache_direct(card);
+
+
+	if(normal)
+		mmc_put_card(card);
+	else
+		mmc_put_card_irq_safe(card);
+
+	return ret;
+}
+
+static void hisi_blk_flush_ctrl(struct mmc_blk_data *md, struct mmc_card *card)
+{
+	blk_direct_flush_register(md->queue.queue, card->host->mmc_flush_reduce_enable ? mmc_blk_direct_flush : NULL);
+	blk_flush_reduce(md->queue.queue, card->host->mmc_flush_reduce_enable);
+}
+#endif /* CONFIG_HISI_MMC_FLUSH_REDUCE */
 
 static int mmc_blk_probe(struct mmc_card *card)
 {
@@ -2789,6 +2881,8 @@ static int mmc_blk_probe(struct mmc_card *card)
 		return -ENODEV;
 
 	mmc_fixup_device(card, blk_fixups);
+	card->mmc_tags = NULL;
+	card->mmc_tags_depth = 0;
 
 	md = mmc_blk_alloc(card);
 	if (IS_ERR(md))
@@ -2834,6 +2928,15 @@ static int mmc_blk_probe(struct mmc_card *card)
 	}
 #endif
 
+#ifdef CONFIG_HISI_MMC_FLUSH_REDUCE
+#ifndef CONFIG_HISI_MMC_FLUSH_REDUCE_WHITE_LIST
+		/*only eMMC support flush reduce*/
+		if (0 == card->host->index)
+			card->host->mmc_flush_reduce_enable = 1;
+#endif
+
+	hisi_blk_flush_ctrl(md, card);
+#endif
 	if (mmc_add_disk(md))
 		goto out;
 
@@ -3013,6 +3116,11 @@ static int __init mmc_blk_init(void)
 #ifdef CONFIG_HUAWEI_EMMC_DSM
 	dsm_emmc_init();
 #endif
+
+#ifdef CONFIG_HW_MMC_MAINTENANCE_CMD
+	mmc_cmd_sequence_rec_init();
+#endif
+
 	return 0;
  out2:
 	unregister_blkdev(MMC_BLOCK_MAJOR, "mmc");
@@ -3024,6 +3132,10 @@ static void __exit mmc_blk_exit(void)
 {
 	mmc_unregister_driver(&mmc_driver);
 	unregister_blkdev(MMC_BLOCK_MAJOR, "mmc");
+
+#ifdef CONFIG_HW_MMC_MAINTENANCE_CMD
+	mmc_cmd_sequence_rec_exit();
+#endif
 }
 
 module_init(mmc_blk_init);

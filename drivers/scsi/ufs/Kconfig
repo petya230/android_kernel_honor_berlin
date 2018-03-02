@@ -135,18 +135,6 @@ config SCSI_UFS_HS_ERROR_RECOVER
 
 	If unsure, say N.
 
-config SCSI_UFS_HAND_WARM
-	tristate "UFS use this config to enhance Kirin UFSHCD"
-	depends on SCSI_UFSHCD && SCSI_UFS_KIRIN && SCSI_UFS_HS_ERROR_RECOVER
-
-	---help---
-	This selects the Kirin UFS driver.
-
-	Select this if needed to enhance the UFSHCD.
-	Otherwise, if you love my driver code, say Y or M here.
-
-	If unsure, say N.
-
 config SCSI_UFS_BLOCK_TEST
 	tristate "Universal Flash Storage host controller driver unit-tests"
 	depends on SCSI_UFSHCD && IOSCHED_TEST
@@ -160,6 +148,10 @@ config HUAWEI_UFS_DSM
        bool "Listen UFS Kernel Error"
        depends on SCSI_UFSHCD
 
+config UFS_DEVICE_RELATED_CONFIGS
+       bool "Enable device related configs through dts"
+       depends on SCSI_UFS_KIRIN && HUAWEI_UFS_DSM
+
 config SCSI_UFS_KIRIN_V21
 	  tristate "KIRIN V21 UFS Host Controller Driver"
 	  depends on SCSI_UFSHCD && SCSI_UFSHCD_PLATFORM && SCSI_UFS_KIRIN
@@ -169,3 +161,14 @@ config SCSI_UFS_KIRIN_V21
 	  If you have a controller with this interface, say Y or M here.
 
 	  If unsure, say N.
+
+config HUAWEI_UFS_HEALTH_INFO
+	tristate "UFS health information bigdata report"
+	default n
+	depends on SCSI_UFSHCD && HUAWEI_UFS_DSM
+	---help---
+	This adds UFS health information bigdata report framework.
+
+config HUAWEI_UFS_VENDOR_MODE
+       bool "Enter UFS vendor mode"
+       depends on SCSI_UFSHCD

@@ -123,11 +123,18 @@ int flash_find_ptn(const char* str, char* pblkname)
 #ifdef CONFIG_HISI_AB_PARTITION
 	storage_boot_partition_type = get_device_boot_partition_type();
 
-	strncpy(partition_name_tmp, str, strlen(str));
+	if(strlen(str) > (sizeof(partition_name_tmp) - 3))
+	{
+		printk(KERN_ERR "Invalid input str\n");
+		return -1;
+	}
+
+	memset(partition_name_tmp,0,sizeof(partition_name_tmp));
+	strncpy(partition_name_tmp, str, sizeof(partition_name_tmp) - 3);
 	if (BOOT_XLOADER_A == storage_boot_partition_type) {
-		strncpy(partition_name_tmp + strlen(str), "_a", (unsigned long)3);
+		strncpy(partition_name_tmp + strlen(partition_name_tmp), "_a", (unsigned long)3);
 	} else if (BOOT_XLOADER_B == storage_boot_partition_type) {
-		strncpy(partition_name_tmp + strlen(str), "_b", (unsigned long)3);
+		strncpy(partition_name_tmp + strlen(partition_name_tmp), "_b", (unsigned long)3);
 	} else {
 		return -1;
 	}
@@ -195,11 +202,18 @@ int flash_get_ptn_index(const char* pblkname)
 #ifdef CONFIG_HISI_AB_PARTITION
 	storage_boot_partition_type = get_device_boot_partition_type();
 
-	strncpy(partition_name_tmp, pblkname, strlen(pblkname));
+	if(strlen(pblkname) > (sizeof(partition_name_tmp) - 3))
+	{
+		printk(KERN_ERR "Invalid input pblkname\n");
+		return -1;
+	}
+
+	memset(partition_name_tmp,0,sizeof(partition_name_tmp));
+	strncpy(partition_name_tmp, pblkname, sizeof(partition_name_tmp) - 3); 
 	if (BOOT_XLOADER_A == storage_boot_partition_type) {
-		strncpy(partition_name_tmp + strlen(pblkname), "_a", 3);
+		strncpy(partition_name_tmp + strlen(partition_name_tmp), "_a", 3);
 	} else if (BOOT_XLOADER_B == storage_boot_partition_type) {
-		strncpy(partition_name_tmp + strlen(pblkname), "_b", 3);
+		strncpy(partition_name_tmp + strlen(partition_name_tmp), "_b", 3);
 	} else {
 		return -1;
 	}

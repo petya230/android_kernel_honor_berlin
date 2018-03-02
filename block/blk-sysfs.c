@@ -606,6 +606,99 @@ static struct queue_sysfs_entry queue_avg_perf_entry = {
 };
 /*lint restore*/
 
+#ifdef CONFIG_HISI_BLK_CORE
+#ifdef CONFIG_HISI_DEBUG_FS
+extern ssize_t hisi_queue_bkops_restart_interval_show(struct request_queue *q, char *page);
+extern ssize_t hisi_queue_bkops_restart_interval_store(struct request_queue *q, const char *page, size_t count);
+extern ssize_t hisi_queue_bkops_max_check_interval_show(struct request_queue *q, char *page);
+extern ssize_t hisi_queue_bkops_max_check_interval_store(struct request_queue *q, const char *page, size_t count);
+extern ssize_t hisi_queue_bkops_max_discard_len_show(struct request_queue *q, char *page);
+extern ssize_t hisi_queue_bkops_max_discard_len_store(struct request_queue *q, const char *page, size_t count);
+extern ssize_t hisi_queue_bkops_max_write_len_show(struct request_queue *q, char *page);
+extern ssize_t hisi_queue_bkops_max_write_len_store(struct request_queue *q, const char *page, size_t count);
+extern ssize_t hisi_queue_bkops_enable_show(struct request_queue *q, char *page);
+extern ssize_t hisi_queue_bkops_enable_store(struct request_queue *q, const char *page, size_t count);
+extern ssize_t hisi_queue_bkops_test_enable_store(struct request_queue *q, const char *page, size_t count);
+extern ssize_t hisi_queue_busy_idle_enable_show(struct request_queue *q, char *page);
+extern ssize_t hisi_queue_busy_idle_enable_store(struct request_queue *q, const char *page, size_t count);
+extern ssize_t hisi_queue_busy_idle_statistic_show(struct request_queue *q, char *page);
+extern ssize_t hisi_queue_busy_idle_statistic_store(struct request_queue *q, const char *page, size_t count);
+extern ssize_t hisi_queue_idle_dur_store(struct request_queue *q, const char *page, size_t count);
+extern ssize_t hisi_queue_idle_dur_show(struct request_queue *q, char *page);
+extern ssize_t hisi_queue_busy_idle_test_enable_store(struct request_queue *q, const char *page, size_t count);
+extern ssize_t hisi_queue_busy_idle_multi_nb_test_enable_store(struct request_queue *q, const char *page, size_t count);
+extern ssize_t hisi_queue_bkops_unconditional_query_show(struct request_queue *q, char *page);
+extern ssize_t hisi_queue_bkops_unconditional_query_store(struct request_queue *q, const char *page, size_t count);
+extern ssize_t hisi_queue_bkops_retry_show(struct request_queue *q, char *page);
+extern ssize_t hisi_queue_bkops_retry_store(struct request_queue *q, const char *page, size_t count);
+static struct queue_sysfs_entry queue_bkops_retry_entry = {
+	.attr = {.name = "bkops_retry_en", .mode = S_IRUGO | S_IWUSR },
+	.show = hisi_queue_bkops_retry_show,
+	.store = hisi_queue_bkops_retry_store,
+};
+static struct queue_sysfs_entry queue_bkops_unconditional_query_entry = {
+	.attr = {.name = "bkops_unconditional_query", .mode = S_IRUGO | S_IWUSR },
+	.show = hisi_queue_bkops_unconditional_query_show,
+	.store = hisi_queue_bkops_unconditional_query_store,
+};
+static struct queue_sysfs_entry queue_bkops_restart_interval_entry = {
+	.attr = {.name = "bkops_restart_interval", .mode = S_IRUGO | S_IWUSR },
+	.show = hisi_queue_bkops_restart_interval_show,
+	.store = hisi_queue_bkops_restart_interval_store,
+};
+static struct queue_sysfs_entry queue_bkops_check_interval_entry = {
+	.attr = {.name = "bkops_max_check_interval", .mode = S_IRUGO | S_IWUSR },
+	.show = hisi_queue_bkops_max_check_interval_show,
+	.store = hisi_queue_bkops_max_check_interval_store,
+};
+static struct queue_sysfs_entry queue_bkops_discard_len_entry = {
+	.attr = {.name = "bkops_max_discard_len", .mode = S_IRUGO | S_IWUSR },
+	.show = hisi_queue_bkops_max_discard_len_show,
+	.store = hisi_queue_bkops_max_discard_len_store,
+};
+static struct queue_sysfs_entry queue_bkops_write_len_entry = {
+	.attr = {.name = "bkops_max_write_len", .mode = S_IRUGO | S_IWUSR },
+	.show = hisi_queue_bkops_max_write_len_show,
+	.store = hisi_queue_bkops_max_write_len_store,
+};
+static struct queue_sysfs_entry queue_bkops_enable_entry = {
+	.attr = {.name = "bkops_enable", .mode = S_IRUGO | S_IWUSR },
+	.show = hisi_queue_bkops_enable_show,
+	.store = hisi_queue_bkops_enable_store,
+};
+static struct queue_sysfs_entry queue_bkops_test_enable_entry = {
+	.attr = {.name = "bkops_test_enable", .mode = S_IWUSR },
+	.show = NULL,
+	.store = hisi_queue_bkops_test_enable_store,
+};
+static struct queue_sysfs_entry queue_busy_idle_enable_entry = {
+	.attr = {.name = "busy_idle_enable", .mode = S_IRUGO | S_IWUSR },
+	.show = hisi_queue_busy_idle_enable_show,
+	.store = hisi_queue_busy_idle_enable_store,
+};
+static struct queue_sysfs_entry queue_busy_idle_statistic_entry = {
+	.attr = {.name = "busy_idle_statistic", .mode = S_IRUGO | S_IWUSR },
+	.show = hisi_queue_busy_idle_statistic_show,
+	.store = hisi_queue_busy_idle_statistic_store,
+};
+static struct queue_sysfs_entry queue_idle_dur_statistic_entry = {
+	.attr = {.name = "idle_dur_statistic", .mode = S_IRUGO | S_IWUSR },
+	.show = hisi_queue_idle_dur_show,
+	.store = hisi_queue_idle_dur_store,
+};
+static struct queue_sysfs_entry queue_busy_idle_test_enable_entry = {
+	.attr = {.name = "busy_idle_test_enable", .mode = S_IWUSR },
+	.show = NULL,
+	.store = hisi_queue_busy_idle_test_enable_store,
+};
+static struct queue_sysfs_entry queue_busy_idle_multi_nb_test_enable_entry = {
+	.attr = {.name = "busy_idle_multi_nb_test_enable", .mode = S_IWUSR },
+	.show = NULL,
+	.store = hisi_queue_busy_idle_multi_nb_test_enable_store,
+};
+#endif /* CONFIG_HISI_DEBUG_FS */
+#endif /* CONFIG_HISI_BLK_CORE */
+
 static struct attribute *default_attrs[] = {
 	&queue_requests_entry.attr,
 	&queue_ra_entry.attr,
@@ -636,6 +729,23 @@ static struct attribute *default_attrs[] = {
 	&queue_wb_win_entry.attr,
 	&queue_wb_ok_cnt_entry.attr,
 #endif
+#ifdef CONFIG_HISI_BLK_CORE
+#ifdef CONFIG_HISI_DEBUG_FS
+	&queue_bkops_retry_entry.attr,
+	&queue_bkops_unconditional_query_entry.attr,
+	&queue_bkops_restart_interval_entry.attr,
+	&queue_bkops_check_interval_entry.attr,
+	&queue_bkops_discard_len_entry.attr,
+	&queue_bkops_write_len_entry.attr,
+	&queue_bkops_enable_entry.attr,
+	&queue_bkops_test_enable_entry.attr,
+	&queue_busy_idle_enable_entry.attr,
+	&queue_busy_idle_statistic_entry.attr,
+	&queue_idle_dur_statistic_entry.attr,
+	&queue_busy_idle_test_enable_entry.attr,
+	&queue_busy_idle_multi_nb_test_enable_entry.attr,
+#endif /* CONFIG_HISI_DEBUG_FS */
+#endif /* CONFIG_HISI_BLK_CORE */
 	&queue_avg_perf_entry.attr,
 	NULL,
 };
@@ -794,9 +904,9 @@ int blk_register_queue(struct gendisk *disk)
 
 	if (WARN_ON(!q))
 		return -ENXIO;
-
-	blk_request_queue_disk_register(disk,q);
-
+#ifdef CONFIG_HISI_BLK_CORE
+	hisi_blk_queue_register(q,disk);
+#endif
 	/*
 	 * SCSI probing may synchronously create and destroy a lot of
 	 * request_queues for non-existent devices.  Shutting down a fully

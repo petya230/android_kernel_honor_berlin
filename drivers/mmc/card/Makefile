@@ -17,3 +17,4 @@ obj-$(CONFIG_HW_SYSTEM_HW_WR_PROTECT) += emmc_system_wp.o
 obj-$(CONFIG_HUAWEI_EMMC_DSM) += dsm_emmc.o
 obj-$(CONFIG_HUAWEI_SDCARD_DSM) += dsm_sdcard.o
 obj-$(CONFIG_MMC_CQ_HCI) += hisi_cmdq_card.o
+obj-$(CONFIG_HW_MMC_MAINTENANCE_CMD) += hw_mmc_maintenance.o

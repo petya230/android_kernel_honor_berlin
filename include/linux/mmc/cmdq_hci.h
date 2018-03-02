@@ -13,6 +13,11 @@
 #define LINUX_MMC_CQ_HCI_H
 #include <linux/mmc/core.h>
 
+#ifdef CONFIG_MMC_SDHCI_OF_ARASAN
+/*fix the soc bug that the qbr task can't be cleared*/
+#define CMDQ_FIX_CLEAR_QBRTASK
+#endif
+
 /* registers */
 #define CQVER		0x00
 #define CQCAP		0x04
@@ -71,7 +76,7 @@
 
 /* attribute fields */
 #define VALID(x)	((x & 1) << 0)
-#define END(x)		((x & 1) << 1)
+#define END(x)		(((x) & 1) << 1)
 #define INT(x)		((x & 1) << 2)
 #define ACT(x)		((x & 0x7) << 3)
 
@@ -108,6 +113,8 @@
 #define RES_TYPE_R145    (2)
 #define RES_TYPE_R1B     (3)
 
+#define CMDQ_DATA_TIMOUT	0xE
+
 struct cmdq_host {
 	const struct cmdq_host_ops *ops;
 	void __iomem *mmio;
@@ -115,7 +122,7 @@ struct cmdq_host {
 
 	/* 64 bit DMA */
 	bool dma64;
-	int num_slots;
+	u32 num_slots;
 
 	u32 dcmd_slot;
 	u32 caps;
@@ -123,13 +130,14 @@ struct cmdq_host {
 
 	u32 quirks;
 #define CMDQ_QUIRK_SHORT_TXFR_DESC_SZ 0x1
-#define CMDQ_QUIRK_NO_DCMD	0x2
+#define CMDQ_QUIRK_NO_DCMD	(0x1 << 1)
+#define CMDQ_QUIRK_CHECK_BUSY	(0x1 << 2)
 
 	bool enabled;
 	bool halted;
 	bool init_done;
 
-	u64 *desc_base;
+	u8 *desc_base;
 
 	/* total descriptor size */
 	u8 slot_sz;
@@ -145,16 +153,12 @@ struct cmdq_host {
 	/* 64 bit on 32-bit arch, 128 bit on 64-bit */
 	u8 link_desc_len;
 
-	u64 *trans_desc_base;
+	u8 *trans_desc_base;
 	/* same length as transfer descriptor */
 	u8 trans_desc_len;
 
-	/*set the trans descriptor length for 64bit dma, use the "char" as the unit rather than "u64
-	 *it is only used in linked trans descriptor
-	 */
-	u8 dma64_trans_desc_len;
-
 	int reset_flag;
+	u32 irq_safe_flag;
 
 	dma_addr_t desc_dma_base;
 	dma_addr_t trans_desc_dma_base;
@@ -188,6 +192,8 @@ struct cmdq_host_ops {
 	int (*card_busy)(struct mmc_host *mmc);
 	void (*write_l)(struct cmdq_host *host, u32 val, int reg);
 	u32 (*read_l)(struct cmdq_host *host, int reg);
+	void (*enter)(struct mmc_host *mmc);
+	void (*exit)(struct mmc_host *mmc);
 };
 
 static inline void cmdq_writel(struct cmdq_host *host, u32 val, int reg)

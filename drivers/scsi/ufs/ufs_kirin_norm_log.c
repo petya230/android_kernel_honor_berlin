@@ -662,7 +662,7 @@ void ufs_log_hba_outstanding_upiu( struct ufs_hba *hba, u32 err_type )
 	ulong tag;
 	UFS_EXC_INFO_LOG(hba, err_type, "log all outstanding request start");
 
-	for_each_set_bit( tag, &(hba->outstanding_reqs), (ulong)hba->nutrs ) {
+	for_each_set_bit( tag, &(hba->outstanding_reqs), (ulong)hba->nutrs ) { //lint !e571
 		ufs_log_utrd_upiu_detail( hba, &hba->lrb[tag], err_type );
 	}
 

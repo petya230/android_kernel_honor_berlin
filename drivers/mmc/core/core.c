@@ -1,4 +1,15 @@
-
+/*
+ *  linux/drivers/mmc/core/core.c
+ *
+ *  Copyright (C) 2003-2004 Russell King, All Rights Reserved.
+ *  SD support Copyright (C) 2004 Ian Molton, All Rights Reserved.
+ *  Copyright (C) 2005-2008 Pierre Ossman, All Rights Reserved.
+ *  MMCv4 support Copyright (C) 2006 Philip Langdale, All Rights Reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/interrupt.h>
@@ -20,8 +31,17 @@
 #include <linux/of.h>
 #include <linux/wakelock.h>
 #include <linux/version.h>
+#ifdef CONFIG_HISI_MMC_MANUAL_BKOPS
+#include <linux/blkdev.h>
+#endif
 
+#define CREATE_TRACE_POINTS
 #include <trace/events/mmc.h>
+
+EXPORT_TRACEPOINT_SYMBOL(mmc_blk_rw_end);
+EXPORT_TRACEPOINT_SYMBOL(mmc_blk_rw_start);
+EXPORT_TRACEPOINT_SYMBOL(mmc_blk_erase_start);
+EXPORT_TRACEPOINT_SYMBOL(mmc_blk_erase_end);
 
 #include <linux/mmc/card.h>
 #include <linux/mmc/host.h>
@@ -243,6 +263,17 @@ void mmc_request_done(struct mmc_host *host, struct mmc_request *mrq)
 			pr_debug("%s:     %d bytes transferred: %d\n",
 				mmc_hostname(host),
 				mrq->data->bytes_xfered, mrq->data->error);
+			if (mrq->lat_hist_enabled) {
+				ktime_t completion;
+				u_int64_t delta_us;
+
+				completion = ktime_get();
+				delta_us = ktime_us_delta(completion,
+							  mrq->io_start);
+				blk_update_latency_hist(&host->io_lat_s,
+					(mrq->data->flags & MMC_DATA_READ),
+					delta_us);
+			}
 			trace_mmc_blk_rw_end(cmd->opcode, cmd->arg, mrq->data);
 		}
 
@@ -349,6 +380,7 @@ static int mmc_start_request(struct mmc_host *host, struct mmc_request *mrq)
 	return 0;
 }
 
+#ifndef CONFIG_HISI_MMC_MANUAL_BKOPS
 /**
  *	mmc_start_bkops - start BKOPS for supported cards
  *	@card: MMC card to start BKOPS
@@ -370,6 +402,10 @@ void mmc_start_bkops(struct mmc_card *card, bool from_exception)
 	if (!card->ext_csd.man_bkops_en || mmc_card_doing_bkops(card))
 		return;
 
+	/* Micron 2D devices use HISI manual BKOPS, 3D devices don't need BKOPS */
+	if (CID_MANFID_MICRON == card->cid.manfid)
+		return ;
+
 	err = mmc_read_bkops_status(card);
 	if (err) {
 		pr_err("%s: Failed to read bkops status: %d\n",
@@ -383,11 +419,6 @@ void mmc_start_bkops(struct mmc_card *card, bool from_exception)
 	if (card->ext_csd.raw_bkops_status < EXT_CSD_BKOPS_LEVEL_2 &&
 	    from_exception)
 		return;
-
-#ifdef CONFIG_HUAWEI_EMMC_DSM
-	DSM_EMMC_LOG(card, DSM_EMMC_URGENT_BKOPS,
-		"the device needs to perform background operations urgently\n");
-#endif
 
 	mmc_claim_host(card->host);
 	if (card->ext_csd.raw_bkops_status >= EXT_CSD_BKOPS_LEVEL_2) {
@@ -417,6 +448,7 @@ void mmc_start_bkops(struct mmc_card *card, bool from_exception)
 out:
 	mmc_release_host(card->host);
 }
+#endif /* CONFIG_HISI_MMC_MANUAL_BKOPS */
 EXPORT_SYMBOL(mmc_start_bkops);
 
 /*
@@ -776,6 +808,11 @@ struct mmc_async_req *mmc_start_req(struct mmc_host *host,
 	}
 
 	if (!err && areq) {
+		if (host->latency_hist_enabled) {
+			areq->mrq->io_start = ktime_get();
+			areq->mrq->lat_hist_enabled = 1;
+		} else
+			areq->mrq->lat_hist_enabled = 0;
 		trace_mmc_blk_rw_start(areq->mrq->cmd->opcode,
 				       areq->mrq->cmd->arg,
 				       areq->mrq->data);
@@ -920,6 +957,7 @@ int mmc_wait_for_cmd(struct mmc_host *host, struct mmc_command *cmd, int retries
 }
 
 EXPORT_SYMBOL(mmc_wait_for_cmd);
+#ifndef CONFIG_HISI_MMC_MANUAL_BKOPS
 
 /**
  *	mmc_stop_bkops - stop ongoing BKOPS
@@ -949,6 +987,7 @@ int mmc_stop_bkops(struct mmc_card *card)
 	return err;
 }
 EXPORT_SYMBOL(mmc_stop_bkops);
+#endif /* CONFIG_HISI_MMC_MANUAL_BKOPS */
 
 int mmc_read_bkops_status(struct mmc_card *card)
 {
@@ -1177,6 +1216,7 @@ EXPORT_SYMBOL(mmc_release_host);
 /*
  * This is a helper function, which fetches a runtime pm reference for the
  * card device and also claims the host.
+ * It also disables cmdq mode and stops bkops.
  */
 void mmc_get_card(struct mmc_card *card)
 {
@@ -1186,6 +1226,10 @@ void mmc_get_card(struct mmc_card *card)
 	if (mmc_blk_cmdq_hangup(card)) {
 		pr_err("%s: cmdq hangup err.\n", __func__);
 	}
+#endif
+#ifdef CONFIG_HISI_MMC_MANUAL_BKOPS
+	if (mmc_card_doing_bkops(card) && mmc_stop_bkops(card))
+		pr_err("%s: mmc_stop_bkops failed!\n", __func__);
 #endif
 }
 EXPORT_SYMBOL(mmc_get_card);
@@ -1789,7 +1833,7 @@ int mmc_set_signal_voltage(struct mmc_host *host, int signal_voltage, u32 ocr)
 	mmc_delay(1);
 	/*Hisi wifi chip(1102) sets a 1.7ms timer when getting a response of
 	cmd11 to pull up the data0,so it may be low after 1ms delay of the
-	code.We have no need to do the judement because we have no need to 
+	code.We have no need to do the judement because we have no need to
 	change the voltage in the data0 low*/
 	if(!mmc_host_wifi_support_cmd11(host))
 	{
@@ -2125,12 +2169,7 @@ static void _mmc_detect_change(struct mmc_host *host, unsigned long delay,
 		pm_wakeup_event(mmc_dev(host), 5000);
 
 	host->detect_change = 1;
-	/*here is different from the mainline code, the mailie use the
-	 *code of patch bdbc5cfe7c which update to mailine in mar23 2009;
-	 *but we use the code of the patch b485d959244fa which update in
-	 *Sep 7 2011.
-	 */
-	wake_lock(&host->detect_wake_lock);
+
 	mmc_schedule_delayed_work(&host->detect, delay);
 }
 
@@ -2202,7 +2241,7 @@ void mmc_init_erase(struct mmc_card *card)
 }
 
 static unsigned int mmc_mmc_erase_timeout(struct mmc_card *card,
-				          unsigned int arg, unsigned int qty)
+					  unsigned int arg, unsigned int qty)
 {
 	unsigned int erase_timeout;
 
@@ -2820,6 +2859,13 @@ void mmc_rescan(struct work_struct *work)
 	int i;
 	bool extend_wakelock = false;
 
+	/*here is different from the mainline code, the mailie use the
+	*code of patch bdbc5cfe7c which update to mailine in mar23 2009;
+	*but we use the code of the patch b485d959244fa which update in
+	*Sep 7 2011.
+	*/
+	wake_lock(&host->detect_wake_lock);
+
 	if (host->trigger_card_event && host->ops->card_event) {
 		host->ops->card_event(host);
 		host->trigger_card_event = false;
@@ -2908,7 +2954,7 @@ void mmc_rescan(struct work_struct *work)
 	}
 #ifdef CONFIG_MMC_HISI_TRACE
 	if ((host->index == 0) && ARRAY_SIZE(freqs) == i) {
-		mmc_trace_emmc_init_fail_reset(); /*emmc init failed, bug_on*/	
+		mmc_trace_emmc_init_fail_reset(); /*emmc init failed, bug_on*/
 	}
 #endif
 	mmc_release_host(host);
@@ -3232,6 +3278,54 @@ static void __exit mmc_exit(void)
 	destroy_workqueue(workqueue_mmc0);
 	destroy_workqueue(workqueue_mmc1);
 	destroy_workqueue(workqueue_mmc2);
+}
+
+static ssize_t
+latency_hist_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct mmc_host *host = cls_dev_to_mmc_host(dev);
+
+	return blk_latency_hist_show(&host->io_lat_s, buf);
+}
+
+/*
+ * Values permitted 0, 1, 2.
+ * 0 -> Disable IO latency histograms (default)
+ * 1 -> Enable IO latency histograms
+ * 2 -> Zero out IO latency histograms
+ */
+static ssize_t
+latency_hist_store(struct device *dev, struct device_attribute *attr,
+		   const char *buf, size_t count)
+{
+	struct mmc_host *host = cls_dev_to_mmc_host(dev);
+	long value;
+
+	if (kstrtol(buf, 0, &value))
+		return -EINVAL;
+	if (value == BLK_IO_LAT_HIST_ZERO)
+		blk_zero_latency_hist(&host->io_lat_s);
+	else if (value == BLK_IO_LAT_HIST_ENABLE ||
+		 value == BLK_IO_LAT_HIST_DISABLE)
+		host->latency_hist_enabled = value;
+	return count;
+}
+
+static DEVICE_ATTR(latency_hist, S_IRUGO | S_IWUSR,
+		   latency_hist_show, latency_hist_store);
+
+void
+mmc_latency_hist_sysfs_init(struct mmc_host *host)
+{
+	if (device_create_file(&host->class_dev, &dev_attr_latency_hist))
+		dev_err(&host->class_dev,
+			"Failed to create latency_hist sysfs entry\n");
+}
+
+void
+mmc_latency_hist_sysfs_exit(struct mmc_host *host)
+{
+	device_remove_file(&host->class_dev, &dev_attr_latency_hist);
 }
 
 subsys_initcall(mmc_init);

@@ -36,6 +36,7 @@
 #include <linux/rmap.h>
 #include <linux/hisi/page_tracker.h>
 #include "internal.h"
+#include <linux/iolimit_cgroup.h>
 
 #ifdef CONFIG_TASK_PROTECT_LRU
 #include <linux/hisi/protect_lru.h>
@@ -1522,6 +1523,9 @@ static ssize_t do_generic_file_read(struct file *filp, loff_t *ppos,
 		unsigned long nr, ret;
 
 		cond_resched();
+#ifdef CONFIG_CGROUP_IOLIMIT
+		io_read_bandwidth_control(PAGE_CACHE_SIZE);
+#endif
 find_page:
 		page = find_get_page(mapping, index);
 		if (!page) {
@@ -1920,7 +1924,11 @@ int filemap_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
 	size = round_up(i_size_read(inode), PAGE_CACHE_SIZE);
 	if (offset >= size >> PAGE_CACHE_SHIFT)
 		return VM_FAULT_SIGBUS;
-
+#ifdef CONFIG_CGROUP_IOLIMIT
+	task_set_in_pagefault(current);
+	io_read_bandwidth_control(PAGE_CACHE_SIZE);
+	task_clear_in_pagefault(current);
+#endif
 	/*
 	 * Do we have something in the page cache already?
 	 */
@@ -2491,7 +2499,9 @@ ssize_t generic_perform_write(struct file *file,
 		unsigned long bytes;	/* Bytes to write to page */
 		size_t copied;		/* Bytes copied from user */
 		void *fsdata;
-
+#ifdef CONFIG_CGROUP_IOLIMIT
+		io_write_bandwidth_control(PAGE_CACHE_SIZE);
+#endif
 		offset = (pos & (PAGE_CACHE_SIZE - 1));
 		bytes = min_t(unsigned long, PAGE_CACHE_SIZE - offset,
 						iov_iter_count(i));

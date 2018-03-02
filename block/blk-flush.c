@@ -74,6 +74,7 @@
 #include "blk.h"
 #include "blk-mq.h"
 
+#include "hisi-blk-mq.h"
 #include "hisi-blk-mq-dispatch-strategy.h"
 #include "hisi-blk-mq-debug.h"
 

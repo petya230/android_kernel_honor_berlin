@@ -1000,6 +1000,12 @@ config HW_CGROUP_IONICE
 	  It's useful in mobile devices where certain background apps
 	  are doing heavy io work.
 
+config CGROUP_IOLIMIT
+        bool "IO bandwidth limit cgroup subsystem"
+        help
+          Provides a cgroup implementing for io bandwidth while a process
+          in the cgroup read or write.
+
 config CGROUP_DEVICE
 	bool "Device controller for cgroups"
 	help
@@ -1280,7 +1286,13 @@ config HISI_RT_OPT
 	bool "hisilicon rt-threads optimization"
 	default n
 	help
-	  Limit rt-threads to little cpus for power saving.
+	  Limit rt-threads to slow cpus for power saving.
+
+config HISI_GLOBAL_BOOST
+	bool "hisilicon global boost for eas optimization"
+	default n
+	help
+	  Boost all threads to fast cpus for performance.
 
 config SCHED_AUTOGROUP
 	bool "Automatic process group scheduling"
@@ -1800,6 +1812,7 @@ choice
 
 config SLAB
 	bool "SLAB"
+	select HAVE_HARDENED_USERCOPY_ALLOCATOR
 	help
 	  The regular slab allocator that is established and known to work
 	  well in all environments. It organizes cache hot objects in
@@ -1807,6 +1820,7 @@ config SLAB
 
 config SLUB
 	bool "SLUB (Unqueued Allocator)"
+	select HAVE_HARDENED_USERCOPY_ALLOCATOR
 	help
 	   SLUB is a slab allocator that minimizes cache line usage
 	   instead of managing queues of cached objects (SLAB approach).

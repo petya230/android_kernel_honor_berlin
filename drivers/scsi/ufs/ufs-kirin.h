@@ -65,6 +65,22 @@
 #define CLK_UFSIO		UFS_BIT(14)
 #define CLK_UFS_SUBSYS		UFS_BIT(21)
 #define CLK_ABB_BACKUP		UFS_BIT(22)
+/* USE_HISI_MPHY_TC */
+/* LPMCU: 0xB4000000, A53: 0xF4000000, I2C: 0x0 */
+#define BASE_BUS_ADDR         ( 0x0)
+#define REG_SC_APB_IF         ( BASE_BUS_ADDR + 0x00023000)
+#define SCNOCSTA              ( REG_SC_APB_IF + 0xa0)
+#define NOCSTA                ( BASE_BUS_ADDR + 0x00026000)
+#define SCPPLLCTRL0           ( REG_SC_APB_IF + 0x8)
+#define SCPPLLCTRL1           ( REG_SC_APB_IF + 0xc)
+#define SCPPLLSTAT            ( REG_SC_APB_IF + 0x14)
+#define SC_CLKEN              ( REG_SC_APB_IF + 0x18)
+#define SC_RSTEN              ( REG_SC_APB_IF + 0x30)
+#define SC_RSTDIS             ( REG_SC_APB_IF + 0x34)
+#define SC_RSTSTAT            ( REG_SC_APB_IF + 0x38)
+#define SC_CLK_DIV            ( REG_SC_APB_IF + 0x84)
+#define SC_INT_MASK_EN        ( REG_SC_APB_IF + 0x70)
+#define SC_UFS_REFCLK_RST_PAD ( REG_SC_APB_IF + 0x90)
 
 /*
  * ufs sysctrl specific define
@@ -206,6 +222,8 @@ struct ufs_kirin_host {
 #define USE_HS_GEAR1		UFS_BIT(8)
 #define USE_AUTO_H8		UFS_BIT(9)
 #define BROKEN_CLK_GATE_BYPASS	UFS_BIT(10)
+#define USE_HISI_MPHY_TC	UFS_BIT(11)
+#define USE_SINCE_BOSTON_CS		UFS_BIT(12)
 
 	int avail_ln_rx;
 	int avail_ln_tx;
@@ -218,6 +236,9 @@ struct ufs_kirin_host {
 	struct ufs_pa_layer_attr dev_req_params;
 
 	struct ufs_rdr_ctrl rdr_ctrl;
+	int chipsel_gpio;
+	struct i2c_client *i2c_client;
+
 };
 
 #define ufs_kirin_is_link_off(hba) ufshcd_is_link_off(hba)

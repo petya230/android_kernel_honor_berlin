@@ -104,9 +104,15 @@ struct mmc_ext_csd {
 #define MMC_FIRMWARE_LEN 8
 	u8			fwrev[MMC_FIRMWARE_LEN];  /* FW version */
 	u8			raw_exception_status;	/* 54 */
+	u8			raw_vendor_feature_support;	/* 124 */
 	u8			raw_partition_support;	/* 160 */
+	u8			raw_wr_rel_param;/* 166 */
 	u8			raw_rpmb_size_mult;	/* 168 */
+	u8			raw_rpmb_region1_size_mult;	/* 180 */
 	u8			raw_erased_mem_count;	/* 181 */
+	u8			raw_rpmb_region2_size_mult;	/* 182 */
+	u8			raw_rpmb_region3_size_mult;	/* 186 */
+	u8			raw_rpmb_region4_size_mult;	/* 188 */
 	u8			raw_ext_csd_structure;	/* 194 */
 	u8			raw_card_type;		/* 196 */
 	u8			raw_driver_strength;		/* 197 */
@@ -270,6 +276,62 @@ struct mmc_part {
 #define MMC_BLK_DATA_AREA_RPMB	(1<<3)
 };
 
+#ifdef CONFIG_HISI_MMC_MANUAL_BKOPS
+typedef enum {
+	BKOPS_100MS,
+	BKOPS_500MS,
+	BKOPS_1000MS,
+	BKOPS_2000MS,
+	BKOPS_5000MS,
+	BKOPS_FOR_AGES,
+	BKOPS_DUR_NUM,
+} bkops_dur_enum;
+
+typedef enum {
+	BKOPS_NOT_NEED,
+	BKOPS_NON_CRITICAL,
+	BKOPS_PERF_IMPACTED,
+	BKOPS_CRITICAL,
+	BKOPS_STATUS_NUM
+} bkops_status_enum;
+
+struct mmc_bkops_stats {
+	bool bkops_ongoing;
+	u32 bkops_count; /* how many manual bkops has been started */
+	u32 hpi_count; /* how many manual bkops has been interrupted */
+	u32 bkops_abort_count; /* bkops was interrupted before completed */
+	u32 bkops_query_count;
+	u32 bkops_query_fail_count;
+	u32 bkops_start_fail_count;
+	u32 bkops_stop_fail_count;
+	u64 bkops_start_time; /* last bkops start time in jiffies */
+
+	u64 bkops_max_query_time; /* in ns */
+	u64 bkops_avrg_query_time; /* in ns */
+	u64 bkops_max_start_time; /* in ns */
+	u64 bkops_avrg_start_time; /* in ns */
+	u64 bkops_max_stop_time; /* in ns */
+	u64 bkops_avrg_stop_time; /* in ns */
+	u64 max_bkops_duration; /* in jiffies */
+
+	u32 bkops_dur[BKOPS_DUR_NUM];
+	u32 bkops_status[BKOPS_STATUS_NUM];
+};
+
+#ifdef CONFIG_HISI_DEBUG_FS
+struct mmc_bkops_debug_ops {
+	bool sim_bkops_start_fail;
+	bool sim_bkops_stop_fail;
+	bool sim_bkops_query_fail;
+	bool sim_critical_bkops;
+	bool sim_bkops_abort;
+	u32 sim_bkops_stop_delay; /* in ms */
+	bool skip_bkops_stop;
+	bool bypass_bkops;
+};
+#endif
+
+#endif /* CONFIG_HISI_MMC_MANUAL_BKOPS */
 /*
  * MMC device
  */
@@ -328,7 +390,7 @@ struct mmc_card {
 	struct sd_scr		scr;		/* extra SD information */
 	struct sd_ssr		ssr;		/* yet more SD information */
 	struct sd_switch_caps	sw_caps;	/* switch (CMD6) caps */
-#ifdef CONFIG_MMC_PASSWORDS 
+#ifdef CONFIG_MMC_PASSWORDS
 #define MAX_UNLOCK_PASSWORD_WITH_BUF 20    /* 1(len) + max_pwd(16) + 0xFF 0xFF + 0 = 20 */
     bool swith_voltage;             /* whether sdcard voltage swith to 1.8v  */
     bool auto_unlock;
@@ -352,10 +414,17 @@ struct mmc_card {
 	unsigned int    nr_parts;
 	bool                    cmdq_init; /* cmdq init done */
         struct dentry           *debugfs_sdxc;
+	struct blk_queue_tag *mmc_tags;
+	int mmc_tags_depth;
 #ifdef CONFIG_HUAWEI_EMMC_DSM
 	u8 *cached_ext_csd;
 #endif
-
+#ifdef CONFIG_HISI_MMC_MANUAL_BKOPS
+	struct mmc_bkops_stats bkops_stats;
+#ifdef CONFIG_HISI_DEBUG_FS
+	struct mmc_bkops_debug_ops bkops_debug_ops;
+#endif
+#endif /* CONFIG_HISI_MMC_MANUAL_BKOPS */
 };
 
 /*

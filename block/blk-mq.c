@@ -884,6 +884,7 @@ static void flush_busy_ctxs(struct blk_mq_hw_ctx *hctx, struct list_head *list)
  * of IO. In particular, we'd like FIFO behaviour on handling existing
  * items on the hctx->dispatch list. Ignore that for now.
  */
+/*cppcheck-suppress * */
 static void __blk_mq_run_hw_queue(struct blk_mq_hw_ctx *hctx)
 {
 	struct request_queue *q = hctx->queue;
@@ -953,15 +954,6 @@ static void __blk_mq_run_hw_queue(struct blk_mq_hw_ctx *hctx)
 		if (blk_mq_dispatch_busy(q, rq)) {
 			ret = BLK_MQ_RQ_QUEUE_BUSY;
 			goto ret;
-		}
-
-		if (flush_reducing(q, rq)) {
-			blk_mq_update_statistics(q, rq);
-			blk_mq_debug_rq_processing_state_update(rq,
-							MQ_PROCESS_FLUSH_SKIP);
-			blk_mq_end_request(rq, 0);
-			queued++;
-			continue;
 		}
 
 		blk_mq_debug_rq_processing_state_update(rq,
@@ -1040,8 +1032,6 @@ ret:
 		 **/
 		blk_mq_run_hw_queue(hctx, true);
 	}
-	else
-		flush_work_trigger(q);
 }
 
 /*
@@ -1414,7 +1404,13 @@ void blk_mq_flush_plug_list(struct blk_plug *plug, bool from_schedule)
 static void blk_mq_bio_to_request(struct request *rq, struct bio *bio)
 {
 	init_request_from_bio(rq, bio);
-
+#ifdef CONFIG_HISI_BLK_MQ
+	#if 0 /*The effect of the order attribute is still not clear, so keep it disable*/
+	rq->rq_order_flag = ((atomic_read(&(rq->q->flush_work_trigger)) ==1) && (rq->cmd_flags & REQ_WRITE) && (rq->__data_len!=0)) ? 1 : 0;/*lint !e529 !e438 */
+	#else
+	rq->rq_order_flag = 0;
+	#endif
+#endif
 	if (blk_do_io_stat(rq))
 		blk_account_io_start(rq, 1);
 }
@@ -1585,7 +1581,7 @@ static void blk_mq_make_request(struct request_queue *q, struct bio *bio)
 	}
 
 #ifdef CONFIG_HISI_BLK_MQ
-	if((bio->bi_rw & REQ_FLUSH)&&(bio->bi_iter.bi_size == 0)&&(atomic_read(&q->wio_after_flush_fua) == 0)){/*lint !e529 !e438*/
+	if(!flush_insert(q,bio)){
 		bio_endio(bio, 0);
 		return;
 	}
@@ -2676,7 +2672,9 @@ int blk_mq_alloc_tag_set(struct blk_mq_tag_set *set)
 
 	mutex_init(&set->tag_list_lock);
 	INIT_LIST_HEAD(&set->tag_list);
-
+#ifdef CONFIG_HISI_BLK_CORE
+	hisi_blk_mq_allocated_tagset_init(set);
+#endif
 	return 0;
 enomem:
 	kfree(set->tags);

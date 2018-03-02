@@ -277,9 +277,9 @@ static int get_card_status(struct mmc_card *card, u32 *status, int retries)
 static int mmc_wp_start(struct mmc_card *card, struct hd_struct *part)
 {
 	unsigned int sector_start, sector_size, wp_group_size;
-	unsigned int loop_count, status;
+	unsigned int loop_count, status, i;
 	struct mmc_command cmd = {0};
-	int err = 0, i = 0;
+	int err = 0;
 
 	sector_start = (unsigned int)(part->start_sect);
 	sector_size  = (unsigned int)(part->nr_sects);
@@ -325,7 +325,6 @@ static int do_set_write_protection(struct gendisk *disk, struct hd_struct *part)
 	if (IS_ERR(card)) {
 		return PTR_ERR(card);
 	}
-
 	err = mmc_wp_condition_check_for_part(card, part);
 	if (err)
 		return err;
@@ -360,6 +359,7 @@ static int part_wp_action(struct block_device *bdev, const char *partname,
 	/* show the full disk and all non-0 size partitions of it */
 	disk_part_iter_init(&piter, sgp, DISK_PITER_INCL_PART0);
 	while ((part = disk_part_iter_next(&piter))) {
+		/*lint -save -e64*/
 		if (part->info && part->info->volname[0] &&
 				!strncmp(part->info->volname,
 					partname, strlen(partname))) {
@@ -367,6 +367,7 @@ static int part_wp_action(struct block_device *bdev, const char *partname,
 			ret = func(sgp, part);
 			break;
 		}
+		/*lint -restore */
 	}
 	disk_part_iter_exit(&piter);
 	return ret;

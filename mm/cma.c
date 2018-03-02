@@ -447,6 +447,10 @@ struct page *cma_alloc(struct cma *cma, size_t count, unsigned int align)
 	trace_cma_alloc(page ? pfn : -1UL, page, count, align);
 
 	pr_debug("%s(): returned %p\n", __func__, page);
+#ifdef CONFIG_FREE_PAGES_RDONLY
+	if(page)
+		kernel_map_pages(page, count, 1);
+#endif
 	return page;
 }
 
@@ -466,8 +470,6 @@ bool cma_release(struct cma *cma, const struct page *pages, unsigned int count)
 
 	if (!cma || !pages)
 		return false;
-
-	pr_debug("%s(page %p)\n", __func__, (void *)pages);
 
 	pfn = page_to_pfn(pages);
 

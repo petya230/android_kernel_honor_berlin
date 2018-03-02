@@ -34,6 +34,7 @@
 #define to_sdio_driver(d)	container_of(d, struct sdio_driver, drv)
 /* show configuration fields */
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0))
+/*cppcheck-suppress * */
 #define sdio_config_attr(field, format_string)				\
 static ssize_t								\
 field##_show(struct device *dev, struct device_attribute *attr, char *buf)				\
@@ -41,10 +42,12 @@ field##_show(struct device *dev, struct device_attribute *attr, char *buf)				\
 	struct sdio_func *func;						\
 									\
 	func = dev_to_sdio_func (dev);					\
+	/*cppcheck-suppress * */                         \
 	return sprintf (buf, format_string, func->field);		\
 }									\
 static DEVICE_ATTR_RO(field)
 #else
+/*cppcheck-suppress * */
 #define sdio_config_attr(field, format_string)				\
 static ssize_t								\
 field##_show(struct device *dev, struct device_attribute *attr, char *buf)				\
@@ -52,20 +55,26 @@ field##_show(struct device *dev, struct device_attribute *attr, char *buf)				\
 	struct sdio_func *func;						\
 									\
 	func = dev_to_sdio_func (dev);					\
+	/*cppcheck-suppress * */                        \
 	return sprintf (buf, format_string, func->field);		\
 }
 #endif
 
+/*lint -save -e421*/
 sdio_config_attr(class, "0x%02x\n");
 sdio_config_attr(vendor, "0x%04x\n");
 sdio_config_attr(device, "0x%04x\n");
+/*lint -restore*/
 
 static ssize_t modalias_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
 	struct sdio_func *func = dev_to_sdio_func (dev);
 
+	/*lint -save -e421*/
+	/*cppcheck-suppress * */
 	return sprintf(buf, "sdio:c%02Xv%04Xd%04X\n",
 			func->class, func->vendor, func->device);
+	/*lint -restore*/
 }
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0))
@@ -139,7 +148,7 @@ sdio_bus_uevent(struct device *dev, struct kobj_uevent_env *env)
 			"SDIO_CLASS=%02X", func->class))
 		return -ENOMEM;
 
-	if (add_uevent_var(env, 
+	if (add_uevent_var(env,
 			"SDIO_ID=%04X:%04X", func->vendor, func->device))
 		return -ENOMEM;
 

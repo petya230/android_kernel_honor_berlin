@@ -11,6 +11,7 @@
 #ifndef _MMC_CORE_SYSFS_H
 #define _MMC_CORE_SYSFS_H
 
+/*cppcheck-suppress * */
 #define MMC_ATTR_FN(name, fmt, args...)					\
 static ssize_t mmc_##name##_show (struct device *dev, struct device_attribute *attr, char *buf)	\
 {									\

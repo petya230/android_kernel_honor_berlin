@@ -85,6 +85,7 @@ struct bio {
 						 * top bits priority
 						 */
 	unsigned char bi_iosche_bypass;
+	unsigned char bi_async_flush;
 	struct bvec_iter	bi_iter;
 
 	/* Number of segments in this BIO after
@@ -104,20 +105,28 @@ struct bio {
 	bio_end_io_t		*bi_end_io;
 
 	void			*bi_private;
+#ifdef CONFIG_HISI_BLK_CORE
+#define HISI_IO_IN_COUNT_SET	(1 << 0)
+#define HISI_IO_IN_COUNT_SKIP_ENDIO	(1 << 1)
+#define HISI_IO_IN_COUNT_WILL_BE_SEND_AGAIN	(1 << 2)
+#define HISI_IO_IN_COUNT_DONE	(1 << 3)
+	unsigned char io_in_count;
+	struct request_queue *q;
 #ifdef CONFIG_HISI_IO_LATENCY_TRACE
 	unsigned char from_submit_bio_flag;
 	unsigned long bio_stage_jiffies[BIO_PROC_STAGE_MAX];
 	struct timer_list bio_latency_check_timer;
 	void* io_req;
-	atomic_t	bio_latency_timer_executing;
 	struct block_device	*bi_bdev_part;
 	struct task_struct* dispatch_task;
-#endif
+#endif /*CONFIG_HISI_IO_LATENCY_TRACE*/
+#endif/* CONFIG_HISI_BLK_CORE */
 #ifdef CONFIG_BLK_DEV_THROTTLING
 	bio_throtl_end_io_t	*bi_throtl_end_io1;
 	void			*bi_throtl_private1;
 	bio_throtl_end_io_t	*bi_throtl_end_io2;
 	void			*bi_throtl_private2;
+	unsigned long		bi_throtl_in_queue;
 #endif
 #ifdef CONFIG_BLK_CGROUP
 	/*
@@ -135,7 +144,7 @@ struct bio {
 
 	unsigned short		bi_vcnt;	/* how many bio_vec's */
 
-#ifdef CONFIG_HISI_BLK_INLINE_CRYPTO
+#ifdef CONFIG_FS_ENCRYPTION
 	void			*ci_key;
 	int			ci_key_len;
 	pgoff_t			index;

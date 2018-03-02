@@ -37,11 +37,11 @@ int dw_mci_pltfm_register(struct platform_device *pdev,
 
 	regs = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!regs)
-		return -ENXIO;
+		return -ENXIO; /*lint !e429*/
 
 	host->irq = platform_get_irq(pdev, 0);
 	if (host->irq < 0)
-		return host->irq;
+		return host->irq;/*lint !e429*/
 
 	host->drv_data = drv_data;
 	host->dev = &pdev->dev;
@@ -49,7 +49,7 @@ int dw_mci_pltfm_register(struct platform_device *pdev,
 	host->pdata = pdev->dev.platform_data;
 	host->regs = devm_ioremap_resource(&pdev->dev, regs);
 	if (IS_ERR(host->regs))
-		return PTR_ERR(host->regs);
+		return PTR_ERR(host->regs);/*lint !e429*/
 
     /*私有IP数据初始化*/
 	if (drv_data && drv_data->init) {
@@ -61,7 +61,7 @@ int dw_mci_pltfm_register(struct platform_device *pdev,
 	platform_set_drvdata(pdev, host);
 
 	ret = dw_mci_probe(host);
-	return ret;
+	return ret;/*lint !e593*/
 }
 EXPORT_SYMBOL_GPL(dw_mci_pltfm_register);
 

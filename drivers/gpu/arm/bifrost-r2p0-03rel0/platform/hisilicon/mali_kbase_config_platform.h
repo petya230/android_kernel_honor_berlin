@@ -94,6 +94,8 @@
 #define GPU_CRG_CLOCK_POWER_OFF_MASK    0x00010000
 #define GPU_CRG_CLOCK_POWER_ON_MASK     0x00010001
 
+#define PERI_STAT_FPGA_GPU_EXIST        0xBC
+#define PERI_STAT_FPGA_GPU_EXIST_MASK   0x400000
 
 extern struct kbase_pm_callback_conf pm_callbacks;
 

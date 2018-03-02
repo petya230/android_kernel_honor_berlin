@@ -131,3 +131,13 @@ config SD_SCHEDULER_CFQ_ONLY
 	help
 	  This is an option to change sd io scheduler to cfq when
 	  block io scheduler is row.
+
+config HW_MMC_MAINTENANCE_CMD
+	bool "record emmc cmd sequence"
+	depends on MMC_BLOCK
+	default n
+
+config HW_MMC_MAINTENANCE_DATA
+	bool "record emmc read and write data"
+	depends on MMC_BLOCK
+	default n

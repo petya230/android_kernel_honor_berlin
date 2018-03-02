@@ -109,6 +109,7 @@
 #define BIT_RST_SDIO            (1<<19)
 
 #define BIT_RST_SDIO_CHICAGO    (1<<20)
+#define BIT_RST_SDIO_BOSTON    (1<<20)
 
 #define BIT_RST_SD_M      (1<<24)
 #define GPIO_CLK_DIV(x) (((x) & 0xf) << 8)

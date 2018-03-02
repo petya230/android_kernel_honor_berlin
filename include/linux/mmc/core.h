@@ -80,11 +80,7 @@ struct mmc_command {
 #define mmc_cmd_type(cmd)	((cmd)->flags & MMC_CMD_MASK)
 
 	unsigned int		retries;	/* max number of retries */
-#ifdef CONFIG_HISI_MMC
-	unsigned int		error;		/* command error */
-#else
 	int			error;		/* command error */
-#endif
 
 /*
  * Standard errno values are used for errors, but some have specific
@@ -100,6 +96,8 @@ struct mmc_command {
  *              actively failing requests
  */
 
+/*do not use the system timer to check busy*/
+#define MMC_TIMEOUT_INVALID (0xFFFFFFFF)
 	unsigned int		busy_timeout;	/* busy detect timeout in ms */
 	/* Set this flag only for blocking sanitize request */
 	bool			sanitize_busy;
@@ -113,11 +111,7 @@ struct mmc_data {
 	unsigned int		timeout_clks;	/* data timeout (in clocks) */
 	unsigned int		blksz;		/* data block size */
 	unsigned int		blocks;		/* number of blocks */
-#ifdef CONFIG_HISI_MMC
-	unsigned int		error;		/* data error */
-#else
 	int			error;		/* data error */
-#endif
 	unsigned int		flags;
 
 #define MMC_DATA_WRITE	(1 << 8)
@@ -142,7 +136,8 @@ struct mmc_request {
 	struct mmc_data		*data;
 	struct mmc_command	*stop;
 	struct mmc_command	*task_mgmt;
-
+	ktime_t			io_start;
+	int			lat_hist_enabled;
 	struct completion	completion;
 	void			(*done)(struct mmc_request *);/* completion function */
 	struct mmc_host		*host;
@@ -171,7 +166,11 @@ extern int mmc_wait_for_cmd(struct mmc_host *, struct mmc_command *, int);
 extern int mmc_app_cmd(struct mmc_host *, struct mmc_card *);
 extern int mmc_wait_for_app_cmd(struct mmc_host *, struct mmc_card *,
 	struct mmc_command *, int);
+#ifdef CONFIG_HISI_MMC_MANUAL_BKOPS
+extern int mmc_start_bkops(struct mmc_card *card, bool from_exception);
+#else
 extern void mmc_start_bkops(struct mmc_card *card, bool from_exception);
+#endif
 extern int __mmc_switch(struct mmc_card *, u8, u8, u8, unsigned int, bool,
 			bool, bool);
 extern int mmc_switch(struct mmc_card *, u8, u8, u8, unsigned int);
@@ -240,6 +239,11 @@ extern int mmc_detect_card_removed(struct mmc_host *host);
 #ifdef CONFIG_HISI_MMC
 extern int mmc_blk_cmdq_hangup(struct mmc_card *card);
 extern void mmc_blk_cmdq_restore(struct mmc_card *card);
+extern int mmc_switch_irq_safe(struct mmc_card *card, u8 set, u8 index, u8 value);
+extern int mmc_get_card_hisi(struct mmc_card *card, bool use_irq);
+extern int mmc_flush_cache_direct(struct mmc_card *card);
+extern void mmc_put_card_irq_safe(struct mmc_card *card);
+
 #endif
 
 /**

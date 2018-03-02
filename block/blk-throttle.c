@@ -11,6 +11,7 @@
 #include <linux/blktrace_api.h>
 #include <linux/blk-cgroup.h>
 #include "blk.h"
+#include <trace/iotrace.h>
 
 #define SHARE_SHIFT (14)
 #define MAX_SHARE (1 << SHARE_SHIFT)
@@ -29,6 +30,18 @@
 #define IOPS_SLICE_MIN	(32)
 #define IOPS_SLICE_MAX	(4096)
 #define IOPS_SLICE_DEF	(256)
+
+#define MAX_THROTL_DELAY_TM_MS	(3000)	/* 3s */
+
+#ifdef CONFIG_HUAWEI_IO_TRACING
+DEFINE_TRACE(block_throttle_weight)
+DEFINE_TRACE(block_throttle_dispatch)
+DEFINE_TRACE(block_throttle_iocost)
+DEFINE_TRACE(block_throttle_limit_start)
+DEFINE_TRACE(block_throttle_limit_end)
+DEFINE_TRACE(block_throttle_bio_in)
+DEFINE_TRACE(block_throttle_bio_out)
+#endif
 
 /* Max dispatch from a group in 1 round */
 static int throtl_grp_quantum = 8;
@@ -165,7 +178,7 @@ struct throtl_grp {
 
 	unsigned int flags;
 
-	unsigned int fg_flag;
+	unsigned int type;
 
 	/* are there any throtl rules between this group and td? */
 	bool has_rules[2];
@@ -179,9 +192,6 @@ struct throtl_grp {
 	/* Per cpu stats pointer */
 	struct tg_stats_cpu __percpu *stats_cpu;
 
-	/* List of tgs waiting for per cpu stats memory to be allocated */
-	struct list_head stats_alloc_node;
-
 	unsigned long		intime;
 
 	atomic_t		inflights[2];
@@ -189,6 +199,9 @@ struct throtl_grp {
 	struct list_head	node;
 
 	int			quantum;
+
+	atomic_t		delay_cnt;
+	atomic_t		max_delay;
 };
 
 enum run_mode {
@@ -253,13 +266,6 @@ static bool td_weight_based(struct throtl_data *td)
 }
 
 /*lint -save -e64 -e570 -e708 -e785*/
-/* list and work item to allocate percpu group stats */
-static DEFINE_SPINLOCK(tg_stats_alloc_lock);
-static LIST_HEAD(tg_stats_alloc_list);
-
-static void tg_stats_alloc_fn(struct work_struct *);
-static DECLARE_DELAYED_WORK(tg_stats_alloc_work, tg_stats_alloc_fn);
-/*lint -restore*/
 
 static void throtl_pending_timer_fn(unsigned long arg);
 
@@ -364,55 +370,6 @@ static inline unsigned int queue_iops_slice(struct throtl_data *td)
 		blk_add_trace_msg(__td->queue, "throtl " fmt, ##args);	\
 	}								\
 } while (0)
-
-static void tg_stats_init(struct tg_stats_cpu *tg_stats)
-{
-	blkg_rwstat_init(&tg_stats->service_bytes);
-	blkg_rwstat_init(&tg_stats->serviced);
-}
-
-/*
- * Worker for allocating per cpu stat for tgs. This is scheduled on the
- * system_wq once there are some groups on the alloc_list waiting for
- * allocation.
- */
-static void tg_stats_alloc_fn(struct work_struct *work)
-{
-	static struct tg_stats_cpu *stats_cpu;	/* this fn is non-reentrant */
-	struct delayed_work *dwork = to_delayed_work(work);
-	bool empty = false;
-
-alloc_stats:
-	/*lint -save -e48 -e64 -e151 -e529 -e530 -e713 -e727 -e826 -e838*/
-	if (!stats_cpu) {
-		int cpu;
-
-		stats_cpu = alloc_percpu(struct tg_stats_cpu);
-		if (!stats_cpu) {
-			/* allocation failed, try again after some time */
-			schedule_delayed_work(dwork, msecs_to_jiffies(10));
-			return;
-		}
-		for_each_possible_cpu(cpu)
-			tg_stats_init(per_cpu_ptr(stats_cpu, cpu));
-	}
-
-	spin_lock_irq(&tg_stats_alloc_lock);
-
-	if (!list_empty(&tg_stats_alloc_list)) {
-		struct throtl_grp *tg = list_first_entry(&tg_stats_alloc_list,
-							 struct throtl_grp,
-							 stats_alloc_node);
-		swap(tg->stats_cpu, stats_cpu);
-		list_del_init(&tg->stats_alloc_node);
-	}
-
-	empty = list_empty(&tg_stats_alloc_list);
-	/*lint -restore*/
-	spin_unlock_irq(&tg_stats_alloc_lock);
-	if (!empty)
-		goto alloc_stats;
-}
 
 static void throtl_qnode_init(struct throtl_qnode *qn, struct throtl_grp *tg)
 {
@@ -528,12 +485,36 @@ static inline void io_cost_init(struct throtl_grp *tg)
 	tg->io_cost.iops[WRITE] = (u32)-1;
 }
 
+static struct blkg_policy_data *throtl_pd_alloc(gfp_t gfp, int node)
+{
+	struct throtl_grp *tg;
+	int cpu;
+
+	tg = kzalloc_node(sizeof(*tg), gfp, node);
+	if (!tg)
+		return NULL;
+
+	tg->stats_cpu = alloc_percpu_gfp(struct tg_stats_cpu, gfp);
+	if (!tg->stats_cpu) {
+		kfree(tg);
+		return NULL;
+	}
+
+	for_each_possible_cpu(cpu) {
+		struct tg_stats_cpu *stats_cpu = per_cpu_ptr(tg->stats_cpu, cpu);
+
+		blkg_rwstat_init(&stats_cpu->service_bytes);
+		blkg_rwstat_init(&stats_cpu->serviced);
+	}
+
+	return &tg->pd;
+}
+
 static void throtl_pd_init(struct blkcg_gq *blkg)
 {
 	struct throtl_grp *tg = blkg_to_tg(blkg);
 	struct throtl_data *td = blkg->q->td;
 	struct throtl_service_queue *parent_sq;
-	unsigned long flags;
 	int i;
 
 	/*
@@ -573,18 +554,6 @@ static void throtl_pd_init(struct blkcg_gq *blkg)
 	tg->td = td;
 
 	io_cost_init(tg);
-
-	/*
-	 * Ugh... We need to perform per-cpu allocation for tg->stats_cpu
-	 * but percpu allocator can't be called from IO path.  Queue tg on
-	 * tg_stats_alloc_list and allocate from work item.
-	 */
-	/*lint -save -e550 -e747*/
-	spin_lock_irqsave(&tg_stats_alloc_lock, flags);
-	list_add(&tg->stats_alloc_node, &tg_stats_alloc_list);
-	schedule_delayed_work(&tg_stats_alloc_work, 0);
-	spin_unlock_irqrestore(&tg_stats_alloc_lock, flags);
-	/*lint -restore*/
 }
 
 static inline bool io_cost_has_limit(struct throtl_grp *tg, int index)
@@ -721,26 +690,22 @@ static void throtl_pd_offline(struct blkcg_gq *blkg)
 static void throtl_pd_exit(struct blkcg_gq *blkg)
 {
 	struct throtl_grp *tg = blkg_to_tg(blkg);
-	unsigned long flags;
-
-	/*lint -save -e550*/
-	spin_lock_irqsave(&tg_stats_alloc_lock, flags);
-	/*lint -restore*/
-	list_del_init(&tg->stats_alloc_node);
-	spin_unlock_irqrestore(&tg_stats_alloc_lock, flags);
-
-	free_percpu(tg->stats_cpu);
 
 	throtl_service_queue_exit(&tg->service_queue);
+}
+
+static void throtl_pd_free(struct blkg_policy_data *pd)
+{
+	struct throtl_grp *tg = pd_to_tg(pd);
+
+	free_percpu(tg->stats_cpu);
+	kfree(tg);
 }
 
 static void throtl_pd_reset_stats(struct blkcg_gq *blkg)
 {
 	struct throtl_grp *tg = blkg_to_tg(blkg);
 	int cpu;
-
-	if (tg->stats_cpu == NULL)
-		return;
 
 	/*lint -save -e64 -e530 -e713*/
 	for_each_possible_cpu(cpu) {
@@ -755,13 +720,6 @@ static void throtl_pd_reset_stats(struct blkcg_gq *blkg)
 static struct throtl_grp *throtl_lookup_tg(struct throtl_data *td,
 					   struct blkcg *blkcg)
 {
-	/*
-	 * This is the common case when there are no blkcgs.  Avoid lookup
-	 * in this case
-	 */
-	if (blkcg == &blkcg_root)
-		return td_root_tg(td);
-
 	return blkg_to_tg(blkg_lookup(blkcg, td->queue));
 }
 
@@ -1278,10 +1236,6 @@ static void throtl_update_dispatch_stats(struct blkcg_gq *blkg, u64 bytes,
 	struct tg_stats_cpu *stats_cpu;
 	unsigned long flags;
 
-	/* If per cpu stats are not allocated yet, don't do any accounting. */
-	if (tg->stats_cpu == NULL)
-		return;
-
 	/*
 	 * Disabling interrupts to provide mutual exclusion between two
 	 * writes on same cpu. It probably is not needed for 64bit. Not
@@ -1642,14 +1596,53 @@ static bool tg_may_dispatch_weight(struct throtl_grp *tg)
 		return true;
 }
 
+static void throtl_add_bio_weight_trace(struct bio *bio)
+{
+	bio->bi_throtl_in_queue = jiffies;
+#ifdef CONFIG_HUAWEI_IO_TRACING
+	trace_block_throttle_bio_in(bio);
+#endif
+}
+
+static void throtl_pop_bio_weight_trace(struct bio *bio, struct throtl_grp *tg)
+{
+	unsigned int delay;
+	char b[BDEVNAME_SIZE];
+
+	delay = jiffies_to_msecs(jiffies - bio->bi_throtl_in_queue);
+	if (delay > MAX_THROTL_DELAY_TM_MS) {
+		/*lint -save -e529 -e438*/
+		if ((unsigned int)atomic_read(&tg->max_delay) < delay)
+			atomic_set(&tg->max_delay, (int)delay);
+		atomic_inc(&tg->delay_cnt);
+		/*lint -restore*/
+		printk("io-latency: [throtl] [%s] sector=%lu size=%u flag=0x%lx delay=%d weight=%d type=%d\n",
+		       bdevname(bio->bi_bdev, b), bio->bi_iter.bi_sector,
+		       bio->bi_iter.bi_size, bio->bi_rw, delay,
+		       tg_to_blkg(tg)->weight, tg_to_blkg(tg)->blkcg->type);
+	}
+#ifdef CONFIG_HUAWEI_IO_TRACING
+	trace_block_throttle_bio_out(bio, (long)delay);
+#endif
+}
+
 static void throtl_add_bio_weight(struct bio *bio, struct throtl_grp *tg)
 {
 	struct throtl_data *td = tg->td;
 
+	throtl_add_bio_weight_trace(bio);
+#ifdef CONFIG_HISI_BLK_CORE
+	bio->io_in_count |= HISI_IO_IN_COUNT_WILL_BE_SEND_AGAIN;
+#endif
 	bio_list_add(&tg->bios, bio);
 	tg->service_queue.nr_queued[0]++;
 	tg->td->nr_queued[0]++;
 	tg->intime = jiffies;
+
+#ifdef CONFIG_HUAWEI_IO_TRACING
+        trace_block_throttle_weight(bio, tg_to_blkg(tg)->weight,
+                        tg->td->nr_queued[0]);
+#endif
 
 	if (tg->td->nr_queued[0] == 1 && !timer_pending(&tg->td->rescue_timer))
 		mod_timer(&tg->td->rescue_timer,
@@ -1664,6 +1657,7 @@ static void throtl_add_bio_weight(struct bio *bio, struct throtl_grp *tg)
 		list_add_tail(&tg->node, &td->active);
 	else
 		list_add_tail(&tg->node, &td->expired);
+
 }
 
 static struct bio *throtl_pop_queued_weight(struct throtl_grp *tg)
@@ -1675,6 +1669,7 @@ static struct bio *throtl_pop_queued_weight(struct throtl_grp *tg)
 	WARN_ON_ONCE(!bio);
 	/*lint -restore*/
 
+	throtl_pop_bio_weight_trace(bio, tg);
 	return bio;
 }
 
@@ -1748,6 +1743,13 @@ skip_charge:
 	tg->td->nr_queued[0]--;
 
 	bio_list_add(bios, bio);
+
+#ifdef CONFIG_HUAWEI_IO_TRACING
+	trace_block_throttle_dispatch(bio, tg_to_blkg(tg)->weight);
+	trace_block_throttle_iocost(tg->io_cost.bps[0],
+		tg->io_cost.iops[0], tg->io_cost.bytes_disp[0],
+		tg->io_cost.io_disp[0]);
+#endif
 }
 
 static int throtl_dispatch_tg_weight(struct throtl_grp *tg,
@@ -1804,7 +1806,7 @@ static bool should_start_new_slice(struct throtl_data *td)
 
 	/*lint -save -e64 -e550 -e774 -e826*/
 	list_for_each_entry(tg, &td->expired, node) {
-		if (tg->fg_flag)
+		if (tg_to_blkg(tg)->blkcg->type <= BLK_THROTL_FG)
 			return true;
 	}
 
@@ -2093,7 +2095,14 @@ static int blk_throtl_io_limit_wait(struct blkcg *blkcg,
 
 		task_set_sleep_on_throtl(current);
 		rcu_read_unlock();
+#ifdef CONFIG_HUAWEI_IO_TRACING
+		trace_block_throttle_limit_start(bio, tg->td->max_inflights,
+						 tg->inflights[bio_data_dir(bio)]);
+#endif
 		io_schedule();
+#ifdef CONFIG_HUAWEI_IO_TRACING
+		trace_block_throttle_limit_end(bio);
+#endif
 		rcu_read_lock();
 		task_clear_sleep_on_throtl(current);
 	}
@@ -2108,9 +2117,6 @@ static u64 tg_prfill_cpu_rwstat(struct seq_file *sf,
 	struct throtl_grp *tg = pd_to_tg(pd);
 	struct blkg_rwstat rwstat = { }, tmp;
 	int i, cpu;
-
-	if (tg->stats_cpu == NULL)
-		return 0;
 
 	for_each_possible_cpu(cpu) {
 		struct tg_stats_cpu *sc = per_cpu_ptr(tg->stats_cpu, cpu);
@@ -2135,50 +2141,26 @@ static int tg_print_cpu_rwstat(struct seq_file *sf, void *v)
 }
 /*lint -restore*/
 
-static u64 tg_prfill_fg_flag(struct seq_file *sf,
-			     struct blkg_policy_data *pd, int off)
+static int tg_print_cgroup_type(struct seq_file *sf, void *v)
 {
-	struct throtl_grp *tg = pd_to_tg(pd);
+	struct blkcg *blkcg = css_to_blkcg(seq_css(sf));
 
-	return __blkg_prfill_u64(sf, pd, (u64)tg->fg_flag);
-/*lint -save -e715*/
-}
-/*lint -restore*/
-
-static int tg_print_fg_flag(struct seq_file *sf, void *v)
-{
-	blkcg_print_blkgs(sf, css_to_blkcg(seq_css(sf)), tg_prfill_fg_flag,
-			  &blkcg_policy_throtl, 0, (bool)true);
+        seq_printf(sf, "type: %d\n", blkcg->type);
 	return 0;
-/*lint -save -e715*/
 }
 /*lint -restore*/
 
-static ssize_t tg_set_fg_flag(struct kernfs_open_file *of,
-			      char *buf, size_t nbytes, loff_t off)
+static int tg_set_cgroup_type(struct cgroup_subsys_state *css,
+                                  struct cftype *cft, u64 val)
 {
-	struct blkcg *blkcg = css_to_blkcg(of_css(of));
-	struct blkg_conf_ctx ctx;
-	struct throtl_grp *tg;
-	int ret;
+        struct blkcg *blkcg = css_to_blkcg(css);
+        unsigned int type = (unsigned int)val;
 
-	ret = blkg_conf_prep(blkcg, &blkcg_policy_throtl, buf, &ctx);
-	if (ret)
-		return ret;
+        if (type >= BLK_THROTL_TYPE_NR)
+                return -EINVAL;
 
-	if (ctx.v != 0 && ctx.v != 1) {
-		ret = -EINVAL;
-		goto out;
-	}
-
-	tg = blkg_to_tg(ctx.blkg);
-	tg->fg_flag = (unsigned int)ctx.v;
-
-out:
-	blkg_conf_finish(&ctx);
-	/*lint -save -e713 -e737*/
-	return ret ?: nbytes;
-	/*lint -restore*/
+        blkcg->type = type;
+        return 0;
 /*lint -save -e715*/
 }
 /*lint -restore*/
@@ -2603,11 +2585,14 @@ static u64 tg_prfill_max_inflights_device(struct seq_file *sf,
 		return 0;
 
 	/*lint -save -e438 -e529*/
-	seq_printf(sf, "%s: queued %u, read inflight %d, write inflight %d, devices inflights %d\n",
+	seq_printf(sf, "%s: queued %u, read inflight %d, write inflight %d, devices inflights %d, delay count %d, max delay %d\n",
 		   dname, tg->service_queue.nr_queued[0],
 		   atomic_read(&tg->inflights[0]),
 		   atomic_read(&tg->inflights[1]),
-		   atomic_read(&tg->td->inflights));
+		   atomic_read(&tg->td->inflights),
+		   atomic_read(&tg->delay_cnt),
+		   atomic_read(&tg->max_delay));
+
 	/*lint -restore*/
 
 	return 0;
@@ -3079,9 +3064,9 @@ static struct cftype throtl_files[] = {
 		.write = tg_set_iops_slice_device,
 	},
 	{
-		.name = "throttle.fg_flag",
-		.seq_show = tg_print_fg_flag,
-		.write = tg_set_fg_flag,
+		.name = "throttle.type",
+                .seq_show = tg_print_cgroup_type,
+                .write_u64 = tg_set_cgroup_type,
 	},
 	{ }	/* terminate */
 };
@@ -3098,13 +3083,14 @@ static void throtl_shutdown_wq(struct request_queue *q)
 
 /*lint -save -e31*/
 static struct blkcg_policy blkcg_policy_throtl = {
-	.pd_size		= sizeof(struct throtl_grp),
 	.cftypes		= throtl_files,
 
+	.pd_alloc_fn		= throtl_pd_alloc,
 	.pd_init_fn		= throtl_pd_init,
 	.pd_online_fn		= throtl_pd_online,
 	.pd_offline_fn		= throtl_pd_offline,
 	.pd_exit_fn		= throtl_pd_exit,
+	.pd_free_fn		= throtl_pd_free,
 	.pd_reset_stats_fn	= throtl_pd_reset_stats,
 };
 /*lint -restore*/
@@ -3123,6 +3109,9 @@ bool blk_throtl_bio(struct request_queue *q, struct bio *bio)
 	/* see throtl_charge_bio() */
 	if (bio->bi_rw & (REQ_THROTTLED | REQ_META | REQ_FLUSH |
 			  REQ_FUA | REQ_DISCARD))
+		goto out;
+
+	if ((bio->bi_rw & REQ_WRITE) && !(bio->bi_rw & REQ_SYNC))
 		goto out;
 
 	/* If we are on the way of memory reclaim, skip throttle */
@@ -3154,7 +3143,7 @@ again:
 			goto out_unlock_rcu;
 	}
 
-	if (tg->fg_flag)
+	if (blkcg->type <= BLK_THROTL_FG)
 		bio->bi_rw |= REQ_FG;
 
 	index = tg_data_index(tg, rw);

@@ -960,6 +960,8 @@ static int scsi_add_lun(struct scsi_device *sdev, unsigned char *inq_result,
 
 	if (*bflags & BLIST_RETRY_HWERROR)
 		sdev->retry_hwerror = 1;
+	if (*bflags & BLIST_RESET_HWERROR) /*lint !e737*/
+		sdev->reset_hwerror = 1;
 
 	if (*bflags & BLIST_NO_DIF)
 		sdev->no_dif = 1;

@@ -924,9 +924,8 @@ copy_failed:
 
 				err = kbasep_find_enclosing_cpu_mapping_offset(
 						kctx,
-						find->gpu_addr,
-						(uintptr_t) find->cpu_addr,
-						(size_t) find->size,
+						find->cpu_addr,
+						find->size,
 						&find->offset);
 
 				if (err)
@@ -2123,6 +2122,42 @@ static ssize_t set_core_mask(struct device *dev, struct device_attribute *attr, 
  * Writing to it will set the current core mask.
  */
 static DEVICE_ATTR(core_mask, S_IRUGO | S_IWUSR, show_core_mask, set_core_mask);
+
+
+/** The sysfs file @c vsync_dvfs_policy */
+static ssize_t set_vsync_dvfs_policy(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct kbase_device *kbdev;
+	u32 vsync_dvfs_enable;
+
+	kbdev = to_kbase_device(dev);
+	if (!kbdev)
+		return -ENODEV;
+
+	if ((kstrtoint(buf, 0, &vsync_dvfs_enable) != 0)
+		|| (vsync_dvfs_enable > 1)) {
+			dev_err(kbdev->dev, "Couldn't process set_vsync_dvfs_policy write operation.\n"
+			"Should set 0 or 1\n");
+			return -EINVAL;
+	}
+
+	kbdev->pm.backend.metrics.vsync_dvfs_policy = vsync_dvfs_enable;
+
+	return count;
+}
+
+static ssize_t show_vsync_dvfs_policy(struct device *dev, struct device_attribute *attr, char *const buf)
+{
+	struct kbase_device *kbdev;
+
+	kbdev = to_kbase_device(dev);
+	if (!kbdev)
+		return -ENODEV;
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", kbdev->pm.backend.metrics.vsync_dvfs_policy);
+}
+
+static DEVICE_ATTR(vsync_dvfs_policy, S_IRUGO | S_IWUSR, show_vsync_dvfs_policy, set_vsync_dvfs_policy);
 
 /**
  * set_soft_event_timeout() - Store callback for the soft_event_timeout sysfs
@@ -3704,6 +3739,7 @@ static struct attribute *kbase_attrs[] = {
 	&dev_attr_force_replay.attr,
 #endif
 	&dev_attr_js_timeouts.attr,
+	&dev_attr_vsync_dvfs_policy.attr,
 	&dev_attr_soft_event_timeout.attr,
 	&dev_attr_gpuinfo.attr,
 	&dev_attr_dvfs_period.attr,

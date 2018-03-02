@@ -27,6 +27,7 @@
 #include <asm/cpufeature.h>
 #include <asm/errno.h>
 #include <asm/esr.h>
+#include <asm/memory.h>
 #include <asm/thread_info.h>
 #include <asm/unistd.h>
 
@@ -93,7 +94,13 @@
 	disable_step_tsk x19, x20		// exceptions when scheduling.
 	.else
 	add	x21, sp, #S_FRAME_SIZE
-	.endif
+	get_thread_info tsk
+	/* Save the task's original addr_limit and set USER_DS (TASK_SIZE_64) */
+	ldr	x20, [tsk, #TI_ADDR_LIMIT]
+	str	x20, [sp, #S_ORIG_ADDR_LIMIT]
+	mov	x20, #TASK_SIZE_64
+	str	x20, [tsk, #TI_ADDR_LIMIT]
+	.endif /* \el == 0 */
 	mrs	x22, elr_el1
 	mrs	x23, spsr_el1
 	stp	lr, x21, [sp, #S_LR]
@@ -117,28 +124,34 @@
 	.endm
 
 	.macro	kernel_exit, el, ret = 0
+	.if	\el != 0
+	/* Restore the task's original addr_limit. */
+	ldr	x20, [sp, #S_ORIG_ADDR_LIMIT]
+	str	x20, [tsk, #TI_ADDR_LIMIT]
+	.endif
+
 	ldp	x21, x22, [sp, #S_PC]		// load ELR, SPSR
 	.if	\el == 0
 	ct_user_enter
 	ldr	x23, [sp, #S_SP]		// load return stack pointer
 	msr	sp_el0, x23
-
 #ifdef CONFIG_ARM64_ERRATUM_845719
-	alternative_insn						\
-	"nop",								\
-	"tbz x22, #4, 1f",						\
-	ARM64_WORKAROUND_845719
+alternative_if_not ARM64_WORKAROUND_845719
+	nop
+	nop
 #ifdef CONFIG_PID_IN_CONTEXTIDR
-	alternative_insn						\
-	"nop; nop",							\
-	"mrs x29, contextidr_el1; msr contextidr_el1, x29; 1:",		\
-	ARM64_WORKAROUND_845719
-#else
-	alternative_insn						\
-	"nop",								\
-	"msr contextidr_el1, xzr; 1:",					\
-	ARM64_WORKAROUND_845719
+	nop
 #endif
+alternative_else
+	tbz	x22, #4, 1f
+#ifdef CONFIG_PID_IN_CONTEXTIDR
+	mrs	x29, contextidr_el1
+	msr	contextidr_el1, x29
+#else
+	msr contextidr_el1, xzr
+#endif
+1:
+alternative_endif
 #endif
 	.endif
 	msr	elr_el1, x21			// set up the return data

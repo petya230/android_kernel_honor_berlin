@@ -118,12 +118,12 @@ static int _mmc_select_card(struct mmc_host *host, struct mmc_card *card)
 	12s,so we just retry once instead of four for damaged sd cards*/
 	err = mmc_wait_for_cmd(host, &cmd, 1);
 #ifdef CONFIG_HUAWEI_SDCARD_DSM
-	if (!strcmp(mmc_hostname(host), "mmc1"))
+	if (!strncmp(mmc_hostname(host), "mmc1", sizeof("mmc1")))
 		 dsm_sdcard_cmd_logs[DSM_SDCARD_CMD7].value = cmd.resp[0];
-	
+
 	if (err) {
 		if (-ENOMEDIUM != err && -ETIMEDOUT != err
-				&& !strcmp(mmc_hostname(host), "mmc1"))
+				&& !strncmp(mmc_hostname(host), "mmc1", sizeof("mmc1")))
 			dsm_sdcard_report(DSM_SDCARD_CMD7, DSM_SDCARD_CMD7_RESP_ERR);
 
 		return err;
@@ -260,7 +260,7 @@ int mmc_all_send_cid(struct mmc_host *host, u32 *cid)
 	err = mmc_wait_for_cmd(host, &cmd, MMC_CMD_RETRIES);
 
 #ifdef CONFIG_HUAWEI_SDCARD_DSM
-	if (!strcmp(mmc_hostname(host), "mmc1")) {
+	if (!strncmp(mmc_hostname(host), "mmc1", sizeof("mmc1"))) {
 		 dsm_sdcard_cmd_logs[DSM_SDCARD_CMD2_R0].value = cmd.resp[0];
 		 dsm_sdcard_cmd_logs[DSM_SDCARD_CMD2_R1].value = cmd.resp[1];
 		 dsm_sdcard_cmd_logs[DSM_SDCARD_CMD2_R2].value = cmd.resp[2];
@@ -269,17 +269,17 @@ int mmc_all_send_cid(struct mmc_host *host, u32 *cid)
 
 	if (err) {
 		if (-ENOMEDIUM != err && -ETIMEDOUT != err
-			&& !strcmp(mmc_hostname(host), "mmc1"))
+			&& !strncmp(mmc_hostname(host), "mmc1", sizeof("mmc1")))
 			dsm_sdcard_report(DSM_SDCARD_CMD2_R3, DSM_SDCARD_CMD2_RESP_ERR);
 
-		if (!strcmp(mmc_hostname(host),"mmc1"))
+		if (!strncmp(mmc_hostname(host),"mmc1", sizeof("mmc1")))
 			printk(KERN_ERR "%s:send cmd2 fail,err=%d\n",mmc_hostname(host),err);
 
 		return err;
 	}
 #else
 	if (err) {
-	    if (!strcmp(mmc_hostname(host),"mmc1"))
+	    if (!strncmp(mmc_hostname(host),"mmc1", sizeof("mmc1")))
 		   printk(KERN_ERR "%s:send cmd2 fail,err=%d\n", mmc_hostname(host), err);
 
 		return err;
@@ -380,7 +380,7 @@ mmc_send_cxd_data(struct mmc_card *card, struct mmc_host *host,
 
 #ifdef CONFIG_HUAWEI_EMMC_DSM
 	if (cmd.error || data.error)
-		if (!strcmp(mmc_hostname(host), "mmc0")) {
+		if (!strncmp(mmc_hostname(host), "mmc0", sizeof("mmc0"))) {
 			DSM_EMMC_LOG(card, DSM_EMMC_SEND_CXD_ERR,
 				"opcode:%d failed, cmd.error:%d, data.error:%d\n",
 				opcode, cmd.error, data.error);
@@ -695,7 +695,7 @@ int mmc_send_tuning(struct mmc_host *host)
 		goto out;
 	}
 
-	if (memcmp(data_buf, tuning_block_pattern, size))
+	if (memcmp(data_buf, tuning_block_pattern, size))/*lint !e670*/
 		err = -EIO;
 
 out:
@@ -737,7 +737,7 @@ mmc_send_bus_test(struct mmc_card *card, struct mmc_host *host, u8 opcode,
 	}
 
 	if (opcode == MMC_BUS_TEST_W)
-		memcpy(data_buf, test_buf, len);
+		memcpy(data_buf, test_buf, len);/*lint !e670*/
 
 	mrq.cmd = &cmd;
 	mrq.data = &data;
@@ -921,7 +921,7 @@ int sd_send_lock_unlock_cmd(struct mmc_card *card,u8* data_buf,int data_size,int
 	err = data.error;
 	if (err)
 	{
-		dev_err(mmc_dev(card->host), "%s: data error %d\n",	__func__, data.error); 
+		dev_err(mmc_dev(card->host), "%s: data error %d\n",	__func__, data.error);
 	}
 	return err;
 }

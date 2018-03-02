@@ -84,11 +84,18 @@
 #define   SDHCI_CTRL_ADMA32	0x10
 #define   SDHCI_CTRL_ADMA64	0x18
 #define   SDHCI_CTRL_8BITBUS	0x20
+/*0x10 means adma2 when host ver4 is enabled*/
+#define   SDHCI_CTRL_ADMA2	0x10
 
 #define SDHCI_POWER_CONTROL	0x29
 #define  SDHCI_POWER_ON		0x01
+#ifdef CONFIG_MMC_SDHCI_DWC_MSHC
+#define  SDHCI_POWER_180	0x0C
+#define  SDHCI_POWER_300	0x0E
+#else
 #define  SDHCI_POWER_180	0x0A
 #define  SDHCI_POWER_300	0x0C
+#endif
 #define  SDHCI_POWER_330	0x0E
 
 #define SDHCI_BLOCK_GAP_CONTROL	0x2A
@@ -108,6 +115,8 @@
 #define  SDHCI_CLOCK_CARD_EN	0x0004
 #define  SDHCI_CLOCK_INT_STABLE	0x0002
 #define  SDHCI_CLOCK_INT_EN	0x0001
+/*only for synopsis controller*/
+#define  SDHCI_PLL_ENABLE	0x0008
 
 #define SDHCI_TIMEOUT_CONTROL	0x2E
 
@@ -174,6 +183,14 @@
 #define  SDHCI_CTRL_EXEC_TUNING		0x0040
 #define  SDHCI_CTRL_TUNED_CLK		0x0080
 #define  SDHCI_CTRL_PRESET_VAL_ENABLE	0x8000
+#define  SDHCI_CTRL_64BIT_ADDR	    0x2000
+#define  SDHCI_CTRL_HOST_VER4_ENABLE	0x1000
+/* synopsys speed mode */
+#define  SDHCI_CTRL_HS_SDR		0x0001
+#define  SDHCI_CTRL_HS_DDR		0x0004
+#define  SDHCI_CTRL_HS_HS200		0x0003
+#define  SDHCI_CTRL_HS_HS400		0x0007
+
 
 #define SDHCI_CAPABILITIES	0x40
 #define  SDHCI_TIMEOUT_CLK_MASK	0x0000003F
@@ -322,11 +339,18 @@ struct sdhci_adma2_32_desc {
 	__le32	addr;
 }  __packed __aligned(SDHCI_ADMA2_32_ALIGN);
 
-/* ADMA2 64-bit DMA descriptor size */
-#define SDHCI_ADMA2_64_DESC_SZ	12
 
+#ifdef CONFIG_MMC_SDHCI_DWC_MSHC
+/* ADMA2 64-bit DMA descriptor size */
+#define SDHCI_ADMA2_64_DESC_SZ	16
 /* ADMA2 64-bit DMA alignment */
 #define SDHCI_ADMA2_64_ALIGN	8
+#else
+/* ADMA2 64-bit DMA descriptor size */
+#define SDHCI_ADMA2_64_DESC_SZ	12
+/* ADMA2 64-bit DMA alignment */
+#define SDHCI_ADMA2_64_ALIGN	4
+#endif
 
 /*
  * ADMA2 64-bit descriptor. Note 12-byte descriptor can't always be 8-byte
@@ -337,7 +361,7 @@ struct sdhci_adma2_64_desc {
 	__le16	len;
 	__le32	addr_lo;
 	__le32	addr_hi;
-}  __packed __aligned(4);
+}  __packed __aligned(SDHCI_ADMA2_64_ALIGN);
 
 #define ADMA2_TRAN_VALID	0x21
 #define ADMA2_NOP_END_VALID	0x3
@@ -451,9 +475,14 @@ struct sdhci_host {
 /* Controller broken with using ACMD23 */
 #define SDHCI_QUIRK2_ACMD23_BROKEN			(1<<14)
 #define SDHCI_QUIRK2_USE_1_8_V_VMMC			(1<<15)
+/* use hisi combo phy testchip */
+#define SDHCI_QUIRK2_HISI_COMBO_PHY_TC		(1UL<<31)
 
 	int irq;		/* Device IRQ */
 	void __iomem *ioaddr;	/* Mapped address */
+	void __iomem *mmc_phy;
+	void __iomem *mmc_sys;
+	void __iomem *sysctrl;
 
 	const struct sdhci_ops *ops;	/* Low level hw interface */
 
@@ -552,6 +581,9 @@ struct sdhci_host {
 #define SDHCI_TUNING_MODE_RESERVED	3
 	struct timer_list	tuning_timer;	/* Timer for tuning */
 	struct cmdq_host	*cq_host;
+	struct i2c_client *i2c_client;
+
+	int delay_measure_flag;
 
 	unsigned long private[0] ____cacheline_aligned;
 };
@@ -600,6 +632,9 @@ struct sdhci_ops {
 	void     (*check_busy_before_send_cmd)(struct sdhci_host *host,
 				struct mmc_command* cmd);
 	void (*restore_transfer_para)(struct sdhci_host *host);
+	void (*select_card_type)(struct sdhci_host *host);
+	void (*dumpregs)(struct sdhci_host *host);
+	void (*delay_measurement)(struct sdhci_host *host);
 };
 
 #ifdef CONFIG_MMC_SDHCI_IO_ACCESSORS

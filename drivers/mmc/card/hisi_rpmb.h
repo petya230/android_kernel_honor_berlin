@@ -27,6 +27,8 @@
 
 #define RPMB_DEVICE_IS_NOT_READY 0
 #define RPMB_DEVICE_IS_READY 1
+#define WAIT_INIT_TIMES 3000
+#define WAIT_CONFIG_TIME 5000
 
 /* not defined yet */
 #define RPMB_SVC_OK 0x0
@@ -65,7 +67,8 @@
 #define RPMB_SVC_WRITE_CAPABILITY	 0xc600FFF6
 #define RPMB_SVC_READ_CAPABILITY 0xc600FFF7
 #define RPMB_SVC_PARTITION 0xc600FFF8
-
+#define RPMB_SVC_MULTI_KEY 0xc600FFF9
+#define RPMB_SVC_CONFIG_VIEW 0xc600FFFA
 /* Request codes */
 #define RPMB_REQ_KEY 1
 #define RPMB_REQ_WCOUNTER 2
@@ -178,15 +181,20 @@ struct rpmb_request {
 	struct request_info info;
 	uint16_t key_frame_status;
 	struct _rpmb_debug {
+		uint64_t partition_size;
+		uint64_t result;
+		uint64_t test_time;
+		uint64_t test_hisee_atf_read_time;
+		uint64_t test_hisee_atf_write_time;
+		uint64_t test_hisee_atf_counter_time;
 		uint32_t key_id;
 		uint32_t func_id;
 		uint16_t start;
 		uint16_t block_count;
 		uint16_t write_value;
 		uint16_t read_check;
-		uint8_t result;
-		uint32_t test_time;
-		uint32_t partition_size;
+		uint8_t capability_times;
+		uint8_t multi_region_num;
 	} rpmb_debug;
 };
 

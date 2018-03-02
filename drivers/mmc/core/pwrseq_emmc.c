@@ -129,6 +129,7 @@ static int mmc_pwrseq_emmc_reset_nb(struct notifier_block *this,
 struct mmc_pwrseq *mmc_pwrseq_emmc_alloc(struct mmc_host *host,
 					 struct device *dev)
 {
+	/*lint -save -e429*/
 	struct mmc_pwrseq_emmc *pwrseq;
 	int ret = 0;
 
@@ -157,4 +158,5 @@ struct mmc_pwrseq *mmc_pwrseq_emmc_alloc(struct mmc_host *host,
 free:
 	kfree(pwrseq);
 	return ERR_PTR(ret);
+	/*lint -restore*/
 }

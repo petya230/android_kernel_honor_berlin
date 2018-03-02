@@ -637,7 +637,7 @@ mmc_lockable_store(struct device *dev, struct device_attribute *att,
         struct mmc_card *card = dev_to_mmc_card(dev);
         int ret = -EINVAL;
         u8 key_buffer[MAX_KEY_SIZE] = {0};
-        u8 command[MAX_COMMAND_SIZE] = {0};
+        char command[MAX_COMMAND_SIZE] = {0};
         int key_len = 0;
 
 
@@ -656,7 +656,7 @@ mmc_lockable_store(struct device *dev, struct device_attribute *att,
                 printk("[SDLOCK] this card support LOCK CARD Function from cmdclass!\n");
         }
 
-        if(MMC_SUCCESS!=extract(data, command, key_buffer, &key_len)) {
+        if(MMC_SUCCESS!=extract(data, (u8 *)command, key_buffer, &key_len)) {
                 return ret;
         }
 

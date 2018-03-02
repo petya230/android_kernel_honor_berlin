@@ -73,9 +73,15 @@ void show_pte(struct mm_struct *mm, unsigned long addr)
 
 	if (!mm)
 		mm = &init_mm;
-
 	pr_alert("pgd = %p\n", mm->pgd);
+#ifdef CONFIG_FREE_PAGES_RDONLY
+	if(addr >= VA_START)
+	        pgd = pgd_offset(&init_mm, addr);
+	else
+	        pgd = pgd_offset(mm, addr);
+#else
 	pgd = pgd_offset(mm, addr);
+#endif
 	pr_alert("[%08lx] *pgd=%016llx", addr, pgd_val(*pgd));
 
 	do {
@@ -594,7 +600,7 @@ asmlinkage int __exception do_debug_exception(unsigned long addr,
 }
 
 #ifdef CONFIG_ARM64_PAN
-void cpu_enable_pan(void)
+void cpu_enable_pan(void *__unused)
 {
 	config_sctlr_el1(SCTLR_EL1_SPAN, 0);
 }

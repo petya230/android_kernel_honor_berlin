@@ -1,4 +1,14 @@
-
+/*
+ *  linux/drivers/mmc/core/sd.c
+ *
+ *  Copyright (C) 2003-2004 Russell King, All Rights Reserved.
+ *  SD support Copyright (C) 2004 Ian Molton, All Rights Reserved.
+ *  Copyright (C) 2005-2007 Pierre Ossman, All Rights Reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
 
 #include <linux/err.h>
 #include <linux/sizes.h>
@@ -89,7 +99,7 @@ void mmc_decode_cid(struct mmc_card *card)
 	card->cid.prod_name[4]		= UNSTUFF_BITS(resp, 64, 8);
 	card->cid.hwrev			= UNSTUFF_BITS(resp, 60, 4);
 	card->cid.fwrev			= UNSTUFF_BITS(resp, 56, 4);
-	card->cid.serial		= UNSTUFF_BITS(resp, 24, 32);
+	card->cid.serial		= UNSTUFF_BITS(resp, 24, 32);/*lint !e598 !e648*/
 	card->cid.year			= UNSTUFF_BITS(resp, 12, 8);
 	card->cid.month			= UNSTUFF_BITS(resp, 8, 4);
 
@@ -163,6 +173,16 @@ static int mmc_decode_csd(struct mmc_card *card)
 
 		m = UNSTUFF_BITS(resp, 48, 22);
 		csd->capacity     = (1 + m) << 10;
+
+		/*
+		 * Bit 12 - temporary write protection
+		 * Bit 13 - permanent write protection
+		 * while do sd card detection, check sd wite protection attribute
+		 */
+		if (UNSTUFF_BITS(resp, 12, 1) || UNSTUFF_BITS(resp, 13, 1)) {
+			pr_info("%s, SD is on write protection status\n", mmc_hostname(card->host));
+			mmc_card_set_readonly(card);
+		}
 
 		csd->read_blkbits = 9;
 		csd->read_partial = 0;
@@ -703,6 +723,7 @@ out:
 	return err;
 }
 
+/*lint -save -e421*/
 MMC_DEV_ATTR(cid, "%08x%08x%08x%08x\n", card->raw_cid[0], card->raw_cid[1],
 	card->raw_cid[2], card->raw_cid[3]);
 MMC_DEV_ATTR(csd, "%08x%08x%08x%08x\n", card->raw_csd[0], card->raw_csd[1],
@@ -719,7 +740,7 @@ MMC_DEV_ATTR(oemid, "0x%04x\n", card->cid.oemid);
 MMC_DEV_ATTR(serial, "0x%08x\n", card->cid.serial);
 MMC_DEV_ATTR(speed_class, "0x%08x\n", card->ssr.speed_class);
 MMC_DEV_ATTR(state, "0x%08x\n", card->state);
-
+/*lint -restore*/
 
 static struct attribute *sd_std_attrs[] = {
 	&dev_attr_cid.attr,
@@ -870,7 +891,7 @@ int mmc_sd_get_csd(struct mmc_host *host, struct mmc_card *card)
 	err = mmc_send_csd(card, card->raw_csd);
 
 #ifdef CONFIG_HUAWEI_SDCARD_DSM
-	if (!strcmp(mmc_hostname(host), "mmc1")) {
+	if (!strncmp(mmc_hostname(host), "mmc1",sizeof("mmc1"))) {
 		dsm_sdcard_cmd_logs[DSM_SDCARD_CMD9_R0].value = card->raw_csd[0];
 		dsm_sdcard_cmd_logs[DSM_SDCARD_CMD9_R1].value = card->raw_csd[1];
 		dsm_sdcard_cmd_logs[DSM_SDCARD_CMD9_R2].value = card->raw_csd[2];
@@ -879,7 +900,7 @@ int mmc_sd_get_csd(struct mmc_host *host, struct mmc_card *card)
 
 	if (err) {
 		if (-ENOMEDIUM != err && -ETIMEDOUT != err
-				&& !strcmp(mmc_hostname(host), "mmc1"))
+				&& !strncmp(mmc_hostname(host), "mmc1",sizeof("mmc1")))
 			dsm_sdcard_report(DSM_SDCARD_CMD9_R3, DSM_SDCARD_CMD9_RESP_ERR);
 
 		return err;

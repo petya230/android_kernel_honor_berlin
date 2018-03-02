@@ -223,7 +223,7 @@ void blk_queue_bounce_limit(struct request_queue *q, u64 max_addr)
 	int dma = 0;
 
 	q->bounce_gfp = GFP_NOIO;
-#ifdef CONFIG_MMC_BLOCK_IOMMU_64BIT 
+#ifdef CONFIG_MMC_BLOCK_IOMMU_64BIT
 	/*
 	 * Assume anything <= 4GB can be handled by IOMMU.  Actually
 	 * some IOMMUs can handle everything, but I don't know of a

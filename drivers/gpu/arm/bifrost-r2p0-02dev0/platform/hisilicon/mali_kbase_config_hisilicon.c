@@ -226,7 +226,7 @@ static int mali_kbase_get_dev_status(struct device *dev,
 
 	if (kbdev->pm.backend.metrics.kbdev != kbdev) {
 		pr_err("%s pm backend metrics not initialized\n", __func__);
-		return 0;
+		return -EINVAL;
 	}
 
 	(void)kbase_pm_get_dvfs_action(kbdev);
@@ -303,7 +303,7 @@ int kbase_platform_dvfs_enable(struct kbase_device *kbdev, bool enable, int freq
 #ifdef CONFIG_DEVFREQ_THERMAL
 static unsigned long hisi_model_static_power(unsigned long voltage)
 {
-	unsigned long temperature;
+	int temperature;
 	const unsigned long voltage_cubed = (voltage * voltage * voltage) >> 10;
 	unsigned long temp, temp_squared, temp_cubed;
 	unsigned long temp_scaling_factor = 0;
@@ -329,7 +329,7 @@ static unsigned long hisi_model_static_power(unsigned long voltage)
 	}
 
 	temperature = get_soc_temp();
-	temp = temperature / 1000;
+	temp = (unsigned long)((long)temperature)/ 1000;
 	temp_squared = temp * temp;
 	temp_cubed = temp_squared * temp;
 	temp_scaling_factor = capacitance[3] * temp_cubed +
@@ -341,7 +341,7 @@ static unsigned long hisi_model_static_power(unsigned long voltage)
 }
 
 #ifdef CONFIG_HISI_THERMAL_SPM
-unsigned long hisi_calc_gpu_static_power(unsigned long voltage, unsigned long temperature)
+unsigned long hisi_calc_gpu_static_power(unsigned long voltage, int temperature)
 {
 	const long voltage_cubed = (voltage * voltage * voltage) >> 10;
 	long temp, temp_squared, temp_cubed;
@@ -407,8 +407,11 @@ static unsigned long hisi_model_dynamic_power(unsigned long freq,
 
 	return (coefficient * v2 * f_mhz) / 1000000; /* mW */
 }
-
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 4, 0))
+static struct devfreq_cooling_power hisi_model_ops = {
+#else
 static struct devfreq_cooling_ops hisi_model_ops = {
+#endif
 	.get_static_power = hisi_model_static_power,
 	.get_dynamic_power = hisi_model_dynamic_power,
 };

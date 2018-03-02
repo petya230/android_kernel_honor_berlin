@@ -88,7 +88,7 @@ static char *_dev_name[4] = {
 };
 
 u64 *mmc_trace_switch = NULL;
-u64 g_mmc_trace_buffer_addr = NULL;
+u64 g_mmc_trace_buffer_addr = 0;
 u32 g_mmc_trace_fd_size = 0;
 
 /* 注册时返回的模块信息*/
@@ -576,17 +576,17 @@ static void mmc_trace_xprintf(const char *fmt, va_list ap, void (*mmc_trace_prin
 {
 	char scratch[MMC_TRACE_SCRATCH_SIZE] = { 0 };
 	char time_trace[MMC_TRACE_TIME_SIZE] = { 0 };
-	char dev_name[MMC_TRACE_DEVNAME_SIZE] = { 0 };
-	int i = 0;
+	char device_name[MMC_TRACE_DEVNAME_SIZE] = { 0 };
+	u32 i = 0;
 
 	mmc_trace_get_cur_time_str(time_trace, sizeof(time_trace));
 	for (i = 0; i < sizeof(time_trace); i++) {
 		mmc_trace_printf_putc(time_trace[i], client);
 	}
 
-	mmc_trace_get_device_str(idex, dev_name, sizeof(dev_name));
-	for (i = 0; i < sizeof(dev_name); i++) {
-		mmc_trace_printf_putc(dev_name[i], client);
+	mmc_trace_get_device_str(idex, device_name, sizeof(device_name));
+	for (i = 0; i < sizeof(device_name); i++) {
+		mmc_trace_printf_putc(device_name[i], client);
 	}
 
 	for (;;) {
@@ -729,7 +729,7 @@ static int mmc_trace_clean_rdr_memory(struct rdr_register_module_result rdr_info
 		return -1;
 	}
 
-	pr_err("mmc trace buf [%p] , size [%x] \n", dump_vir_addr, rdr_info.log_len);
+	pr_err("mmc trace buf [%pK] , size [%x] \n", dump_vir_addr, rdr_info.log_len);
 
 	memset(dump_vir_addr, 0, rdr_info.log_len);
 
@@ -788,7 +788,7 @@ static int mmc_trace_rdr_register_core(void)
 static int mmc_trace_rdr_register_exception(void)
 {
 	struct rdr_exception_info_s einfo;
-	int ret = -1;
+	u32 ret;
 
 	/*本模块初始化失败异常注册. */
 	memset(&einfo, 0, sizeof(struct rdr_exception_info_s));
@@ -804,12 +804,12 @@ static int mmc_trace_rdr_register_exception(void)
 	/* 通知AP重置状态.并且通知ap复位全系统 */
 	einfo.e_reset_core_mask = RDR_AP;
 	/* 不允许本异常重入(多次发生不重复处理). */
-	einfo.e_reentrant = RDR_REENTRANT_DISALLOW;
+	einfo.e_reentrant = (u32)RDR_REENTRANT_DISALLOW;
 	/* 异常类型初始化失败 */
 	einfo.e_exce_type = MMC_S_EXCEPTION;
 	/* 异常发生在EMMC. */
 	einfo.e_from_core = RDR_EMMC;
-	einfo.e_upload_flag = RDR_UPLOAD_NO;
+	einfo.e_upload_flag = (u32)RDR_UPLOAD_NO;
 	memcpy(einfo.e_from_module, "RDR_MMC_INIT", sizeof("RDR_MMC_INIT"));
 	memcpy(einfo.e_desc, "RDR_MMC_init fail.", sizeof("RDR_MMC_init fail."));
 
@@ -827,10 +827,10 @@ static int mmc_trace_rdr_register_exception(void)
 	einfo.e_reboot_priority = RDR_REBOOT_NOW;
 	einfo.e_notify_core_mask = RDR_AP;
 	einfo.e_reset_core_mask = RDR_AP;
-	einfo.e_reentrant = RDR_REENTRANT_DISALLOW;
+	einfo.e_reentrant = (u32)RDR_REENTRANT_DISALLOW;
 	einfo.e_exce_type = MMC_S_EXCEPTION;
 	einfo.e_from_core = RDR_EMMC;
-	einfo.e_upload_flag = RDR_UPLOAD_NO;
+	einfo.e_upload_flag = (u32)RDR_UPLOAD_NO;
 	memcpy(einfo.e_from_module, "RDR_MMC_TIME_OUT", sizeof("RDR_MMC_TIME_OUT"));
 	memcpy(einfo.e_desc, "RDR_MMC_TIME_OUT fail.", sizeof("RDR_MMC_TIME_OUT fail."));
 
@@ -943,14 +943,14 @@ struct mmc_trace_client *mmc_trace_client_init(void)
 
 	entry = proc_create(pClt->client_name, 0660, NULL, &mmc_trace_file_ops);
 	if (!entry) {
-		pr_err("%s: failed to create proc entry, %p\n", __func__, entry);
+		pr_err("%s: failed to create proc entry, %pK\n", __func__, entry);
 		return NULL;
 	}
 
-	pr_err("mmc_trace adr begin [%p] ,fd size [%d] \n", dump_vir_addr, g_mmc_trace_fd_size);
-	pr_err("mmc_trace initbuf [%p], size [%ld] \n", ((struct queue *)(pInit->init_buff))->data, pInit->buff_size - sizeof(struct queue) - sizeof(struct mmc_trace_init));
-	pr_err("mmc_trace commbuf [%p], size [%ld] \n", ((struct queue *)(pComm->comm_buff))->data, pComm->buff_size - sizeof(struct queue) - sizeof(struct mmc_trace_comm));
-	pr_err("mmc_trace perfbuf [%p], size [%ld] \n", ((struct queue *)(pPerf->perf_buff))->data, pPerf->buff_size - sizeof(struct queue) - sizeof(struct mmc_trace_perf));
+	pr_err("mmc_trace adr begin [%pK] ,fd size [%d] \n", dump_vir_addr, g_mmc_trace_fd_size);
+	pr_err("mmc_trace initbuf [%pK], size [%ld] \n", ((struct queue *)(pInit->init_buff))->data, pInit->buff_size - sizeof(struct queue) - sizeof(struct mmc_trace_init));
+	pr_err("mmc_trace commbuf [%pK], size [%ld] \n", ((struct queue *)(pComm->comm_buff))->data, pComm->buff_size - sizeof(struct queue) - sizeof(struct mmc_trace_comm));
+	pr_err("mmc_trace perfbuf [%pK], size [%ld] \n", ((struct queue *)(pPerf->perf_buff))->data, pPerf->buff_size - sizeof(struct queue) - sizeof(struct mmc_trace_perf));
 
 	queue_init((struct queue *)(pInit->init_buff), pInit->name, pInit->buff_size - sizeof(struct queue) - sizeof(struct mmc_trace_init));
 	queue_init((struct queue *)(pComm->comm_buff), pComm->name, pComm->buff_size - sizeof(struct queue) - sizeof(struct mmc_trace_comm));
@@ -1227,15 +1227,15 @@ static int mmc_trace_tofile(MMC_TRACE_TYPE trace_type)
 	/*获取各维测log的生成文件名，内存路径及大小 */
 	if (trace_type == TRACE_INIT) {
 		mmc_trace_filepath = ((struct mmc_trace_init *)(mmc_trace_fd->mmc_trace_init))->init_save_filepath;
-		mmc_trace_buffer = ((struct mmc_trace_init *)(mmc_trace_fd->mmc_trace_init))->init_buff;
+		mmc_trace_buffer = (char *)(((struct mmc_trace_init *)(mmc_trace_fd->mmc_trace_init))->init_buff);
 		mmc_trace_size = ((struct mmc_trace_init *)(mmc_trace_fd->mmc_trace_init))->buff_size - sizeof(struct mmc_trace_init) - sizeof(struct queue);
 	} else if (trace_type == TRACE_COMM) {
 		mmc_trace_filepath = ((struct mmc_trace_comm *)(mmc_trace_fd->mmc_trace_comm))->comm_save_filepath;
-		mmc_trace_buffer = ((struct mmc_trace_comm *)(mmc_trace_fd->mmc_trace_comm))->comm_buff;
+		mmc_trace_buffer = (char *)(((struct mmc_trace_comm *)(mmc_trace_fd->mmc_trace_comm))->comm_buff);
 		mmc_trace_size = ((struct mmc_trace_comm *)(mmc_trace_fd->mmc_trace_comm))->buff_size - sizeof(struct mmc_trace_comm) - sizeof(struct queue);
 	} else if (trace_type == TRACE_PERF) {
 		mmc_trace_filepath = MMC_TRACE_PERF_RAWDATA_PATH;
-		mmc_trace_buffer = ((struct mmc_trace_perf *)(mmc_trace_fd->mmc_trace_perf))->perf_buff;
+		mmc_trace_buffer = (char *)(((struct mmc_trace_perf *)(mmc_trace_fd->mmc_trace_perf))->perf_buff);
 		mmc_trace_size = ((struct mmc_trace_perf *)(mmc_trace_fd->mmc_trace_perf))->buff_size - sizeof(struct mmc_trace_perf) - sizeof(struct queue);
 	} else {
 		pr_err("%s: trace_type is invalid \n", __func__);
@@ -1395,10 +1395,10 @@ void mmc_trace_perf_tofile(void)
 
 	/*日志个数，根据划分内存大小来计算 */
 	buf_size = ((struct queue *)(((struct mmc_trace_perf *)(mmc_trace_fd->mmc_trace_perf))->perf_buff))->max;
-	cnt = buf_size / sizeof(struct mmc_trace_perf_record_exp);
+	cnt = buf_size / (int)sizeof(struct mmc_trace_perf_record_exp);
 	step = sizeof(struct mmc_trace_perf_record_exp);
 
-	MMCTRACE_DEBUGPL(0x3, "@@@@ record is %p \n", record_exp);
+	MMCTRACE_DEBUGPL(0x3, "@@@@ record is %pK \n", record_exp);
 	MMCTRACE_DEBUGPL(0x3, "@@@@ record time is %llx \n", record_exp->time);
 	MMCTRACE_DEBUGPL(0x3, "@@@@ record id is %d \n", record_exp->id);
 	MMCTRACE_DEBUGPL(0x3, "@@@@ record pos is %d \n", record_exp->pos);
@@ -1427,7 +1427,7 @@ void mmc_trace_perf_tofile(void)
 	for (i = 0; i < cnt; i++) {
 		if (record_exp->time != 0) {
 			MMCTRACE_DEBUGPL(0x3, "%d,%x,%d \n", record_exp->id, record_exp->pos, i);
-			MMCTRACE_DEBUGPL(0x3, "%s: %p \n", __func__, record_exp);
+			MMCTRACE_DEBUGPL(0x3, "%s: %pK \n", __func__, record_exp);
 
 			memset(record_act, 0x00, trace_len);
 			strncpy(&(record_act->end[0]), end_flag, sizeof(end_flag));

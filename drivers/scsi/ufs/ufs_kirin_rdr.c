@@ -75,7 +75,7 @@ static void ufs_rdr_hba_print( struct ufs_hba *hba, const char * format, ... )
 	va_list args;
 	va_start(args, format);
 
-	ufs_rdr_hba_print( hba, format, args );
+	ufs_rdr_hba_vprint( hba, format, args );
 
 	va_end(args);
 }
@@ -149,7 +149,6 @@ ufs_dump_end_tag:
 		pfn_cb(modid, coreid);
 	}
 }
-
 
 void ufs_rdr_log_clean( void )
 {

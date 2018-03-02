@@ -84,6 +84,7 @@ enum {
 	UFSHCD_STATE_RESET,
 	UFSHCD_STATE_ERROR,
 	UFSHCD_STATE_OPERATIONAL,
+	UFSHCD_STATE_EH_SCHEDULED,
 };
 
 enum {
@@ -462,9 +463,6 @@ struct ufs_hba_variant_ops {
 #ifdef CONFIG_SCSI_UFS_HS_ERROR_RECOVER
 	int	(*get_pwr_by_debug_register)(struct ufs_hba *hba);
 #endif
-#ifdef CONFIG_SCSI_UFS_HAND_WARM
-	int	(*handwarm_thread)(void *d);
-#endif
 };
 
 /* clock gating state  */
@@ -543,17 +541,6 @@ struct ufs_unique_number {
 	uint16_t manufacturer_id;
 };
 
-#ifdef CONFIG_SCSI_UFS_HAND_WARM
-#define TEMP_UPDATE_TIMEOUT (10 * 1000)
-#define TEMP_BUF_SIZE (4 * 1024)
-#define NR_FAST_CPUS 4
-#define TEMP_HIGH_THRESHOLD	40
-#define TEMP_LOW_THRESHOLD	10
-#define TEMP_STEP		10
-struct ufs_hm_thread {
-	struct task_struct *task;
-};
-#endif
 /**
  * struct ufs_hba - per adapter private structure
  * @mmio_base: UFSHCI base register address
@@ -660,7 +647,7 @@ struct ufs_hba {
 	struct ufs_hba_variant_ops *vops;
 	void *priv;
 	unsigned int irq;
-	bool is_irq_enabled;
+	int volt_irq;
 
 	/* Interrupt aggregation support is broken */
 	#define UFSHCD_QUIRK_BROKEN_INTR_AGGR			UFS_BIT(0)
@@ -735,6 +722,7 @@ struct ufs_hba {
 #ifdef CONFIG_SCSI_UFS_HS_ERROR_RECOVER
 	struct work_struct recover_hs_work;
 #endif
+	struct work_struct ffu_pm_work;
 	/* HBA Errors */
 	u32 errors;
 	u32 uic_error;
@@ -783,7 +771,7 @@ struct ufs_hba {
 	*/
 #define UFSHCD_CAP_SSU_BY_SELF (1 << 30)
 	/* Allow auto hiberb8 */
-#define UFSHCD_CAP_AUTO_HIBERN8 (1 << 31)
+#define UFSHCD_CAP_AUTO_HIBERN8 (1UL << 31)
 
 	u32 ahit_ts;
 	u32 ahit_ah8itv;
@@ -797,6 +785,9 @@ struct ufs_hba {
 #endif
 	bool is_sys_suspended;
 
+	int			latency_hist_enabled;
+	struct io_latency_state io_lat_s;
+
 	struct ufs_unique_number unique_number;
 
 	uint16_t manufacturer_id;
@@ -808,10 +799,6 @@ struct ufs_hba {
 	struct dentry		*debugfs_root;
 	struct dentry		*hba_addr;
 
-#ifdef CONFIG_SCSI_UFS_HAND_WARM
-	struct ufs_hm_thread hand_warm_array[NR_FAST_CPUS];
-#endif
-
 	struct ufs_log_attr	log_attr;
 	int force_reset_hba;
 #ifdef CONFIG_SCSI_UFS_HS_ERROR_RECOVER
@@ -820,6 +807,9 @@ struct ufs_hba {
 	struct wake_lock	recover_wake_lock;
 	int disable_suspend;
 	int check_pwm_after_h8;
+	int v_rx;
+	int v_tx;
+	int init_retry;
 #endif
 #ifdef CONFIG_SCSI_UFS_KIRIN_LINERESET_CHECK
 	bool bg_task_enable;
@@ -927,18 +917,6 @@ extern int ufshcd_dme_get_attr(struct ufs_hba *hba, u32 attr_sel,
 			       u32 *mib_val, u8 peer);
 extern void ufsdbg_add_debugfs(struct ufs_hba *hba);
 
-#ifdef CONFIG_SCSI_UFS_HAND_WARM
-extern void hisi_get_fast_cpus(struct cpumask *cpumask);
-extern int ipa_get_sensor_value(u32 sensor, unsigned long *val);
-enum {
-	cluster0 =0,
-	cluster1,
-	GPU,
-	modem,
-	ddr,
-};
-#endif
-
 /* UIC command interfaces for DME primitives */
 #define DME_LOCAL	0
 #define DME_PEER	1
@@ -1035,8 +1013,17 @@ int ufshcd_change_power_mode(struct ufs_hba *hba,
 			     struct ufs_pa_layer_attr *pwr_mode);
 int ufshcd_wait_for_doorbell_clr(struct ufs_hba *hba, u64 wait_timeout_us);
 void ufshcd_enable_intr(struct ufs_hba *hba, u32 intrs);
+
 #ifdef CONFIG_SCSI_UFS_INLINE_CRYPTO
 int ufshcd_keyregs_remap_wc(struct ufs_hba *hba, resource_size_t hci_reg_base);
 #endif
 
+int ufshcd_read_unit_desc_param(struct ufs_hba *hba,
+					      int lun,
+					      enum unit_desc_param param_offset,
+					      u8 *param_read_buf,
+					      u32 param_size);
+
+int ufshcd_send_vendor_scsi_cmd(struct ufs_hba *hba,
+		struct scsi_device *sdp, unsigned char* cdb, void* buf);
 #endif /* End of Header */

@@ -141,6 +141,7 @@ struct mmc_data;
  */
 struct dw_mci {
 	int wifi_sdio_sdr104_160M;
+	int wifi_sdio_sdr104_177M;
 	spinlock_t		lock;
 	spinlock_t		irq_lock;
 	void __iomem		*regs;
@@ -258,12 +259,12 @@ struct dw_mci {
 	int						sd_reinit;
 	int						sd_hw_timeout;
 
-    /*那那??DT??D??? begin*/
+    /*??DT??D??? begin*/
 	u32           		    clock;		      /* Current clock (MHz) */
 	u32          		    clock_to_restore; /* Saved clock for dynamic clock gating (MHz) */
 	bool                    tuning_done;
 	bool					tuning_needed;	  /* tuning move start flag */
-    /*那那??DT??D??? end  */
+    /*??DT??D??? end  */
 	int			sdio_id0;
 
 	struct timer_list       cmd11_timer;

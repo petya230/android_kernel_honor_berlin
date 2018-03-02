@@ -75,6 +75,7 @@ int kbasep_pm_metrics_init(struct kbase_device *kbdev)
 	kbdev->pm.backend.metrics.kbdev = kbdev;
 	kbdev->pm.backend.metrics.vsync_hit = 0;
 	kbdev->pm.backend.metrics.utilisation = 0;
+	kbdev->pm.backend.metrics.vsync_dvfs_policy = 0;
 
 	kbdev->pm.backend.metrics.time_period_start = ktime_get();
 	kbdev->pm.backend.metrics.time_busy = 0;

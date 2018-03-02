@@ -27,6 +27,10 @@
 #include <linux/blktrace_api.h>
 #include <linux/hrtimer.h>
 
+#define ROW_IO_MAX_LATENCY_CTRL
+#ifdef ROW_IO_MAX_LATENCY_CTRL
+#define ROW_IO_MAX_LATENCY_MS		1000
+#endif
 /*
  * enum row_queue_prio - Priorities of the ROW queues
  *
@@ -550,6 +554,26 @@ static void row_dispatch_insert(struct row_data *rd, struct request *rq)
 	}
 }
 
+#ifdef ROW_IO_MAX_LATENCY_CTRL
+static int row_queue_is_expired(struct row_data *rd,int start_idx,int end_idx)
+{
+	int i;
+	for(i=start_idx;i<end_idx;i++){
+		if (!list_empty(&rd->row_queues[i].fifo)){
+			struct request *check_req = list_entry_rq(rd->row_queues[i].fifo.next);/*lint !e826 */
+			if (check_req && time_after(jiffies,  ((unsigned long) (check_req)->fifo_time) + msecs_to_jiffies(ROW_IO_MAX_LATENCY_MS)) )/*lint !e666 !e550 !e774 */
+				return 1;
+		}
+	}
+	return 0;
+}
+#else
+static int row_queue_is_expired(struct row_data *rd,int start_idx,int end_idx)
+{
+	return 0;
+}
+#endif
+
 /*
  * row_get_ioprio_class_to_serve() - Return the next I/O priority
  *				      class to dispatch requests from
@@ -588,13 +612,13 @@ static int row_get_ioprio_class_to_serve(struct row_data *rd, int force)
 				}
 			}
 
-			if (row_regular_req_pending(rd) &&
+			if (row_regular_req_pending(rd) &&( (row_queue_is_expired(rd,ROWQ_REG_PRIO_IDX,ROWQ_LOW_PRIO_IDX)) ||
 			    (rd->reg_prio_starvation.starvation_counter >=
-			     rd->reg_prio_starvation.starvation_limit))
+			     rd->reg_prio_starvation.starvation_limit)))
 				ret = IOPRIO_CLASS_BE;
-			else if (row_low_req_pending(rd) &&
+			else if (row_low_req_pending(rd) &&( (row_queue_is_expired(rd,ROWQ_LOW_PRIO_IDX,ROWQ_MAX_PRIO)) ||
 			    (rd->low_prio_starvation.starvation_counter >=
-			     rd->low_prio_starvation.starvation_limit))
+			     rd->low_prio_starvation.starvation_limit)))
 				ret = IOPRIO_CLASS_IDLE;
 			else
 				ret = IOPRIO_CLASS_RT;
@@ -627,9 +651,9 @@ check_idling:
 			    !force && row_queues_def[i].idling_enabled)
 				goto initiate_idling;
 		} else {
-			if (row_low_req_pending(rd) &&
+			if (row_low_req_pending(rd) && ( (row_queue_is_expired(rd,ROWQ_LOW_PRIO_IDX,ROWQ_MAX_PRIO)) ||
 			    (rd->low_prio_starvation.starvation_counter >=
-			     rd->low_prio_starvation.starvation_limit))
+			     rd->low_prio_starvation.starvation_limit)))
 				ret = IOPRIO_CLASS_IDLE;
 			else
 				ret = IOPRIO_CLASS_BE;
@@ -685,7 +709,11 @@ static int row_get_next_queue(struct request_queue *q, struct row_data *rd,
 	int i = start_idx;
 	bool restart = true;
 	int ret = -EIO;
-
+	do{
+		if(row_queue_is_expired(rd,i,i+1))
+			return i;
+	}while (++i < end_idx);
+	i = start_idx;
 	do {
 		if (list_empty(&rd->row_queues[i].fifo) ||
 		    rd->row_queues[i].nr_dispatched >=
@@ -961,10 +989,10 @@ static ssize_t row_var_show(int var, char *page)
 	return snprintf(page, 100, "%d\n", var);
 }
 
-static ssize_t row_var_store(int *var, const char *page, size_t count)
+static ssize_t row_var_store(unsigned long *var, const char *page, size_t count)
 {
 	int err;
-	err = kstrtoul(page, 10, (unsigned long *)var);
+	err = kstrtoul(page, 10, var);
 
 	return count;
 }
@@ -1003,13 +1031,13 @@ static ssize_t __FUNC(struct elevator_queue *e,				\
 		const char *page, size_t count)				\
 {									\
 	struct row_data *rowd = e->elevator_data;			\
-	int __data;						\
+	unsigned long __data;						\
 	int ret = row_var_store(&__data, (page), count);		\
 	if (__data < (MIN))						\
 		__data = (MIN);						\
 	else if (__data > (MAX))					\
 		__data = (MAX);						\
-	*(__PTR) = __data;						\
+	*(__PTR) = (int)__data;						\
 	return ret;							\
 }
 STORE_FUNCTION(row_hp_read_quantum_store,

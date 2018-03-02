@@ -21,12 +21,17 @@
 #define	DSM_UFS_SCSI_CMD_ERR		928008009
 #define	DSM_UFS_VOLT_GPIO_ERR		928008010
 #define	DSM_UFS_LINKUP_ERR		928008011
-#define	DSM_UFS_INLINE_CRYPTO_ERR		928008012
-#define	DSM_UFS_LIFE_TIME_ERR		928008013
+#define	DSM_UFS_ENTER_OR_EXIT_H8_ERR	928008012
+#define	DSM_UFS_LIFETIME_EXCCED_ERR	928008013
+#define	DSM_UFS_TIMEOUT_SERIOUS		928008014
+#define	DSM_UFS_DEV_INTERNEL_ERR		928008015
+#define	DSM_UFS_INTER_INFO_ABNORMAL	928008016
+#define	DSM_UFS_INLINE_CRYPTO_ERR		928008017
 
 #define FASTBOOTDMD_PWR_ERR  BIT(4) /*Power mode change err ,set bit4*/
 #define FASTBOOTDMD_RW_ERR  BIT(15) /*read and write err, set bit15*/
 #define TEN_BILLION_BITS 10000000000
+#define DEFAULT_UFS_BER_START_CALC_VALUE 1
 struct ufs_dsm_log {
 	char dsm_log[UFS_DSM_BUFFER_SIZE];
 	spinlock_t lock; /*mutex*/
@@ -90,9 +95,14 @@ struct ufs_dsm_adaptor {
 #define	UFS_UTP_TRANS_ERR		8
 #define	UFS_SCSI_CMD_ERR		9
 #define	UFS_VOLT_GPIO_ERR		10
-#define	UFS_LINKUP_ERR		11
-#define	UFS_INLINE_CRYPTO_ERR	12
-#define	UFS_LIFE_TIME_ERR	13
+#define	UFS_LINKUP_ERR			11
+#define	UFS_ENTER_OR_EXIT_H8_ERR	12
+#define	UFS_LIFETIME_EXCCED_ERR		13
+#define	UFS_TIMEOUT_SERIOUS		14
+#define	UFS_DEV_INTERNEL_ERR		15
+#define	UFS_INTER_INFO_ABNORMAL		16
+#define	UFS_INLINE_CRYPTO_ERR		17
+
 	struct ufs_reg_dump dump;
 	/*for UIC Transfer Error*/
 	unsigned long uic_disable;
@@ -114,6 +124,8 @@ struct ufs_dsm_adaptor {
 	uint16_t manufacturer_id;
 	unsigned long ice_outstanding;
 	u32 ice_doorbell;
+	u8 lifetime_a;
+	u8 lifetime_b;
 };
 extern struct ufs_dsm_log g_ufs_dsm_log;
 extern struct ufs_uic_err uic_err;
@@ -128,6 +140,7 @@ int dsm_ufs_update_ocs_info(struct ufs_hba *hba,
 int dsm_ufs_update_error_info(struct ufs_hba *hba, int code);
 int dsm_ufs_update_uic_info(struct ufs_hba *hba, int err_code);
 int dsm_ufs_update_fastboot_info(struct ufs_hba *hba);
+void dsm_ufs_update_lifetime_info(u8 lifetime_a, u8 lifetime_b);
 int dsm_ufs_get_log(struct ufs_hba *hba, unsigned long code, char *err_msg);
 void dsm_ufs_clear_err_type(void);
 void dsm_ufs_handle_work(struct work_struct *work);
@@ -138,6 +151,8 @@ int dsm_ufs_if_uic_err_disable(void);
 unsigned long dsm_ufs_if_err(void);
 void dsm_ufs_init(struct ufs_hba *hba);
 int dsm_ufs_updata_ice_info(struct ufs_hba *hba);
+void dsm_ufs_enable_volt_irq(struct ufs_hba *hba);
+void dsm_ufs_disable_volt_irq(struct ufs_hba *hba);
 
 #define DSM_UFS_LOG(hba, no, fmt, a...)\
 	do {\
@@ -165,6 +180,7 @@ int dsm_ufs_update_ocs_info(struct ufs_hba *hba,
 int dsm_ufs_update_error_info(struct ufs_hba *hba, int code) {return 0; }
 int dsm_ufs_update_uic_info(struct ufs_hba *hba, int err_code) {return 0; }
 int dsm_ufs_update_fastboot_info(struct ufs_hba *hba) {return 0; }
+void dsm_ufs_update_lifetime_info(u8 lifetime_a, u8 lifetime_b) {return 0; }
 int dsm_ufs_get_log(struct ufs_hba *hba, unsigned long code, char *err_msg) {return 0; }
 void dsm_ufs_handle_work(struct work_struct *work) {}
 int dsm_ufs_enabled(void) { return 0; }
@@ -174,6 +190,8 @@ int dsm_ufs_if_uic_err_disable(void){return 0; };
 void dsm_ufs_init(struct ufs_hba *hba) {}
 unsigned long dsm_ufs_if_err(void){return 0;}
 int dsm_ufs_updata_ice_info(struct ufs_hba *hba){return 0;}
+void dsm_ufs_enable_volt_irq(struct ufs_hba *hba) {return;}
+void dsm_ufs_disable_volt_irq(struct ufs_hba *hba) {return;}
 #define DSM_UFS_LOG(hba, no, fmt, a...)
 #endif
 #endif

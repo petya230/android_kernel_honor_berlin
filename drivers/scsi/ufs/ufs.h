@@ -159,6 +159,7 @@ enum ufs_desc_max_size {
 	 */
 	QUERY_DESC_STRING_MAX_SIZE		= 0xFE,
 	QUERY_DESC_GEOMETRY_MAZ_SIZE		= 0x44,
+	QUERY_DESC_RPMB_UNIT_MAZ_SIZE		= 0x22,
 	QUERY_DESC_POWER_MAX_SIZE		= 0x62,
 	QUERY_DESC_HEALTH_MAX_SIZE		= 0x37,
 	QUERY_DESC_RFU_MAX_SIZE			= 0x00,
@@ -182,6 +183,17 @@ enum unit_desc_param {
 	UNIT_DESC_PARAM_PHY_MEM_RSRC_CNT	= 0x18,
 	UNIT_DESC_PARAM_CTX_CAPABILITIES	= 0x20,
 	UNIT_DESC_PARAM_LARGE_UNIT_SIZE_M1	= 0x22,
+};
+
+/* RPMB Unit descriptor parameters offsets in bytes*/
+enum rpmb_unit_desc_param {
+	RPMB_UNIT_DESC_PARAM_RPMB_REGION_ENABLE	= 0x9,/*Rerserved:1bit(00h)*/
+	RPMB_UNIT_DESC_PARAM_LOGICAL_BLK_SIZE	= 0xA,
+	RPMB_UNIT_DESC_PARAM_LOGICAL_BLK_COUNT	= 0xB,
+	RPMB_UNIT_DESC_PARAM_RPMB_REGION0_SIZE	= 0x13,/*dEraseBlockSize:4bit(00h)*/
+	RPMB_UNIT_DESC_PARAM_RPMB_REGION1_SIZE	= 0x14,/*dEraseBlockSize:4bit(00h)*/
+	RPMB_UNIT_DESC_PARAM_RPMB_REGION2_SIZE	= 0x15,/*dEraseBlockSize:4bit(00h)*/
+	RPMB_UNIT_DESC_PARAM_RPMB_REGION3_SIZE	= 0x16,/*dEraseBlockSize:4bit(00h)*/
 };
 
 /* Device descriptor parameters offsets in bytes*/
@@ -229,6 +241,7 @@ enum geometry_desc_param {
 	GEOMETRY_DESC_LEN			= 0x0,
 	GEOMETRY_DESC_TYPE			= 0x1,
 	GEOMETRY_DESC_TOTAL_DEVICE_CAPACITY	= 0x4,
+	GEOMETRY_DESC_RPMB_READ_WRITE_SIZE	= 0x17,
 };
 
 /*

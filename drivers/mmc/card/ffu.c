@@ -194,7 +194,7 @@ static int mmc_ffu_map_sg(struct mmc_ffu_mem *mem, unsigned long size,
 	unsigned long sz = size;
 
 	sg_init_table(sglist, max_segs);
-	if (min_sg_len > max_segs) {
+	if ((unsigned int)min_sg_len > max_segs) {
 		min_sg_len = max_segs;
     }
 
@@ -203,7 +203,7 @@ static int mmc_ffu_map_sg(struct mmc_ffu_mem *mem, unsigned long size,
 		for (i = 0; i < mem->cnt; i++) {
 			unsigned long len = PAGE_SIZE << mem->arr[i].order;
 
-			if (min_sg_len && (size / min_sg_len < len)) {
+			if (min_sg_len && (size / (unsigned int)min_sg_len < len)) {
 				len = ALIGN(size / min_sg_len, CARD_BLOCK_SIZE);
             }
 
@@ -365,7 +365,8 @@ out_free:
 static int mmc_ffu_area_init(struct mmc_ffu_area *area, struct mmc_card *card,
 	u8 *data, unsigned int size)
 {
-	int ret, i, length;
+	int ret, length;
+	unsigned int i;
 
 	area->max_segs = card->host->max_segs;
 	area->max_seg_sz = card->host->max_seg_size & ~(CARD_BLOCK_SIZE - 1);
@@ -659,7 +660,7 @@ int mmc_ffu_install(struct mmc_card *card)
 
 			if (!ffu_data_len) {
 				err = -EPERM;
-				goto free_ext_csd;;
+				goto free_ext_csd;
 			}
 
 			/* set device to FFU mode */

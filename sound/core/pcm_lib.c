@@ -41,7 +41,7 @@
 #define trace_hw_ptr_error(substream, reason)
 #endif
 
-#define TIMEOUT_MILLISEC 30
+#define TIMEOUT_MILLISEC 40
 
 /*
  * fill ring buffer with silence

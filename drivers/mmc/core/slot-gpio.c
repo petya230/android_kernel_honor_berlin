@@ -154,9 +154,11 @@ int mmc_gpio_get_ro(struct mmc_host *host)
 	if (!ctx || !ctx->ro_gpio)
 		return -ENOSYS;
 
+	/*lint -save -e514*/
 	if (ctx->override_ro_active_level)
 		return !gpiod_get_raw_value_cansleep(ctx->ro_gpio) ^
 			!!(host->caps2 & MMC_CAP2_RO_ACTIVE_HIGH);
+	/*lint -restore*/
 
 	return gpiod_get_value_cansleep(ctx->ro_gpio);
 }
@@ -169,9 +171,11 @@ int mmc_gpio_get_cd(struct mmc_host *host)
 	if (!ctx || !ctx->cd_gpio)
 		return -ENOSYS;
 
+	 /*lint -save -e514*/
 	if (ctx->override_cd_active_level)
 		return !gpiod_get_raw_value_cansleep(ctx->cd_gpio) ^
 			!!(host->caps2 & MMC_CAP2_CD_ACTIVE_HIGH);
+	/*lint -restore*/
 
 	return gpiod_get_value_cansleep(ctx->cd_gpio);
 }

@@ -114,7 +114,7 @@ static unsigned int hisi_peri_get_volt(struct peri_volt_poll *pvp)
 	if (hwspin_lock_timeout((struct hwspinlock *)pvp->priv,
 					HWLOCK_TIMEOUT)) {
 		pr_err("pvp hwspinlock timout!\n");
-		return -ENOENT;
+		return -ENOENT;/*lint !e570*/
 	}
 	ret = readl(pvp->addr_0);
 	ret &= PMCTRL_PERI_CTRL4_VDD_MASK;
@@ -135,7 +135,7 @@ static unsigned int hisi_peri_poll_stat(struct peri_volt_poll *pvp)
 	if (hwspin_lock_timeout((struct hwspinlock *)pvp->priv,
 					HWLOCK_TIMEOUT)) {
 		pr_err("pvp hwspinlock timout!\n");
-		return -ENOENT;
+		return -ENOENT;/*lint !e570*/
 	}
 	ret0 = readl(pvp->addr_0);
 	ret0 &= (~(PMCTRL_PERI_CTRL4_VDD_MASK | PMCTRL_PERI_CTRL4_ON_OFF_MASK));
@@ -295,7 +295,7 @@ static int hisi_peri_volt_poll_probe(struct platform_device *pdev)
 
 	for_each_child_of_node(parent, np) {
 		const struct of_device_id *match = of_match_node(matches, np);
-		perivolt_init_cb = match->data;
+		perivolt_init_cb = match->data;/*lint !e158*/
 		perivolt_init_cb(np);
 	}
 

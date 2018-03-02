@@ -22,17 +22,27 @@
 #include <linux/gpio.h>
 #include <soc_sctrl_interface.h>
 #include <soc_ufs_sysctrl_interface.h>
+#include <linux/hisi/hisi_idle_sleep.h>
 #include <linux/vmalloc.h>
 #include <linux/kthread.h>
-
+#include <linux/i2c.h>
+#include <linux/of_gpio.h>
 #include "ufshcd.h"
 #include "unipro.h"
 #include "ufs-kirin.h"
 #include "ufshci.h"
 #include "ufs_kirin_spec_log.h"
 #include "../scsi_logging.h"
+#include "dsm_ufs.h"
+#ifdef CONFIG_UFS_DEVICE_RELATED_CONFIGS
+#include <soc_ioc_fix_interface.h>
+#include <soc_acpu_baseaddr_interface.h>
+#endif
 
 extern unsigned int scsi_logging_level;
+#ifdef CONFIG_SCSI_UFS_KIRIN_V21
+static void ufs_kirin_v21_soc_init(struct ufs_hba *hba);
+#endif
 
 #define LOGGING_LEVEL(name, level)                                             \
 	((level & ((1 << (SCSI_LOG_##name##_BITS)) - 1))                       \
@@ -44,8 +54,7 @@ extern unsigned int scsi_logging_level;
 	 LOGGING_LEVEL(MLCOMPLETE, 1) | LOGGING_LEVEL(LLQUEUE, 1) |            \
 	 LOGGING_LEVEL(LLCOMPLETE, 1) | LOGGING_LEVEL(HLQUEUE, 1) |            \
 	 LOGGING_LEVEL(HLCOMPLETE, 1) | LOGGING_LEVEL(IOCTL, 1))
-
-static char ufs_product_name[32] = { 0 };
+static char ufs_product_name[32] = {0};
 static int __init early_parse_ufs_product_name_cmdline(char *arg)
 {
 	if (arg) {
@@ -76,12 +85,59 @@ noinline int atfd_hisi_uie_smc(u64 function_id, u64 arg0, u64 arg1, u64 arg2)
 }
 #endif
 
-static u64 kirin_ufs_dma_mask = DMA_BIT_MASK(64);
+static u64 kirin_ufs_dma_mask = DMA_BIT_MASK(64);//lint !e598 !e648
+#ifdef CONFIG_SCSI_UFS_KIRIN_V21
+#define UFS_I2C_SLAVE (0x5A)
+#define UFS_I2C_BUS 3
 
+/*lint -e785*/
+static struct i2c_board_info ufs_i2c_board_info = {
+    /* FIXME*/
+    .type = "i2c_ufs",
+    .addr = UFS_I2C_SLAVE,
+};
+/*lint +e785*/
+static int ufs_i2c_writel(struct ufs_hba *hba, u32 val, u32 addr)
+{
+	struct ufs_kirin_host *host = hba->priv;
+	int ret = -1;
+	union i2c_fmt {
+		unsigned char chars[8];
+		u32 addr_val[2];
+	} data;
+	data.addr_val[0] = cpu_to_be32(addr);
+	data.addr_val[1] = val;
+	if (host->i2c_client) {
+		ret = i2c_master_send(host->i2c_client, (char *)data.chars,
+				      (int)sizeof(union i2c_fmt));
+		if (ret < 0)
+			pr_err("%s ufs_i2c_write fail\n", __func__);
+	} else
+		pr_err("%s ufs_i2c_write fail client empty\n", __func__);
+	return ret;
+}
+
+static int ufs_i2c_readl(struct ufs_hba *hba, u32 *value, u32 addr)
+{
+	int ret = -1;
+	struct ufs_kirin_host *host = hba->priv;
+
+	u32 temp = cpu_to_be32(addr);
+	if (host->i2c_client) {
+		ret = i2c_master_recv(host->i2c_client, (char *)(&temp),
+				      (int)sizeof(u32));
+		if (ret < 0)
+			pr_err("%s ufs_i2c_readl fail\n", __func__);
+	} else
+		pr_err("%s ufs_i2c_readl fail client empty\n", __func__);
+	*value = temp;
+	return ret;
+}
+#endif
 static void ufs_kirin_reg_dump(struct ufs_hba *hba, u32 err_type)
 {
-	ufs_kirin_log_hci_vendor_regs( hba, err_type );
-	ufs_kirin_log_soc_all_regs( hba, err_type );
+	ufs_kirin_log_hci_vendor_regs(hba, err_type);
+	ufs_kirin_log_soc_all_regs(hba, err_type);
 
 #if 0
 	dev_err(hba->dev,
@@ -198,12 +254,6 @@ static int ufs_kirin_uie_config_init(struct ufs_hba *hba)
 	int reg_value = 0;
 	int err = 0;
 
-#ifdef CONFIG_SCSI_UFS_KIRIN_V21
-	struct ufs_kirin_host *host = hba->priv;
-	writel(1<<SOC_UFS_Sysctrl_UFS_UMECTRL_ufs_ies_en_mask_START,\
-		SOC_UFS_Sysctrl_UFS_UMECTRL_ADDR(host->ufs_sys_ctrl));
-#endif
-
 	/* enable UFS cryptographic operations on transactions */
 	reg_value = ufshcd_readl(hba, REG_CONTROLLER_ENABLE);
 	reg_value |= CRYPTO_GENERAL_ENABLE;
@@ -221,7 +271,9 @@ static int ufs_kirin_uie_config_init(struct ufs_hba *hba)
 static void ufs_kirin_uie_key_prepare(struct ufs_hba *hba, int key_len,
 					 int key_index, void *key)
 {
+#ifndef CONFIG_SCSI_UFS_KIRIN_V21
 	struct ufs_kirin_host *host = hba->priv;
+#endif
 	int reg_value = 0;
 	int key_cfg = 0;
 	u32 key_reg_offset = 0;
@@ -412,6 +464,10 @@ void ufs_kirin_clk_init(struct ufs_hba *hba)
 	return;
 }
 #else
+#ifdef CONFIG_UFS_DEVICE_RELATED_CONFIGS
+static int config_refclk_drive_to_4ma = 0;
+int force_link_to_1lane = 0;
+#endif
 static void ufs_kirin_clk_init(struct ufs_hba *hba)
 {
 	struct ufs_kirin_host *host = hba->priv;
@@ -447,6 +503,11 @@ static void ufs_kirin_clk_init(struct ufs_hba *hba)
 	if (!(CLK_UFSIO & ufs_pericrg_readl(host, PERCLKEN7_OFFSET))) {
 		pr_err("%s:enable clk ref err. PERDIS7 = 0x%x\n", __func__,
 			ufs_pericrg_readl(host, PERCLKEN7_OFFSET));
+	}
+#endif
+#ifdef CONFIG_UFS_DEVICE_RELATED_CONFIGS
+	if (config_refclk_drive_to_4ma) {
+		writel(0x90, SOC_IOC_FIX_IOCG_000_ADDR(ioremap(SOC_ACPU_IOC_FIX_BASE_ADDR, PAGE_SIZE)));
 	}
 #endif
 	ufs_sys_ctrl_set_bits(host, BIT_SYSCTRL_REF_CLOCK_EN, PHY_CLK_CTRL); /* open mphy ref clk */
@@ -513,8 +574,8 @@ static void ufs_kirin_soc_init(struct ufs_hba *hba)
 	if (ufs_pericrg_readl(host, PERRSTSTAT3_OFFSET) & RST_UFS)
 		mdelay(1);
 
-	/*set SOC_SCTRL_SCBAKDATA11_ADDR 0xffffffff when init*/
-	writel(0xffffffff, SOC_SCTRL_SCBAKDATA11_ADDR(host->sysctrl));
+	/*set SOC_SCTRL_SCBAKDATA11_ADDR ufs bit to 1 when init*/
+	hisi_idle_sleep_vote(ID_UFS, 1);
 
 	pr_info("%s --\n", __func__);
 	return;
@@ -558,10 +619,25 @@ static void ufs_kirin_full_reset(struct ufs_hba *hba)
 
 	ufs_kirin_clk_init(hba);
 
+#ifdef CONFIG_HUAWEI_UFS_DSM
+	dsm_ufs_disable_volt_irq(hba);
+#endif
+	disable_irq(hba->irq);
+
 	/* wait for 1s to be sure axi entered to idle state */
 	msleep(1000);
 
+	spin_lock(hba->host->host_lock);
+#ifdef CONFIG_SCSI_UFS_KIRIN_V21
+	ufs_kirin_v21_soc_init(hba);
+#else
 	ufs_kirin_soc_init(hba);
+#endif
+	spin_unlock(hba->host->host_lock);
+	enable_irq(hba->irq);
+#ifdef CONFIG_HUAWEI_UFS_DSM
+	dsm_ufs_enable_volt_irq(hba);
+#endif
 }
 
 static void ufs_kirin_pre_hce_notify(struct ufs_hba *hba)
@@ -579,7 +655,7 @@ static int ufs_kirin_hce_enable_notify(struct ufs_hba *hba, bool status)
 {
 	int err = 0;
 
-	switch (status) {
+	switch (status) { //lint !e483
 	case PRE_CHANGE:
 		ufs_kirin_pre_hce_notify(hba);
 		break;
@@ -600,9 +676,9 @@ static void ufs_kirin_phy_init(struct ufs_kirin_host *host)
 
 	if (host->avail_ln_rx == 0 || host->avail_ln_tx == 0) {
 		ufshcd_dme_get(hba, UIC_ARG_MIB(PA_AVAILRXDATALANES),
-			       &host->avail_ln_rx);
+			       (u32*)&host->avail_ln_rx);
 		ufshcd_dme_get(hba, UIC_ARG_MIB(PA_AVAILTXDATALANES),
-			       &host->avail_ln_tx);
+			       (u32*)&host->avail_ln_tx);
 		if (host->avail_ln_rx != host->avail_ln_tx)
 			dev_warn(hba->dev, "available data lane is not "
 					   "equal(rx:%d, tx:%d)\n",
@@ -610,6 +686,27 @@ static void ufs_kirin_phy_init(struct ufs_kirin_host *host)
 	}
 }
 #endif
+
+/* hisi mphy testchip specific configuration */
+/*lint -e648 -e845*/
+static int ufs_kirin_dme_setup_hisi_mphy(struct ufs_hba *hba)
+{
+	uint32_t val = 0;
+	u32 retry = 1000;
+
+	pr_err("%s ++\n", __func__);
+	while (retry--) {
+		ufshcd_dme_get(hba, UIC_ARG_MIB_SEL(0xD010, 0x0), &val);
+		if (val == 1)
+			break;
+		if (!retry)
+			return -EIO;
+	}
+	/*DME layer enable*/
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0xd000, 0x0), 0x1);
+	pr_err("%s --\n", __func__);
+	return 0;
+}
 
 /* snps mphy testchip specific configuration */
 static int ufs_kirin_dme_setup_snps_mphy(struct ufs_hba *hba)
@@ -772,9 +869,167 @@ void ufs_kirin_mphy_write(struct ufs_hba *hba, uint16_t addr, uint16_t value)
 	/*DME_SET(16'h811c, 0x0);*//*trigger write*/
 	ufshcd_dme_set(hba, UIC_ARG_MIB(0x811C), 1);
 }
+
+#ifdef CONFIG_SCSI_UFS_HS_ERROR_RECOVER
+void ufs_kirin_set_vol(struct ufs_hba *hba, int v_tx, int v_rx)
+{
+	pr_err("ufs v_tx:%d v_rx:%d\n", v_tx, v_rx);
+	if ((v_rx > 0) && (v_rx < 4)) {
+		ufs_kirin_mphy_write(hba, 0x004A, 0x0090);
+		ufs_kirin_mphy_write(hba, 0x90cb, 0x0080);
+		ufs_kirin_mphy_write(hba, 0x90ce, 0x0010);
+		if (v_rx == 3) {
+			ufs_kirin_mphy_write(hba, 0x0060, 0x36E4);
+			ufs_kirin_mphy_write(hba, 0x0060, 0x36E0);
+		}
+		if (v_rx == 2) {
+			ufs_kirin_mphy_write(hba, 0x0060, 0x3884);
+			ufs_kirin_mphy_write(hba, 0x0060, 0x3880);
+		}
+		if (v_rx == 1) {
+			ufs_kirin_mphy_write(hba, 0x0060, 0x3A24);
+			ufs_kirin_mphy_write(hba, 0x0060, 0x3A20);
+		}
+		ufs_kirin_mphy_write(hba, 0x9005, 0x4000);
+		ufs_kirin_mphy_write(hba, 0x9005, 0x0000);
+	}
+	if ((v_tx > 0) && (v_tx < 4)) {
+		ufs_kirin_mphy_write(hba, 0x004A, 0x0090);
+		ufs_kirin_mphy_write(hba, 0x90C3, 0x0010);
+		ufs_kirin_mphy_write(hba, 0x90C9, 0x0001);
+		ufs_kirin_mphy_write(hba, 0x90C5, 0x0002);
+
+		if (v_tx == 3) {
+			ufs_kirin_mphy_write(hba, 0x0060, 0x36E4);
+			ufs_kirin_mphy_write(hba, 0x0060, 0x36E0);
+		}
+		if (v_tx == 2) {
+			ufs_kirin_mphy_write(hba, 0x0060, 0x3884);
+			ufs_kirin_mphy_write(hba, 0x0060, 0x3880);
+		}
+		if (v_tx == 1) {
+			ufs_kirin_mphy_write(hba, 0x0060, 0x3A24);
+			ufs_kirin_mphy_write(hba, 0x0060, 0x3A20);
+		}
+	}
+}
+#endif
 /*lint +e648 +e845*/
 #define UFS_TX_EQUALIZER_35DB
-//#define UFS_TX_EQUALIZER_60DB
+/*#define UFS_TX_EQUALIZER_60DB*/
+static void hisi_mphy_updata_temp_sqvref(struct ufs_hba *hba,
+				struct ufs_kirin_host *host)
+{
+	if (host->caps & USE_HISI_MPHY_TC) {
+		/*in low temperature to solve the PLL'S oscill */
+		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00c1, 0x0), //lint !e845
+			       0x1); /*RG_PLL_CP*/
+		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00d4, 0x0), //lint !e845
+			       0x51); /*RG_PLL_DMY0*/
+		/*rate A->B's VC0 stable time*/
+		/* ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00db, 0x0),
+			       0x5);*/
+		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00f0, 0x4),
+			       0x1); /*RX enable lane 0*/
+		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00f0, 0x5),
+			       0x1); /*RX enable lane 1*/
+		/* H8's workaround*/
+		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00f1, 0x4),
+			       0x7); /*RX_SQ_VERF, lane 0*/
+		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00f1, 0x5),
+			       0x7); /*RX_SQ_VERF, lane 1*/
+	}
+}
+
+/*lint -e648 -e845*/
+static void hisi_mphy_updata_vswing_fsm_ocs5(struct ufs_hba *hba,
+				struct ufs_kirin_host *host)
+{
+	uint32_t value = 0;
+	if (host->caps & USE_HISI_MPHY_TC) {
+		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00c2, 0x4),
+			       0x1); /*RX_MC_PRESENT*/
+		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00c2, 0x5),
+			       0x1); /*RX_MC_PRESENT*/
+		/*disable vSwing change*/
+		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00c7, 0x0),
+			       0x3); /*meaure the power, can close it*/
+		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00c8, 0x0),
+			       0x3); /*meaure the power, can close it*/
+		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x007a, 0x0), 0x1c);
+		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x007a, 0x1), 0x1c);
+		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x007c, 0x0), 0xd4);
+		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x007c, 0x1), 0xd4);
+		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00cf, 0x4),
+			       0x2); /*RX_STALL*/
+		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00cf, 0x5),
+			       0x2); /*RX_STALL*/
+		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00d0, 0x4),
+			       0x2); /*RX_SLEEP*/
+		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00d0, 0x5),
+			       0x2); /*RX_SLEEP*/
+
+		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00cc, 0x4),
+			       0x3); /*RX_HS_CLK_EN*/
+		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00cc, 0x5),
+			       0x3); /*RX_HS_CLK_EN*/
+		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00cd, 0x4),
+			       0x3); /*RX_LS_CLK_EN*/
+		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00cd, 0x5),
+			       0x3); /*RX_LS_CLK_EN*/
+		/*enhance the accuracy of squelch detection*/
+		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00ce, 0x4),
+			       0x3); /*RX_H8_EXIT*/
+		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00ce, 0x5),
+			       0x3); /*RX_H8_EXIT*/
+
+		/* try to solve the OCS=5 */
+		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00e9, 0x4),
+			       0x20); /*RX_HS_DATA_VALID_TIMER_VAL0*/
+		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00e9, 0x5),
+			       0x20); /*RX_HS_DATA_VALID_TIMER_VAL0*/
+		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00ea, 0x4),
+			       0x1); /*RX_HS_DATA_VALID_TIMER_VAL1*/
+		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00ea, 0x5),
+			       0x1); /*RX_HS_DATA_VALID_TIMER_VAL1*/
+
+		/* set the HS-prepare length and sync length to MAX value, try
+		* to solve the data check error problem,
+		* the device seems not receive the write cmd. */
+		/* PA_TxHsG1SyncLength , can not set MPHY's register directly */
+		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x1552, 0x0), 0x4F);
+		/* PA_TxHsG2SyncLength , can not set MPHY's register directly */
+		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x1554, 0x0), 0x4F);
+		/* PA_TxHsG3SyncLength , can not set MPHY's register directly */
+		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x1556, 0x0), 0x4F);
+
+		/*enlarge TX_LS_PREPARE_LENGTH*/
+		/*enable override*/
+		ufshcd_dme_get(hba, UIC_ARG_MIB_SEL(0xd0f0, 0x0),
+			       &value); /* Unipro VS_mphy_disable */
+		value |= (1 << 3);
+		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0xd0f0, 0x0), value);
+		/*Set to max value 0xf*/
+		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0xd0f4, 0x0), 0xf);
+
+		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0xd085, 0x0), 0x1); /* update */
+	}
+}
+
+static void hisi_mphy_busdly_config(struct ufs_hba *hba,
+			struct ufs_kirin_host *host)
+{
+	uint32_t reg = 0;
+	if ((host->caps & USE_HISI_MPHY_TC)
+		&& (host->caps & USE_FPGA_BOARD_CLK)) {
+		/*UFS_BUSTHRTL_OFF*/
+		reg = ufshcd_readl(hba, UFS_REG_OCPTHRTL);
+		reg &= (~((0x3f << 18) | (0xff << 0)));
+		reg |= ((0x10 << 18) | (0xff << 0));
+		ufshcd_writel(hba, reg, UFS_REG_OCPTHRTL);
+		reg = ufshcd_readl(hba, UFS_REG_OCPTHRTL);
+	}
+}
 
 static int ufs_kirin_link_startup_pre_change(struct ufs_hba *hba)
 {
@@ -784,7 +1039,12 @@ static int ufs_kirin_link_startup_pre_change(struct ufs_hba *hba)
 	struct ufs_kirin_host *host = hba->priv;
 
 	pr_info("%s ++\n", __func__);
-	if (!(host->caps & USE_SNPS_MPHY_TC)) {
+
+	/*for hisi MPHY*/
+	hisi_mphy_updata_temp_sqvref(hba, host);
+
+	/*FIXME is it good for FPGA condition*/
+	if (!(host->caps & USE_SNPS_MPHY_TC || host->caps & USE_HISI_MPHY_TC)) {
 		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0xD0C1, 0x0), 0x1); /* Unipro VS_mphy_disable */
 		if (host->caps & USE_RATE_B) {
 			ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x156A, 0x0), 0x2); /* PA_HSSeries */
@@ -793,7 +1053,7 @@ static int ufs_kirin_link_startup_pre_change(struct ufs_hba *hba)
 			ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x8122, 0x0), 0x1); /* MPHY CBOVRCTRL3 */
 
 #ifdef CONFIG_SCSI_UFS_KIRIN_V21
-			ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x8127, 0x0), 0x82); /* MPHY CBOVRCTRL4 */
+			ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x8127, 0x0), 0x98); /* MPHY CBOVRCTRL4 */
 			ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x8128, 0x0), 0x1); /* MPHY CBOVRCTRL5 */
 #endif
 
@@ -847,12 +1107,17 @@ static int ufs_kirin_link_startup_pre_change(struct ufs_hba *hba)
 		err = ufs_kirin_check_hibern8(hba);
 		if (err)
 			pr_err("ufs_kirin_check_hibern8 error\n");
+#ifdef CONFIG_SCSI_UFS_HS_ERROR_RECOVER
+		ufs_kirin_set_vol(hba, hba->v_tx, hba->v_rx);
+#endif
 	}
 
 	if (host->caps & USE_FPGA_BOARD_CLK) {
 		ufshcd_writel(hba, UFS_HCLKDIV_FPGA_VALUE, UFS_REG_HCLKDIV);
 	} else {
+#ifndef CONFIG_SCSI_UFS_KIRIN_V21
 		ufshcd_writel(hba, UFS_HCLKDIV_NORMAL_VALUE, UFS_REG_HCLKDIV);
+#endif
 	}
 
 	/* disable auto H8 */
@@ -866,34 +1131,95 @@ static int ufs_kirin_link_startup_pre_change(struct ufs_hba *hba)
 		err = ufs_kirin_dme_setup_snps_mphy(hba);
 		if (err)
 			return err;
+	} else if (host->caps & USE_HISI_MPHY_TC) {
+		err = ufs_kirin_dme_setup_hisi_mphy(hba);
+		if (err)
+			return err;
 	}
 
 	ufs_sys_ctrl_writel(host, MASK_UFS_DEVICE_RESET | BIT_UFS_DEVICE_RESET,\
 		UFS_DEVICE_RESET_CTRL); /* disable Device Reset */
+	/*for hisi MPHY*/
+	hisi_mphy_updata_vswing_fsm_ocs5(hba, host);
 
-	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x155E, 0x0), 0x0); /* Unipro PA_Local_TX_LCC_Enable */
-	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0xD0AB, 0x0), 0x0); /* close Unipro VS_Mk2ExtnSupport */
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x155E, 0x0),
+		       0x0); /* Unipro PA_Local_TX_LCC_Enable */
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0xD0AB, 0x0),
+		       0x0); /* close Unipro VS_Mk2ExtnSupport */
 	ufshcd_dme_get(hba, UIC_ARG_MIB_SEL(0xD0AB, 0x0), &value);
 	if (0 != value) {
 		/* Ensure close success */
 		pr_warn("Warring!!! close VS_Mk2ExtnSupport failed\n");
 	}
-	if (35 == host->tx_equalizer) {
-		ufs_kirin_mphy_write(hba, 0x1002, 0xAC78);
-		ufs_kirin_mphy_write(hba, 0x1102, 0xAC78);
-		ufs_kirin_mphy_write(hba, 0x1003, 0x2440);
-		ufs_kirin_mphy_write(hba, 0x1103, 0x2440);
+	if (!((host->caps & USE_HISI_MPHY_TC) &&
+	      (host->caps & USE_FPGA_BOARD_CLK))) {
+		/*FPGA with HISI PHY not configure equalizer*/
+		pr_err("%s if you see this line in FPGA with hisi PHY then it is "
+		       "an error otherwise it should be OK\n", __func__);
+		if (35 == host->tx_equalizer) {
+			ufs_kirin_mphy_write(hba, 0x1002, 0xAC78);
+			ufs_kirin_mphy_write(hba, 0x1102, 0xAC78);
+			ufs_kirin_mphy_write(hba, 0x1003, 0x2440);
+			ufs_kirin_mphy_write(hba, 0x1103, 0x2440);
+		} else if (60 == host->tx_equalizer) {
+			ufs_kirin_mphy_write(hba, 0x1002, 0xAA78);
+			ufs_kirin_mphy_write(hba, 0x1102, 0xAA78);
+			ufs_kirin_mphy_write(hba, 0x1003, 0x2640);
+			ufs_kirin_mphy_write(hba, 0x1103, 0x2640);
+		}
 	}
-	else if (60 == host->tx_equalizer) {
-		ufs_kirin_mphy_write(hba, 0x1002, 0xAA78);
-		ufs_kirin_mphy_write(hba, 0x1102, 0xAA78);
-		ufs_kirin_mphy_write(hba, 0x1003, 0x2640);
-		ufs_kirin_mphy_write(hba, 0x1103, 0x2640);
+#ifdef CONFIG_UFS_DEVICE_RELATED_CONFIGS
+	if (force_link_to_1lane) {
+		ufshcd_dme_get(hba, UIC_ARG_MIB_SEL(0x8006, 0x1), &value);
+		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x8006, 0x1), value | 0x47); /* Disable TX and Data_En */
+		ufshcd_dme_get(hba, UIC_ARG_MIB_SEL(0x800A, 0x5), &value);
+		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x800A, 0x5), value | 0x30); /* Disable RX */
+		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0xD085, 0x0), 0x1);
 	}
+#endif
+	/*for hisi MPHY*/
+	hisi_mphy_busdly_config(hba, host);
+
 	pr_info("%s --\n", __func__);
 
 	return err;
 }
+/*lint +e648 +e845*/
+
+/*lint -save -e648 -e845 */
+static void hisi_mphy_link_post_config(struct ufs_hba *hba,
+			struct ufs_kirin_host *host)
+{
+	uint32_t value = 0;
+	uint32_t tx_lane_num = 1;
+	uint32_t rx_lane_num = 1;
+
+	if (host->caps & USE_HISI_MPHY_TC) {
+		/*set the PA_TActivate to 128. need to check in ASIC...*/
+		/* H8's workaround */
+		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x15a8, 0x0), 5);
+		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x80da, 0x0), 0x2d);
+		/* If the PLL is slow and needs more than 10 us
+		* then this field can be used to specify the wait period unit. If
+		* the value of this field */
+		ufshcd_dme_get(hba, UIC_ARG_MIB_SEL(0xd0a0, 0x0), &value);
+		value &= (uint32_t)(~(0x7 << 2));/* bit[4:2] = 0*/
+		value |= 0x3 << 2; /* bit[4:2] = 3*/
+		/* enlarge for default's 10us to 35us, can make rateA->B change smoothly */
+		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0xd0a0, 0x0), value);
+
+		ufshcd_dme_get(hba, UIC_ARG_MIB(0x1561), &tx_lane_num);
+		ufshcd_dme_get(hba, UIC_ARG_MIB(0x1581), &rx_lane_num);
+
+		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00c2, 0x4),
+			       0x0); /*RX_MC_PRESENT*/
+		if (tx_lane_num > 1 && rx_lane_num > 1) {
+			ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00c2, 0x5),
+				       0x0); /*RX_MC_PRESENT*/
+		}
+	}
+}
+/*lint -restore */
 
 /*lint -e648 -e845*/
 static int ufs_kirin_link_startup_post_change(struct ufs_hba *hba)
@@ -920,6 +1246,8 @@ static int ufs_kirin_link_startup_post_change(struct ufs_hba *hba)
 		ufshcd_dme_set(hba, UIC_ARG_MIB(0x2045), 0x0); /* Unipro DL_TC0OutAckThreshold */
 		ufshcd_dme_set(hba, UIC_ARG_MIB(0x2040), 0x9); /* Unipro DL_TC0TXFCThreshold */
 	}
+	/*for hisi MPHY*/
+	hisi_mphy_link_post_config(hba, host);
 
 	if (host->caps & BROKEN_CLK_GATE_BYPASS) {
 		/* not bypass ufs clk gate */
@@ -934,7 +1262,6 @@ static int ufs_kirin_link_startup_post_change(struct ufs_hba *hba)
 		/* enable auto H8 */
 		ufshcd_writel(hba, UFS_AHIT_AUTOH8_TIMER, REG_CONTROLLER_AHIT);
 	}
-
 	ufshcd_dme_set(hba, UIC_ARG_MIB(0xd09a), 0x80000000); /* select received symbol cnt */
 	ufshcd_dme_set(hba, UIC_ARG_MIB(0xd09c), 0x00000005); /* reset counter0 and enable */
 
@@ -946,7 +1273,7 @@ static int ufs_kirin_link_startup_post_change(struct ufs_hba *hba)
 static int ufs_kirin_link_startup_notify(struct ufs_hba *hba, bool status)
 {
 	int err = 0;
-	switch (status) {
+	switch (status) { //lint !e483
 	case PRE_CHANGE:
 		err = ufs_kirin_link_startup_pre_change(hba);
 		break;
@@ -1064,6 +1391,7 @@ static int ufs_kirin_get_pwr_dev_param(struct ufs_kirin_dev_params *kirin_param,
 }
 
 /*lint -e845*/
+/*lint -save -e648*/
 static void ufs_kirin_pwr_change_pre_change(struct ufs_hba *hba)
 {
 	uint32_t value;
@@ -1111,10 +1439,212 @@ static void ufs_kirin_pwr_change_pre_change(struct ufs_hba *hba)
 	pr_info("%s --\n", __func__);
 	return;
 }
-/*lint +e845*/
+/*lint -restore*/
 
-static int ufs_kirin_pwr_change_notify(struct ufs_hba *hba,
-				       bool status,
+void adapt_pll_to_power_mode(struct ufs_hba *hba)
+{
+	struct ufs_kirin_host *host = hba->priv;
+
+	/*FIXME is need to distinguish FASTMODE FAST SLOW SLOWAUTO */
+	if (host->caps & USE_HS_GEAR1) {
+		if (host->caps & USE_RATE_B) {
+			ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00c2, 0x0),
+				       0x0); /*RG_PLL_PRE_DIV*/
+			ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00c9, 0x0),
+				       0x0); /*RG_PLL_SWC_EN*/
+			ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00c4, 0x0),
+				       0x1); /*RG_PLL_FBK_S*/
+			ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00c3, 0x0),
+				       0x4c); /*RG_PLL_FBK_P*/
+			ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00cf, 0x0),
+				       0x2); /*RG_PLL_TXHSGR*/
+			ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00cd, 0x0),
+				       0x2); /*RG_PLL_RXHSGR*/
+
+		} else {
+			ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00c2, 0x0),
+				       0x0); /*RG_PLL_PRE_DIV*/
+			ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00c9, 0x0),
+				       0x0); /*RG_PLL_SWC_EN*/
+			ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00c4, 0x0),
+				       0x1); /*RG_PLL_FBK_S*/
+			ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00c3, 0x0),
+				       0x41); /*RG_PLL_FBK_P*/
+			ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00cf, 0x0),
+				       0x2); /*RG_PLL_TXHSGR*/
+			ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00cd, 0x0),
+				       0x2); /*RG_PLL_RXHSGR*/
+		}
+	} else if (host->caps & USE_HS_GEAR2) {
+		if (host->caps & USE_RATE_B) {
+			ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00c2, 0x0),
+				       0x0); /*RG_PLL_PRE_DIV*/
+			ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00c9, 0x0),
+				       0x0); /*RG_PLL_SWC_EN*/
+			ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00c4, 0x1),
+				       0x1); /*RG_PLL_FBK_S*/
+			ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00c3, 0x4c),
+				       0x4c); /*RG_PLL_FBK_P*/
+			ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00cf, 0x1),
+				       0x2); /*RG_PLL_TXHSGR*/
+			ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00cd, 0x1),
+				       0x2); /*RG_PLL_RXHSGR*/
+
+		} else {
+			ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00c2, 0x0),
+				       0x0); /*RG_PLL_PRE_DIV*/
+			ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00c9, 0x0),
+				       0x0); /*RG_PLL_SWC_EN*/
+			ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00c4, 0x1),
+				       0x1); /*RG_PLL_FBK_S*/
+			ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00c3, 0x41),
+				       0x41); /*RG_PLL_FBK_P*/
+			ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00cf, 0x1),
+				       0x2); /*RG_PLL_TXHSGR*/
+			ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00cd, 0x1),
+				       0x2); /*RG_PLL_RXHSGR*/
+		}
+	} else if (host->caps & USE_HS_GEAR3) {
+		if (host->caps & USE_RATE_B) {
+			ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00c2, 0x0),
+				       0x0); /*RG_PLL_PRE_DIV*/
+			ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00c9, 0x0),
+				       0x0); /*RG_PLL_SWC_EN*/
+			ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00c4, 0x1),
+				       0x1); /*RG_PLL_FBK_S*/
+			ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00c3, 0x4c),
+				       0x4c); /*RG_PLL_FBK_P*/
+			ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00cf, 0x1),
+				       0x0); /*RG_PLL_TXHSGR*/
+			ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00cd, 0x1),
+				       0x0); /*RG_PLL_RXHSGR*/
+
+		} else {
+			ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00c2, 0x0),
+				       0x0); /*RG_PLL_PRE_DIV*/
+			ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00c9, 0x0),
+				       0x0); /*RG_PLL_SWC_EN*/
+			ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00c4, 0x1),
+				       0x1); /*RG_PLL_FBK_S*/
+			ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00c3, 0x41),
+				       0x41); /*RG_PLL_FBK_P*/
+			ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00cf, 0x1),
+				       0x0); /*RG_PLL_TXHSGR*/
+			ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00cd, 0x1),
+				       0x0); /*RG_PLL_RXHSGR*/
+		}
+	}
+}
+/*lint +e648 +e845*/
+
+/*lint -e648 -e845*/
+void deemphasis_config(struct ufs_kirin_host *host, struct ufs_hba *hba,
+				struct ufs_pa_layer_attr *dev_req_params)
+{
+	uint32_t value = 0;
+	if (host->caps & USE_HISI_MPHY_TC) {
+		/*FIXME is it good to use for FPGA condition*/
+		if (host->caps & USE_FPGA_BOARD_CLK) {
+			/*  de-emphasis level map
+			5????bx0000: 0 dB
+			5????bx0001: 0.72 dB
+			5????bx0010: 1.45 dB
+			5????bx0011: 2.18 dB
+			5????bx0100: 2.92 dB
+			5????bx0101: 3.67 dB
+			5????bx0110: 4.44 dB
+			5????bx0111: 5.22 dB
+			5????bx1110: 6.02 dB
+			5????bx1111: 6.85 dB
+			*/
+			/* the de-emphasis level you want to select, for
+			* example ,
+			* value = 0x5, it's 3.67 dB */
+
+			if (host->caps & USE_HS_GEAR3) {
+				value = 0x26; /*4.44 db*/
+				ufshcd_dme_set(hba,
+					UIC_ARG_MIB_SEL(
+					0x007e, 0x0),
+					0x5);
+				ufshcd_dme_set(hba,
+					UIC_ARG_MIB_SEL(
+					0x0025, 0x0),
+					0x22);
+				ufshcd_dme_set(hba,
+					UIC_ARG_MIB_SEL(
+					0x007d, 0x0),
+					0x22);
+				if ((dev_req_params->lane_tx > 1) &&
+					(dev_req_params->lane_rx > 1)) {
+					ufshcd_dme_set(hba,
+						UIC_ARG_MIB_SEL(
+						0x007e, 0x1),
+						0x5);
+					ufshcd_dme_set(hba,
+						UIC_ARG_MIB_SEL(
+						0x0025, 0x1),
+						0x22);
+					ufshcd_dme_set(hba,
+						UIC_ARG_MIB_SEL(
+						0x007d, 0x1),
+						0x22);
+				}
+			} else {
+				value = 0x6f; /*6.85 db*/
+				ufshcd_dme_set(hba,
+					UIC_ARG_MIB_SEL(
+					0x007e, 0x0),
+					0x5);
+				ufshcd_dme_set(hba,
+					UIC_ARG_MIB_SEL(
+					0x0025, 0x0),
+					0x15);
+				ufshcd_dme_set(hba,
+					UIC_ARG_MIB_SEL(
+					0x007d, 0x0),
+					0x15);
+				if ((dev_req_params->lane_tx > 1) &&
+					(dev_req_params->lane_rx > 1)) {
+					ufshcd_dme_set(hba,
+						UIC_ARG_MIB_SEL(
+						0x007e, 0x1),
+						0x5);
+					ufshcd_dme_set(hba,
+						UIC_ARG_MIB_SEL(
+						0x0025, 0x1),
+						0x15);
+					ufshcd_dme_set(hba,
+						UIC_ARG_MIB_SEL(
+						0x007d, 0x1),
+						0x15);
+				}
+			}
+			ufshcd_dme_set(hba,
+					UIC_ARG_MIB_SEL(
+					0x0037, 0x0),
+					value);
+			ufshcd_dme_set(hba,
+					UIC_ARG_MIB_SEL(
+					0x007b, 0x0),
+					value);
+			if ((dev_req_params->lane_tx > 1) &&
+				(dev_req_params->lane_rx > 1)) {
+				ufshcd_dme_set(hba,
+						UIC_ARG_MIB_SEL(
+						0x0037, 0x1),
+						value);
+				ufshcd_dme_set(hba,
+						UIC_ARG_MIB_SEL(
+						0x007b, 0x1),
+						value);
+			}
+		}
+	}
+}
+/*lint +e648 +e845*/
+/*lint -e845*/
+static int ufs_kirin_pwr_change_notify(struct ufs_hba *hba, bool status,
 				       struct ufs_pa_layer_attr *dev_max_params,
 				       struct ufs_pa_layer_attr *dev_req_params)
 {
@@ -1131,7 +1661,7 @@ static int ufs_kirin_pwr_change_notify(struct ufs_hba *hba,
 		goto out;
 	}
 
-	switch (status) {
+	switch (status) { //lint !e483
 	case PRE_CHANGE:
 		if (host->caps & USE_ONE_LANE) {
 			ufs_kirin_cap.tx_lanes = 1;
@@ -1198,6 +1728,9 @@ static int ufs_kirin_pwr_change_notify(struct ufs_hba *hba,
 			       __func__);
 			goto out;
 		}
+		/*for hisi MPHY*/
+		deemphasis_config(host, hba, dev_req_params);
+
 #if 0
 #ifdef UFS_TX_EQUALIZER_35DB
 		pr_info("set TX_EQUALIZER 3.5db\n");
@@ -1212,6 +1745,13 @@ static int ufs_kirin_pwr_change_notify(struct ufs_hba *hba,
 			ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x0037, 0x1), 0x2);
 #endif
 #endif
+		if (host->caps & USE_HISI_MPHY_TC) {
+			/*FIXME is it good to use for FPGA condition*/
+			if (host->caps & USE_FPGA_BOARD_CLK) {
+				adapt_pll_to_power_mode(hba);
+			}
+		}
+
 		ufs_kirin_pwr_change_pre_change(hba);
 		break;
 	case POST_CHANGE:
@@ -1231,7 +1771,7 @@ static int ufs_kirin_pwr_change_notify(struct ufs_hba *hba,
 out:
 	return ret;
 }
-
+/*lint +e845*/
 #ifdef FEATURE_KIRIN_UFS_PSW
 static int ufs_kirin_wait_ufssys_bitset_timeout(struct ufs_kirin_host *host,
 		uint32_t mask, uint32_t off, int timeout_us)
@@ -1269,8 +1809,8 @@ static int ufs_kirin_suspend(struct ufs_hba *hba, enum ufs_pm_op pm_op)
 {
 	struct ufs_kirin_host *host = hba->priv;
 
-	/*set SOC_SCTRL_SCBAKDATA11_ADDR 0 when idle*/
-	writel(0, SOC_SCTRL_SCBAKDATA11_ADDR(host->sysctrl));
+	/*set SOC_SCTRL_SCBAKDATA11_ADDR ufs bit to 0 when idle*/
+	hisi_idle_sleep_vote(ID_UFS, 0);
 
 	if (ufshcd_is_runtime_pm(pm_op))
 		return 0;
@@ -1321,7 +1861,7 @@ static int ufs_kirin_suspend(struct ufs_hba *hba, enum ufs_pm_op pm_op)
 	/* close ufsphy cfg clk */
 	ufs_pericrg_writel(host, CLK_UFSPHY, PERDIS7_OFFSET);
 	if (CLK_UFSPHY & ufs_pericrg_readl(host, PERCLKEN7_OFFSET)) {
-		pr_err("%s:disable phy cfg clk err. PERCLKEN7 = 0x%x\n",__func__,
+		pr_err("%s:disable phy cfg clk err. PERCLKEN7 = 0x%x\n", __func__,
 			ufs_pericrg_readl(host, PERCLKEN7_OFFSET));
 	}
 
@@ -1336,8 +1876,8 @@ static int ufs_kirin_resume(struct ufs_hba *hba, enum ufs_pm_op pm_op)
 {
 	struct ufs_kirin_host *host = hba->priv;
 
-	/*set SOC_SCTRL_SCBAKDATA11_ADDR 1 when busy*/
-	writel(0x1, SOC_SCTRL_SCBAKDATA11_ADDR(host->sysctrl));
+	/*set SOC_SCTRL_SCBAKDATA11_ADDR ufs bit to 1 when busy*/
+	hisi_idle_sleep_vote(ID_UFS, 1);
 
 	if (!host->in_suspend)
 		return 0;
@@ -1536,7 +2076,7 @@ static void ufs_kirin_set_pm_lvl(struct ufs_hba *hba)
 static void ufs_kirin_advertise_quirks(struct ufs_hba *hba)
 {
 	/* put all our quirks here */
-//	hba->quirks |= UFSHCD_QUIRK_BROKEN_LCC;
+	/*hba->quirks |= UFSHCD_QUIRK_BROKEN_LCC;*/
 }
 
 static void ufs_kirin_populate_dt(struct device *dev,
@@ -1550,8 +2090,15 @@ static void ufs_kirin_populate_dt(struct device *dev,
 		return;
 	}
 
-	if (of_find_property(np, "ufs-kirin-use-snps-mphy-tc", NULL))
+	if (of_find_property(np, "ufs-kirin-use-snps-mphy-tc", NULL)) {
 		host->caps |= USE_SNPS_MPHY_TC;
+	}
+	if (of_find_property(np, "ufs-kirin-use-hisi-mphy-tc", NULL)) {
+		host->caps |= USE_HISI_MPHY_TC;
+	}
+	if (of_find_property(np, "ufs-kirin-since-boston-cs", NULL)) {
+		host->caps |= USE_SINCE_BOSTON_CS;
+	}
 
 	if (of_find_property(np, "ufs-kirin-use-fpga-board-clk", NULL))
 		host->caps |= USE_FPGA_BOARD_CLK;
@@ -1610,7 +2157,7 @@ static void ufs_kirin_populate_dt(struct device *dev,
 		host->hba->caps |= UFSHCD_CAP_SSU_BY_SELF;
 
 	ret = of_property_match_string(np, "ufs-0db-equalizer-product-names", ufs_product_name);
-	if ( ret >= 0) {
+	if (ret >= 0) {
 		dev_info(dev, "find %s in dts\n", ufs_product_name);
 		host->tx_equalizer = 0;
 	} else {
@@ -1621,6 +2168,18 @@ static void ufs_kirin_populate_dt(struct device *dev,
 		host->tx_equalizer = 60;
 #endif
 	}
+#ifdef CONFIG_UFS_DEVICE_RELATED_CONFIGS
+	ret = of_property_match_string(np, "ufs-refclk-drive-4ma-product-names", ufs_product_name);
+	if (ret >= 0) {
+		config_refclk_drive_to_4ma = 1;
+		dev_info(dev, "config_refclk_drive_to_4ma\n");
+	}
+	ret = of_property_match_string(np, "ufs-force-link-llane-product-names", ufs_product_name);
+	if (ret >= 0) {
+		force_link_to_1lane = 1;
+		dev_info(dev, "force_link_to_1lane\n");
+	}
+#endif
 }
 
 /**
@@ -1655,7 +2214,7 @@ static int ufs_kirin_init(struct ufs_hba *hba)
 		goto out;
 	}
 
-	if( 0 == ufs_rdr_init(hba) ) {
+	if (0 == ufs_rdr_init(hba)) {
 		(void)ufs_rdr_hist_init(hba);
 	}
 
@@ -1675,7 +2234,10 @@ static int ufs_kirin_init(struct ufs_hba *hba)
 
 	ufs_kirin_soc_init(hba);
 
-	ufs_kirin_inline_crypto_attr(hba);
+#ifdef CONFIG_HISI_BOOTDEVICE
+	if (get_bootdevice_type() == BOOT_DEVICE_UFS)
+#endif
+		ufs_kirin_inline_crypto_attr(hba);
 
 	scsi_logging_level = UFS_SCSI_LOGGING_LEVEL;
 
@@ -1690,6 +2252,12 @@ out:
 
 static void ufs_kirin_exit(struct ufs_hba *hba)
 {
+	struct ufs_kirin_host *host = hba->priv;
+
+	if ((host->caps & USE_HISI_MPHY_TC) && host->i2c_client) {
+		i2c_unregister_device(host->i2c_client);
+		host->i2c_client = NULL;
+	}
 	(void)ufs_rdr_exit(hba);
 
 	return;
@@ -1777,7 +2345,7 @@ re_check:
 					scsi_block_requests(hba->host);
 
 					/* transfer error masks to sticky bits */
-					hba->ufshcd_state = UFSHCD_STATE_ERROR;
+					hba->ufshcd_state = UFSHCD_STATE_EH_SCHEDULED;
 					hba->force_reset_hba = 1;
 					schedule_work(&hba->eh_work);
 					spin_unlock_irqrestore(hba->host->host_lock, flags);
@@ -1786,7 +2354,7 @@ re_check:
 			}
 
 		}
-	} while(1);
+	} while (1);
 
 	return 0;
 }
@@ -1815,41 +2383,6 @@ int ufs_kirin_get_pwr_by_sysctrl(struct ufs_hba *hba)
 }
 #endif
 /*lint -restore*/
-
-#ifdef CONFIG_SCSI_UFS_HAND_WARM
-/*lint -save -e747 -e715*/
-static int ufs_kirin_handwarm_thread(void *d)
-{
-	int i = 0;
-	void *temp1;
-	void *temp2;
-
-	temp1 = vmalloc(TEMP_BUF_SIZE);
-	if (!temp1)
-		return 0;
-
-	temp2 = vmalloc(TEMP_BUF_SIZE);
-	if (!temp2) {
-		vfree(temp1);
-		return 0;
-	}
-
-	do {
-		memset(temp1, i, TEMP_BUF_SIZE);
-		memcpy(temp1, temp2, TEMP_BUF_SIZE);
-		memcpy(temp2, temp1, TEMP_BUF_SIZE);
-		i++;
-		if (i > 10000)
-			i = 0;
-	} while (!kthread_should_stop());
-
-	vfree(temp1);
-	vfree(temp2);
-
-	return 0;
-}
-/*lint -restore*/
-#endif
 
 /**
  * struct ufs_hba_kirin_vops - UFS KIRIN specific variant operations
@@ -1882,20 +2415,18 @@ const struct ufs_hba_variant_ops ufs_hba_kirin_vops = {
 #ifdef CONFIG_SCSI_UFS_HS_ERROR_RECOVER
 	.get_pwr_by_debug_register = ufs_kirin_get_pwr_by_sysctrl,
 #endif
-#ifdef CONFIG_SCSI_UFS_HAND_WARM
-	.handwarm_thread = ufs_kirin_handwarm_thread,
-#endif
 };
 
-
 #ifdef CONFIG_SCSI_UFS_KIRIN_V21
-
 static void ufs_kirin_v21_soc_init(struct ufs_hba *hba)
 {
 	struct ufs_kirin_host *host = (struct ufs_kirin_host *)hba->priv;
 	u32 reg;
 
 	pr_info("%s ++\n", __func__);
+
+	writel(1<<SOC_UFS_Sysctrl_UFS_UMECTRL_ufs_ies_en_mask_START,\
+		SOC_UFS_Sysctrl_UFS_UMECTRL_ADDR(host->ufs_sys_ctrl));
 
 	writel(1<<(SOC_UFS_Sysctrl_CRG_UFS_CFG_ip_rst_ufs_START+16) | 0, \
 		SOC_UFS_Sysctrl_CRG_UFS_CFG_ADDR(host->ufs_sys_ctrl));
@@ -1907,9 +2438,23 @@ static void ufs_kirin_v21_soc_init(struct ufs_hba *hba)
 	ufs_sys_ctrl_writel(host, MASK_UFS_DEVICE_RESET | 0,
 		UFS_DEVICE_RESET_CTRL);
 #endif
-
+	if (host->caps & USE_SINCE_BOSTON_CS) {
+		/*STEP 4 CLOSE MPHY REF CLOCK*/
+		ufs_sys_ctrl_clr_bits(host, BIT_SYSCTRL_REF_CLOCK_EN, PHY_CLK_CTRL);
+		reg = ((0x3 << 2) | (0x7 << (2 + 16))); /*Bit[4:2], div =4*/
+		writel(reg,
+		       SOC_UFS_Sysctrl_CRG_UFS_CFG_ADDR(host->ufs_sys_ctrl));
+	}
 	reg = ufs_sys_ctrl_readl(host, PHY_CLK_CTRL);
-	reg = (reg & ~MASK_SYSCTRL_CFG_CLOCK_FREQ) | 0x14;
+	if (host->caps & USE_SINCE_BOSTON_CS) {
+		if (host->caps & USE_FPGA_BOARD_CLK) {
+			reg = (reg & ~MASK_SYSCTRL_CFG_CLOCK_FREQ) | 0x14;
+		} else {
+			reg = (reg & ~MASK_SYSCTRL_CFG_CLOCK_FREQ) | 0x3C;
+		}
+	} else {
+		reg = (reg & ~MASK_SYSCTRL_CFG_CLOCK_FREQ) | 0x14;
+	}
 	ufs_sys_ctrl_writel(host, reg, PHY_CLK_CTRL); /* set cfg clk freq */
 	ufs_sys_ctrl_clr_bits(host, MASK_SYSCTRL_REF_CLOCK_SEL, PHY_CLK_CTRL); /* set ref clk freq */
 
@@ -1934,19 +2479,36 @@ static void ufs_kirin_v21_soc_init(struct ufs_hba *hba)
 	ufs_sys_ctrl_set_bits(host, BIT_SYSCTRL_LP_RESET_N, RESET_CTRL_EN); /* disable lp_reset_n */
 	mdelay(1);
 
-	ufs_sys_ctrl_set_bits(host, BIT_SYSCTRL_REF_CLOCK_EN, PHY_CLK_CTRL); /* open clock of M-PHY */
-	ufs_sys_ctrl_writel(host, MASK_UFS_DEVICE_RESET | 0,\
-		UFS_DEVICE_RESET_CTRL); /* reset device */
-	writel((1<<SOC_SCTRL_SCPEREN4_gt_clk_ufsio_ref_START),\
-		SOC_SCTRL_SCPEREN4_ADDR(host->sysctrl)); /* open clock of device */
+	ufs_sys_ctrl_set_bits(host, BIT_SYSCTRL_REF_CLOCK_EN,
+			      PHY_CLK_CTRL); /* open clock of M-PHY */
+	if (host->caps & USE_HISI_MPHY_TC) {
+		ufs_i2c_writel(hba, (unsigned int) BIT(6),
+			       SC_RSTDIS); /*enable Device Reset*/
+		ufs_i2c_readl(hba, &reg, SC_UFS_REFCLK_RST_PAD);
+		reg = reg & (~(BIT(2) | BIT(10)));
+		/*output enable, For EMMC to high dependence, open
+		 * DA_UFS_OEN_RST
+		 * and DA_UFS_OEN_REFCLK*/
+		ufs_i2c_writel(hba, reg, SC_UFS_REFCLK_RST_PAD);
+		mdelay(2);
+		ufs_i2c_writel(hba, (unsigned int)BIT(6),
+				SC_RSTEN); /*disable Device Reset*/
+	} else {
+		ufs_sys_ctrl_writel(host, MASK_UFS_DEVICE_RESET | 0,
+				    UFS_DEVICE_RESET_CTRL); /* reset device */
+		writel((1 << SOC_SCTRL_SCPEREN4_gt_clk_ufsio_ref_START),
+		       SOC_SCTRL_SCPEREN4_ADDR(
+			   host->sysctrl)); /* open clock of device */
 
-	mdelay(2);
+		mdelay(2);
 
-	reg = readl(SOC_SCTRL_SCDEEPSLEEPED_ADDR(host->sysctrl));
-	if (0 == (reg & (1<<21))) {
-		mdelay(1);
-		ufs_sys_ctrl_writel(host, MASK_UFS_DEVICE_RESET | BIT_UFS_DEVICE_RESET,\
-			UFS_DEVICE_RESET_CTRL); /* disable Device Reset */
+		reg = readl(SOC_SCTRL_SCDEEPSLEEPED_ADDR(host->sysctrl));
+		if (0 == (reg & (1 << 21))) {
+			mdelay(1);
+			ufs_sys_ctrl_writel(
+			    host, MASK_UFS_DEVICE_RESET | BIT_UFS_DEVICE_RESET,
+			    UFS_DEVICE_RESET_CTRL); /* disable Device Reset */
+		}
 	}
 	mdelay(40);
 
@@ -1964,11 +2526,47 @@ static void ufs_kirin_v21_soc_init(struct ufs_hba *hba)
 	if (reg & (1<<SOC_UFS_Sysctrl_CRG_UFS_CFG_ip_rst_ufs_START))
 		mdelay(1);
 
-	/*set SOC_SCTRL_SCBAKDATA11_ADDR 0xffffffff when init*/
-	writel(0xffffffff, SOC_SCTRL_SCBAKDATA11_ADDR(host->sysctrl));
+	/*set SOC_SCTRL_SCBAKDATA11_ADDR ufs bit to 1 when init*/
+	hisi_idle_sleep_vote(ID_UFS, 1);
 
 	pr_info("%s --\n", __func__);
 	return;
+}
+
+static int create_i2c_client(struct ufs_hba *hba)
+{
+	struct ufs_kirin_host *host = hba->priv;
+	struct i2c_adapter *adapter;
+
+	adapter = i2c_get_adapter(UFS_I2C_BUS);
+	if (!adapter) {
+		pr_err("%s i2c_get_adapter error\n", __func__);
+		return -EIO;
+	}
+	host->i2c_client = i2c_new_device(adapter, &ufs_i2c_board_info);
+	if (!host->i2c_client) {
+		pr_err("%s i2c_new_device error\n", __func__);
+		return -EIO;
+	}
+	return 0;
+}
+
+void cs_chipsel_gpio_config(struct ufs_kirin_host *host, struct device *dev)
+{
+	int err = 0;
+
+	host->chipsel_gpio = of_get_named_gpio(dev->of_node, "cs-gpios", 0);
+	if (!gpio_is_valid(host->chipsel_gpio)) {
+		pr_err("%s: gpio of host->chipsel_gpio is not valid,check DTS\n", __func__);
+	}
+	err = gpio_request((unsigned int)host->chipsel_gpio, "cs-gpio");
+	if (err < 0) {
+		pr_err("Can`t request cs chipsel gpio %d\n", host->chipsel_gpio);
+	}
+	err = gpio_direction_output((unsigned int)host->chipsel_gpio, 0);
+	if (err < 0) {
+		pr_err("%s: could not set gpio %d output push down\n", __func__, host->chipsel_gpio);
+	}
 }
 
 /**
@@ -1985,7 +2583,6 @@ static int ufs_kirin_v21_init(struct ufs_hba *hba)
 	if (get_bootdevice_type() == BOOT_DEVICE_UFS)
 		set_bootdevice_name(dev);
 #endif
-
 	host = devm_kzalloc(dev, sizeof(*host), GFP_KERNEL);
 	if (!host) {
 		err = -ENOMEM;
@@ -2003,7 +2600,7 @@ static int ufs_kirin_v21_init(struct ufs_hba *hba)
 		goto out;
 	}
 
-	if( 0 == ufs_rdr_init(hba) ) {
+	if (0 == ufs_rdr_init(hba)) {
 		(void)ufs_rdr_hist_init(hba);
 	}
 
@@ -2012,7 +2609,14 @@ static int ufs_kirin_v21_init(struct ufs_hba *hba)
 	ufs_kirin_set_pm_lvl(hba);
 
 	ufs_kirin_populate_dt(dev, host);
-
+	if ((host->caps & USE_HISI_MPHY_TC) && !host->i2c_client) {
+		cs_chipsel_gpio_config(host, dev);
+		err = create_i2c_client(hba);
+		if (err) {
+			dev_err(dev, "create i2c client error\n");
+			goto host_free;
+		}
+	}
 	err = ufs_kirin_get_resource(host);
 	if (err)
 		goto host_free;
@@ -2020,6 +2624,11 @@ static int ufs_kirin_v21_init(struct ufs_hba *hba)
 	ufs_kirin_regulator_init(hba);
 
 	ufs_kirin_v21_soc_init(hba);
+
+#ifdef CONFIG_HISI_BOOTDEVICE
+	if (get_bootdevice_type() == BOOT_DEVICE_UFS)
+#endif
+		ufs_kirin_inline_crypto_attr(hba);
 
 	goto out;
 
@@ -2034,8 +2643,8 @@ static int ufs_kirin_v21_suspend(struct ufs_hba *hba, enum ufs_pm_op pm_op)
 {
 	struct ufs_kirin_host *host = hba->priv;
 
-	/*set SOC_SCTRL_SCBAKDATA11_ADDR 0 when idle*/
-	writel(0, SOC_SCTRL_SCBAKDATA11_ADDR(host->sysctrl));
+	/*set SOC_SCTRL_SCBAKDATA11_ADDR ufs bit to 0 when idle*/
+	hisi_idle_sleep_vote(ID_UFS, 0);
 
 	if (ufshcd_is_runtime_pm(pm_op))
 		return 0;
@@ -2066,8 +2675,8 @@ static int ufs_kirin_v21_resume(struct ufs_hba *hba, enum ufs_pm_op pm_op)
 {
 	struct ufs_kirin_host *host = hba->priv;
 
-	/*set SOC_SCTRL_SCBAKDATA11_ADDR 1 when busy*/
-	writel(0x1, SOC_SCTRL_SCBAKDATA11_ADDR(host->sysctrl));
+	/*set SOC_SCTRL_SCBAKDATA11_ADDR ufs bit to 1 when busy*/
+	hisi_idle_sleep_vote(ID_UFS, 1);
 
 	if (!host->in_suspend)
 		return 0;

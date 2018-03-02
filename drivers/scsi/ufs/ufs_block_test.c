@@ -64,6 +64,7 @@ extern struct gendisk *scsi_gendisk_get_from_dev(struct device *dev);
 /* translation mask from sectors to block */
 #define SECTOR_TO_BLOCK_MASK 0x7
 
+/*cppcheck-suppress * */
 #define TEST_OPS(test_name, upper_case_name)				\
 static int ufs_test_ ## test_name ## _show(struct seq_file *file,	\
 		void *data)						\

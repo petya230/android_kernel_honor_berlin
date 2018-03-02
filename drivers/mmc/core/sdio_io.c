@@ -121,7 +121,7 @@ int sdio_disable_func(struct sdio_func *func)
 	if (ret)
 		goto err;
 
-	reg &= ~(1 << func->num);
+	reg &= ~(1 << func->num);/*lint !e502*/
 
 	ret = mmc_io_rw_direct(func->card, 1, 0, SDIO_CCCR_IOEx, reg, NULL);
 	if (ret)

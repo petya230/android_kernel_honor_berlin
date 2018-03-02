@@ -15,6 +15,7 @@
 #include <linux/sched.h>
 #include <linux/device.h>
 #include <linux/fault-inject.h>
+#include <linux/blkdev.h>
 #include <linux/wakelock.h>
 
 #include <linux/mmc/core.h>
@@ -92,9 +93,10 @@ struct mmc_cmdq_host_ops {
 	int (*restore_irqs)(struct mmc_host *mmc);
 	int (*request)(struct mmc_host *mmc, struct mmc_request *mrq);
 	int (*halt)(struct mmc_host *mmc, bool halt);
-	void (*post_req)(struct mmc_host *mmc, struct mmc_request *mrq, 
+	void (*post_req)(struct mmc_host *mmc, struct mmc_request *mrq,
 		int err);
 	void (*disable_immediatly)(struct mmc_host *mmc);
+	int (*clear_and_halt)(struct mmc_host *mmc);
 };
 
 struct mmc_host_ops {
@@ -173,6 +175,7 @@ struct mmc_host_ops {
 #ifdef CONFIG_MMC_PASSWORDS
 	int	(*sd_lock_reset)(struct mmc_host *host);
 #endif
+	int (*send_cmd_direct)(struct mmc_host *host, struct mmc_request *mrq);
 };
 
 struct mmc_card;
@@ -261,7 +264,7 @@ struct mmc_cmdq_context_info {
 	unsigned long	active_reqs; /* in-flight requests */
 	bool		active_dcmd;
 	bool		rpmb_in_wait;
-	enum cmdq_states curr_state;
+	unsigned long   curr_state;
 
 	/* no free tag available */
 	unsigned long	req_starved;
@@ -382,6 +385,7 @@ struct mmc_host {
 #define MMC_CAP2_ENHANCED_STROBE		(1 << 19)
 #define MMC_CAP2_CACHE_FLUSH_BARRIER	(1 << 20)
 #define MMC_CAP2_BKOPS_AUTO_CTRL		(1 << 21)	/* Allow background operations auto enable control */
+#define MMC_CAP2_BKOPS_MANUAL_CTRL		(1 << 22)	/* Allow background operations manual enable control */
 
 #define MMC_CAP2_SUPPORT_VIA_MODEM		(1 << 26)	/* host is connected by via modem through sdio */
 #define MMC_CAP2_SUPPORT_WIFI        		(1 << 27)	/* host is connected by wifi through sdio */
@@ -426,7 +430,9 @@ struct mmc_host {
 
 	int			rescan_disable;	/* disable card detection */
 	int			rescan_entered;	/* used with nonremovable devices */
-
+#ifdef CONFIG_HISI_MMC_FLUSH_REDUCE
+	unsigned char	mmc_flush_reduce_enable; /* flush reduce enable on mmc */
+#endif
 	bool			trigger_card_event; /* card_event necessary */
 
 	struct mmc_card		*card;		/* device attached to this host */
@@ -480,6 +486,11 @@ struct mmc_host {
 		struct sdio_embedded_func	*funcs;
 		int				num_funcs;
 	} embedded_sdio_data;
+#endif
+
+#ifdef CONFIG_BLOCK
+	int			latency_hist_enabled;
+	struct io_latency_state io_lat_s;
 #endif
 
 #ifdef CONFIG_HW_MMC_TEST

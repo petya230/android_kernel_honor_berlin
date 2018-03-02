@@ -25,27 +25,27 @@ deta version  0x02 ;
  */
 enum DSM_EMMC_ERR
 {
-	DSM_EMMC_INIT_ERROR = 928002000,                    /* 20300 */
-	DSM_EMMC_TUNING_ERROR = 928002001,                  /* 20301 */
-	DSM_EMMC_READ_ERR = 928002002,                      /* 20302 */
-	DSM_EMMC_WRITE_ERR = 928002003,                     /* 20303 */
+	DSM_EMMC_INIT_ERROR = 928002020,                    /* 20300 */
+	DSM_EMMC_TUNING_ERROR = 928002000,                  /* 20301 */
+	DSM_EMMC_READ_ERR = 928002008,                      /* 20302 */
+	DSM_EMMC_WRITE_ERR = 928002009,                     /* 20303 */
 	DSM_EMMC_DATA0_BUSY_ERROR = 928002021,              /* 20304 */
-	DSM_EMMC_PRE_EOL_INFO_ERR = 928002004,              /* 20305 */
-	DSM_EMMC_LIFE_TIME_EST_ERR = 928002005,             /* 20306 */
+	DSM_EMMC_PRE_EOL_INFO_ERR = 928002002,              /* 20305 */
+	DSM_EMMC_LIFE_TIME_EST_ERR = 928002003,             /* 20306 */
 	DSM_EMMC_THROUGHPUT_MONITOR_ERROR = 928002022,      /* 20307 */
 	DSM_STORAGE_EXT4_ERROR_NO = 928002023,              /* 20308 */
 	DSM_SYSTEM_W_ERR = 928002006,                       /* 20309 */
-	DSM_EMMC_ERASE_ERR = 928002007,                     /* 20310 */
-	DSM_EMMC_VDET_ERR = 928002008,                      /* 20311 */
-	DSM_EMMC_SEND_CXD_ERR = 928002009,                  /* 20312 */
-	DSM_EMMC_SET_BUS_WIDTH_ERR = 928002010,             /* 20313 */
+	DSM_EMMC_ERASE_ERR = 928002004,                     /* 20310 */
+	DSM_EMMC_VDET_ERR = 928002001,                      /* 20311 */
+	DSM_EMMC_SEND_CXD_ERR = 928002005,                  /* 20312 */
+	DSM_EMMC_SET_BUS_WIDTH_ERR = 928002015,             /* 20313 */
 	DSM_EMMC_RSP_ERR  = 928002011,                      /* 20314 */
 	DSM_EMMC_RW_TIMEOUT_ERR  = 928002024,               /* 20315 */
-	DSM_EMMC_HOST_ERR  = 928002012,                     /* 20316 */
-	DSM_EMMC_URGENT_BKOPS  = 928002013,                 /* 20317 */
-	DSM_EMMC_DYNCAP_NEEDED  = 928002014,                /* 20318 */
+	DSM_EMMC_HOST_ERR  = 928002016,                     /* 20316 */
+	DSM_EMMC_URGENT_BKOPS  = 928002012,                 /* 20317 */
+	DSM_EMMC_DYNCAP_NEEDED  = 928002013,                /* 20318 */
 	DSM_EMMC_SYSPOOL_EXHAUSTED  = 928002025,            /* 20319 */
-	DSM_EMMC_PACKED_FAILURE  = 928002015,               /* 20320 */
+	DSM_EMMC_PACKED_FAILURE  = 928002014,               /* 20320 */
 };
 
 

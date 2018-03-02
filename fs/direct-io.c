@@ -38,6 +38,7 @@
 #include <linux/atomic.h>
 #include <linux/prefetch.h>
 #include <linux/fscrypto.h>
+#include <linux/iolimit_cgroup.h>
 
 /*
  * How many user pages to map in one call to get_user_pages().  This determines
@@ -390,7 +391,9 @@ static inline void dio_bio_submit(struct dio *dio, struct dio_submit *sdio)
 #ifdef CONFIG_FS_ENCRYPTION
 	struct inode *inode = dio->inode;
 
-	if (fscrypt_has_encryption_key(inode) && S_ISREG(inode->i_mode)) {
+	if (fscrypt_has_encryption_key(inode) && S_ISREG(inode->i_mode) &&
+		inode->i_sb->s_cop->is_inline_encrypted &&
+		inode->i_sb->s_cop->is_inline_encrypted(inode)) {
 		bio->ci_key = fscrypt_ci_key(inode);
 		bio->ci_key_len = fscrypt_ci_key_len(inode);
 		/*lint -save -e704*/
@@ -928,7 +931,13 @@ static int do_direct_IO(struct dio *dio, struct dio_submit *sdio,
 		from = sdio->head ? 0 : sdio->from;
 		to = (sdio->head == sdio->tail - 1) ? sdio->to : PAGE_SIZE;
 		sdio->head++;
-
+#ifdef CONFIG_CGROUP_IOLIMIT
+		if ((dio->rw & WRITE) == WRITE) {
+			io_write_bandwidth_control(PAGE_SIZE);
+		} else {
+			io_read_bandwidth_control(PAGE_SIZE);
+		}
+#endif
 		while (from < to) {
 			unsigned this_chunk_bytes;	/* # of bytes mapped */
 			unsigned this_chunk_blocks;	/* # of blocks */

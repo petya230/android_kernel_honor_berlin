@@ -36,8 +36,6 @@
 #include <linux/mmc/dsm_sdcard.h>
 #endif
 
-#define cls_dev_to_mmc_host(d)	container_of(d, struct mmc_host, class_dev)
-
 static DEFINE_IDR(mmc_host_idr);
 static DEFINE_SPINLOCK(mmc_host_lock);
 
@@ -392,7 +390,7 @@ int mmc_of_parse(struct mmc_host *host)
 		 * both inverted, the end result is that the CD line is
 		 * not inverted.
 		 */
-		if (cd_cap_invert ^ cd_gpio_invert)
+		if (cd_cap_invert ^ cd_gpio_invert)/*lint !e514 */
 			host->caps2 |= MMC_CAP2_CD_ACTIVE_HIGH;
 	}
 
@@ -406,7 +404,7 @@ int mmc_of_parse(struct mmc_host *host)
 		return ret;
 
 	/* See the comment on CD inversion above */
-	if (ro_cap_invert ^ ro_gpio_invert)
+	if (ro_cap_invert ^ ro_gpio_invert)/*lint !e514 */
 		host->caps2 |= MMC_CAP2_RO_ACTIVE_HIGH;
 
 	if (of_find_property(np, "cap-sd-highspeed", &len))
@@ -604,6 +602,8 @@ int mmc_add_host(struct mmc_host *host)
 #endif
 	mmc_host_clk_sysfs_init(host);
 
+	mmc_latency_hist_sysfs_init(host);
+
 	mmc_start_host(host);
 	if (!(host->pm_flags & MMC_PM_IGNORE_PM_NOTIFY))
 		register_pm_notifier(&host->pm_notify);
@@ -631,6 +631,8 @@ void mmc_remove_host(struct mmc_host *host)
 #ifdef CONFIG_DEBUG_FS
 	mmc_remove_host_debugfs(host);
 #endif
+
+	mmc_latency_hist_sysfs_exit(host);
 
 	device_del(&host->class_dev);
 

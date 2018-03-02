@@ -91,6 +91,12 @@ void arch_cpu_idle_dead(void)
 }
 #endif
 
+#ifdef CONFIG_CPU_FREQ_GOV_INTERACTIVE
+void arch_cpu_idle_exit(void)
+{
+	idle_notifier_call_chain((unsigned long)IDLE_END);
+}
+#endif
 /*
  * Called by kexec, immediately prior to machine_kexec().
  *
@@ -314,7 +320,8 @@ void release_thread(struct task_struct *dead_task)
 
 int arch_dup_task_struct(struct task_struct *dst, struct task_struct *src)
 {
-	fpsimd_preserve_current_state();
+	if (current->mm)
+		fpsimd_preserve_current_state();
 	*dst = *src;
 	return 0;
 }

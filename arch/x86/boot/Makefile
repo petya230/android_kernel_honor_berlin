@@ -15,6 +15,7 @@
 # The number is the same as you would ordinarily press at bootup.
 
 KASAN_SANITIZE := n
+KCOV_INSTRUMENT := n
 
 SVGA_MODE	:= -DSVGA_MODE=NORMAL_VGA
 
@@ -60,6 +61,7 @@ clean-files += cpustr.h
 KBUILD_CFLAGS	:= $(USERINCLUDE) $(REALMODE_CFLAGS) -D_SETUP
 KBUILD_AFLAGS	:= $(KBUILD_CFLAGS) -D__ASSEMBLY__
 GCOV_PROFILE := n
+UBSAN_SANITIZE := n
 
 $(obj)/bzImage: asflags-y  := $(SVGA_MODE)
 

@@ -182,6 +182,18 @@ void mmc_queue_setup_discard(struct request_queue *q,
 		queue_flag_set_unlocked(QUEUE_FLAG_SECDISCARD, q);
 }
 
+static void hisi_mmc_queue_init_tags(struct mmc_queue *mq, struct mmc_card *card)
+{
+	int ret;
+
+	if(card->mmc_tags){
+		ret = blk_queue_init_tags(mq->queue, card->mmc_tags_depth, card->mmc_tags, 0);
+		if(ret)
+			pr_warn("%s: blk_queue_init_tags failed!\n", mmc_card_name(card));
+	}
+
+}
+
 /**
  * mmc_init_queue - initialise a queue structure.
  * @mq: mmc queue
@@ -195,7 +207,7 @@ int mmc_init_queue(struct mmc_queue *mq, struct mmc_card *card,
 		   spinlock_t *lock, const char *subname, int area_type)
 {
 	struct mmc_host *host = card->host;
-	u64 limit = BLK_BOUNCE_HIGH;
+	u64 limit = BLK_BOUNCE_HIGH;/*lint !e501 */
 	int ret;
 	struct mmc_queue_req *mqrq_cur = &mq->mqrq[0];
 	struct mmc_queue_req *mqrq_prev = &mq->mqrq[1];
@@ -217,6 +229,8 @@ int mmc_init_queue(struct mmc_queue *mq, struct mmc_card *card,
 	mq->queue = blk_init_queue(mmc_request_fn, lock);
 	if (!mq->queue)
 		return -ENOMEM;
+
+	hisi_mmc_queue_init_tags(mq, card);
 
 	mq->mqrq_cur = mqrq_cur;
 	mq->mqrq_prev = mqrq_prev;
@@ -524,7 +538,7 @@ unsigned int mmc_queue_map_sg(struct mmc_queue *mq, struct mmc_queue_req *mqrq)
 	size_t buflen;
 	struct scatterlist *sg;
 	enum mmc_packed_type cmd_type;
-	int i;
+	unsigned int i;
 
 	cmd_type = mqrq->cmd_type;
 

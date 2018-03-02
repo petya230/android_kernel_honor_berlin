@@ -747,6 +747,10 @@ const char * const vmstat_text[] = {
 	"workingset_nodereclaim",
 	"nr_anon_transparent_hugepages",
 	"nr_free_cma",
+#ifdef CONFIG_HUAWEI_UNMOVABLE_ISOLATE
+	"nr_free_unmovable_isolate1",
+	"nr_free_unmovable_isolate2",
+#endif
 	"nr_ioncache_pages",
 	"nr_mali_pages",
 	"nr_swapcache",
@@ -913,9 +917,13 @@ static char * const migratetype_names[MIGRATE_TYPES] = {
 	"Unmovable",
 	"Reclaimable",
 	"Movable",
-	"Reserve",
 #ifdef CONFIG_CMA
 	"CMA",
+#endif
+	"Reserve",
+#ifdef CONFIG_HUAWEI_UNMOVABLE_ISOLATE
+	"Unmovable_isolate1",
+	"Unmovable_isolate2",
 #endif
 #ifdef CONFIG_MEMORY_ISOLATION
 	"Isolate",
@@ -1391,17 +1399,7 @@ static void vmstat_update(struct work_struct *w)
 		 * Defer the checking for differentials to the
 		 * shepherd thread on a different processor.
 		 */
-		int r;
-		/*
-		 * Shepherd work thread does not race since it never
-		 * changes the bit if its zero but the cpu
-		 * online / off line code may race if
-		 * worker threads are still allowed during
-		 * shutdown / startup.
-		 */
-		r = cpumask_test_and_set_cpu(smp_processor_id(),
-			cpu_stat_off);
-		VM_BUG_ON(r);
+		cpumask_set_cpu(smp_processor_id(), cpu_stat_off);
 	}
 }
 

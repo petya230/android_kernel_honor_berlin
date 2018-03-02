@@ -48,6 +48,7 @@
 
 phys_addr_t memstart_addr __read_mostly = 0;
 phys_addr_t arm64_dma_phys_limit __read_mostly;
+static unsigned int dma_zone_only;
 
 #ifdef CONFIG_BLK_DEV_INITRD
 static int __init early_initrd(char *p)
@@ -67,15 +68,32 @@ static int __init early_initrd(char *p)
 early_param("initrd", early_initrd);
 #endif
 
+static int __init early_dma_zone_only(char *arg)
+{
+	if (!arg)
+		return -EINVAL;
+
+	if (!strncmp(arg, "true", strlen("true")))
+		dma_zone_only = 1;
+	else
+		dma_zone_only = 0;
+
+	return 0;
+}
+early_param("dma_zone_only", early_dma_zone_only); /*lint -e528 */
+
 /*
  * Return the maximum physical address for ZONE_DMA (DMA_BIT_MASK(32)). It
  * currently assumes that for memory starting above 4G, 32-bit devices will
  * use a DMA offset.
  */
-static phys_addr_t max_zone_dma_phys(void)
+static phys_addr_t __init max_zone_dma_phys(void)
 {
 	phys_addr_t offset = memblock_start_of_DRAM() & GENMASK_ULL(63, 32);
-	return min(offset + (1ULL << 32), memblock_end_of_DRAM());
+	if (dma_zone_only)
+		return memblock_end_of_DRAM();
+	else
+		return min(offset + (1ULL << 32), memblock_end_of_DRAM());
 }
 
 static void __init zone_sizes_init(unsigned long min, unsigned long max)
@@ -128,11 +146,11 @@ EXPORT_SYMBOL(pfn_valid);
 #endif
 
 #ifndef CONFIG_SPARSEMEM
-static void arm64_memory_present(void)
+static void __init arm64_memory_present(void)
 {
 }
 #else
-static void arm64_memory_present(void)
+static void __init arm64_memory_present(void)
 {
 	struct memblock_region *reg;
 

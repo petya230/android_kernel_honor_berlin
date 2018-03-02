@@ -15,13 +15,16 @@
 #include <linux/backing-dev.h>
 #include <linux/sysctl.h>
 #include <linux/sysfs.h>
-#include <linux/sched.h>
 #include <linux/balloon_compaction.h>
 #include <linux/page-isolation.h>
 #include <linux/kasan.h>
 #include <linux/kthread.h>
 #include <linux/freezer.h>
 #include "internal.h"
+
+#ifdef CONFIG_HUAWEI_UNMOVABLE_ISOLATE
+#include <linux/unmovable_isolate.h>
+#endif
 
 #ifdef CONFIG_COMPACTION
 static inline void count_compact_event(enum vm_event_item item)
@@ -435,6 +438,24 @@ static unsigned long isolate_freepages_block(struct compact_control *cc,
 
 		if (!valid_page)
 			valid_page = page;
+
+		/*
+		 * For compound pages such as THP and hugetlbfs, we can save
+		 * potentially a lot of iterations if we skip them at once.
+		 * The check is racy, but we can consider only valid values
+		 * and the only danger is skipping too much.
+		 */
+		if (PageCompound(page)) {
+			unsigned int comp_order = compound_order(page);
+
+			if (likely(comp_order < MAX_ORDER)) {
+				blockpfn += (1UL << comp_order) - 1;
+				cursor += (1UL << comp_order) - 1;
+			}
+
+			goto isolate_fail;
+		}
+
 		if (!PageBuddy(page))
 			goto isolate_fail;
 
@@ -462,39 +483,27 @@ static unsigned long isolate_freepages_block(struct compact_control *cc,
 			/* Recheck this is a buddy page under lock */
 			if (!PageBuddy(page))
 				goto isolate_fail;
-
-			/**
-			 * We do not need to do compact for cma pages.
-			 * Currently, cma can only be used for anonymous page.
-			 * The alloced order of anonymous pages always be 0.
-			 * If we do compact for cma pages, it may be compact for
-			 * filesystem. The bufferHead which is a devil for cma migrate.
-			 */
-			if (page_is_cma(page) && !strict)
-				goto isolate_fail;
 		}
 
 		/* Found a free page, break it into order-0 pages */
 		isolated = split_free_page(page);
+		if (!isolated)
+			break;
+
 		total_isolated += isolated;
+		cc->nr_freepages += isolated;
 		for (i = 0; i < isolated; i++) {
 			list_add(&page->lru, freelist);
 			page++;
 		}
-
-		/* If a page was split, advance to the end of it */
-		if (isolated) {
-			cc->nr_freepages += isolated;
-			if (!strict &&
-				cc->nr_migratepages <= cc->nr_freepages) {
-				blockpfn += isolated;
-				break;
-			}
-
-			blockpfn += isolated - 1;
-			cursor += isolated - 1;
-			continue;
+		if (!strict && cc->nr_migratepages <= cc->nr_freepages) {
+			blockpfn += isolated;
+			break;
 		}
+		/* Advance to the end of split page */
+		blockpfn += isolated - 1;
+		cursor += isolated - 1;
+		continue;
 
 isolate_fail:
 		if (strict)
@@ -503,6 +512,16 @@ isolate_fail:
 			continue;
 
 	}
+
+	if (locked)
+		spin_unlock_irqrestore(&cc->zone->lock, flags);
+
+	/*
+	 * There is a tiny chance that we have read bogus compound_order(),
+	 * so be careful to not go outside of the pageblock.
+	 */
+	if (unlikely(blockpfn > end_pfn))
+		blockpfn = end_pfn;
 
 	trace_mm_compaction_isolate_freepages(*start_pfn, blockpfn,
 					nr_scanned, total_isolated);
@@ -517,9 +536,6 @@ isolate_fail:
 	 */
 	if (strict && blockpfn < end_pfn)
 		total_isolated = 0;
-
-	if (locked)
-		spin_unlock_irqrestore(&cc->zone->lock, flags);
 
 	/* Update the pageblock-skip if the whole pageblock was scanned */
 	if (blockpfn == end_pfn)
@@ -666,8 +682,6 @@ isolate_migratepages_block(struct compact_control *cc, unsigned long low_pfn,
 	bool locked = false;
 	struct page *page = NULL, *valid_page = NULL;
 	unsigned long start_pfn = low_pfn;
-	int pass = 0;
-	int max_time = 10000;
 
 	/*
 	 * Ensure that there are not too many pages isolated from the LRU
@@ -733,7 +747,7 @@ isolate_migratepages_block(struct compact_control *cc, unsigned long low_pfn,
 		 * It's possible to migrate LRU pages and balloon pages
 		 * Skip any other type of page
 		 */
-		if (!PageLRU(page) && !page_is_cma(page)) {
+		if (!PageLRU(page)) {
 			if (unlikely(balloon_page_movable(page))) {
 				if (balloon_page_isolate(page)) {
 					/* Successfully isolated */
@@ -768,32 +782,9 @@ isolate_migratepages_block(struct compact_control *cc, unsigned long low_pfn,
 		 * so avoid taking lru_lock and isolating it unnecessarily in an
 		 * admittedly racy check.
 		 */
-again:
-		if (pass > max_time) {
-			pass = 0;
-			continue;
-		}
-
 		if (!page_mapping(page) &&
-		    page_count(page) > page_mapcount(page)) {
-			/**
-			 * There is no long time pinned for cma pages
-			 * wait here until the page_count equals page_mapcount or
-			 * the page_freed.
-			 */
-			if (page_is_cma(page) && cc->mode == MIGRATE_SYNC &&
-			    page_count(page)) {
-				if (locked) {
-					spin_unlock_irqrestore(&zone->lru_lock,
-							       flags);
-					locked = false;
-				}
-				cond_resched();
-				pass ++;
-				goto again;
-			} else
-				continue;
-		}
+		    page_count(page) > page_mapcount(page))
+			continue;
 
 		/* If we already hold the lock, we can skip some rechecking */
 		if (!locked) {
@@ -803,7 +794,7 @@ again:
 				break;
 
 			/* Recheck PageLRU and PageTransHuge under lock */
-			if (!PageLRU(page) && !page_is_cma(page))
+			if (!PageLRU(page))
 					continue;
 
 			if (PageTransHuge(page)) {
@@ -814,26 +805,9 @@ again:
 
 		lruvec = mem_cgroup_page_lruvec(page, zone);
 
-retry_isolate:
-		if (pass > max_time) {
-			pass = 0;
-			continue;
-		}
-
 		/* Try isolate the page */
-		if (__isolate_lru_page(page, isolate_mode) != 0) {
-			if (page_is_cma(page) && page_count(page) &&
-			    cc->mode == MIGRATE_SYNC) {
-				/**
-				 * If the page is adding to lru list
-				 * wait here for cma pages.
-				 */
-				cond_resched();
-				pass ++;
-				goto retry_isolate;
-			}
+		if (__isolate_lru_page(page, isolate_mode) != 0)
 			continue;
-		}
 
 		VM_BUG_ON_PAGE(PageTransCompound(page), page);
 
@@ -982,12 +956,10 @@ static void isolate_freepages(struct compact_control *cc)
 	 * pages on cc->migratepages. We stop searching if the migrate
 	 * and free page scanners meet or enough free pages are isolated.
 	 */
-	for (; block_start_pfn >= low_pfn &&
-			cc->nr_migratepages > cc->nr_freepages;
+	for (; block_start_pfn >= low_pfn;
 				block_end_pfn = block_start_pfn,
 				block_start_pfn -= pageblock_nr_pages,
 				isolate_start_pfn = block_start_pfn) {
-
 		/*
 		 * This can iterate a massively long zone without finding any
 		 * suitable migration targets, so periodically check if we need
@@ -1011,39 +983,43 @@ static void isolate_freepages(struct compact_control *cc)
 			continue;
 
 		/* Found a block suitable for isolating free pages from. */
-		isolate_freepages_block(cc, &isolate_start_pfn,
-					block_end_pfn, freelist, false);
+		isolate_freepages_block(cc, &isolate_start_pfn, block_end_pfn,
+					freelist, false);
 
 		/*
-		 * Remember where the free scanner should restart next time,
-		 * which is where isolate_freepages_block() left off.
-		 * But if it scanned the whole pageblock, isolate_start_pfn
-		 * now points at block_end_pfn, which is the start of the next
-		 * pageblock.
-		 * In that case we will however want to restart at the start
-		 * of the previous pageblock.
+		 * If we isolated enough freepages, or aborted due to lock
+		 * contention, terminate.
 		 */
-		cc->free_pfn = (isolate_start_pfn < block_end_pfn) ?
-				isolate_start_pfn :
-				block_start_pfn - pageblock_nr_pages;
-
-		/*
-		 * isolate_freepages_block() might have aborted due to async
-		 * compaction being contended
-		 */
-		if (cc->contended)
+		if ((cc->nr_freepages >= cc->nr_migratepages)
+							|| cc->contended) {
+			if (isolate_start_pfn >= block_end_pfn) {
+				/*
+				 * Restart at previous pageblock if more
+				 * freepages can be isolated next time.
+				 */
+				isolate_start_pfn =
+					block_start_pfn - pageblock_nr_pages;
+			}
 			break;
+		} else if (isolate_start_pfn < block_end_pfn) {
+			/*
+			 * If isolation failed early, do not continue
+			 * needlessly.
+			 */
+			break;
+		}
 	}
 
 	/* split_free_page does not map the pages */
 	map_pages(freelist);
 
 	/*
-	 * If we crossed the migrate scanner, we want to keep it that way
-	 * so that compact_finished() may detect this
+	 * Record where the free scanner will restart next time. Either we
+	 * broke from the loop and set isolate_start_pfn based on the last
+	 * call to isolate_freepages_block(), or we met the migration scanner
+	 * and the loop terminated due to isolate_start_pfn < low_pfn
 	 */
-	if (block_start_pfn < low_pfn)
-		cc->free_pfn = cc->migrate_pfn;
+	cc->free_pfn = isolate_start_pfn;
 }
 
 /*
@@ -1154,9 +1130,16 @@ static isolate_migrate_t isolate_migratepages(struct zone *zone,
 		 * Async compaction is optimistic to see if the minimum amount
 		 * of work satisfies the allocation.
 		 */
+#ifdef CONFIG_HUAWEI_UNMOVABLE_ISOLATE
+		if ((cc->mode == MIGRATE_ASYNC &&
+		    !migrate_async_suitable(get_pageblock_migratetype(page))) ||
+		    unmovable_isolate_pageblock(zone, page))
+			continue;
+#else
 		if (cc->mode == MIGRATE_ASYNC &&
 		    !migrate_async_suitable(get_pageblock_migratetype(page)))
 			continue;
+#endif
 
 		/* Perform the isolation */
 		low_pfn = isolate_migratepages_block(cc, low_pfn, end_pfn,
@@ -1279,7 +1262,6 @@ static int compact_finished(struct zone *zone, struct compact_control *cc,
 static unsigned long __compaction_suitable(struct zone *zone, int order,
 					int alloc_flags, int classzone_idx)
 {
-	int fragindex;
 	unsigned long watermark;
 
 	/*
@@ -1487,6 +1469,8 @@ static unsigned long compact_zone_order(struct zone *zone, int order,
 		.mode = mode,
 		.alloc_flags = alloc_flags,
 		.classzone_idx = classzone_idx,
+		/* improve compaction successful rate */
+		.direct_compaction = true
 	};
 	INIT_LIST_HEAD(&cc.freepages);
 	INIT_LIST_HEAD(&cc.migratepages);
@@ -1891,7 +1875,10 @@ static int kcompactd(void *p)
 	return 0;
 }
 
-
+/*
+ * This kcompactd start function will be called by init and node-hot-add.
+ * On node-hot-add, kcompactd will moved to proper cpus if cpus are hot-added.
+ */
 int kcompactd_run(int nid)
 {
 	pg_data_t *pgdat = NODE_DATA(nid);

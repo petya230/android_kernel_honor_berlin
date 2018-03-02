@@ -26,7 +26,7 @@
 
 #include <linux/mmc/dsm_emmc.h>
 
-/*lint -save -e737 -e732 -e715 -e747 -e713 -e574 -e438*/
+
 unsigned int emmc_dsm_real_upload_size;
 static unsigned int g_last_msg_code;	/*last sent error code*/
 static unsigned int g_last_msg_count;	/*last sent the code count*/
@@ -273,7 +273,7 @@ int dsm_emmc_get_log(void *card, int code, char *err_msg)
 		printk(KERN_ERR "dj Err num: %d, %s\n", code, err_msg);
 		/*print card CID info*/
 		if (NULL != card_dev) {
-			if (sizeof(struct mmc_cid) < buff_size) {
+			if (sizeof(struct mmc_cid) < buff_size) {/*lint !e574*/
 				ret = snprintf(dsm_log_buff, buff_size,
 					"Card's cid:%08x%08x%08x%08x\n\n",
 					card_dev->raw_cid[0], card_dev->raw_cid[1],
@@ -289,7 +289,7 @@ int dsm_emmc_get_log(void *card, int code, char *err_msg)
 			}
 
 			/*print card ios info*/
-			if (sizeof(card_dev->host->ios) < buff_size) {
+			if (sizeof(card_dev->host->ios) < buff_size) {/*lint !e574*/
 				if (NULL != card_dev->host) {
 					ret = snprintf(dsm_log_buff, buff_size,
 						"Card's ios.clock:%uHz, ios.old_rate:%uHz, ios.power_mode:%u, ios.timing:%u, ios.bus_mode:%u, ios.bus_width:%u\n",
@@ -359,7 +359,7 @@ int dsm_emmc_get_life_time(struct mmc_card *card)
 	int err = 0;
 
 	/* eMMC v5.0 or later */
-	if (!strcmp(mmc_hostname(card->host), "mmc0")) {
+	if (!strncmp(mmc_hostname(card->host), "mmc0", sizeof("mmc0"))) {
 		if (NULL == card->cached_ext_csd) {
 			err = mmc_get_ext_csd(card, &card->cached_ext_csd);
 			if (err) {
@@ -407,4 +407,3 @@ void dsm_emmc_init(void)
 	spin_lock_init(&g_emmc_dsm_log.lock);
 }
 EXPORT_SYMBOL(dsm_emmc_init);
-/*lint -restore*/

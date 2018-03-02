@@ -187,6 +187,9 @@ static void alloc_init_pmd(struct mm_struct *mm, pud_t *pud,
 static inline bool use_1G_block(unsigned long addr, unsigned long next,
 			unsigned long phys)
 {
+#ifdef CONFIG_FORCE_PAGES
+	return false;
+#endif
 	if (PAGE_SHIFT != 12)
 		return false;
 
@@ -342,7 +345,6 @@ static void __init __map_memblock(phys_addr_t start, phys_addr_t end)
 				end - kernel_x_end,
 				PAGE_KERNEL);
 	}
-
 }
 #else
 static void __init __map_memblock(phys_addr_t start, phys_addr_t end)
@@ -430,9 +432,8 @@ void __init fixup_executable(void)
 void mark_rodata_ro(void)
 {
 	create_mapping_late(__pa(_stext), (unsigned long)_stext,
-				(unsigned long)_etext - (unsigned long)_stext,
+				(unsigned long)__init_begin - (unsigned long)_stext,
 				PAGE_KERNEL_EXEC | PTE_RDONLY);
-
 }
 #endif
 
@@ -443,6 +444,87 @@ void fixup_init(void)
 			PAGE_KERNEL);
 }
 
+#ifdef CONFIG_FORCE_PAGES
+
+static void __init *early_alloc(unsigned long sz)
+{
+	void *ptr = __va(memblock_alloc(sz, sz));
+	memset(ptr, 0, sz);
+	return ptr;
+}
+
+static noinline void ___split_pmd(pmd_t *pmd, unsigned long addr,
+				unsigned long end, unsigned long pfn)
+{
+	pte_t *pte, *start_pte;
+
+	start_pte = early_alloc(PTRS_PER_PTE * sizeof(pte_t));
+	pte = start_pte;
+
+	do {
+		set_pte(pte, pfn_pte(pfn, PAGE_KERNEL_EXEC));
+		pfn++;
+	} while (pte++, addr += PAGE_SIZE, addr != end);
+
+	set_pmd(pmd, __pmd((__pa(start_pte)) | PMD_TYPE_TABLE));
+}
+
+static noinline void __init remap_pages(void)
+{
+	struct memblock_region *reg;
+
+	for_each_memblock(memory, reg) {
+		phys_addr_t phys_pgd = reg->base;
+		phys_addr_t phys_end = reg->base + reg->size;
+		unsigned long addr_pgd = (unsigned long)__va(phys_pgd);
+		unsigned long end = (unsigned long)__va(phys_end);
+		pmd_t *pmd = NULL;
+		pud_t *pud = NULL;
+		pgd_t *pgd = NULL;
+		unsigned long next_pud, next_pmd, next_pgd;
+		unsigned long addr_pmd, addr_pud;
+		phys_addr_t phys_pud, phys_pmd;
+
+		if (phys_pgd >= phys_end)
+			break;
+
+		pgd = pgd_offset(&init_mm, addr_pgd);
+		do {
+			next_pgd = pgd_addr_end(addr_pgd, end);
+			pud = pud_offset(pgd, addr_pgd);
+			addr_pud = addr_pgd;
+			phys_pud = phys_pgd;
+			do {
+				next_pud = pud_addr_end(addr_pud, next_pgd);
+				pmd = pmd_offset(pud, addr_pud);
+				addr_pmd = addr_pud;
+				phys_pmd = phys_pud;
+				do {
+					next_pmd = pmd_addr_end(addr_pmd,
+								next_pud);
+					if (pmd_none(*pmd) || pmd_bad(*pmd))
+						___split_pmd(pmd, addr_pmd,
+					next_pmd, __phys_to_pfn(phys_pmd));
+					pmd++;
+					phys_pmd += next_pmd - addr_pmd;
+				} while (addr_pmd = next_pmd,
+						addr_pmd < next_pud);
+				phys_pud += next_pud - addr_pud;
+			} while (pud++, addr_pud = next_pud,
+						addr_pud < next_pgd);
+			phys_pgd += next_pgd - addr_pgd;
+		} while (pgd++, addr_pgd = next_pgd, addr_pgd < end);
+	}
+}
+
+#else
+static void __init remap_pages(void)
+{
+
+}
+#endif
+
+
 /*
  * paging_init() sets up the page tables, initialises the zone memory
  * maps and sets up the zero page.
@@ -450,6 +532,7 @@ void fixup_init(void)
 void __init paging_init(void)
 {
 	map_mem();
+	remap_pages();
 	fixup_executable();
 
 	bootmem_init();

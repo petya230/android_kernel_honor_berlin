@@ -90,4 +90,45 @@ DECLARE_TRACE(block_crypt_map,
         TP_PROTO(struct bio *bio, sector_t sector),
         TP_ARGS(bio, sector)
     );
+
+DECLARE_TRACE(block_throttle_weight,
+        TP_PROTO(struct bio *bio, unsigned int weight, unsigned int nr_queued),
+        TP_ARGS(bio, weight, nr_queued)
+    );
+
+DECLARE_TRACE(block_throttle_dispatch,
+        TP_PROTO(struct bio *bio, unsigned int weight),
+        TP_ARGS(bio, weight)
+    );
+
+DECLARE_TRACE(block_throttle_iocost,
+        TP_PROTO(uint64_t bps, unsigned int iops, uint64_t bytes_disp, unsigned int io_disp),
+        TP_ARGS(bps, iops, bytes_disp, io_disp)
+    );
+
+DECLARE_TRACE(block_throttle_limit_start,
+        TP_PROTO(struct bio *bio, int max_inflights, atomic_t inflights),
+        TP_ARGS(bio, max_inflights, inflights)
+    );
+
+DECLARE_TRACE(block_throttle_limit_end,
+        TP_PROTO(struct bio *bio),
+        TP_ARGS(bio)
+    );
+
+DECLARE_TRACE(block_throttle_bio_in,
+        TP_PROTO(struct bio *bio),
+        TP_ARGS(bio)
+    );
+
+DECLARE_TRACE(block_throttle_bio_out,
+        TP_PROTO(struct bio *bio, long delay),
+        TP_ARGS(bio, delay)
+    );
+
+DECLARE_TRACE(block_bio_wbt_done,
+        TP_PROTO(struct bio *bio),
+        TP_ARGS(bio)
+    );
+
 #endif

@@ -160,6 +160,7 @@ enum power_supply_property {
 	POWER_SUPPLY_PROP_CHARGE_COUNTER_EXT,
 	POWER_SUPPLY_PROP_FCP_STATUS,
 	POWER_SUPPLY_PROP_SCP_STATUS,
+	POWER_SUPPLY_PROP_BAT_OVP,
 	/* Properties of type `const char *' */
 	POWER_SUPPLY_PROP_MODEL_NAME,
 	POWER_SUPPLY_PROP_MANUFACTURER,
@@ -276,9 +277,9 @@ struct power_supply {
 #ifdef CONFIG_HISI_THERMAL_TRIP
 	int	trip_num;
 	int	trip_mask;
-	u32	temp_throttling;
-	u32	temp_shutdown;
-	u32	temp_below_vr_min;
+	s32	temp_throttling;
+	s32	temp_shutdown;
+	s32	temp_below_vr_min;
 #endif
 };
 

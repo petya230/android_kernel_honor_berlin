@@ -33,6 +33,7 @@
 #endif
 #ifdef CONFIG_HISI_BOOTDEVICE
 #include <linux/bootdevice.h>
+#include "emmc-rpmb.h"
 #endif
 #ifdef CONFIG_HISI_AB_PARTITION
 #include "mmc-kirin-lib.h"
@@ -112,7 +113,7 @@ static int mmc_decode_cid(struct mmc_card *card)
 		card->cid.prod_name[4]	= UNSTUFF_BITS(resp, 64, 8);
 		card->cid.prod_name[5]	= UNSTUFF_BITS(resp, 56, 8);
 		card->cid.prv		= UNSTUFF_BITS(resp, 48, 8);
-		card->cid.serial	= UNSTUFF_BITS(resp, 16, 32);
+		card->cid.serial	= UNSTUFF_BITS(resp, 16, 32);/*lint !e598 !e648*/
 		card->cid.month		= UNSTUFF_BITS(resp, 12, 4);
 		card->cid.year		= UNSTUFF_BITS(resp, 8, 4) + 1997;
 		break;
@@ -315,8 +316,8 @@ static void mmc_manage_enhanced_area(struct mmc_card *card, u8 *ext_csd)
 	/*
 	 * Disable these attributes by default
 	 */
-	card->ext_csd.enhanced_area_offset = -EINVAL;
-	card->ext_csd.enhanced_area_size = -EINVAL;
+	card->ext_csd.enhanced_area_offset = -EINVAL;/*lint !e570*/
+	card->ext_csd.enhanced_area_size = -EINVAL;/*lint !e570*/
 
 	/*
 	 * Enhanced area feature support -- check whether the eMMC
@@ -331,12 +332,14 @@ static void mmc_manage_enhanced_area(struct mmc_card *card, u8 *ext_csd)
 			hc_wp_grp_sz =
 				ext_csd[EXT_CSD_HC_WP_GRP_SIZE];
 
+			/*lint -save -e647*/
 			/*
 			 * calculate the enhanced data area offset, in bytes
 			 */
 			card->ext_csd.enhanced_area_offset =
 				(ext_csd[139] << 24) + (ext_csd[138] << 16) +
 				(ext_csd[137] << 8) + ext_csd[136];
+			/*lint -restore*/
 			if (mmc_card_blockaddr(card))
 				card->ext_csd.enhanced_area_offset <<= 9;
 			/*
@@ -373,6 +376,7 @@ static void mmc_manage_gp_partitions(struct mmc_card *card, u8 *ext_csd)
 		hc_wp_grp_sz =
 			ext_csd[EXT_CSD_HC_WP_GRP_SIZE];
 
+		/*lint -save -e679*/
 		for (idx = 0; idx < MMC_NUM_GP_PARTITION; idx++) {
 			if (!ext_csd[EXT_CSD_GP_SIZE_MULT + idx * 3] &&
 			    !ext_csd[EXT_CSD_GP_SIZE_MULT + idx * 3 + 1] &&
@@ -389,6 +393,7 @@ static void mmc_manage_gp_partitions(struct mmc_card *card, u8 *ext_csd)
 				(ext_csd[EXT_CSD_GP_SIZE_MULT + idx * 3 + 1]
 				<< 8) +
 				ext_csd[EXT_CSD_GP_SIZE_MULT + idx * 3];
+			/*lint -restore*/
 			part_size *= (size_t)(hc_erase_grp_sz *
 				hc_wp_grp_sz);
 			mmc_part_add(card, part_size << 19,
@@ -401,6 +406,9 @@ static void mmc_manage_gp_partitions(struct mmc_card *card, u8 *ext_csd)
 
 extern void mmc_decode_ext_csd_emmc50(struct mmc_card *card, u8 *ext_csd);
 extern void mmc_decode_ext_csd_emmc51(struct mmc_card *card, u8 *ext_csd);
+#ifdef CONFIG_HISI_MMC_MANUAL_BKOPS
+extern void hisi_mmc_enable_hpi_for_micron(struct mmc_card *card, bool *broken_hpi);
+#endif
 /*
  * Decode extended CSD.
  */
@@ -585,6 +593,9 @@ static int mmc_decode_ext_csd(struct mmc_card *card, u8 *ext_csd)
 		}
 
 		/* check whether the eMMC card supports HPI */
+#ifdef CONFIG_HISI_MMC_MANUAL_BKOPS
+		hisi_mmc_enable_hpi_for_micron(card, &broken_hpi);
+#endif
 		if (!broken_hpi && (ext_csd[EXT_CSD_HPI_FEATURES] & 0x1)) {
 			card->ext_csd.hpi = 1;
 			if (ext_csd[EXT_CSD_HPI_FEATURES] & 0x2)
@@ -607,6 +618,7 @@ static int mmc_decode_ext_csd(struct mmc_card *card, u8 *ext_csd)
 		 * RPMB regions are defined in multiples of 128K.
 		 */
 		card->ext_csd.raw_rpmb_size_mult = ext_csd[EXT_CSD_RPMB_MULT];
+
 		if (ext_csd[EXT_CSD_RPMB_MULT] && mmc_host_cmd23(card->host)) {
 			mmc_part_add(card, ext_csd[EXT_CSD_RPMB_MULT] << 17,
 				EXT_CSD_PART_CONFIG_ACC_RPMB,
@@ -707,6 +719,8 @@ static int mmc_decode_ext_csd(struct mmc_card *card, u8 *ext_csd)
 		set_bootdevice_pre_eol_info(card->ext_csd.pre_eol_info);
 		set_bootdevice_life_time_est_typ_a(card->ext_csd.device_life_time_est_typ_a);
 		set_bootdevice_life_time_est_typ_b(card->ext_csd.device_life_time_est_typ_b);
+		/* get rpmb configure info */
+		emmc_get_rpmb_info(card, ext_csd);
 	}
 #endif
 
@@ -862,12 +876,14 @@ static ssize_t mmc_fwrev_show(struct device *dev,
 {
 	struct mmc_card *card = mmc_dev_to_card(dev);
 
+	/*lint -save -e421*/
 	if (card->ext_csd.rev < 7) {
 		return sprintf(buf, "0x%x\n", card->cid.fwrev);
 	} else {
 		return sprintf(buf, "0x%*phN\n", MMC_FIRMWARE_LEN,
 			       card->ext_csd.fwrev);
 	}
+	/*lint -restore*/
 }
 
 static DEVICE_ATTR(fwrev, S_IRUGO, mmc_fwrev_show, NULL);
@@ -1575,8 +1591,8 @@ static int mmc_init_card(struct mmc_host *host, u32 ocr,
 			 * will try to enable ERASE_GROUP_DEF
 			 * during next time reinit
 			 */
-			card->ext_csd.enhanced_area_offset = -EINVAL;
-			card->ext_csd.enhanced_area_size = -EINVAL;
+			card->ext_csd.enhanced_area_offset = -EINVAL; /*lint !e570*/
+			card->ext_csd.enhanced_area_size = -EINVAL;/*lint !e570*/
 		} else {
 			card->ext_csd.erase_group_def = 1;
 			/*
@@ -1901,11 +1917,13 @@ static int _mmc_suspend(struct mmc_host *host, bool is_suspend)
 	if (mmc_card_suspended(host->card))
 		goto out;
 
+#ifndef CONFIG_HISI_MMC
 	if (mmc_card_doing_bkops(host->card)) {
 		err = mmc_stop_bkops(host->card);
 		if (err)
 			goto out;
 	}
+#endif
 #ifdef CONFIG_HISI_MMC
 	err = mmc_suspend_hisi_operation(host);
 	if (err) {
@@ -1967,13 +1985,13 @@ out:
 static int mmc_suspend(struct mmc_host *host)
 {
 	int err;
-	printk("%s:%d ++\n", __func__, __LINE__);
+	pr_err("%s:%d ++\n", __func__, __LINE__);
 	err = _mmc_suspend(host, true);
 	if (!err) {
 		pm_runtime_disable(&host->card->dev);
 		pm_runtime_set_suspended(&host->card->dev);
 	}
-	printk("%s:%d err=%d--\n", __func__, __LINE__, err);
+	pr_err("%s:%d err=%d--\n", __func__, __LINE__, err);
 	return err;
 }
 
@@ -2054,14 +2072,14 @@ static int mmc_shutdown(struct mmc_host *host)
 static int mmc_resume(struct mmc_host *host)
 {
 	int err = 0;
-	printk("%s:%d ++\n", __func__, __LINE__);
+	pr_err("%s:%d ++\n", __func__, __LINE__);
 	if (!(host->caps & MMC_CAP_RUNTIME_RESUME)) {
 		err = _mmc_resume(host);
 		pm_runtime_set_active(&host->card->dev);
 		pm_runtime_mark_last_busy(&host->card->dev);
 	}
 	pm_runtime_enable(&host->card->dev);
-	printk("%s:%d --\n", __func__, __LINE__);
+	pr_err("%s:%d --\n", __func__, __LINE__);
 	return err;
 }
 

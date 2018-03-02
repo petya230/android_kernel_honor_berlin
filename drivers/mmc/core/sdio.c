@@ -867,7 +867,7 @@ static void mmc_sdio_remove(struct mmc_host *host)
 	BUG_ON(!host);
 	BUG_ON(!host->card);
 
-	for (i = 0;i < host->card->sdio_funcs;i++) {
+	for (i = 0;i < host->card->sdio_funcs;i++) { /*lint !e574*/
 		if (host->card->sdio_func[i]) {
 			sdio_remove_func(host->card->sdio_func[i]);
 			host->card->sdio_func[i] = NULL;
@@ -948,7 +948,7 @@ static int mmc_sdio_pre_suspend(struct mmc_host *host)
 {
 	int i, err = 0;
 
-	for (i = 0; i < host->card->sdio_funcs; i++) {
+	for (i = 0;i < host->card->sdio_funcs; i++) { /*lint !e574*/
 		struct sdio_func *func = host->card->sdio_func[i];
 		if (func && sdio_func_present(func) && func->dev.driver) {
 			const struct dev_pm_ops *pmops = func->dev.driver->pm;

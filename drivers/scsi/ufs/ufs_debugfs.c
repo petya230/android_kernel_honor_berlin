@@ -48,7 +48,7 @@ int ufshcd_tag_req_type(struct request *rq)
 
 	return rq_type;
 }
-
+/*lint -save -e574*/
 void update_req_stats(struct ufs_hba *hba, struct ufshcd_lrb *lrbp)
 {
 	int rq_type;
@@ -82,7 +82,7 @@ void update_req_stats(struct ufs_hba *hba, struct ufshcd_lrb *lrbp)
 	if (delta < hba->ufs_stats.req_stats[rq_type].min)
 			hba->ufs_stats.req_stats[rq_type].min = delta;
 }
-
+/*lint -restore*/
 #define UFS_ERR_STATS_PRINT(file, error_index, string, error_seen)	\
 	do {								\
 		if (err_stats[error_index]) {				\
@@ -341,7 +341,7 @@ static int ufshcd_init_statistics(struct ufs_hba *hba)
 		goto no_mem;
 
 	for (i = 1; i < hba->nutrs; i++)
-		stats->tag_stats[i] = &stats->tag_stats[0][i * TS_NUM_STATS];
+		stats->tag_stats[i] = &stats->tag_stats[0][i * TS_NUM_STATS];/*lint !e679*/
 
 	memset(stats->err_stats, 0, sizeof(hba->ufs_stats.err_stats));
 
@@ -369,9 +369,11 @@ void ufsdbg_pr_buf_to_std(struct ufs_hba *hba, int offset, int num_regs,
 	}
 
 	for (i = 0; i < lines; i++) {
+		/*lint -save -e679*/
 		hex_dump_to_buffer(hba->mmio_base + offset + i * BUFF_LINE_SIZE,
 				   min(BUFF_LINE_SIZE, size), BUFF_LINE_SIZE, 4,
 				   linebuf, sizeof(linebuf), false);
+		/*lint -restore*/
 		seq_printf(file, "%s [%x]: %s\n", str, i * BUFF_LINE_SIZE,
 			   linebuf);
 		size -= BUFF_LINE_SIZE / sizeof(u32);
@@ -445,7 +447,7 @@ static int ufsdbg_dump_device_desc_show(struct seq_file *file, void *data)
 	if (!err) {
 		int i;
 		struct desc_field_offset *tmp;
-		for (i = 0; i < ARRAY_SIZE(device_desc_field_name); ++i) {
+		for (i = 0; i < ARRAY_SIZE(device_desc_field_name); ++i) { //lint !e574
 			tmp = &device_desc_field_name[i];
 
 			if (tmp->width_byte == BYTE) {
@@ -593,8 +595,8 @@ static int ufsdbg_cfg_pwr_param(struct ufs_hba *hba,
 	int ret = 0;
 	bool is_dev_sup_hs = false;
 	bool is_new_pwr_hs = false;
-	int dev_pwm_max_rx_gear;
-	int dev_pwm_max_tx_gear;
+	u32 dev_pwm_max_rx_gear;
+	u32 dev_pwm_max_tx_gear;
 
 	if (!hba->max_pwr_info.is_valid) {
 		dev_err(hba->dev,

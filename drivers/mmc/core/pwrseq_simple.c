@@ -152,6 +152,7 @@ struct mmc_pwrseq *mmc_pwrseq_simple_alloc(struct mmc_host *host,
 {
 	struct mmc_pwrseq_simple *pwrseq;
 	int i, nr_gpios, ret = 0;
+	/*lint -save -e429*/
 
 	nr_gpios = of_gpio_named_count(dev->of_node, "reset-gpios");
 	if (nr_gpios < 0)
@@ -194,4 +195,5 @@ clk_put:
 free:
 	kfree(pwrseq);
 	return ERR_PTR(ret);
+	/*lint -restore*/
 }

@@ -11,6 +11,7 @@
 
 
 extern void sdhci_dumpregs(struct sdhci_host *host);
+extern int sdhci_card_busy_data0(struct mmc_host *mmc);
 
 #ifdef CONFIG_MMC_CQ_HCI
 void sdhci_cmdq_reset(struct mmc_host *mmc, u8 mask)
@@ -44,6 +45,100 @@ static u32 sdhci_cmdq_clear_set_irqs(struct mmc_host *mmc, u32 clear, u32 set)
 #endif
 	return ret;
 }
+#ifdef CONFIG_MMC_SDHCI_DWC_MSHC
+/*this func can only used when cmdq halt, return the device status*/
+static int sdhci_cmdq_send_status(struct mmc_host *mmc, u32* status)
+{
+	struct sdhci_host *host = mmc_priv(mmc);
+	u32 mask, arg, opcode, val, timeout;
+	int flags;
+
+	sdhci_reset(host, SDHCI_RESET_CMD | SDHCI_RESET_DATA);
+
+	arg = mmc->card->rca << 16;;
+	sdhci_writel(host, arg, SDHCI_ARGUMENT);
+
+	opcode = MMC_SEND_STATUS;
+	flags = SDHCI_CMD_RESP_SHORT | SDHCI_CMD_CRC | SDHCI_CMD_INDEX;
+	sdhci_writew(host, SDHCI_MAKE_CMD(opcode, flags), SDHCI_COMMAND);
+
+	timeout = 10;
+	mask = SDHCI_INT_RESPONSE | SDHCI_INT_ERROR_MASK;
+
+	while (0 == (mask & (val = sdhci_readl(host, SDHCI_INT_STATUS)))) {
+		if (timeout == 0) {
+			pr_err("%s: send cmd%d timeout\n", __func__, opcode);
+			sdhci_dumpregs(host);
+			break;
+		}
+		timeout--;
+		mdelay(1);
+	}
+
+	/* clean interupt*/
+	sdhci_writel(host, val, SDHCI_INT_STATUS);
+
+	if (val & SDHCI_INT_ERROR_MASK) {
+		pr_err("%s: send cmd%d err val = 0x%x\n", __func__, opcode, val);
+		sdhci_dumpregs(host);
+		return -1;
+	} else {
+		*status = sdhci_readl(host,  SDHCI_RESPONSE);
+		pr_err("%s: status = 0x%x\n", __func__, *status);
+		return 0;
+	}
+
+}
+#endif
+
+/*this func can only used when cmdq halt, send cmd48*/
+static void sdhci_cmdq_send_cmd48(struct mmc_host *mmc, u32 tag, bool entire)
+{
+	struct sdhci_host *host = mmc_priv(mmc);
+	u32 mask, arg, opcode, val, timeout;
+	int flags;
+
+	sdhci_reset(host, SDHCI_RESET_CMD | SDHCI_RESET_DATA);
+	/* send cmd48 */
+	/* CMD48 arg:
+	[31:21] reserved
+	[20:16]: TaskID
+	[15:4]: reserved
+	[3:0] TM op-code
+	*/
+	if (true == entire)
+		arg = 1;
+	else
+		arg = 2 | tag << 16;
+	sdhci_writel(host, arg, SDHCI_ARGUMENT);
+
+	opcode = MMC_CMDQ_TASK_MGMT;
+	flags = SDHCI_CMD_RESP_SHORT | SDHCI_CMD_CRC | SDHCI_CMD_INDEX;
+	sdhci_writew(host, SDHCI_MAKE_CMD(opcode, flags), SDHCI_COMMAND);
+
+	timeout = 10;
+	mask = SDHCI_INT_RESPONSE | SDHCI_INT_ERROR_MASK;
+
+	while (0 == (mask & (val = sdhci_readl(host, SDHCI_INT_STATUS)))) {
+		if (timeout == 0) {
+			pr_err("%s: send cmd%d timeout\n", __func__, opcode);
+			sdhci_dumpregs(host);
+			break;
+		}
+		timeout--;
+		mdelay(1);
+	}
+
+	if (val & SDHCI_INT_ERROR_MASK) {
+		pr_err("%s: send cmd%d err val = 0x%x\n", __func__, opcode, val);
+		sdhci_dumpregs(host);
+	}
+	/* clean interupt*/
+	sdhci_writel(host, val, SDHCI_INT_STATUS);
+	return;
+
+}
+
 
 static int sdhci_cmdq_discard_task(struct mmc_host *mmc, u32 tag, bool entire)
 {
@@ -51,6 +146,9 @@ static int sdhci_cmdq_discard_task(struct mmc_host *mmc, u32 tag, bool entire)
 	u32 mask, arg, opcode, val, val1, val2, mode;
 	int flags;
 	unsigned long timeout;
+#ifdef CONFIG_MMC_SDHCI_DWC_MSHC
+	u32 status;
+#endif
 
 	sdhci_reset(host, SDHCI_RESET_CMD | SDHCI_RESET_DATA);
 
@@ -87,6 +185,22 @@ static int sdhci_cmdq_discard_task(struct mmc_host *mmc, u32 tag, bool entire)
 	val = val2 & ~(SDHCI_INT_RESPONSE | SDHCI_INT_ERROR_MASK);
 	sdhci_writel(host, val, SDHCI_SIGNAL_ENABLE);
 
+#ifdef CONFIG_MMC_SDHCI_DWC_MSHC
+	if (sdhci_cmdq_send_status(mmc, &status)) {
+		pr_err("%s: cmd13 error\n", __func__);
+		return -EIO;
+	} else {
+		if (R1_CURRENT_STATE(status) == R1_STATE_DATA ||
+		    R1_CURRENT_STATE(status) == R1_STATE_RCV)
+		    goto send_cmd12;
+		else
+			goto send_cmd48;
+	}
+#endif
+
+#ifdef CONFIG_MMC_SDHCI_DWC_MSHC
+send_cmd12:
+#endif
 	/* send cmd12 */
 	arg = 0;
 	sdhci_writel(host, arg, SDHCI_ARGUMENT);
@@ -127,44 +241,10 @@ static int sdhci_cmdq_discard_task(struct mmc_host *mmc, u32 tag, bool entire)
 		timeout--;
 		mdelay(1);
 	}
-
-	sdhci_reset(host, SDHCI_RESET_CMD | SDHCI_RESET_DATA);
-	/* send cmd48 */
-	/* CMD48 arg:
-	[31:21] reserved
-	[20:16]: TaskID
-	[15:4]: reserved
-	[3:0] TM op-code
-	*/
-	if (true == entire)
-		arg = 1;
-	else
-		arg = 2 | tag << 16;
-	sdhci_writel(host, arg, SDHCI_ARGUMENT);
-
-	opcode = MMC_CMDQ_TASK_MGMT;
-	flags = SDHCI_CMD_RESP_SHORT | SDHCI_CMD_CRC | SDHCI_CMD_INDEX;
-	sdhci_writew(host, SDHCI_MAKE_CMD(opcode, flags), SDHCI_COMMAND);
-
-	timeout = 10;
-	mask = SDHCI_INT_RESPONSE | SDHCI_INT_ERROR_MASK;
-
-	while (0 == (mask & (val = sdhci_readl(host, SDHCI_INT_STATUS)))) {
-		if (timeout == 0) {
-			pr_err("%s: send cmd%d timeout\n", __func__, opcode);
-			sdhci_dumpregs(host);
-			break;
-		}
-		timeout--;
-		mdelay(1);
-	}
-
-	if (val & SDHCI_INT_ERROR_MASK) {
-		pr_err("%s: send cmd%d err val = 0x%x\n", __func__, opcode, val);
-		sdhci_dumpregs(host);
-	}
-	/* clean interupt*/
-	sdhci_writel(host, val, SDHCI_INT_STATUS);
+#ifdef CONFIG_MMC_SDHCI_DWC_MSHC
+send_cmd48:
+#endif
+	sdhci_cmdq_send_cmd48(mmc, tag, entire);
 
 	/* recovery interupt enable & mask */
 	sdhci_writel(host, val1, SDHCI_INT_ENABLE);
@@ -200,6 +280,49 @@ static void sdhci_cmdq_dump_vendor_regs(struct mmc_host *mmc)
 
 	sdhci_dumpregs(host);
 }
+
+void sdhci_cmdq_enter(struct mmc_host *mmc)
+{
+#ifdef CONFIG_MMC_SDHCI_DWC_MSHC
+	struct sdhci_host *host = mmc_priv(mmc);
+	u16 reg_16;
+	int timeout;
+
+	/*need to set multitransfer for cmdq*/
+	reg_16 = sdhci_readw(host, SDHCI_TRANSFER_MODE);
+	reg_16 |= SDHCI_TRNS_MULTI;
+	sdhci_writew(host, reg_16, SDHCI_TRANSFER_MODE);
+
+	timeout = 10000;//10ms
+	while (sdhci_card_busy_data0(mmc)) {
+		timeout--;
+		if (!timeout) {
+			pr_err("%s: wait busy timeout\n", __func__);
+			break;
+		}
+		udelay(1);
+	}
+
+#endif
+}
+
+void sdhci_cmdq_exit(struct mmc_host *mmc)
+{
+#ifdef CONFIG_MMC_SDHCI_DWC_MSHC
+	int timeout;
+
+	timeout = 10000;//10ms
+	while (sdhci_card_busy_data0(mmc)) {
+		timeout--;
+		if (!timeout) {
+			pr_err("%s: wait busy timeout\n", __func__);
+			break;
+		}
+		udelay(1);
+	}
+#endif
+}
+
 
 #else
 void sdhci_cmdq_reset(struct mmc_host *mmc, u8 mask)
@@ -237,10 +360,17 @@ static void sdhci_cmdq_dump_vendor_regs(struct mmc_host *mmc)
 
 }
 
+void sdhci_cmdq_enter(struct mmc_host *mmc)
+{
+
+}
+
+void sdhci_cmdq_exit(struct mmc_host *mmc)
+{
+
+}
+
 #endif
-
-extern int sdhci_card_busy_data0(struct mmc_host *mmc);
-
 
 static const struct cmdq_host_ops sdhci_cmdq_ops = {
 	.reset = sdhci_cmdq_reset,
@@ -251,6 +381,8 @@ static const struct cmdq_host_ops sdhci_cmdq_ops = {
 	.card_busy = sdhci_card_busy_data0,
 	.discard_task = sdhci_cmdq_discard_task,
 	.tuning_move = sdhci_cmdq_tuning_move,
+	.enter = sdhci_cmdq_enter,
+	.exit = sdhci_cmdq_exit,
 };
 
 

@@ -582,7 +582,16 @@ static int attempt_merge(struct request_queue *q, struct request *req,
 	req->biotail = next->biotail;
 
 	req->__data_len += blk_rq_bytes(next);
-
+#ifdef CONFIG_HISI_IO_LATENCY_TRACE
+	{
+		struct bio *bio;
+		bio = next->bio;
+		while (bio) {
+			bio->io_req = (void*)req;
+			bio = bio->bi_next;
+		}
+	}
+#endif
 	elv_merge_requests(q, req, next);
 
 	/*

@@ -23,17 +23,21 @@
 /* Max limits for throttle policy */
 #define THROTL_IOPS_MAX		UINT_MAX
 
-/* CFQ specific, out here for blkcg->cfq_weight */
-#define CFQ_WEIGHT_MIN		10
-#define CFQ_WEIGHT_MAX		1000
-#define CFQ_WEIGHT_DEFAULT	500
-
 /* Block Throttle Weight specific */
 #define BLKIO_WEIGHT_MIN	10
 #define BLKIO_WEIGHT_MAX	1000
 #define BLKIO_WEIGHT_DEFAULT	500
 
 #ifdef CONFIG_BLK_CGROUP
+
+enum blk_throtl_type {
+        BLK_THROTL_TA,
+        BLK_THROTL_FG,
+        BLK_THROTL_KBG,
+        BLK_THROTL_SBG,
+        BLK_THROTL_BG,
+        BLK_THROTL_TYPE_NR,
+};
 
 enum blkg_rwstat_type {
 	BLKG_RWSTAT_READ,
@@ -55,23 +59,30 @@ struct blkcg {
 	struct blkcg_gq			*blkg_hint;
 	struct hlist_head		blkg_list;
 
+	struct blkcg_policy_data	*cpd[BLKCG_MAX_POLS];
+
+	struct list_head		all_blkcgs_node;
 	unsigned int			weight;
-	/* TODO: per-policy storage in blkcg */
-	unsigned int			cfq_weight;	/* belongs to cfq */
-	unsigned int			cfq_leaf_weight;
 #ifdef CONFIG_BLK_DEV_THROTTLING
 	int				max_inflights;
+	unsigned int                    type;
 #endif
 };
 
+/*
+ * blkg_[rw]stat->aux_cnt is excluded for local stats but included for
+ * recursive.  Used to carry stats of dead children.
+ */
 struct blkg_stat {
 	struct u64_stats_sync		syncp;
 	uint64_t			cnt;
+	atomic64_t			aux_cnt;
 };
 
 struct blkg_rwstat {
 	struct u64_stats_sync		syncp;
 	uint64_t			cnt[BLKG_RWSTAT_NR];
+	atomic64_t			aux_cnt[BLKG_RWSTAT_NR];
 };
 
 /*
@@ -79,21 +90,29 @@ struct blkg_rwstat {
  * request_queue (q).  This is used by blkcg policies which need to track
  * information per blkcg - q pair.
  *
- * There can be multiple active blkcg policies and each has its private
- * data on each blkg, the size of which is determined by
- * blkcg_policy->pd_size.  blkcg core allocates and frees such areas
- * together with blkg and invokes pd_init/exit_fn() methods.
- *
- * Such private data must embed struct blkg_policy_data (pd) at the
- * beginning and pd_size can't be smaller than pd.
+ * There can be multiple active blkcg policies and each blkg:policy pair is
+ * represented by a blkg_policy_data which is allocated and freed by each
+ * policy's pd_alloc/free_fn() methods.  A policy can allocate private data
+ * area by allocating larger data structure which embeds blkg_policy_data
+ * at the beginning.
  */
 struct blkg_policy_data {
 	/* the blkg and policy id this per-policy data belongs to */
 	struct blkcg_gq			*blkg;
 	int				plid;
+};
 
-	/* used during policy activation */
-	struct list_head		alloc_node;
+/*
+ * Policies that need to keep per-blkcg data which is independent from any
+ * request_queue associated to it should implement cpd_alloc/free_fn()
+ * methods.  A policy can allocate private data area by allocating larger
+ * data structure which embeds blkcg_policy_data at the beginning.
+ * cpd_init() is invoked to let each policy handle per-blkcg data.
+ */
+struct blkcg_policy_data {
+	/* the blkcg and policy id this per-policy data belongs to */
+	struct blkcg			*blkcg;
+	int				plid;
 };
 
 /* association between a blk cgroup and a request queue */
@@ -126,31 +145,41 @@ struct blkcg_gq {
 	struct percpu_counter		nr_dirtied;
 };
 
+typedef struct blkcg_policy_data *(blkcg_pol_alloc_cpd_fn)(gfp_t gfp);
+typedef void (blkcg_pol_init_cpd_fn)(struct blkcg_policy_data *cpd);
+typedef void (blkcg_pol_free_cpd_fn)(struct blkcg_policy_data *cpd);
+typedef struct blkg_policy_data *(blkcg_pol_alloc_pd_fn)(gfp_t gfp, int node);
 typedef void (blkcg_pol_init_pd_fn)(struct blkcg_gq *blkg);
 typedef void (blkcg_pol_online_pd_fn)(struct blkcg_gq *blkg);
 typedef void (blkcg_pol_offline_pd_fn)(struct blkcg_gq *blkg);
 typedef void (blkcg_pol_exit_pd_fn)(struct blkcg_gq *blkg);
+typedef void (blkcg_pol_free_pd_fn)(struct blkg_policy_data *pd);
 typedef void (blkcg_pol_reset_pd_stats_fn)(struct blkcg_gq *blkg);
 
 struct blkcg_policy {
 	int				plid;
-	/* policy specific private data size */
-	size_t				pd_size;
 	/* cgroup files for the policy */
 	struct cftype			*cftypes;
 
 	/* operations */
+	blkcg_pol_alloc_cpd_fn		*cpd_alloc_fn;
+	blkcg_pol_init_cpd_fn		*cpd_init_fn;
+	blkcg_pol_free_cpd_fn		*cpd_free_fn;
+
+	blkcg_pol_alloc_pd_fn		*pd_alloc_fn;
 	blkcg_pol_init_pd_fn		*pd_init_fn;
 	blkcg_pol_online_pd_fn		*pd_online_fn;
 	blkcg_pol_offline_pd_fn		*pd_offline_fn;
 	blkcg_pol_exit_pd_fn		*pd_exit_fn;
+	blkcg_pol_free_pd_fn		*pd_free_fn;
 	blkcg_pol_reset_pd_stats_fn	*pd_reset_stats_fn;
 };
 
 extern struct blkcg blkcg_root;
 extern struct cgroup_subsys_state * const blkcg_root_css;
 
-struct blkcg_gq *blkg_lookup(struct blkcg *blkcg, struct request_queue *q);
+struct blkcg_gq *blkg_lookup_slowpath(struct blkcg *blkcg,
+				      struct request_queue *q, bool update_hint);
 struct blkcg_gq *blkg_lookup_create(struct blkcg *blkcg,
 				    struct request_queue *q);
 int blkcg_init_queue(struct request_queue *q);
@@ -178,9 +207,10 @@ u64 blkg_prfill_stat(struct seq_file *sf, struct blkg_policy_data *pd, int off);
 u64 blkg_prfill_rwstat(struct seq_file *sf, struct blkg_policy_data *pd,
 		       int off);
 
-u64 blkg_stat_recursive_sum(struct blkg_policy_data *pd, int off);
-struct blkg_rwstat blkg_rwstat_recursive_sum(struct blkg_policy_data *pd,
-					     int off);
+u64 blkg_stat_recursive_sum(struct blkcg_gq *blkg,
+			    struct blkcg_policy *pol, int off);
+struct blkg_rwstat blkg_rwstat_recursive_sum(struct blkcg_gq *blkg,
+					     struct blkcg_policy *pol, int off);
 
 struct blkg_conf_ctx {
 	struct gendisk			*disk;
@@ -228,6 +258,52 @@ static inline struct blkcg *blkcg_parent(struct blkcg *blkcg)
 }
 
 /**
+ * __blkg_lookup - internal version of blkg_lookup()
+ * @blkcg: blkcg of interest
+ * @q: request_queue of interest
+ * @update_hint: whether to update lookup hint with the result or not
+ *
+ * This is internal version and shouldn't be used by policy
+ * implementations.  Looks up blkgs for the @blkcg - @q pair regardless of
+ * @q's bypass state.  If @update_hint is %true, the caller should be
+ * holding @q->queue_lock and lookup hint is updated on success.
+ */
+static inline struct blkcg_gq *__blkg_lookup(struct blkcg *blkcg,
+					     struct request_queue *q,
+					     bool update_hint)
+{
+	struct blkcg_gq *blkg;
+
+	if (blkcg == &blkcg_root)
+		return q->root_blkg;
+
+	blkg = rcu_dereference(blkcg->blkg_hint);
+	if (blkg && blkg->q == q)
+		return blkg;
+
+	return blkg_lookup_slowpath(blkcg, q, update_hint);
+}
+
+/**
+ * blkg_lookup - lookup blkg for the specified blkcg - q pair
+ * @blkcg: blkcg of interest
+ * @q: request_queue of interest
+ *
+ * Lookup blkg for the @blkcg - @q pair.  This function should be called
+ * under RCU read lock and is guaranteed to return %NULL if @q is bypassing
+ * - see blk_queue_bypass_start() for details.
+ */
+static inline struct blkcg_gq *blkg_lookup(struct blkcg *blkcg,
+					   struct request_queue *q)
+{
+	WARN_ON_ONCE(!rcu_read_lock_held());
+
+	if (unlikely(blk_queue_bypass(q)))
+		return NULL;
+	return __blkg_lookup(blkcg, q, false);
+}
+
+/**
  * blkg_to_pdata - get policy private data
  * @blkg: blkg of interest
  * @pol: policy of interest
@@ -240,6 +316,12 @@ static inline struct blkg_policy_data *blkg_to_pd(struct blkcg_gq *blkg,
 	return blkg ? blkg->pd[pol->plid] : NULL;
 }
 
+static inline struct blkcg_policy_data *blkcg_to_cpd(struct blkcg *blkcg,
+						     struct blkcg_policy *pol)
+{
+	return blkcg ? blkcg->cpd[pol->plid] : NULL;
+}
+
 /**
  * pdata_to_blkg - get blkg associated with policy private data
  * @pd: policy private data of interest
@@ -249,6 +331,11 @@ static inline struct blkg_policy_data *blkg_to_pd(struct blkcg_gq *blkg,
 static inline struct blkcg_gq *pd_to_blkg(struct blkg_policy_data *pd)
 {
 	return pd ? pd->blkg : NULL;
+}
+
+static inline struct blkcg *cpd_to_blkcg(struct blkcg_policy_data *cpd)
+{
+	return cpd ? cpd->blkcg : NULL;
 }
 
 /**
@@ -297,9 +384,6 @@ static inline void blkg_put(struct blkcg_gq *blkg)
 	if (atomic_dec_and_test(&blkg->refcnt))
 		call_rcu(&blkg->rcu_head, __blkg_release_rcu);
 }
-
-struct blkcg_gq *__blkg_lookup(struct blkcg *blkcg, struct request_queue *q,
-			       bool update_hint);
 
 /**
  * blkg_for_each_descendant_pre - pre-order walk of a blkg's descendants
@@ -383,8 +467,7 @@ root_rl:
  */
 static inline void blk_put_rl(struct request_list *rl)
 {
-	/* root_rl may not have blkg set */
-	if (rl->blkg && rl->blkg->blkcg != &blkcg_root)
+	if (rl->blkg->blkcg != &blkcg_root)
 		blkg_put(rl->blkg);
 }
 
@@ -425,6 +508,7 @@ struct request_list *__blk_queue_next_rl(struct request_list *rl,
 static inline void blkg_stat_init(struct blkg_stat *stat)
 {
 	u64_stats_init(&stat->syncp);
+	atomic64_set(&stat->aux_cnt, 0);
 }
 
 /**
@@ -446,8 +530,9 @@ static inline void blkg_stat_add(struct blkg_stat *stat, uint64_t val)
  * blkg_stat_read - read the current value of a blkg_stat
  * @stat: blkg_stat to read
  *
- * Read the current value of @stat.  This function can be called without
- * synchroniztion and takes care of u64 atomicity.
+ * Read the current value of @stat.  The returned value doesn't include the
+ * aux count.  This function can be called without synchroniztion and takes
+ * care of u64 atomicity.
  */
 static inline uint64_t blkg_stat_read(struct blkg_stat *stat)
 {
@@ -469,23 +554,31 @@ static inline uint64_t blkg_stat_read(struct blkg_stat *stat)
 static inline void blkg_stat_reset(struct blkg_stat *stat)
 {
 	stat->cnt = 0;
+	atomic64_set(&stat->aux_cnt, 0);
 }
 
 /**
- * blkg_stat_merge - merge a blkg_stat into another
+ * blkg_stat_add_aux - add a blkg_stat into another's aux count
  * @to: the destination blkg_stat
  * @from: the source
  *
- * Add @from's count to @to.
+ * Add @from's count including the aux one to @to's aux count.
  */
-static inline void blkg_stat_merge(struct blkg_stat *to, struct blkg_stat *from)
+static inline void blkg_stat_add_aux(struct blkg_stat *to,
+				     struct blkg_stat *from)
 {
-	blkg_stat_add(to, blkg_stat_read(from));
+	atomic64_add(blkg_stat_read(from) + atomic64_read(&from->aux_cnt),
+		     &to->aux_cnt);
 }
 
 static inline void blkg_rwstat_init(struct blkg_rwstat *rwstat)
 {
+	int i;
+
 	u64_stats_init(&rwstat->syncp);
+
+	for (i = 0; i < BLKG_RWSTAT_NR; i++)
+		atomic64_set(&rwstat->aux_cnt[i], 0);
 }
 
 /**
@@ -556,26 +649,30 @@ static inline uint64_t blkg_rwstat_total(struct blkg_rwstat *rwstat)
  */
 static inline void blkg_rwstat_reset(struct blkg_rwstat *rwstat)
 {
+	int i;
+
 	memset(rwstat->cnt, 0, sizeof(rwstat->cnt));
+
+	for (i = 0; i < BLKG_RWSTAT_NR; i++)
+		atomic64_set(&rwstat->aux_cnt[i], 0);
 }
 
 /**
- * blkg_rwstat_merge - merge a blkg_rwstat into another
+ * blkg_rwstat_add_aux - add a blkg_rwstat into another's aux count
  * @to: the destination blkg_rwstat
  * @from: the source
  *
- * Add @from's counts to @to.
+ * Add @from's count including the aux one to @to's aux count.
  */
-static inline void blkg_rwstat_merge(struct blkg_rwstat *to,
-				     struct blkg_rwstat *from)
+static inline void blkg_rwstat_add_aux(struct blkg_rwstat *to,
+				       struct blkg_rwstat *from)
 {
 	struct blkg_rwstat v = blkg_rwstat_read(from);
 	int i;
 
-	u64_stats_update_begin(&to->syncp);
 	for (i = 0; i < BLKG_RWSTAT_NR; i++)
-		to->cnt[i] += v.cnt[i];
-	u64_stats_update_end(&to->syncp);
+		atomic64_add(v.cnt[i] + atomic64_read(&from->aux_cnt[i]),
+			     &to->aux_cnt[i]);
 }
 
 #ifdef CONFIG_BLK_DEV_THROTTLING
@@ -625,7 +722,6 @@ static inline struct blkcg_gq *task_blkcg_gq(struct task_struct *tsk,
 	struct request_queue *q;
 	struct blkcg *blkcg;
 	struct blkcg_gq *blkg;
-	unsigned long flags;
 
 	if (!bdev)
 		return NULL;
@@ -636,14 +732,6 @@ static inline struct blkcg_gq *task_blkcg_gq(struct task_struct *tsk,
 	blkcg = task_blkcg(tsk);
 
 	blkg = blkg_lookup(blkcg, q);
-	if (unlikely(!blkg)) {
-		spin_lock_irqsave(q->queue_lock, flags);
-		blkg = blkg_lookup_create(blkcg, q);
-		if (IS_ERR(blkg))
-			blkg = NULL;
-		spin_unlock_irqrestore(q->queue_lock, flags);
-	}
-
 	return blkg;
 }
 
@@ -707,6 +795,9 @@ struct blkcg {
 };
 
 struct blkg_policy_data {
+};
+
+struct blkcg_policy_data {
 };
 
 struct blkcg_gq {

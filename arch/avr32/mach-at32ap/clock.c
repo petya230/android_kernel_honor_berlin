@@ -31,6 +31,7 @@ static DEFINE_SPINLOCK(clk_list_lock);
 void at32_clk_register(struct clk *clk)
 {
 	spin_lock(&clk_list_lock);
+	/* add the new item to the end of the list */
 	list_add_tail(&clk->list, &at32_clock_list);
 	spin_unlock(&clk_list_lock);
 }

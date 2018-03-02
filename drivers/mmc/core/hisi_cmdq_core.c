@@ -23,6 +23,10 @@
 /*move from core.c*/
 #define CMDQ_RETRY 32
 
+#ifdef CONFIG_HW_MMC_MAINTENANCE_CMD
+extern void record_mmc_cmdq_cmd(struct mmc_request *mrq);
+#endif
+
 static unsigned long cmdq_read_blocks = 0;
 static unsigned long cmdq_write_blocks = 0;
 
@@ -78,8 +82,11 @@ int mmc_start_cmdq_request(struct mmc_host *host,
 		mrq->data->mrq = mrq;
 	}
 
-	mmc_host_clk_hold(host);
 	led_trigger_event(host->led, LED_FULL);
+
+#ifdef CONFIG_HW_MMC_MAINTENANCE_CMD
+	record_mmc_cmdq_cmd(mrq);
+#endif
 
 	ret = host->cmdq_ops->request(host, mrq);
 	return ret;
@@ -121,9 +128,9 @@ int mmc_cmdq_halt(struct mmc_host *host, bool halt)
 	if (host->cmdq_ops->halt) {
 		err = host->cmdq_ops->halt(host, halt);
 		if (!err && halt)
-			host->cmdq_ctx.curr_state |= CMDQ_STATE_HALT;
+			host->cmdq_ctx.curr_state |= BIT(CMDQ_STATE_HALT);
 		else if (!err && !halt)
-			host->cmdq_ctx.curr_state &= ~CMDQ_STATE_HALT;
+			host->cmdq_ctx.curr_state &= ~BIT(CMDQ_STATE_HALT);
 	}
 	return 0;
 }

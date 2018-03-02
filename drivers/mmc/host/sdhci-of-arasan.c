@@ -43,6 +43,8 @@
 #include <linux/workqueue.h>
 #endif
 
+#define DRIVER_NAME "sdhci-arasan"
+
 #define CLK_CTRL_TIMEOUT_SHIFT		16
 #define CLK_CTRL_TIMEOUT_MASK		(0xf << CLK_CTRL_TIMEOUT_SHIFT)
 #define CLK_CTRL_TIMEOUT_MIN_EXP	13
@@ -107,6 +109,25 @@ struct sdhci_arasan_data {
 	struct work_struct dsm_work;
 #endif
 };
+
+
+void sdhci_arasan_dumpregs(struct sdhci_host *host)
+{
+	pr_info(DRIVER_NAME ": Dbg Reg0: 0x%08x | Reg1: 0x%08x\n",
+		sdhci_readl(host, SDHCI_DEBUG_REG0),
+		sdhci_readl(host, SDHCI_DEBUG_REG1));
+	pr_info(DRIVER_NAME ": Dbg Reg2: 0x%08x | Reg3: 0x%08x\n",
+		sdhci_readl(host, SDHCI_DEBUG_REG2),
+		sdhci_readl(host, SDHCI_DEBUG_REG3));
+	pr_info(DRIVER_NAME ": PHY Ctrl1: 0x%08x | Ctrl2: 0x%08x\n",
+		sdhci_readl(host, SDHCI_PHY_CTRL1),
+		sdhci_readl(host,  SDHCI_PHY_CTRL2));
+	pr_info(DRIVER_NAME ": PHY Ctrl3: 0x%08x | Status: 0x%08x\n",
+		sdhci_readl(host, SDHCI_PHY_CTRL3),
+		sdhci_readl(host,  SDHCI_PHY_STATUS));
+	return;
+}
+
 void __iomem *iosoc_acpu_pmc_base_addr = NULL;
 static int sdhci_get_pmctrl_resocure(void)
 {
@@ -143,7 +164,7 @@ static unsigned int sdhci_arasan_get_timeout_clock(struct sdhci_host *host)
 	div = (div & CLK_CTRL_TIMEOUT_MASK) >> CLK_CTRL_TIMEOUT_SHIFT;
 
 	freq = clk_get_rate(sdhci_arasan->clk);
-	freq /= 1 << (CLK_CTRL_TIMEOUT_MIN_EXP + div);
+	freq /= 1 << (CLK_CTRL_TIMEOUT_MIN_EXP + div);/*lint !e573 !e647*/
 
 	pr_debug("%s: freq=%lx\n", __func__, freq);
 
@@ -827,7 +848,7 @@ static int sdhci_of_arasan_tuning_soft(struct sdhci_host *host,
 		}
 		mmc_wait_for_req(host->mmc, &mrq);
 		/* no cmd or data error and tuning data is ok, then set sample flag */
-		if (!cmd.error && !data.error && (memcmp(tuning_blk, tuning_blk_pattern, sizeof(blksz)) == 0)) {
+		if (!cmd.error && !data.error && (memcmp(tuning_blk, tuning_blk_pattern, sizeof(blksz)) == 0)) {/*lint !e668*/
 			sdhci_of_arasan_tuning_set_current_state(host, 1);
 		} else {
 			sdhci_of_arasan_tuning_set_current_state(host, 0);
@@ -876,22 +897,27 @@ void sdhci_of_arasan_chk_busy_before_send_cmd(struct sdhci_host *host,
 	}
 	return;
 }
+
+int sdhci_arasan_enable_dma(struct sdhci_host *host)
+{
+	u32 ctrl;
+
+	if (!(host->quirks2 & SDHCI_QUIRK2_BROKEN_64_BIT_DMA)){
+		ctrl = sdhci_readl(host, SDHCI_CORE_CFG1);
+		ctrl |= SDHCI_CORE_CFG1_64BIT_SUPPORT;/*lint !e648*/
+		sdhci_writel(host, ctrl, SDHCI_CORE_CFG1);
+	}
+	return 0;
+}
+
 extern void sdhci_set_transfer_irqs(struct sdhci_host *host);
+
 static void sdhci_of_arasan_restore_transfer_para(struct sdhci_host *host)
 {
 	u8 ctrl;
-	u32 ctrl_u32;
 	u16 mode;
 
-	if (host->flags & SDHCI_USE_64_BIT_DMA) {
-		ctrl_u32 = sdhci_readl(host, SDHCI_CORE_CFG1);
-		ctrl_u32 |= SDHCI_CORE_CFG1_64BIT_SUPPORT;
-		sdhci_writel(host, ctrl_u32, SDHCI_CORE_CFG1);
-	}
-
-	/* Set the re-tuning expiration flag */
-	if (host->flags & SDHCI_USING_RETUNING_TIMER)
-		host->flags |= SDHCI_NEEDS_RETUNING;
+	sdhci_arasan_enable_dma(host);
 
 	if (host->flags & (SDHCI_USE_SDMA | SDHCI_USE_ADMA))
 		host->flags |= SDHCI_REQ_USE_DMA;
@@ -921,11 +947,13 @@ static void sdhci_of_arasan_restore_transfer_para(struct sdhci_host *host)
 	if (host->flags & SDHCI_REQ_USE_DMA)
 		mode |= SDHCI_TRNS_DMA;
 	sdhci_writew(host, mode, SDHCI_TRANSFER_MODE);
+
 }
 
 static struct sdhci_ops sdhci_arasan_ops = {
 	.get_min_clock = sdhci_arasan_get_min_clock,
 	.set_clock = sdhci_set_clock,
+	.enable_dma = sdhci_arasan_enable_dma,
 	.get_max_clock = sdhci_pltfm_clk_get_max_clock,
 	.get_timeout_clock = sdhci_arasan_get_timeout_clock,
 	.set_bus_width = sdhci_set_bus_width,
@@ -940,6 +968,7 @@ static struct sdhci_ops sdhci_arasan_ops = {
 	.check_busy_before_send_cmd = sdhci_of_arasan_chk_busy_before_send_cmd,
 	.restore_transfer_para = sdhci_of_arasan_restore_transfer_para,
 	.hw_reset = sdhci_arasan_hw_reset,
+	.dumpregs = sdhci_arasan_dumpregs,
 };
 
 static struct sdhci_pltfm_data sdhci_arasan_pdata = {
@@ -1169,8 +1198,8 @@ void sdhci_cmdq_dsm_set_host_status(struct sdhci_host *host, u32 error_bits)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
 	struct sdhci_arasan_data *sdhci_arasan = pltfm_host->priv;
-	if (error_bits != -1U)
-		sdhci_arasan->para = ((error_bits << 16) | 0x8000000000000000ULL);
+	if (error_bits != -1U)/*lint !e501*/
+		sdhci_arasan->para = ((error_bits << 16) | 0x8000000000000000ULL);/*lint !e647*/
 	else
 		sdhci_arasan->para = 0;	// timeout
 }
@@ -1248,7 +1277,7 @@ void sdhci_dsm_handle(struct sdhci_host *host, struct mmc_request *mrq)
 		sdhci_arasan->cmd_data_status = 0;
 		sdhci_dsm_host_error_filter(host, mrq, &error_bits);
 		if (error_bits) {
-			sdhci_arasan->para = ((error_bits << 16) | ((mrq->cmd ? mrq->cmd->opcode : 0) & 0x3f) | 0x8000000000000000ULL);
+			sdhci_arasan->para = ((error_bits << 16) | ((mrq->cmd ? mrq->cmd->opcode : 0) & 0x3f) | 0x8000000000000000ULL);/*lint !e647*/
 			queue_work(system_freezable_wq, &sdhci_arasan->dsm_work);
 		}
 	}
@@ -1256,74 +1285,6 @@ void sdhci_dsm_handle(struct sdhci_host *host, struct mmc_request *mrq)
 #endif
 
 #ifdef CONFIG_HISI_MMC
-void sdhci_retry_req(struct sdhci_host *host,struct mmc_request *mrq)
-{
-	int ret;
-	if (host->mmc->card && mmc_card_mmc(host->mmc->card)
-		&& ((mrq->cmd && mrq->cmd->error)
-			|| (mrq->sbc && mrq->sbc->error)
-			|| (mrq->data && (mrq->data->error || (mrq->data->stop && mrq->data->stop->error))))
-		&& (!(host->flags & SDHCI_EXE_SOFT_TUNING))
-		&& (host->mmc->ios.timing >= MMC_TIMING_MMC_HS200)
-		&& host->ops->tuning_move) {
-			if ((mrq->data && mrq->data->error && (host->mmc->ios.timing == MMC_TIMING_MMC_HS400))
-				|| host->mmc->card->ext_csd.strobe_enhanced_en) {
-				ret = host->ops->tuning_move(host, TUNING_STROBE, TUNING_FLAG_NOUSE);
-			}
-			else {
-				ret = host->ops->tuning_move(host, TUNING_CLK, TUNING_FLAG_NOUSE);
-			}
-			/*cmd5 no need to retry*/
-			if ((!ret) && mrq->cmd && (mrq->cmd->opcode != MMC_SLEEP_AWAKE)) {
-				mrq->cmd->retries++;
-				if (mrq->cmd->data && mrq->cmd->data->error) {
-					mrq->cmd->data->error = 0;
-				}
-				if (mrq->sbc && mrq->sbc->error) {
-					mrq->sbc->error = 0;
-				}
-				if (mrq->cmd->data && mrq->cmd->data->stop && mrq->cmd->data->stop->error) {
-					mrq->cmd->data->stop->error = 0;
-				}
-				if (!mrq->cmd->error) {
-					mrq->cmd->error = -EILSEQ;
-				}
-			}
-	}
-	return;
-}
-
-void sdhci_set_vmmc_power(struct sdhci_host *host, unsigned short vdd)
-{
-	struct mmc_host *mmc = host->mmc;
-
-	if (host->quirks2 & SDHCI_QUIRK2_USE_1_8_V_VMMC) {
-		if (vdd == 0) {
-			if (mmc->regulator_enabled) {
-				if (!regulator_disable(mmc->supply.vmmc))
-					mmc->regulator_enabled = false;
-				else
-					pr_err("%s: regulator vmmc disable failed !\n", __func__);
-			}
-		}
-		else {
-			if (regulator_set_voltage(mmc->supply.vmmc, 2950000,
-						    2950000)) {
-				pr_err("%s: regulator vmmc set_voltage failed !\n", __func__);
-			}
-			if (!mmc->regulator_enabled) {
-				if (!regulator_enable(mmc->supply.vmmc))
-					mmc->regulator_enabled = true;
-				else
-					pr_err("%s: regulator vmmc enable failed !\n", __func__);
-			}
-		}
-	}
-	else {
-		mmc_regulator_set_ocr(mmc, mmc->supply.vmmc, vdd);
-	}
-}
-
 void sdhci_hisi_dump_clk_reg(void)
 {
 	/*print pmctrl_ppll3ctr register value*/
@@ -1341,6 +1302,7 @@ void sdhci_hisi_dump_clk_reg(void)
 
 static int sdhci_arasan_probe(struct platform_device *pdev)
 {
+/*lint -save -e593*/
 	int ret;
 	struct sdhci_host *host = NULL;
 	struct sdhci_pltfm_host *pltfm_host;
@@ -1392,7 +1354,7 @@ static int sdhci_arasan_probe(struct platform_device *pdev)
 	sdhci_arasan->clk_ahb = devm_clk_get(&pdev->dev, "clk_ahb");
 	if (IS_ERR(sdhci_arasan->clk_ahb)) {
 		dev_err(&pdev->dev, "clk_ahb clock not found.\n");
-		return PTR_ERR(sdhci_arasan->clk_ahb);
+		return PTR_ERR(sdhci_arasan->clk_ahb);/*lint !e429*/
 	}
 	ret = clk_set_rate(sdhci_arasan->clk_ahb, ahb_clk);
 	if (ret)
@@ -1400,13 +1362,13 @@ static int sdhci_arasan_probe(struct platform_device *pdev)
 	ret = clk_prepare_enable(sdhci_arasan->clk_ahb);
 	if (ret) {
 		dev_err(&pdev->dev, "Unable to enable AHB clock.\n");
-		return ret;
+		return ret;/*lint !e429*/
 	}
 
 	sdhci_arasan->clk = devm_clk_get(&pdev->dev, "clk_xin");
 	if (IS_ERR(sdhci_arasan->clk)) {
 		dev_err(&pdev->dev, "clk_xin clock not found.\n");
-		return PTR_ERR(sdhci_arasan->clk);
+		return PTR_ERR(sdhci_arasan->clk);/*lint !e429*/
 	}
 	ret = clk_set_rate(sdhci_arasan->clk, xin_clk);
 	if (ret)
@@ -1476,7 +1438,7 @@ static int sdhci_arasan_probe(struct platform_device *pdev)
 
 	/* import, ADMA support 64 or 32 bit address, here we use 32 bit. SDMA only support 32 bit mask. */
 	if (!(host->quirks2 & SDHCI_QUIRK2_BROKEN_64_BIT_DMA)) {
-		host->dma_mask = DMA_BIT_MASK(64);
+		host->dma_mask = DMA_BIT_MASK(64);/*lint !e598 !e648*/
 	} else {
 		host->dma_mask = DMA_BIT_MASK(32);
 	}
@@ -1534,6 +1496,7 @@ clk_dis_ahb:
 	pr_err("%s: error = %d!\n", __func__, ret);
 
 	return ret;
+	/*lint -restore*/
 }
 
 static int sdhci_arasan_remove(struct platform_device *pdev)

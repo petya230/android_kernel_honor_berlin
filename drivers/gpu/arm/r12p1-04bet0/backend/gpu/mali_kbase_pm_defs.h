@@ -98,6 +98,7 @@ enum kbase_pm_core_type {
 struct kbasep_pm_metrics_data {
 	int vsync_hit;
 	int utilisation;
+	u32 vsync_dvfs_policy;
 	ktime_t time_period_start;
 	u32 time_busy;
 	u32 time_idle;

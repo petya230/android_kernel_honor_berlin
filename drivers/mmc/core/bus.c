@@ -39,12 +39,16 @@ static ssize_t mmc_type_show(struct device *dev,
 {
 	struct mmc_card *card = mmc_dev_to_card(dev);
 
+	/*lint -save -e421*/
 	switch (card->type) {
 	case MMC_TYPE_MMC:
+		/*cppcheck-suppress * */
 		return sprintf(buf, "MMC\n");
 	case MMC_TYPE_SD:
+		/*cppcheck-suppress * */
 		return sprintf(buf, "SD\n");
 	case MMC_TYPE_SDIO:
+		/*cppcheck-suppress * */
 		return sprintf(buf, "SDIO\n");
 	case MMC_TYPE_SD_COMBO:
 		/*cppcheck-suppress * */
@@ -52,6 +56,7 @@ static ssize_t mmc_type_show(struct device *dev,
 	default:
 		return -EFAULT;
 	}
+	/*lint -restore*/
 }
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0))
 static DEVICE_ATTR_RO(type);

@@ -332,6 +332,7 @@ struct scsi_host_template {
 #define SCSI_FIRMWARE_RESET	2
 
 #ifdef CONFIG_SCSI_HISI_MQ
+	int (*direct_flush)(struct scsi_device *, int);
 	void (*statistics_report)(struct Scsi_Host *,struct blkdev_statistics_info* );
 	int (*wait_io_schedule)(struct Scsi_Host *,struct blk_dispatch_decision_para *,int (*)(struct blk_dispatch_decision_para *));
 #endif
@@ -554,6 +555,7 @@ enum scsi_host_mq_quirk{
 #define SHOST_MQ_QUIRK(x)	(1 << x)
 #endif
 
+#define HISI_SCSI_HOST_BUSY_IDLE_EN		(1 << 1)
 struct Scsi_Host {
 	/*
 	 * __devices is protected by the host_lock, but you should
@@ -654,7 +656,8 @@ struct Scsi_Host {
 	int mq_queue_depth;
 	unsigned long mq_quirk_flag;
 #endif
-	/* 
+	unsigned long hisi_scsi_host_flag;
+	/*
 	 * Used to assign serial numbers to the cmds.
 	 * Protected by the host lock.
 	 */
