@@ -52,12 +52,13 @@ enum pcm_debug_device {
 	PCM_DEBUG_DEVICE_FAST,
 	PCM_DEBUG_DEVICE_TOTAL,
 };
+// cppcheck-suppress *
 #define TEST_ASSERT(case_name, exp) \
 	if (!(exp)) {\
 		pr_err("pcm_debug:[%s] - %s:%d failed\n", case_name, __func__, __LINE__); \
 		return 0; \
 	}
-
+// cppcheck-suppress *
 #define TEST_PASS(case_name)  pr_err("pcm_debug:[%s] - %s: pass\n", case_name, __func__);\
                               return 0;
 
@@ -355,11 +356,17 @@ static int pcm_debug_write_check_param(const char __user *user_buf, size_t count
         return -EINVAL;
     }
 
+    if (NULL == user_buf) {
+        pr_err("pcm_debug: user_buf is null\n");
+        return -EINVAL;
+    }
+
     if (copy_from_user(cmd_buf, user_buf, count)) {
         pr_err("pcm_debug: user buffer is not completely copied\n");
         return -EINVAL;
     }
 
+    // cppcheck-suppress *
     ret = sscanf(cmd_buf, "%s 0x%x 0x%x 0x%x 0x%x", case_name, cmd, pcm_device, pcm_mode, param); /*[false alarm]:kernel no security function snscanf*/
     if (ret != 5 && ret != 4) {
         pr_err("pcm_debug: cmd_buf sscanf error");

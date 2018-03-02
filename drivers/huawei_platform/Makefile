@@ -11,7 +11,7 @@ obj-$(CONFIG_HUAWEI_HW_DEV_DCT)  += devdetect/
 ifneq ($(strip $(OBB_SEPARATE)),true)
 obj-$(CONFIG_VIACBP82D_3RD_MODEM) += ext_modem/
 endif
-obj-$(CONFIG_INPUTHUB)   += inputhub/iom7/
+obj-$(CONFIG_INPUTHUB)   += inputhub/
 
 obj-$(CONFIG_MAXQ616_POWER_SWITCH) += irda/
 obj-$(CONFIG_LOGGER_EXTEND) += log/

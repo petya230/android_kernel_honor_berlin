@@ -24,7 +24,6 @@
 #include <linux/hisi/hisi_adc.h>
 #include <linux/hisi/hisi_rproc.h>
 
-
 #define	MODULE_NAME		"hisi_adc"
 /*adc maybe IPC timeout*/
 #define ADC_IPC_TIMEOUT		1500
@@ -73,6 +72,7 @@ static struct hisi_adc_device	*hisi_adc_dev = NULL;
 #define ADC_RPROC_RECV_ID	HISI_RPROC_LPM3_MBX0
 
 int g_hkadc_debug = 0;
+
 void hkadc_debug(int onoff)
 {
 	g_hkadc_debug = onoff;

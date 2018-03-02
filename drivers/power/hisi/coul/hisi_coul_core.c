@@ -1,7 +1,7 @@
 
 
 #include "hisi_coul_core.h"
-#include "huawei_platform/inputhub/iom7/inputhub_bridge.h"
+#include "inputhub_bridge.h"
 
 #ifdef CONFIG_ADVANCED_CHARGE_CONTROL
 #include <linux/advanced_charge_control.h>
@@ -49,7 +49,7 @@ static int delta_sleep_current = 50; // sleep current less could updat eocv, in 
 
 static unsigned int hand_chg_capacity_flag = 0;
 static unsigned int input_capacity = 50;
-static int disable_temperature_debounce = 1;
+static int disable_temperature_debounce = 1; /*lint !e551*/
 
 static int sr_time_sleep[SR_ARR_LEN];
 static int sr_time_wakeup[SR_ARR_LEN];
@@ -179,7 +179,7 @@ static int basp_nv_set(const char *buffer, const struct kernel_param *kp)
         need_save = 1;
         pinfo->real_fcc_record[indx++] = val;
         if (indx == MAX_RECORDS_CNT)
-            indx = 0;
+            indx = 0;/*lint !e64*/
         memset(num, 0, sizeof(num));
         begin = end;
     }
@@ -2969,6 +2969,7 @@ static int calculate_state_of_charge(struct smartstar_coul_device *di)
     /* calculate remaining usable charge */
     //eco_leak_uah = calculate_eco_leak_uah();
 
+	/* ECO */
     //remaining_charge_uah = remaining_charge_uah - eco_leak_uah;
 
     remaining_usable_charge_uah = remaining_charge_uah
@@ -2985,6 +2986,7 @@ static int calculate_state_of_charge(struct smartstar_coul_device *di)
 								((fcc_uah - unusable_charge_uah)*(di->soc_at_term)/100/100));
         }
     }
+
     if (soc > 100)
     	soc = 100;
 	soc_before_adjust = soc;
@@ -4357,8 +4359,9 @@ static ssize_t coul_sysfs_store(struct device *dev,
         if ((strict_strtol(buf, 10, &val) < 0) || (val < 0) || (val > 100))
             return -EINVAL;
         hwlog_info("cali_adc =  %ld\n", val);
-        if (1 == val)
+        if (1 == val) {
             di->coul_dev_ops->cali_adc();
+        }
         break;
     case COUL_SYSFS_RESET:
         if ((strict_strtol(buf, 10, &val) < 0) || (val < 0) || (val > 100))
@@ -4778,7 +4781,7 @@ static int  hisi_coul_probe(struct platform_device *pdev)
     di->dev =&pdev->dev;
     if (!g_coul_core_ops) {
         hwlog_err("%s g_coul_core_ops is NULL!\n",__FUNCTION__);
-        return -1;
+        return -1;/*lint !e429*/
      }
     di->coul_dev_ops = g_coul_core_ops;
     if((di->coul_dev_ops->calculate_cc_uah     == NULL) ||(di->coul_dev_ops->convert_regval2ua            == NULL)
@@ -5005,7 +5008,7 @@ coul_failed_1:
     g_smartstar_coul_dev = 0;
 coul_failed:
     hwlog_err("coul core probe failed!\n");
-    return retval;
+    return retval;/*lint !e593*/
 }
 
 /*******************************************************
@@ -5025,6 +5028,7 @@ static int  hisi_coul_remove(struct platform_device *pdev)
         return 0;
     }
     return 0;
+
 }
 
 #ifdef CONFIG_PM
@@ -5285,7 +5289,7 @@ static int hisi_coul_resume(struct platform_device *pdev)
         get_ocv_resume(di);
     }
     else if (di->batt_delta_rc > di->batt_data->fcc*5*10
-        && di->charging_state != CHARGING_STATE_CHARGE_START
+        && di->charging_state != CHARGING_STATE_CHARGE_START /*lint !e574*/
         && (current_sec - di->charging_stop_time > 30*60)){
         int old_ocv = di->batt_ocv;
     	hwlog_info("Update ocv for delta_rc(%d)!\n", di->batt_delta_rc);

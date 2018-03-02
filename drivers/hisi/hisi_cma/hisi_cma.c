@@ -80,7 +80,7 @@ static int __init hisi_cma_reserve_mem_fdt_scan(unsigned long node,
 	unsigned long size_cells = dt_root_size_cells;
 	unsigned long addr_cells = dt_root_addr_cells;
 
-	if (!found && depth == 1 && strcmp(uname, "cma-memory") == 0) {
+	if (!found && depth == 1 && strcmp(uname, "cma-memory") == 0) { /*lint !e421 */
 		prop = of_get_flat_dt_prop(node, "#size-cells", NULL);
 		if (prop)
 			size_cells = be32_to_cpup(prop);
@@ -186,7 +186,7 @@ struct device *hisi_get_cma_area_device(char *name)
 	for (i = 0; i < hisi_cma_area_nr; i++) {
 		if (!hisi_cma[i].cma_area)
 			continue;
-		if (!strcmp(hisi_cma[i].cma_name, name))
+		if (!strcmp(hisi_cma[i].cma_name, name)) /*lint !e421 */
 			break;
 	}
 	if (hisi_cma_area_nr == i)

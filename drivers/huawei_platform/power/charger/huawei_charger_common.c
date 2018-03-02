@@ -2,7 +2,7 @@
 
 #include <huawei_platform/log/hw_log.h>
 #include <huawei_platform/power/huawei_charger.h>
-#include <huawei_platform/inputhub/iom7/protocol.h>
+#include <protocol.h>
 
 #define HWLOG_TAG sensorhub
 HWLOG_REGIST();

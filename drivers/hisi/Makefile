@@ -20,7 +20,6 @@ obj-$(CONFIG_HI6402_HIFI_MISC) += hi64xx_dsp/
 obj-$(CONFIG_HISI_HISEE) += hisee/
 ifneq ($(strip $(CFG_HISI_OPENSOURCE)), true)
 endif
-obj-$(CONFIG_HISI_FLP)   += flp/
 obj-$(CONFIG_HISI_IVP) += ivp/
 obj-$(CONFIG_HISI_HISTAR_ISP) += isp/
 obj-$(CONFIG_DRMDRIVER)                         += drmdriver/
@@ -34,7 +33,6 @@ ifneq ($(link_kernel),false)
 obj-$(CONFIG_HISI_BALONG_MODEM) += modem/
 endif
 obj-$(CONFIG_HISI_AXI) += axi/
-obj-$(CONFIG_HISI_FLP)   += flp/
 obj-$(CONFIG_HISI_HMPTH_SET) += hmpthresholds/
 obj-$(CONFIG_HISI_PAGE_TRACKER) += hisi_page_tracker/
 obj-$(CONFIG_HISI_PAGE_EXT) += hisi_page_ext/

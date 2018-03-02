@@ -130,10 +130,12 @@ struct hilog_reader {
 /* hilog_offset - returns index 'n' into the ring buffer of hilog device
  * only when the dev->size is the power of 2
  */
+/*lint -e578*/
 static size_t hilog_offset(struct hilog_device *dev, size_t n)
 {
     return n & (dev->size - 1);
 }
+/*lint +e578*/
 
 /*
  * file_get_hilog_device - Given a file structure, return the associated device
@@ -166,6 +168,7 @@ static inline struct hilog_device *file_get_hilog_device(struct file *file)
  * 'logger->buf'.  However, a pointer to 'scratch' may be returned if
  * the log entry spans the end and beginning of the circular buffer.
  */
+/*lint -e578*/
 static struct hilog_entry *get_entry_header(struct hilog_device *dev,
     size_t off, struct hilog_entry *scratch)
 {
@@ -180,6 +183,7 @@ static struct hilog_entry *get_entry_header(struct hilog_device *dev,
 
     return (struct hilog_entry *) (dev->buffer + off);
 }
+/*lint +e578*/
 
 /*
  * get_entry_msg_len - Grabs the length of the message of the entry
@@ -191,6 +195,7 @@ static struct hilog_entry *get_entry_header(struct hilog_device *dev,
  *
  * Caller needs to hold dev->mutex.
  */
+/*lint -e578*/
 static __u32 get_entry_msg_len(struct hilog_device *dev, size_t off)
 {
     struct hilog_entry scratch;
@@ -200,6 +205,7 @@ static __u32 get_entry_msg_len(struct hilog_device *dev, size_t off)
 
     return entry->len;
 }
+/*lint +e578*/
 
 /*
  * the header length is the size of struct hilog_entry.
@@ -215,7 +221,11 @@ static size_t get_user_hdr_len(void)
 static ssize_t copy_header_to_user(struct hilog_entry *entry,
                      char __user *buf)
 {
-    return copy_to_user(buf, entry, get_user_hdr_len());
+    if (get_user_hdr_len() == 0) {
+        return EFAULT;
+    } else {
+        return copy_to_user(buf, entry, get_user_hdr_len());
+    }
 }
 
 /*
@@ -224,6 +234,7 @@ static ssize_t copy_header_to_user(struct hilog_entry *entry,
  *
  * Caller must hold dev->mutex.
  */
+/*lint -e578*/
 static ssize_t do_read_hilog_to_user(struct hilog_device *dev,
                    struct hilog_reader *reader,
                    char __user *buf,
@@ -263,6 +274,9 @@ static ssize_t do_read_hilog_to_user(struct hilog_device *dev,
      * the report.
      */
     if (count != len) {
+        if (count - len == 0) {
+            return -EFAULT;
+        }
         if (copy_to_user(buf + len, dev->buffer, count - len)) {
             return -EFAULT;
         }
@@ -273,6 +287,7 @@ static ssize_t do_read_hilog_to_user(struct hilog_device *dev,
 
     return count + get_user_hdr_len();
 }
+/*lint +e578*/
 
 /*
  * hilog_read - our hilog device's read() method
@@ -291,7 +306,7 @@ static ssize_t hilog_read(struct file *file, char __user *buf,
 {
     struct hilog_reader *reader = file->private_data;
     ssize_t ret;
-    DEFINE_WAIT(wait);
+    DEFINE_WAIT(wait);/*lint !e446*/
 
 start:
     while (1) {
@@ -334,10 +349,12 @@ start:
     /* get the size of the next entry */
     ret = get_user_hdr_len() +
         get_entry_msg_len(dev, reader->r_off);
+    /*lint -e574*/
     if (count < ret) {
         ret = -EINVAL;
         goto out;
     }
+    /*lint +e574*/
 
     /* get exactly one entry from the ring buffer */
     ret = do_read_hilog_to_user(dev, reader, buf, ret);
@@ -358,6 +375,7 @@ out:
  *
  * Caller must hold dev->mutex.
  */
+/*lint -e578*/
 static size_t get_next_entry(struct hilog_device *dev, size_t off, size_t len)
 {
     size_t count = 0;
@@ -371,6 +389,7 @@ static size_t get_next_entry(struct hilog_device *dev, size_t off, size_t len)
 
     return off;
 }
+/*lint +e578*/
 
 /*
  * is_between - is a < c < b, accounting for wrapping of a, b, and c
@@ -411,6 +430,7 @@ static inline int is_between(size_t a, size_t b, size_t c)
  *
  * The caller needs to hold dev->mutex.
  */
+/*lint -e578*/
 static void fix_up_readers(struct hilog_device *dev, size_t len)
 {
     size_t old = dev->w_off;
@@ -427,12 +447,14 @@ static void fix_up_readers(struct hilog_device *dev, size_t len)
         }
     }
 }
+/*lint +e578*/
 
 /*
  * do_write_hilog - writes 'len' bytes of hilog_entry.
  *
  * The caller needs to hold dev->mutex.
  */
+/*lint -e578*/
 static ssize_t do_write_hilog(struct hilog_device *dev, const void *buf, size_t count)
 {
     size_t len;
@@ -448,6 +470,7 @@ static ssize_t do_write_hilog(struct hilog_device *dev, const void *buf, size_t 
 
     return count;
 }
+/*lint +e578*/
 
 /*
  * do_write_hilog_from_user - writes 'len' bytes from the user-space buffer 'buf' to
@@ -457,6 +480,7 @@ static ssize_t do_write_hilog(struct hilog_device *dev, const void *buf, size_t 
  *
  * Returns 'count' on success, negative error code on failure.
  */
+/*lint -e578*/
 static ssize_t do_write_hilog_from_user(struct hilog_device *dev,
                       const void __user *buf, size_t count)
 {
@@ -468,6 +492,10 @@ static ssize_t do_write_hilog_from_user(struct hilog_device *dev,
     }
 
     if (count != len) {
+        if (count - len == 0) {
+            return -EFAULT;
+        }
+        /*lint -e613*/
         if (buf != NULL && copy_from_user(dev->buffer, buf + len, count - len)) {
             /*
              * Note that by not updating w_off, this abandons the
@@ -477,12 +505,14 @@ static ssize_t do_write_hilog_from_user(struct hilog_device *dev,
              */
             return -EFAULT;
         }
+        /*lint +e613*/
     }
 
     dev->w_off = hilog_offset(dev, dev->w_off + count);
 
     return count;
 }
+/*lint +e578*/
 
 /*
  * do_write - with header and iovec of payload.
@@ -938,6 +968,7 @@ static void __exit hilog_exit(void)
 /*
  * the method which expanded by the HiLOGE macro.
  */
+/*lint -e508*/
 extern int __hi_log_print(const size_t pri, const char* module, const char* sub_module, \
                            const char* fmt, ...)
 {
@@ -1029,6 +1060,7 @@ extern int __hi_log_print(const size_t pri, const char* module, const char* sub_
 
     return ret;
 }
+/*lint +e508*/
 
 module_init(hilog_init);
 module_exit(hilog_exit);
