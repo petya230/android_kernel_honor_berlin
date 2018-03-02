@@ -43,6 +43,9 @@
 #include <mali_kbase_time.h>
 #include <mali_kbase_mem.h>
 
+#include "mali_kbase_config_platform.h"
+#include "mali_kbase_config_hifeatures.h"
+
 #define KBASE_MMU_PAGE_ENTRIES 512
 
 /**
@@ -1011,7 +1014,12 @@ static void kbase_mmu_flush_invalidate_noretain(struct kbase_context *kctx,
 		 * GPU has hung and perform a reset to
 		 * recover */
 		dev_err(kbdev->dev, "Flush for GPU page table update did not complete. Issuing GPU soft-reset to recover\n");
-
+#ifdef CONFIG_HISI_ENABLE_HPM_DATA_COLLECT
+		/*benchmark data collect */
+		if (kbase_has_hi_feature(kbdev, KBASE_FEATURE_HI0009)) {
+			BUG_ON(1);  //lint !e730
+		}
+#endif
 		if (kbase_prepare_to_reset_gpu_locked(kbdev))
 			kbase_reset_gpu_locked(kbdev);
 	}
@@ -1074,7 +1082,12 @@ static void kbase_mmu_flush_invalidate(struct kbase_context *kctx,
 				 * GPU has hung and perform a reset to
 				 * recover */
 				dev_err(kbdev->dev, "Flush for GPU page table update did not complete. Issueing GPU soft-reset to recover\n");
-
+#ifdef CONFIG_HISI_ENABLE_HPM_DATA_COLLECT
+				/*benchmark data collect */
+				if (kbase_has_hi_feature(kbdev, KBASE_FEATURE_HI0009)) {
+					BUG_ON(1);  //lint !e730
+				}
+#endif
 				if (kbase_prepare_to_reset_gpu(kbdev))
 					kbase_reset_gpu(kbdev);
 			}
@@ -1551,6 +1564,7 @@ void *kbase_mmu_dump(struct kbase_context *kctx, int nr_pages)
 		if (!size)
 			goto fail_free;
 
+		/* Add on the size for the end marker */
 		size += sizeof(u64);
 		/* Add on the size for the config */
 		if (kctx->api_version >= KBASE_API_VERSION(8, 4))
@@ -1562,6 +1576,7 @@ void *kbase_mmu_dump(struct kbase_context *kctx, int nr_pages)
 			goto fail_free;
 		}
 
+		/* Add the end marker */
 		memcpy(mmu_dump_buffer, &end_marker, sizeof(u64));
 	}
 
@@ -1619,6 +1634,12 @@ void bus_fault_worker(struct work_struct *data)
 		 * are evicted from the GPU before the switch.
 		 */
 		dev_err(kbdev->dev, "GPU bus error occurred. For this GPU version we now soft-reset as part of bus error recovery\n");
+#ifdef CONFIG_HISI_ENABLE_HPM_DATA_COLLECT
+		/*benchmark data collect */
+		if (kbase_has_hi_feature(kbdev, KBASE_FEATURE_HI0009)) {
+			BUG_ON(1);  //lint !e730
+		}
+#endif
 		reset_status = kbase_prepare_to_reset_gpu(kbdev);
 	}
 #endif /* KBASE_GPU_RESET_EN */
@@ -1885,6 +1906,12 @@ static void kbase_mmu_report_fault_and_kill(struct kbase_context *kctx,
 		source_id,
 		kctx->pid);
 
+#ifdef CONFIG_HISI_ENABLE_HPM_DATA_COLLECT
+	/*benchmark data collect */
+	if (kbase_has_hi_feature(kbdev, KBASE_FEATURE_HI0009)) {
+		BUG_ON(1);  //lint !e730
+	}
+#endif
 	/* hardware counters dump fault handling */
 	if ((kbdev->hwcnt.kctx) && (kbdev->hwcnt.kctx->as_nr == as_no) &&
 			(kbdev->hwcnt.backend.state ==
@@ -1915,6 +1942,12 @@ static void kbase_mmu_report_fault_and_kill(struct kbase_context *kctx,
 		 * are evicted from the GPU before the switch.
 		 */
 		dev_err(kbdev->dev, "Unhandled page fault. For this GPU version we now soft-reset the GPU as part of page fault recovery.");
+#ifdef CONFIG_HISI_ENABLE_HPM_DATA_COLLECT
+		/*benchmark data collect */
+		if (kbase_has_hi_feature(kbdev, KBASE_FEATURE_HI0009)) {
+			BUG_ON(1);  //lint !e730
+		}
+#endif
 		reset_status = kbase_prepare_to_reset_gpu(kbdev);
 	}
 #endif /* KBASE_GPU_RESET_EN */
@@ -2131,6 +2164,12 @@ void kbase_mmu_interrupt_process(struct kbase_device *kbdev, struct kbase_contex
 			 * point.
 			 */
 			dev_err(kbdev->dev, "GPU bus error occurred. For this GPU version we now soft-reset as part of bus error recovery\n");
+#ifdef CONFIG_HISI_ENABLE_HPM_DATA_COLLECT
+			/*benchmark data collect */
+			if (kbase_has_hi_feature(kbdev, KBASE_FEATURE_HI0009)) {
+				BUG_ON(1);  //lint !e730
+			}
+#endif
 			reset_status = kbase_prepare_to_reset_gpu_locked(kbdev);
 			if (reset_status)
 				kbase_reset_gpu_locked(kbdev);

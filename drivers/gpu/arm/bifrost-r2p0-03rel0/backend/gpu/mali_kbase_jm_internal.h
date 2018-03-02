@@ -59,7 +59,7 @@ void kbase_job_done_slot(struct kbase_device *kbdev, int s, u32 completion_code,
 #ifdef CONFIG_GPU_TRACEPOINTS
 static inline char *kbasep_make_job_slot_string(int js, char *js_string)
 {
-	sprintf(js_string, "job_slot_%i", js);
+	sprintf(js_string, "job_slot_%i", js);/* [false alarm]: no problem - fortify check */
 	return js_string;
 }
 #endif

@@ -31,11 +31,11 @@ static void perivolt_lock(void)
 		}
 		mutex_lock(&perivolt_poll_lock);
 	}
-	WARN_ON_ONCE(perivolt_owner != NULL);
+	WARN_ON_ONCE(perivolt_owner != NULL);/*lint !e456*/
 	WARN_ON_ONCE(perivolt_refcnt != 0);
 	perivolt_owner = current;
 	perivolt_refcnt = 1;
-}
+}/*lint !e454*/
 
 static void perivolt_unlock(void)
 {
@@ -45,13 +45,13 @@ static void perivolt_unlock(void)
 	if (--perivolt_refcnt)
 		return;
 	perivolt_owner = NULL;
-	mutex_unlock(&perivolt_poll_lock);
+	mutex_unlock(&perivolt_poll_lock);/*lint !e455*/
 }
 
 unsigned int __peri_get_volt(struct peri_volt_poll *pvp)
 {
 	if (!pvp) {
-		return -EINVAL;
+		return -EINVAL;/*lint !e570*/
 	}
 	return pvp->volt;
 }
@@ -112,7 +112,7 @@ unsigned int peri_get_volt(struct peri_volt_poll *pvp)
 	unsigned int volt;
 
 	if (NULL == pvp)
-		return -EINVAL;
+		return -EINVAL;/*lint !e570*/
 
 	perivolt_lock();
 
@@ -135,7 +135,7 @@ int peri_poll_stat(struct peri_volt_poll *pvp)
 		return -EINVAL;
 	perivolt_lock();
 	ret = __peri_poll_stat(pvp);
-	if (ret == -EPERM)
+	if (ret == -EPERM)/*lint !e650*/
 		pr_err("[%s] %s peri dvfs is off\n", __func__, pvp->name);
 	perivolt_unlock();
 

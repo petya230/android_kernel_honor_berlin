@@ -14,6 +14,7 @@
 #include <linux/init.h>
 #include <linux/sched.h>
 #include <linux/uaccess.h>
+#include <linux/string.h>
 #include <linux/io.h>
 #include "clk.h"
 #include "hisi-clk-debug.h"
@@ -26,6 +27,7 @@
 #endif
 
 #define CLK_INPUT_MAX_NUM 100
+#define hwlog_err(fmt, args...)  do { printk(KERN_ERR   "[hisi_clk]" fmt, ## args); } while (0)
 
 #ifdef CONFIG_HISI_CLK_TRACE
 #define CLK_NAME_LEN   32
@@ -128,6 +130,45 @@ unsigned int __clk_core_get_enable_count(struct clk_core *clk)
 	return !clk ? 0 : clk->enable_count;
 }
 
+int clk_core_dump(struct clk_core *clk, char* buf)
+{
+	int ret = 0;
+	if (!clk)
+		return 0;
+	if(clk->name){
+		snprintf(buf, DUMP_CLKBUFF_MAX_SIZE, "******%s\n", clk->name);
+		hwlog_err("%s\n", buf);
+	}
+
+	ret = clk_core_dump(clk->parent, buf);
+	if (ret)
+		return ret;
+	if (clk->ops->dump_reg)
+	{
+		ret = clk->ops->dump_reg(clk->hw, buf);
+		hwlog_err("%s\n", buf);
+	}
+	if (ret)
+		return ret;
+	return 0;
+}
+int clk_dump_reg(struct clk *clk)
+{
+	int ret;
+	char buf[DUMP_CLKBUFF_MAX_SIZE];
+
+	if (!clk)
+		return 0;
+	mutex_lock(&clock_list_lock);
+	memset(buf, 0, sizeof(buf));
+	snprintf(buf, DUMP_CLKBUFF_MAX_SIZE, "\n\nDump clk list:\n");
+
+	hwlog_err("%s\n", buf);
+	ret = clk_core_dump(clk->core, buf);
+	mutex_unlock(&clock_list_lock);
+	return ret;
+}
+
 char *clk_enreg_check(struct clk_core *c)
 {
 	int val = 0;
@@ -186,7 +227,7 @@ char *clk_divreg_check(struct clk_core *c)
 
 int clock_get_show(struct seq_file *s, void *data)
 {
-	struct clk_core *clk, *clock;
+	struct clk_core *clk, *clock;/*lint !e578*/
 	struct clk *clock_get;
 	const char *status = NULL;
 
@@ -225,7 +266,7 @@ out:
 
 int clock_lookup_show(struct seq_file *s, void *data)
 {
-	struct clk_core *clk, *clock;
+	struct clk_core *clk, *clock;/*lint !e578*/
 	struct clk *clock_get;
 	const char *status = NULL;
 
@@ -478,6 +519,7 @@ int clock_tree_show(struct seq_file *s, void *data)
 	return 0;
 }
 
+// cppcheck-suppress *
 #define MODULE_FUNCS_DEFINE(func_name)					\
 static int func_name##_open(struct inode *inode, struct file *file)		\
 {																		\
@@ -526,7 +568,7 @@ clock_enable_store(struct file *filp, const char __user *ubuf, size_t cnt,
 
 	/* Check if we have such a clock in the clocks list. if exist, prepare and enable it.*/
 	list_for_each_entry(clk, &clocks, node) {
-		if (strcmp(clk->name, clk_name) == 0) {
+		if (strcmp(clk->name, clk_name) == 0) {/*lint !e421*/
 			pr_info("[old]:enable_refcnt = %d\n", clk->enable_count);
 
 			ret = clk_prepare_enable(clk->hw->clk);
@@ -582,7 +624,7 @@ clock_disable_store(struct file *filp, const char __user *ubuf, size_t cnt,
 
 	/* Check if we have such a clock in the clocks list. if exist, disable and unprepare it.*/
 	list_for_each_entry(clk, &clocks, node) {
-		if (strcmp(clk->name, clk_name) == 0) {
+		if (strcmp(clk->name, clk_name) == 0) {/*lint !e421*/
 			pr_info("[old]:enable_refcnt = %d\n", clk->enable_count);
 
 			clk_disable_unprepare(clk->hw->clk);
@@ -634,7 +676,7 @@ clock_getparent_store(struct file *filp, const char __user *ubuf, size_t cnt,
 	}
 	/* Check if we have such a clock in the clocks list. if exist, get parent of this clock.*/
 	list_for_each_entry(clk, &clocks, node) {
-		if (strcmp(clk->name, clk_name) == 0) {
+		if (strcmp(clk->name, clk_name) == 0) {/*lint !e421*/
 			pr_info("[%s]:", clk->name);
 
 			if (clk->num_parents)
@@ -693,10 +735,10 @@ clock_getrate_store(struct file *filp, const char __user *ubuf, size_t cnt,
 
 	/* Check if we have such a clock in the clocks list. if exist, get rate of this clock.*/
 	list_for_each_entry(clk, &clocks, node) {
-		if (strcmp(clk->name, clk_name) == 0) {
+		if (strcmp(clk->name, clk_name) == 0) {/*lint !e421*/
 			pr_info("\n[%s]: %ld\n\n\n", clk->name, clk_get_rate(clk->hw->clk));
 			err = cnt;
-			goto out;
+			goto out;/*lint !e456*/
 		}
 	}
 
@@ -742,11 +784,14 @@ clock_setrate_store(struct file *filp, const char __user *ubuf, size_t cnt,
 		goto out;
 	}
 	/*get clock rate*/
-	while (*str != ' ')
-		str++;
-
-	*str = '\0';
-
+	str = strchr(str, ' ');
+	if(!str)
+	{
+		err = -EINVAL;
+		goto out;
+	}else{
+		*str = '\0';
+	}
 	str++;
 
 	rate = simple_strtoul(str, NULL, 10);
@@ -760,7 +805,7 @@ clock_setrate_store(struct file *filp, const char __user *ubuf, size_t cnt,
 
 	/* Check if we have such a clock in the clocks list. if exist, set rate of this clock.*/
 	list_for_each_entry(clk, &clocks, node) {
-		if (strcmp(clk->name, clk_name) == 0) {
+		if (strcmp(clk->name, clk_name) == 0) {/*lint !e421*/
 			ret = clk_set_rate(clk->hw->clk, rate);
 			if (ret) {
 				err = -EINVAL;
@@ -799,7 +844,6 @@ clock_setparent_store(struct file *filp, const char __user *ubuf, size_t cnt,
 		pr_err("Input string is NULL.\n");
 		return -EINVAL;
 	}
-
 	if (CLK_INPUT_MAX_NUM < cnt) {
 		pr_err("Input string is too long.\n");
 		return -EINVAL;
@@ -818,17 +862,19 @@ clock_setparent_store(struct file *filp, const char __user *ubuf, size_t cnt,
 		err = -EINVAL;
 		goto out;
 	}
-
 	/*get clock parent name.*/
-	while (*Input_string != ' ')
-		Input_string++;
-
-	*Input_string = '\0';
+	Input_string = strchr(Input_string, ' ');
+	if(!Input_string)
+	{
+		err = -EINVAL;
+		goto out;
+	}else{
+		*Input_string = '\0';
+	}
 
 	Input_string++;
 
 	parent_name = Input_string;
-
 	if (!parent_name) {
 		pr_err("please input clk parent name!\n");
 		err = -EINVAL;
@@ -837,9 +883,9 @@ clock_setparent_store(struct file *filp, const char __user *ubuf, size_t cnt,
 
 	/* Check if we have such a clock in the clocks list. if exist, set parent of this clock.*/
 	list_for_each_entry(clk, &clocks, node) {
-		if (strcmp(clk->name, clk_name) == 0) {
+		if (strcmp(clk->name, clk_name) == 0) {/*lint !e421*/
 			for (i = 0; i < clk->num_parents; i++) {
-				if (strcmp(parent_name, clk->parent_names[i]) == 0) {
+				if (strcmp(parent_name, clk->parent_names[i]) == 0) {/*lint !e421*/
 					parent = clk->parents[i];
 					break;
 				}
@@ -878,7 +924,7 @@ clock_getreg_store(struct file *filp, const char __user *ubuf, size_t cnt,
 	struct clk_core *clk = filp->private_data;
 	char *clk_name;
 	struct clk *clock_get = NULL;
-	struct clk_core *clock = NULL;
+	struct clk_core *clock = NULL;/*lint !e578*/
 	struct clk_gate *gate = NULL;
 	struct clk_mux *mux =  NULL;
 	void __iomem	 *ret = NULL;
@@ -911,7 +957,7 @@ clock_getreg_store(struct file *filp, const char __user *ubuf, size_t cnt,
 
 	/* Check if we have such a clock in the clocks list. if exist, get reg of this clock.*/
 	list_for_each_entry(clk, &clocks, node) {
-		if (strcmp(clk->name, clk_name) == 0) {
+		if (strcmp(clk->name, clk_name) == 0) {/*lint !e421*/
 			clock_get = clk_get(NULL, clk->name);
 			if (IS_ERR(clock_get)) {
 				pr_err("%s clock_get failed!\n", clk->name);
@@ -953,7 +999,7 @@ clock_getreg_store(struct file *filp, const char __user *ubuf, size_t cnt,
 	err = -EINVAL;
 
 out_put:
-	pr_info("\n[%s]: reg = 0x%p, bits = 0x%x, regval = 0x%x\n",
+	pr_info("\n[%s]: reg = 0x%pK, bits = 0x%x, regval = 0x%x\n",
 		clk_name, ret, bits, val);
 	clk_put(clock_get);
 out:
@@ -987,7 +1033,6 @@ static int clock_store_open(struct inode *inode, struct file *filp)
 #define MODULE_STORE_DEFINE(func_name)					\
 	static const struct file_operations func_name##_fops = {	\
 	.open		= clock_store_open,						\
-	.read		= seq_read,						\
 	.write		= func_name##_store,			\
 	.llseek		= seq_lseek,					\
 };
@@ -1200,7 +1245,7 @@ int clk_percpu_buffer_init(u8 *addr, u32 size, u32 fieldcnt, u32 magic_number, u
 	pr_info("[%s], num_online_cpus [%d] !\n", __func__, num_online_cpus());
 
 	if (IS_ERR_OR_NULL(addr) || IS_ERR_OR_NULL(addr)) {
-		pr_err("[%s], buffer_addr [0x%p], buffer_size [0x%x]\n", __func__, addr, size);
+		pr_err("[%s], buffer_addr [0x%pK], buffer_size [0x%x]\n", __func__, addr, size);
 		return -1;
 	}
 
@@ -1211,7 +1256,7 @@ int clk_percpu_buffer_init(u8 *addr, u32 size, u32 fieldcnt, u32 magic_number, u
 	g_clk_track_addr->dump_magic  = magic_number;
 
 	/*set per cpu buffer*/
-	for (i = 0; i < cpu_num; i++) {
+	for (i = 0; i < cpu_num; i++) {/*lint !e574*/
 		pr_info("[%s], ratio[%d][%d] = [%d]\n", __func__,
 		       (cpu_num - 1), i, ratio[cpu_num - 1][i]);
 
@@ -1223,7 +1268,7 @@ int clk_percpu_buffer_init(u8 *addr, u32 size, u32 fieldcnt, u32 magic_number, u
 			g_clk_track_addr->percpu_addr[i - 1] + g_clk_track_addr->percpu_length[i - 1];
 		}
 
-		pr_info("[%s], [%d]: percpu_addr [0x%p], percpu_length [0x%x], fieldcnt [%d]\n",
+		pr_info("[%s], [%d]: percpu_addr [0x%pK], percpu_length [0x%x], fieldcnt [%d]\n",
 		       __func__, i, g_clk_track_addr->percpu_addr[i],
 		       g_clk_track_addr->percpu_length[i], fieldcnt);
 
@@ -1319,7 +1364,7 @@ static int __init track_clk_record_init(void)
 	if (check_himntn(HIMNTN_TRACE_CLK_REGULATOR))
 		g_clk_hook_on = SWITCH_OPEN;
 
-	pr_err("%s: hook_on = %d,rdr_phy_addr = 0x%llx, rdr_len = 0x%x, rdr_virt_add = 0x%p\n", __func__, g_clk_hook_on,
+	pr_err("%s: hook_on = %d,rdr_phy_addr = 0x%llx, rdr_len = 0x%x, rdr_virt_add = 0x%pK\n", __func__, g_clk_hook_on,
 			clk_rdr_info.log_addr, clk_rdr_info.log_len, vir_addr);
 	return 0;
 }

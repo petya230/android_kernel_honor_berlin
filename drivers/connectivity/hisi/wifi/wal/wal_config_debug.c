@@ -793,6 +793,17 @@ OAL_STATIC oal_uint32  wal_config_reassoc_req(mac_vap_stru *pst_mac_vap, oal_uin
 
 #endif
 
+OAL_STATIC oal_uint32  wal_config_voe_enable(mac_vap_stru *pst_mac_vap, oal_uint16 us_len, oal_uint8 *puc_param)
+{
+    return hmac_config_voe_enable(pst_mac_vap, us_len, puc_param);
+}
+#ifdef _PRE_WLAN_FEATURE_11K
+OAL_STATIC oal_uint32  wal_config_bcn_table_switch(mac_vap_stru *pst_mac_vap, oal_uint16 us_len, oal_uint8 *puc_param)
+{
+    return hmac_config_bcn_table_switch(pst_mac_vap, us_len, puc_param);
+}
+
+#endif
 /*****************************************************************************
  函 数 名  : wal_config_list_ap
  功能描述  : 显示STA扫描到的AP
@@ -4860,6 +4871,10 @@ OAL_CONST wal_wid_op_stru g_ast_board_wid_op_debug[] =
     {WLAN_CFGID_REASSOC_REQ,            OAL_FALSE,  {0},    OAL_PTR_NULL,            wal_config_reassoc_req},
     {WLAN_CFGID_WMMAC_SWITCH,           OAL_FALSE,  {0},    OAL_PTR_NULL,            wal_config_wmmac_switch},
 #endif
+#ifdef _PRE_WLAN_FEATURE_11K
+    {WLAN_CFGID_BCN_TABLE_SWITCH,       OAL_FALSE,  {0},    OAL_PTR_NULL,            wal_config_bcn_table_switch},
+#endif //_PRE_WLAN_FEATURE_11K
+    {WLAN_CFGID_VOE_ENABLE,             OAL_FALSE,  {0},    OAL_PTR_NULL,            wal_config_voe_enable},
     {WLAN_CFGID_SET_FEATURE_LOG,        OAL_FALSE,  {0},    OAL_PTR_NULL,            wal_config_set_feature_log},
 #if (_PRE_MULTI_CORE_MODE_OFFLOAD_DMAC == _PRE_MULTI_CORE_MODE)
     {WLAN_CFGID_SET_LOG_PM,             OAL_FALSE,  {0},    OAL_PTR_NULL,            wal_config_set_log_lowpower},

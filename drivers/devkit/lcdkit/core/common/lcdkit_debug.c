@@ -6,23 +6,6 @@ struct lcdkit_debug lcdkit_dbg;
 int lcdkit_msg_level = 7;
 atomic_t mipi_path_status = ATOMIC_INIT(1);
 
-#if 0
-#if defined (CONFIG_HUAWEI_DSM)
-
-static struct dsm_dev dsm_lcd =
-{
-    .name = "dsm_lcd",
-    .device_name = NULL,
-    .ic_name = NULL,
-    .module_name = NULL,
-    .fops = NULL,
-    .buff_size = 1024,
-};
-#endif
-
-struct dsm_client* lcd_dclient = NULL;
-#endif
-
 lcdkit_dbg_cmds lcdkit_cmd_list[] =
 {
     {LCDKIT_DBG_LEVEL_SET,                      "set_debug_level"            },
@@ -222,6 +205,11 @@ void lcdkit_dump_buf_32(const u32* buf, int cnt)
 
 void lcdkit_dump_cmds_desc(struct lcdkit_dsi_cmd_desc* desc)
 {
+    if( NULL == desc)
+    {
+        LCDKIT_INFO("NULL point!\n");
+        return ;
+    }
     LCDKIT_DEBUG("dtype      = 0x%02x\n", desc->dtype);
     LCDKIT_DEBUG("last       = 0x%02x\n", desc->last);
     LCDKIT_DEBUG("vc         = 0x%02x\n", desc->vc);
@@ -238,6 +226,11 @@ void lcdkit_dump_cmds(struct lcdkit_dsi_panel_cmds* cmds)
     int i;
 
     //LCDKIT_DEBUG("============= lcdkit cmds dump start ============\n");
+    if( NULL == cmds)
+    {
+        LCDKIT_INFO("NULL point!\n");
+        return ;
+    }
 
     LCDKIT_DEBUG("blen       = 0x%02x\n", cmds->blen);
     LCDKIT_DEBUG("cmd_cnt    = 0x%02x\n", cmds->cmd_cnt);
@@ -257,6 +250,11 @@ void lcdkit_dump_cmds(struct lcdkit_dsi_panel_cmds* cmds)
 void lcdkit_dump_array_data(struct lcdkit_array_data* array)
 {
     //LCDKIT_DEBUG("============= array data dump start =============\n");
+    if( NULL == array)
+    {
+        LCDKIT_INFO("NULL point!\n");
+        return ;
+    }
     LCDKIT_DEBUG("cnt        = 0x%x\n", array->cnt);
     lcdkit_dump_buf(array->buf, array->cnt);
     //LCDKIT_DEBUG("============= array data dump end   =============\n");
@@ -281,7 +279,7 @@ int lcdkit_parse_dsi_cmds(struct lcdkit_dsi_panel_cmds* pcmds)
     struct lcdkit_dsi_ctrl_hdr* dchdr;
     int i = 0, cnt = 0;
 
-    memset(pcmds, sizeof(struct lcdkit_dsi_panel_cmds), 0);
+    memset(pcmds, 0, sizeof(struct lcdkit_dsi_panel_cmds));
 
     if (!lcdkit_debug_malloc_dtsi_para((void**)&buf, &blen))
     {
@@ -430,19 +428,6 @@ int lcdkit_esd_debug(void* pdata)
     int ret = 0;
     uint32_t i = 0;
     uint32_t read_value = 0;
-
-#if 0
-
-    if (is_mipi_cmd_panel(pdata))
-    {
-        lcdkit_info.panel_infos.esd_dbg_cmds.cmds[0].dtype = DTYPE_DCS_READ;
-    }
-    else
-    {
-        lcdkit_info.panel_infos.esd_dbg_cmds.cmds[0].dtype = DTYPE_GEN_READ1;
-    }
-
-#endif
 
     /*check reg, read reg and compire the expect value*/
     for (i = 0; i < lcdkit_dbg.g_esd_debug.check_count; i++)
@@ -1149,7 +1134,11 @@ int lcdkit_mipi_prcess_ic_reg(int op_type,int reg, int cmd_type,
    }
 
    ctrl = lcdkit_get_dsi_ctrl_pdata();
-
+   if (NULL == ctrl)
+   {
+      LCDKIT_ERR("get  ctrl padata failed.\n");
+      return -EFAULT;
+   }
 
    /* translate cmd_type from huawei to qcom's format */
    switch (param_num)
@@ -1284,16 +1273,6 @@ int lcdkit_mipi_prcess_ic_reg(int op_type,int reg, int cmd_type,
          cmds_desc.ack = 1;
          cmds_desc.wait = 5;//5 ms
             reg_cmds.flags = LCDKIT_CMD_REQ_RX | LCDKIT_CMD_REQ_COMMIT;
-
-            #if 0
-           if (lcdkit_info.long_read_flag)
-           {
-              rlen = 3;
-           }else
-           {
-              rlen = 1;
-           }
-            #endif
 
             lcdkit_dsi_rx(ctrl, &regvalue, 1, &reg_cmds);
 
@@ -1568,16 +1547,6 @@ int lcdkit_debugfs_init(void)
         LCDKIT_ERR("(%d): already init\n", __LINE__);
         return 0;
     }
-
-#if 0
-
-    // dsm lcd
-    if (!lcd_dclient)
-    {
-        lcd_dclient = dsm_register_client(&dsm_lcd);
-    }
-
-#endif
 
     /* create dir */
     dent = debugfs_create_dir("lcd-dbg", NULL);

@@ -224,9 +224,7 @@ typedef enum
 #endif
     DMAC_WLAN_CTX_EVENT_SUB_TYPE_CALI_HMAC2DMAC,
     DMAC_WLAN_CTX_EVENT_SUB_TYPE_DSCR_OPT,
-#ifdef _PRE_WLAN_FEATURE_11K
-    DMAC_WLAN_CTX_EVENT_SUB_TYPE_RPT_SAVE_BSS_INFO,
-#endif
+
     DMAC_WLAN_CTX_EVENT_SUB_TYPE_BUTT
 }dmac_wlan_ctx_event_sub_type_enum;
 typedef oal_uint8 dmac_wlan_ctx_event_sub_type_enum_uint8;
@@ -1330,6 +1328,7 @@ typedef struct
     oal_uint8                         auc_resv[2];
 
     oal_uint8                         auc_ip_addr[OAL_IP_ADDR_MAX_SIZE];
+    oal_uint8                         auc_mask_addr[OAL_IP_ADDR_MAX_SIZE];
 }dmac_ip_addr_config_stru;
 #endif
 

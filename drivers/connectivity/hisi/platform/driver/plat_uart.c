@@ -483,11 +483,10 @@ int32 ps_change_uart_baud_rate(int64 baud_rate, uint8 enable_flowctl)
 
     PS_PRINT_INFO("ldisc_install = %d\n", TTY_LDISC_RECONFIG);
     sysfs_notify(g_sysfs_hi110x_bfgx, NULL, "install");
-    ps_uart_state_pre(ps_core_d->tty);
+
     timeleft = wait_for_completion_timeout(&ps_plat_d->ldisc_reconfiged, msecs_to_jiffies(HISI_LDISC_TIME));
     if (!timeleft)
     {
-        ps_uart_state_dump(ps_core_d->tty);
         PS_PRINT_ERR("hisi bfgx ldisc reconfig timeout\n");
         CHR_EXCEPTION(CHR_GNSS_DRV(CHR_GNSS_DRV_EVENT_PLAT, CHR_PLAT_DRV_ERROR_CFG_UART));
 
@@ -546,11 +545,9 @@ int32 open_tty_drv(void *pm_data)
 
         PS_PRINT_INFO("ldisc_install = %d\n", TTY_LDISC_INSTALL);
         sysfs_notify(g_sysfs_hi110x_bfgx, NULL, "install");
-        ps_uart_state_pre(ps_core_d->tty);
         timeleft = wait_for_completion_timeout(&ps_plat_d->ldisc_installed, msecs_to_jiffies(HISI_LDISC_TIME));
         if (!timeleft)
         {
-            ps_uart_state_dump(ps_core_d->tty);
             PS_PRINT_ERR("hisi bfgx ldisc installation timeout\n");
             PS_BUG_ON(1);
             continue;
@@ -561,7 +558,6 @@ int32 open_tty_drv(void *pm_data)
             ps_core_d->tty_have_open = true;
             return 0;
         }
-
     } while (retry--);
 
     CHR_EXCEPTION(CHR_GNSS_DRV(CHR_GNSS_DRV_EVENT_PLAT, CHR_PLAT_DRV_ERROR_OPEN_UART));
@@ -634,11 +630,9 @@ int32 release_tty_drv(void *pm_data)
     PS_PRINT_INFO("ldisc_install = %d\n", TTY_LDISC_UNINSTALL);
     sysfs_notify(g_sysfs_hi110x_bfgx, NULL, "install");
 
-    ps_uart_state_pre(ps_core_d->tty);
     timeleft = wait_for_completion_timeout(&ps_plat_d->ldisc_uninstalled, msecs_to_jiffies(HISI_LDISC_TIME));
     if (!timeleft)
     {
-        ps_uart_state_dump(ps_core_d->tty);
         PS_PRINT_ERR("hisi bfgx ldisc uninstall timeout\n");
         error = -ETIMEDOUT;
     }

@@ -142,7 +142,7 @@ static int mali_kbase_get_dev_status(struct device *dev,
 
 	if (kbdev->pm.backend.metrics.kbdev != kbdev) {
 		pr_err("[mali-midgard] pm backend metrics not initialized\n", __func__);
-		return 0;
+		return -EINVAL;
 	}
 
 	(void)kbase_pm_get_dvfs_action(kbdev);

@@ -1507,12 +1507,6 @@ oal_uint32 hmac_proc_join_set_dtim_reg_event_tx_adapt(frw_event_mem_stru *pst_ev
     return hmac_hcc_tx_event_payload_to_netbuf(pst_event_mem, OAL_SIZEOF(dmac_ctx_set_dtim_tsf_reg_stru));
 }
 
-#ifdef _PRE_WLAN_FEATRUE_11K
-oal_uint32 hmac_proc_rpt_bss_info_tx_adapt(frw_event_mem_stru *pst_event_mem)
-{
-    return hmac_hcc_tx_event_payload_to_netbuf(pst_event_mem, OAL_SIZEOF(mac_vap_rrm_trans_bss_info_stru));
-}
-#endif
 /*****************************************************************************
  函 数 名  : hmac_hcc_tx_convert_event_to_netbuf_uint32
  功能描述  : hmac 将event 转换为 netbuf,在dmac 将netbuf还原为event,event的payload长度为4B

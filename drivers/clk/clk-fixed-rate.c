@@ -42,9 +42,21 @@ static unsigned long clk_fixed_rate_recalc_accuracy(struct clk_hw *hw,
 	return to_clk_fixed_rate(hw)->fixed_accuracy;
 }
 
+#ifdef CONFIG_HISI_CLK_DEBUG
+static int hi3xxx_dumpfixed_rate(struct clk_hw *hw, char* buf)
+{
+	if(buf)
+		snprintf(buf, DUMP_CLKBUFF_MAX_SIZE, "[%s] : fixed rate = %lu\n", __clk_get_name(hw->clk), to_clk_fixed_rate(hw)->fixed_rate);
+	return 0;
+}
+#endif
+
 const struct clk_ops clk_fixed_rate_ops = {
 	.recalc_rate = clk_fixed_rate_recalc_rate,
 	.recalc_accuracy = clk_fixed_rate_recalc_accuracy,
+#ifdef CONFIG_HISI_CLK_DEBUG
+	.dump_reg = hi3xxx_dumpfixed_rate,
+#endif
 };
 EXPORT_SYMBOL_GPL(clk_fixed_rate_ops);
 
@@ -88,7 +100,7 @@ struct clk *clk_register_fixed_rate_with_accuracy(struct device *dev,
 	clk = clk_register(dev, &fixed->hw);
 	if (IS_ERR(clk))
 		kfree(fixed);
-
+/*lint !e593*/
 	return clk;
 }
 EXPORT_SYMBOL_GPL(clk_register_fixed_rate_with_accuracy);

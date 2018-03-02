@@ -455,7 +455,7 @@ oal_uint16 oal_netbuf_select_queue(oal_netbuf_stru *pst_buf)
 
                 /* 如果是DHCP帧，则进入DATA_HIGH_QUEUE */
                 pst_udp_hdr = (oal_udp_header_stru *)(pst_ip + 1);
-                /* DTS2016122003967 增加dhcp不是分片报文的判断 */
+                /* DTS2016122003967  增加dhcp不是分片报文的判断 */
                 if ((0 == (pst_ip->us_frag_off & 0xFF1F)) && (OAL_TRUE == oal_netbuf_is_dhcp_port(pst_udp_hdr)))
                 {
                     us_queue = WLAN_DATA_VIP_QUEUE;
@@ -856,7 +856,7 @@ void dev_netlink_rev(oal_netbuf_stru *skb)
     oal_netbuf_stru                *pst_skb;
     oal_nlmsghdr_stru              *pst_nlh;
     struct dev_netlink_msg_hdr_stru st_msg_hdr;
-    oal_int32                       l_len;
+    oal_uint32                      ul_len;
 
     if (NULL == skb)
     {
@@ -874,14 +874,31 @@ void dev_netlink_rev(oal_netbuf_stru *skb)
     if (pst_skb->len >= OAL_NLMSG_SPACE(0))
     {
         pst_nlh = oal_nlmsg_hdr(pst_skb);
-        l_len   = OAL_NLMSG_PAYLOAD(pst_nlh, 0);
-        oal_memcopy(dev_excp_handler_data.data, OAL_NLMSG_DATA(pst_nlh), l_len);
+        /* 检测报文长度正确性 */
+        if (!OAL_NLMSG_OK(pst_nlh, pst_skb->len))
+        {
+            OAL_IO_PRINT("[ERROR]invaild netlink buff data packge data len = :%u,skb_buff data len = %u\n",
+                                                                pst_nlh->nlmsg_len,pst_skb->len);
+            kfree_skb(pst_skb);
+            return;
+        }
+        ul_len   = OAL_NLMSG_PAYLOAD(pst_nlh, 0);
+        /* 后续需要拷贝sizeof(st_msg_hdr),故判断之 */
+        if (ul_len < OAL_EXCP_DATA_BUF_LEN && ul_len >= sizeof(st_msg_hdr))
+        {
+            oal_memcopy(dev_excp_handler_data.data, OAL_NLMSG_DATA(pst_nlh), ul_len);
+        }
+        else
+        {
+            OAL_IO_PRINT("[ERROR]invaild netlink buff len:%u,max len:%u\n",ul_len,OAL_EXCP_DATA_BUF_LEN);
+            kfree_skb(pst_skb);
+            return;
+        }
         oal_memcopy((void *)&st_msg_hdr, dev_excp_handler_data.data, sizeof(st_msg_hdr));
 
         if (0 == st_msg_hdr.cmd)
         {
             dev_excp_handler_data.usepid = pst_nlh->nlmsg_pid;   /*pid of sending process */
-
             OAL_IO_PRINT("WIFI DFR:pid is [%d], msg is [%s]\n", dev_excp_handler_data.usepid , &dev_excp_handler_data.data[sizeof(st_msg_hdr)]);
         }
     }

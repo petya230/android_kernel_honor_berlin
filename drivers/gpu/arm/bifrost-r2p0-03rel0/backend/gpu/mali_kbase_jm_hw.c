@@ -34,6 +34,9 @@
 #include <backend/gpu/mali_kbase_js_affinity.h>
 #include <backend/gpu/mali_kbase_jm_internal.h>
 
+#include "mali_kbase_config_platform.h"
+#include "mali_kbase_config_hifeatures.h"
+
 /*lint -e750 -esym(750,*)*/
 #define beenthere(kctx, f, a...) \
 			dev_dbg(kctx->kbdev->dev, "%s:" f, __func__, ##a)
@@ -350,6 +353,12 @@ void kbase_job_done(struct kbase_device *kbdev, u32 done)
 							kbase_exception_name
 							(kbdev,
 							completion_code));
+#ifdef CONFIG_HISI_ENABLE_HPM_DATA_COLLECT
+					/*benchmark data collect */
+					if (kbase_has_hi_feature(kbdev, KBASE_FEATURE_HI0009)) {
+						BUG_ON(1);  //lint !e730
+					}
+#endif
 				}
 
 				kbase_gpu_irq_evict(kbdev, i);
@@ -832,6 +841,12 @@ static enum hrtimer_restart zap_timeout_callback(struct hrtimer *timer)
 	if (kbase_prepare_to_reset_gpu(kbdev)) {
 		dev_err(kbdev->dev, "Issueing GPU soft-reset because jobs failed to be killed (within %d ms) as part of context termination (e.g. process exit)\n",
 								ZAP_TIMEOUT);
+#ifdef CONFIG_HISI_ENABLE_HPM_DATA_COLLECT
+		/*benchmark data collect */
+		if (kbase_has_hi_feature(kbdev, KBASE_FEATURE_HI0009)) {
+			BUG_ON(1); //lint !e730
+		}
+#endif
 		kbase_reset_gpu(kbdev);
 	}
 #endif /* KBASE_GPU_RESET_EN */
@@ -1087,6 +1102,12 @@ void kbase_job_slot_hardstop(struct kbase_context *kctx, int js,
 		 * jobs leave the GPU.*/
 		if (kbase_prepare_to_reset_gpu_locked(kbdev)) {
 			dev_err(kbdev->dev, "Issueing GPU soft-reset after hard stopping due to hardware issue");
+#ifdef CONFIG_HISI_ENABLE_HPM_DATA_COLLECT
+			/*benchmark data collect */
+			if (kbase_has_hi_feature(kbdev, KBASE_FEATURE_HI0009)) {
+				BUG_ON(1); //lint !e730
+			}
+#endif
 			kbase_reset_gpu_locked(kbdev);
 		}
 	}

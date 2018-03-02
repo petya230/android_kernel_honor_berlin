@@ -78,12 +78,10 @@ static void kbase_mmu_flush_invalidate(struct kbase_context *kctx,
 static void kbase_mmu_sync_pgd(struct kbase_device *kbdev,
 		dma_addr_t handle, size_t size)
 {
-	/* If page table is not coherent then ensure the gpu can read
-	 * the pages from memory
+	/* Because of the protected mode, we have to sync gpu page table
+	 * no matter what the coherency mode.
 	 */
-	if (kbdev->system_coherency != COHERENCY_ACE)
-		dma_sync_single_for_device(kbdev->dev, handle, size,
-				DMA_TO_DEVICE);
+	dma_sync_single_for_device(kbdev->dev, handle, size, DMA_TO_DEVICE);
 }
 
 /*
@@ -1165,7 +1163,7 @@ int kbase_mmu_teardown_pages(struct kbase_context *kctx, u64 vpfn, size_t nr)
 	int err;
 
 	KBASE_DEBUG_ASSERT(NULL != kctx);
-	beenthere(kctx, "kctx %p vpfn %lx nr %zd", (void *)kctx, (unsigned long)vpfn, nr);
+	beenthere(kctx, "kctx %pK vpfn %lx nr %zd", (void *)kctx, (unsigned long)vpfn, nr);
 
 	if (0 == nr) {
 		/* early out if nothing to do */
@@ -1258,7 +1256,7 @@ int kbase_mmu_update_pages(struct kbase_context *kctx, u64 vpfn, phys_addr_t *ph
 
 	mmu_mode = kctx->kbdev->mmu_mode;
 
-	dev_warn(kctx->kbdev->dev, "kbase_mmu_update_pages(): updating page share flags on GPU PFN 0x%llx from phys %p, %zu pages",
+	dev_warn(kctx->kbdev->dev, "kbase_mmu_update_pages(): updating page share flags on GPU PFN 0x%llx from phys %pK, %zu pages",
 			vpfn, phys, nr);
 
 	while (nr) {
@@ -1544,6 +1542,7 @@ void *kbase_mmu_dump(struct kbase_context *kctx, int nr_pages)
 		if (!size)
 			goto fail_free;
 
+		/* Add on the size for the end marker */
 		size += sizeof(u64);
 		/* Add on the size for the config */
 		if (kctx->api_version >= KBASE_API_VERSION(8, 4))
@@ -1555,6 +1554,7 @@ void *kbase_mmu_dump(struct kbase_context *kctx, int nr_pages)
 			goto fail_free;
 		}
 
+		/* Add the end marker */
 		memcpy(mmu_dump_buffer, &end_marker, sizeof(u64));
 	}
 

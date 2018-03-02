@@ -39,7 +39,9 @@
 
 #define UART_LOOP_MAX_PKT_LEN       (2048)      /*device buf len is 2400*/
 
-
+/* FIXME: it depends on device's rule, it's 46+5 now,
+ *        and should be modified if it's changed in device end.
+*/
 #define NOBT_FRAME_EXTRA_SPACE      (6)         /* Ô¤Áô6×Ö½ÚÓàÁ¿ */
 #define MAX_NOBT_FRAME_LEN          (52 + NOBT_FRAME_EXTRA_SPACE)/* FGNI max frame len */
 #define MAX_LAST_WORD_FRAME_LEN     (114 + NOBT_FRAME_EXTRA_SPACE)/* FGNI max frame len */

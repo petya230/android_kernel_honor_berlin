@@ -80,7 +80,7 @@ static int regs_history_show(struct seq_file *sfile, void *data)
 			&h->buf[(h->count - iters + i) % h->size];
 		char const access = (io->addr & 1) ? 'w' : 'r';
 
-		seq_printf(sfile, "%6i: %c: reg 0x%p val %08x\n", i, access,
+		seq_printf(sfile, "%6i: %c: reg 0x%pK val %08x\n", i, access,
 				(void *)(io->addr & ~0x1), io->value);
 	}
 

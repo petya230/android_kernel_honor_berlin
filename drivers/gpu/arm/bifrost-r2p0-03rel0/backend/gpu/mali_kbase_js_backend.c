@@ -24,6 +24,8 @@
 #include <mali_kbase_hwaccess_jm.h>
 #include <backend/gpu/mali_kbase_jm_internal.h>
 #include <backend/gpu/mali_kbase_js_internal.h>
+#include "mali_kbase_config_platform.h"
+#include "mali_kbase_config_hifeatures.h"
 
 /*
  * Define for when dumping is enabled.
@@ -256,7 +258,12 @@ static enum hrtimer_restart timer_callback(struct hrtimer *timer)
 #if KBASE_GPU_RESET_EN
 	if (reset_needed) {
 		dev_err(kbdev->dev, "JS: Job has been on the GPU for too long (JS_RESET_TICKS_SS/DUMPING timeout hit). Issueing GPU soft-reset to resolve.");
-
+#ifdef CONFIG_HISI_ENABLE_HPM_DATA_COLLECT
+		/*benchmark data collect */
+		if (kbase_has_hi_feature(kbdev, KBASE_FEATURE_HI0009)) {
+			BUG_ON(1); //lint !e730
+		}
+#endif
 		if (kbase_prepare_to_reset_gpu_locked(kbdev))
 			kbase_reset_gpu_locked(kbdev);
 	}

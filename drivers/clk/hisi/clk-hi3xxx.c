@@ -342,7 +342,7 @@ static void __iomem *hi3xxx_clkgate_get_reg(struct clk_hw *hw)
 		ret = pclk->enable + hi3xxx_CLK_GATE_STATUS_OFFSET;
 		val = readl(ret);
 		val &= pclk->ebits;
-		pr_info("\n[%s]: reg = 0x%p, bits = 0x%x, regval = 0x%x\n",
+		pr_info("\n[%s]: reg = 0x%pK, bits = 0x%x, regval = 0x%x\n",
 			__clk_get_name(hw->clk), ret, pclk->ebits, val);
 	}
 
@@ -1524,7 +1524,7 @@ static void __iomem *hi3xxx_clkdiv_get_reg(struct clk_hw *hw)
 		ret = dclk->reg;
 		val = readl(ret);
 		val &= dclk->mbits;
-		pr_info("\n[%s]: reg = 0x%p, bits = 0x%x, regval = 0x%x\n",
+		pr_info("\n[%s]: reg = 0x%pK, bits = 0x%x, regval = 0x%x\n",
 			__clk_get_name(hw->clk), ret, dclk->mbits, val);
 	}
 	return ret;
@@ -1819,6 +1819,12 @@ static long hi3xxx_xfreq_clk_determine_rate(struct clk_hw *hw, unsigned long rat
 					struct clk **best_parent_clk)
 {
 	return rate;
+}
+#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 4, 0))
+static int hi3xxx_xfreq_clk_determine_rate(struct clk_hw *hw,
+			     struct clk_rate_request *req)
+{
+	return 0;
 }
 #else
 static long hi3xxx_xfreq_clk_determine_rate(struct clk_hw *hw, unsigned long rate,

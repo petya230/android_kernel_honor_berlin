@@ -47,16 +47,16 @@ extern "C" {
 
     /* mac_vap_stru, hmac_vap_stru私有部分, dmac_vap_stru私有部分总规格 */
 #ifdef _PRE_WLAN_FEATURE_CUSTOM_SECURITY
-#define MAC_RES_VAP_SIZE        3604
+#define MAC_RES_VAP_SIZE        3620 //20161110:from 3604 to 3616 for vowifi
 #else
-#define MAC_RES_VAP_SIZE        1696 //20160614:from 1652 to 1656 for vowifi; 1656->1696 for btcoex sco
+#define MAC_RES_VAP_SIZE        1712 //20161110:from 1696 to 1708 for vowifi; 1656->1696 for btcoex sco
 #endif
 
 #ifdef _PRE_WLAN_FEATURE_TX_DSCR_OPT
     /* mac_user_stru, hmac_user_stru私有部分, dmac_user_stru私有部分总规格，必须四字节对齐 */
-#define MAC_RES_USER_SIZE       (1524 + 48)
+#define MAC_RES_USER_SIZE       (1532 + 48)
 #else
-#define MAC_RES_USER_SIZE       (1400 + 48)
+#define MAC_RES_USER_SIZE       (1408 + 48)
 #endif /* _PRE_WLAN_FEATURE_TX_DSCR_OPT */
 
 #elif (_PRE_PRODUCT_ID == _PRE_PRODUCT_ID_HI1103_DEV)
@@ -77,9 +77,9 @@ extern "C" {
 
     /* mac_vap_stru, hmac_vap_stru私有部分, dmac_vap_stru私有部分总规格 */
 #ifdef _PRE_WLAN_FEATURE_CUSTOM_SECURITY
-#define MAC_RES_VAP_SIZE        6600 /* 适配Android N版本，从5928 调整到6600 */
+#define MAC_RES_VAP_SIZE        8216 /* 适配Linux 4.1 增加debug 宏，从6600 调整到8216 */
 #else
-#define MAC_RES_VAP_SIZE        6600 /*适配ARM64 都对齐到8B*/
+#define MAC_RES_VAP_SIZE        8216 /*适配ARM64 都对齐到8B*/
 #endif
 
 #ifdef CONFIG_ARM64
@@ -90,7 +90,7 @@ extern "C" {
 #define FEATURE_TX_CLASSIFY_LAN_TO_WLAN_RES_SIZE 0
 #endif  /* end of _PRE_WLAN_FEATURE_TX_CLASSIFY_LAN_TO_WLAN */
 
-#define MAC_RES_USER_SIZE       (4072 + FEATURE_TX_CLASSIFY_LAN_TO_WLAN_RES_SIZE)
+#define MAC_RES_USER_SIZE       (4368 + FEATURE_TX_CLASSIFY_LAN_TO_WLAN_RES_SIZE)   /* 适配Linux 4.1 增加debug 宏，从4072 调整到4368 */
 #else
 
     /* mac_user_stru, hmac_user_stru私有部分, dmac_user_stru私有部分总规格，考虑到ARM64都对齐到8B */

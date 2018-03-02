@@ -71,7 +71,6 @@ extern "C" {
 
 #undef  THIS_FILE_ID
 #define THIS_FILE_ID OAM_FILE_ID_HMAC_TX_DATA_C
-#define WLAN_WEIXIN_HONGBAO_PROORITY 7
 
 
 /*****************************************************************************
@@ -736,10 +735,7 @@ OAL_STATIC OAL_INLINE oal_void  hmac_tx_classify_lan_to_wlan(oal_netbuf_stru *ps
             OAM_INFO_LOG1(0, OAM_SF_TX, "{hmac_tx_classify_lan_to_wlan::default us_ether_type[%d].}", pst_ether_header->us_ether_type);
             break;
     }
-    if (WLAN_WEIXIN_HONGBAO_PROORITY == pst_buf->priority)
-    {
-        uc_tid = WLAN_TIDNO_VOICE;
-    }
+
     /* 出参赋值 */
     *puc_tid = uc_tid;
 }
@@ -2649,8 +2645,8 @@ oal_uint32  hmac_tx_event_process(oal_mem_stru *pst_event_mem)
 
 /*****************************************************************************
  函 数 名  : hmac_tx_ba_cnt_vary
- 功能描述  : 发5个包建立聚合 改为 发5个"连续"的大包建立聚合 51暂时不变
-             因考虑不连续的包即使建立BA,发的也是单包聚合,意义并不大。
+ 功能描述  : 修改建立聚合的条件为:从第一个包开始计数，连续发包超过10个时建立聚合；
+             TCP ACK回复慢，取消时间限制，直接计数。
  输入参数  : 无
  输出参数  : 无
  返 回 值  : 无
@@ -2661,6 +2657,9 @@ oal_uint32  hmac_tx_event_process(oal_mem_stru *pst_event_mem)
   1.日    期   : 2015年6月24日
     作    者   : sunxiaolin
     修改内容   : 新生成函数
+  2.日    期   : 2017年1月20日
+    作    者   : l00357925
+    修改内容   : 去掉包长的限制
 *****************************************************************************/
 oal_void hmac_tx_ba_cnt_vary(
                        hmac_vap_stru   *pst_hmac_vap,
@@ -2670,28 +2669,15 @@ oal_void hmac_tx_ba_cnt_vary(
 {
 #if (_PRE_MULTI_CORE_MODE_OFFLOAD_DMAC == _PRE_MULTI_CORE_MODE)
     oal_uint32             ul_current_timestamp;
-    oal_uint32             ul_runtime;
-#if (_PRE_OS_VERSION_LINUX == _PRE_OS_VERSION)
-    if(OAL_TRUE == oal_netbuf_is_tcp_ack((oal_ip_header_stru *)(oal_netbuf_data(pst_buf) + ETHER_HDR_LEN)))
-    {
-        pst_hmac_user->auc_ba_flag[uc_tidno]++;
-        return ;
-    }
-#endif
-
-    if (0 == pst_hmac_user->auc_ba_flag[uc_tidno])
-    {
-        pst_hmac_user->auc_ba_flag[uc_tidno]++;
-        pst_hmac_user->aul_last_timestamp[uc_tidno] = (oal_uint32)OAL_TIME_GET_STAMP_MS();
-
-        return ;
-    }
 
     ul_current_timestamp = (oal_uint32)OAL_TIME_GET_STAMP_MS();
-    ul_runtime = (oal_uint32)OAL_TIME_GET_RUNTIME(ul_current_timestamp, pst_hmac_user->aul_last_timestamp[uc_tidno]);
 
-    if ((oal_netbuf_get_len(pst_buf) <= WLAN_MSDU_MAX_LEN && WLAN_BA_CNT_INTERVAL < ul_runtime)||
-         (oal_netbuf_get_len(pst_buf) > WLAN_MSDU_MAX_LEN && WLAN_BA_CNT_INTERVAL > ul_runtime))
+    /* 第一个包直接计数；
+       短时间连续发包时，开始建立BA;
+       TCP ACK回复慢，不考虑时间限制。 */
+    if((0 == pst_hmac_user->auc_ba_flag[uc_tidno])
+       || (oal_netbuf_is_tcp_ack((oal_ip_header_stru *)(oal_netbuf_data(pst_buf) + ETHER_HDR_LEN)))
+       || ((oal_uint32)OAL_TIME_GET_RUNTIME(ul_current_timestamp, pst_hmac_user->aul_last_timestamp[uc_tidno]) < WLAN_BA_CNT_INTERVAL))
     {
         pst_hmac_user->auc_ba_flag[uc_tidno]++;
     }
@@ -2700,7 +2686,7 @@ oal_void hmac_tx_ba_cnt_vary(
         pst_hmac_user->auc_ba_flag[uc_tidno] = 0;
     }
 
-    pst_hmac_user->aul_last_timestamp[uc_tidno] = (oal_uint32)OAL_TIME_GET_STAMP_MS();
+    pst_hmac_user->aul_last_timestamp[uc_tidno] = ul_current_timestamp;
 #else
     pst_hmac_user->auc_ba_flag[uc_tidno]++;
 #endif

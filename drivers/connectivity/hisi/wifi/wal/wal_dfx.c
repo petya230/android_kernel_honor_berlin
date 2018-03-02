@@ -346,7 +346,7 @@ OAL_STATIC oal_int32  wal_dfr_destroy_vap(oal_net_device_stru *pst_netdev)
 
     if (OAL_UNLIKELY(OAL_SUCC != l_ret))
     {
-        OAL_IO_PRINT("DFR DESTROY_VAP[name:%s] fail, return[%d]!", pst_netdev->name, l_ret);
+        OAL_IO_PRINT("DFR DESTROY_VAP[name:%.16s] fail, return[%d]!", pst_netdev->name, l_ret);
         OAM_WARNING_LOG2(0, OAM_SF_DFR, "{wal_dfr_excp_process::DESTROY_VAP return err code [%d], iftype[%d]!}\r\n",
                         l_ret,
                         pst_netdev->ieee80211_ptr->iftype);
@@ -461,7 +461,7 @@ OAL_STATIC oal_uint32  wal_dfr_recovery_env(void)
 
         if (OAL_UNLIKELY(OAL_SUCC != l_ret) || OAL_UNLIKELY(OAL_SUCC != ul_ret))
         {
-            OAL_IO_PRINT("DFR BOOT_VAP[name:%s] fail! error_code[%d]", pst_netdev->name, ((oal_uint8)l_ret | ul_ret));
+            OAL_IO_PRINT("DFR BOOT_VAP[name:%.16s] fail! error_code[%d]", pst_netdev->name, ((oal_uint8)l_ret | ul_ret));
             OAM_WARNING_LOG2(0, OAM_SF_ANY, "{wal_dfr_excep_process:: Boot vap Failure, vap_iftype[%d], error_code[%d]!}\r\n",
                             pst_netdev->ieee80211_ptr->iftype,
                             ((oal_uint8)l_ret | ul_ret));

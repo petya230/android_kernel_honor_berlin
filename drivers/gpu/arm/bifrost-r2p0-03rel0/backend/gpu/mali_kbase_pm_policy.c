@@ -784,7 +784,7 @@ kbase_pm_register_inuse_cores(struct kbase_device *kbdev,
 							shader_cores) {
 		return (kbdev->pm.backend.poweroff_wait_in_progress ||
 				kbdev->pm.backend.pm_current_policy == NULL) ?
-				KBASE_CORES_NOT_READY : KBASE_NEW_AFFINITY;
+				KBASE_CORES_NOT_READY : KBASE_NEW_AFFINITY;/* [false alarm]: no problem - fortify check */
 	}
 
 	if ((kbdev->shader_available_bitmap & shader_cores) != shader_cores ||

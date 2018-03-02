@@ -88,7 +88,7 @@ extern "C" {
 *****************************************************************************/
 
 
-extern oal_uint32 hmac_arp_offload_set_ip_addr(mac_vap_stru *pst_mac_vap, dmac_ip_type_enum_uint8 en_type, dmac_ip_oper_enum_uint8 en_oper, oal_void *pst_ip_addr);
+extern oal_uint32 hmac_arp_offload_set_ip_addr(mac_vap_stru *pst_mac_vap, dmac_ip_type_enum_uint8 en_type, dmac_ip_oper_enum_uint8 en_oper, oal_void *pst_ip_addr, oal_void *pst_mask_addr);
 extern oal_uint32 hmac_arp_offload_enable(mac_vap_stru *pst_mac_vap, oal_switch_enum_uint8 en_switch);
 #endif
 

@@ -52,7 +52,7 @@ static int hisi_clkmbox_send_ipc(mbox_msg_t *msg)
 	rproc_id = HISI_RPROC_LPM3_MBX13;
 	/* try again if failing to send */
 	do {
-		ret = RPROC_ASYNC_SEND(rproc_id, (mbox_msg_t *)msg, LPM3_CMD_LEN);
+		ret = RPROC_ASYNC_SEND(rproc_id, (mbox_msg_t *)msg, LPM3_CMD_LEN);/*lint !e64*/
 		loop--;
 	} while (ret == -ENOMEM && loop > 0);
 	if (ret) {
@@ -72,7 +72,7 @@ static int hisi_clkmbox_send_ipc_sync(mbox_msg_t *msg)
 	rproc_id = HISI_RPROC_LPM3_MBX13;
 	/* try again if failing to send */
 	do {
-		ret = RPROC_SYNC_SEND(rproc_id, (mbox_msg_t *)msg, LPM3_CMD_LEN, NULL, 0);
+		ret = RPROC_SYNC_SEND(rproc_id, (mbox_msg_t *)msg, LPM3_CMD_LEN, NULL, 0);/*lint !e64*/
 		loop--;
 	} while (ret == -ENOMEM && loop > 0);
 	if (ret) {
@@ -135,7 +135,7 @@ static void __exit hisi_clkmbox_exit(void)
 
 	rproc_id = HISI_RPROC_LPM3_MBX13;
 	/*the HISI_RPROC_LPM3 is a shared channel by many IP, but the exit function should never be used  */
-	RPROC_PUT(rproc_id);
+	RPROC_PUT(rproc_id);/*lint !e64*/
 	unregister_pm_notifier(&mailbox_pm_notif_block);
 }
 

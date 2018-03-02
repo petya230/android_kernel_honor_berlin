@@ -422,7 +422,7 @@ static void kbase_fence_debug_check_atom(struct kbase_jd_atom *katom)
 
 				/* Found blocked trigger fence. */
 				dev_warn(dev,
-					 "\tVictim trigger atom %d fence [%p] %s: %s\n",
+					 "\tVictim trigger atom %d fence [%pK] %s: %s\n",
 					 kbase_jd_atom_id(kctx, dep),
 					 fence, fence->name,
 					 kbase_fence_debug_status_string(status));
@@ -444,11 +444,11 @@ static void kbase_fence_debug_wait_timeout(struct kbase_jd_atom *katom)
 
 	spin_lock_irqsave(&kctx->waiting_soft_jobs_lock, lflags);
 
-	dev_warn(dev, "ctx %d_%d: Atom %d still waiting for fence [%p] after %dms\n",
+	dev_warn(dev, "ctx %d_%d: Atom %d still waiting for fence [%pK] after %dms\n",
 		 kctx->tgid, kctx->id,
 		 kbase_jd_atom_id(kctx, katom),
 		 fence, timeout_ms);
-	dev_warn(dev, "\tGuilty fence [%p] %s: %s\n",
+	dev_warn(dev, "\tGuilty fence [%pK] %s: %s\n",
 		 fence, fence->name,
 		 kbase_fence_debug_status_string(status));
 
@@ -1351,7 +1351,7 @@ void kbase_cancel_soft_job(struct kbase_jd_atom *katom)
 		break;
 	default:
 		/* This soft-job doesn't support cancellation! */
-		pr_err("kbase_cancel_soft_job soft-job cancel request katom is %p, job req is %x", katom, katom->core_req);
+		pr_err("kbase_cancel_soft_job soft-job cancel request katom is %pK, job req is %x", katom, katom->core_req);
 		KBASE_DEBUG_ASSERT(0);
 	}
 }

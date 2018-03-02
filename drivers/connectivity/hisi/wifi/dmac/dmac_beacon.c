@@ -2026,8 +2026,11 @@ oal_uint32  dmac_tbtt_event_handler(frw_event_mem_stru *pst_event_mem)
         }
 #endif
 #ifdef _PRE_WLAN_FEATURE_11K
-       dmac_rrm_handle_quiet(pst_dmac_vap);
-#endif
+        if (OAL_TRUE == pst_dmac_vap->bit_11k_enable)
+        {
+            dmac_rrm_handle_quiet(pst_dmac_vap);
+        }
+#endif //_PRE_WLAN_FEATURE_11K
     }
     /* 清除mac错误计数器，保证每一个tbtt间隙中，最多处理的错误数 */
     /* 当多vap时，会有误差，暂不处理误差*/

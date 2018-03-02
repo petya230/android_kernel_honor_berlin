@@ -64,10 +64,23 @@ static int clk_factor_set_rate(struct clk_hw *hw, unsigned long rate,
 	return 0;
 }
 
+#ifdef CONFIG_HISI_CLK_DEBUG
+static int hi3xxx_dumpfixed_factor(struct clk_hw *hw, char* buf)
+{
+	struct clk_fixed_factor *fix = to_clk_fixed_factor(hw);
+	if(buf)
+		snprintf(buf, DUMP_CLKBUFF_MAX_SIZE, "[%s] : fixed div value = %d\n", __clk_get_name(hw->clk), fix->div);
+	return 0;
+}
+#endif
+
 struct clk_ops clk_fixed_factor_ops = {
 	.round_rate = clk_factor_round_rate,
 	.set_rate = clk_factor_set_rate,
 	.recalc_rate = clk_factor_recalc_rate,
+#ifdef CONFIG_HISI_CLK_DEBUG
+	.dump_reg = hi3xxx_dumpfixed_factor,
+#endif
 };
 EXPORT_SYMBOL_GPL(clk_fixed_factor_ops);
 

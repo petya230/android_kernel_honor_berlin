@@ -1423,6 +1423,15 @@ struct kbase_context {
 	atomic_t atoms_pulled;
 	/* Number of atoms currently pulled from this context, per slot */
 	atomic_t atoms_pulled_slot[BASE_JM_MAX_NR_SLOTS];
+	/* Number of atoms currently pulled from this context, per slot and
+	 * priority. Hold hwaccess_lock when accessing */
+	int atoms_pulled_slot_pri[BASE_JM_MAX_NR_SLOTS][
+			KBASE_JS_ATOM_SCHED_PRIO_COUNT];
+
+	/* true if slot is blocked on the given priority. This will be set on a
+	 * soft-stop */
+	bool blocked_js[BASE_JM_MAX_NR_SLOTS][KBASE_JS_ATOM_SCHED_PRIO_COUNT];
+
 	/* Bitmask of slots that can be pulled from */
 	u32 slots_pullable;
 

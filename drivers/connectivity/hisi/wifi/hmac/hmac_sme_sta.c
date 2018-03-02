@@ -798,6 +798,7 @@ oal_uint32  hmac_cfg80211_start_sched_scan(mac_vap_stru *pst_mac_vap, oal_uint16
     pst_hmac_device = hmac_res_get_mac_dev(pst_hmac_vap->st_vap_base_info.uc_device_id);
     if (OAL_PTR_NULL == pst_hmac_device)
     {
+        OAL_MEM_FREE(pst_cfg80211_pno_scan_params, OAL_TRUE);
         OAM_WARNING_LOG1(pst_hmac_vap->st_vap_base_info.uc_vap_id, OAM_SF_SCAN, "{hmac_cfg80211_start_sched_scan::device id[%d],hmac_device null.}",pst_hmac_vap->st_vap_base_info.uc_device_id);
         return OAL_ERR_CODE_MAC_DEVICE_NULL;
     }
@@ -829,7 +830,7 @@ oal_uint32  hmac_cfg80211_start_sched_scan(mac_vap_stru *pst_mac_vap, oal_uint16
     hmac_scan_set_sour_mac_addr_in_probe_req(pst_hmac_vap, st_pno_scan_params.auc_sour_mac_addr,
                                              en_is_random_mac_addr_scan, OAL_FALSE);
 
-    /* 状态机调用: hmac_scan_proc_scan_req_event */
+    /* 状态机调用: hmac_scan_proc_sched_scan_req_event */
     ul_ret = hmac_fsm_call_func_sta(pst_hmac_vap, HMAC_FSM_INPUT_SCHED_SCAN_REQ, (oal_void *)(&st_pno_scan_params));
     if (OAL_SUCC != ul_ret)
     {
@@ -976,16 +977,19 @@ oal_uint32  hmac_cfg80211_start_scan_sta(mac_vap_stru *pst_mac_vap, oal_uint16 u
     /* 释放wal层alloc的内存 */
     OAL_MEM_FREE(pst_cfg80211_scan_param_pst->pst_mac_cfg80211_scan_param, OAL_FALSE);
 
-    /* 状态机调用: hmac_scan_proc_scan_req_event */
+    /* 状态机调用: hmac_scan_proc_scan_req_event, hmac_scan_proc_scan_req_event_exception */
     ul_ret = hmac_fsm_call_func_sta(pst_hmac_vap, HMAC_FSM_INPUT_SCAN_REQ, (oal_void *)(&st_scan_params));
     if (OAL_SUCC != ul_ret)
     {
         OAM_WARNING_LOG1(pst_hmac_vap->st_vap_base_info.uc_vap_id, OAM_SF_SCAN, "{hmac_cfg80211_start_scan_sta::hmac_fsm_call_func_sta fail[%d].}", ul_ret);
+
+        /* BEGIN: DTS2017021709078:如果hmac 扫描执行失败，则上报wal 层扫描失败事件,不用等待wal 层扫描定时器超时 */
+        hmac_scan_proc_scan_req_event_exception(pst_hmac_vap, &ul_ret);
+        /* END: DTS2017021709078:如果hmac 扫描执行失败，则上报wal 层扫描失败事件,不用等待wal 层扫描定时器超时 */
         return ul_ret;
     }
 
     return OAL_SUCC;
-
 
 ERROR_STEP:
 #if (_PRE_OS_VERSION_WIN32 == _PRE_OS_VERSION) && (_PRE_TEST_MODE == _PRE_TEST_MODE_UT)

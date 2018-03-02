@@ -785,16 +785,22 @@ oal_uint8 dmac_sta_up_rx_action(dmac_vap_stru *pst_dmac_vap,oal_netbuf_stru *pst
 #ifdef _PRE_WLAN_FEATURE_11K
         case MAC_ACTION_CATEGORY_RADIO_MEASURMENT:
         {
+            if (OAL_FALSE == pst_dmac_vap->bit_11k_enable)
+            {
+                break;
+            }
+
             switch (puc_data[MAC_ACTION_OFFSET_ACTION])
             {
                 case MAC_RM_ACTION_RADIO_MEASUREMENT_REQUEST:
-                    uc_go_on = dmac_rrm_proc_rm_request(pst_dmac_vap, pst_netbuf);
+                    dmac_rrm_proc_rm_request(pst_dmac_vap, pst_netbuf);
+                    uc_go_on = OAL_FALSE;
                     break;
 
                 case MAC_RM_ACTION_LINK_MEASUREMENT_REQUEST:
                     dmac_rrm_get_link_req_info(pst_dmac_vap, puc_data);
-                    uc_go_on = dmac_rrm_send_link_meas_rpt_action(pst_dmac_vap);
-
+                    dmac_rrm_send_link_meas_rpt_action(pst_dmac_vap, pst_netbuf);
+                    uc_go_on = OAL_FALSE;
                     break;
 
                 case MAC_RM_ACTION_NEIGHBOR_REPORT_RESPONSE:
@@ -805,7 +811,8 @@ oal_uint8 dmac_sta_up_rx_action(dmac_vap_stru *pst_dmac_vap,oal_netbuf_stru *pst
             }
         }
         break;
-#endif
+#endif //_PRE_WLAN_FEATURE_11K
+
 #ifdef _PRE_WLAN_FEATURE_WMMAC
         case MAC_ACTION_CATEGORY_WMMAC_QOS:
         {
@@ -908,7 +915,7 @@ oal_uint32  dmac_rx_filter_mgmt(dmac_vap_stru *pst_dmac_vap, oal_netbuf_stru *ps
     }
 #endif
 
-    /*STA UT的beacon需优先尽快处理，待机时尽早提前关闭前端节能*/
+    /* STA UT的beacon需优先尽快处理，待机时尽早提前关闭前端节能 */
     if((MAC_VAP_STATE_UP == pst_dmac_vap->st_vap_base_info.en_vap_state)
         && (WLAN_VAP_MODE_BSS_STA == pst_dmac_vap->st_vap_base_info.en_vap_mode)
         && (WLAN_BEACON == pst_frame_hdr->st_frame_control.bit_sub_type))
@@ -943,9 +950,12 @@ oal_uint32  dmac_rx_filter_mgmt(dmac_vap_stru *pst_dmac_vap, oal_netbuf_stru *ps
             #endif
 
             #ifdef _PRE_WLAN_FEATURE_11K
-            dmac_rrm_proc_pwr_constraint(pst_dmac_vap, pst_netbuf);
-            dmac_rrm_parse_quiet(pst_dmac_vap, pst_netbuf);
-            #endif
+            if (OAL_TRUE == pst_dmac_vap->bit_11k_enable)
+            {
+                dmac_rrm_proc_pwr_constraint(pst_dmac_vap, pst_netbuf);
+                dmac_rrm_parse_quiet(pst_dmac_vap, pst_netbuf);
+            }
+            #endif //_PRE_WLAN_FEATURE_11K
 
 
         }

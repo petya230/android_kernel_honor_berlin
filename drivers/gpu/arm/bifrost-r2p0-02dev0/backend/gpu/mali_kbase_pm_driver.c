@@ -432,6 +432,9 @@ static bool kbase_pm_transition_core_type(struct kbase_device *kbdev,
 	 * register reads */
 	trans &= ~ready;
 
+	if (trans) /* Do not progress if any cores are transitioning */
+		return false;
+
 	powering_on_trans = trans & *powering_on;
 	*powering_on = powering_on_trans;
 
@@ -570,11 +573,13 @@ MOCKABLE(kbase_pm_check_transitions_nolock) (struct kbase_device *kbdev)
 	u64 cores_powered;
 	u64 tilers_powered;
 	u64 tiler_available_bitmap;
+	u64 tiler_transitioning_bitmap;
 	u64 shader_available_bitmap;
 	u64 shader_ready_bitmap;
 	u64 shader_transitioning_bitmap;
 	u64 l2_available_bitmap;
 	u64 prev_l2_available_bitmap;
+	u64 l2_inuse_bitmap;
 
 	KBASE_DEBUG_ASSERT(NULL != kbdev);
 	lockdep_assert_held(&kbdev->hwaccess_lock);
@@ -598,11 +603,13 @@ MOCKABLE(kbase_pm_check_transitions_nolock) (struct kbase_device *kbdev)
 				KBASE_TIMELINE_PM_EVENT_CHANGE_GPU_STATE);
 
 	/* If any cores are already powered then, we must keep the caches on */
+	shader_transitioning_bitmap = kbase_pm_get_trans_cores(kbdev, KBASE_PM_CORE_SHADER);
 	cores_powered = kbase_pm_get_ready_cores(kbdev, KBASE_PM_CORE_SHADER);
 
 	cores_powered |= kbdev->pm.backend.desired_shader_state;
 
 	/* Work out which tilers want to be powered */
+	tiler_transitioning_bitmap = kbase_pm_get_trans_cores(kbdev, KBASE_PM_CORE_TILER);
 	tilers_powered = kbase_pm_get_ready_cores(kbdev, KBASE_PM_CORE_TILER);
 	tilers_powered |= kbdev->pm.backend.desired_tiler_state;
 
@@ -615,13 +622,18 @@ MOCKABLE(kbase_pm_check_transitions_nolock) (struct kbase_device *kbdev)
 			kbdev->gpu_props.props.raw_props.l2_present,
 			cores_powered, tilers_powered);
 
+	l2_inuse_bitmap = get_desired_cache_status(
+			kbdev->gpu_props.props.raw_props.l2_present,
+			cores_powered | shader_transitioning_bitmap,
+			tilers_powered | tiler_transitioning_bitmap);
+
 	/* If any l2 cache is on, then enable l2 #0, for use by job manager */
 	if (0 != desired_l2_state)
 		desired_l2_state |= 1;
 
 	prev_l2_available_bitmap = kbdev->l2_available_bitmap;
 	in_desired_state &= kbase_pm_transition_core_type(kbdev,
-				KBASE_PM_CORE_L2, desired_l2_state, 0,
+				KBASE_PM_CORE_L2, desired_l2_state, l2_inuse_bitmap,
 				&l2_available_bitmap,
 				&kbdev->pm.backend.powering_on_l2_state);
 
@@ -1338,11 +1350,6 @@ static int kbase_pm_reset_do_normal(struct kbase_device *kbdev)
 	struct kbasep_reset_timeout_data rtdata;
 	unsigned long irq_flags;
 
-#ifdef CONFIG_MALI_GPU_DRM
-	/* Reset the G3d reg to configure the gpu's security */
-	configure_master_security(0, MASTER_G3D_ID);
-#endif
-
 	if (kbase_has_hi_feature(kbdev, KBASE_FEATURE_HI0002))
 		kbase_pm_reset_instead(kbdev);
 	else {
@@ -1498,6 +1505,12 @@ int kbase_pm_init_hw(struct kbase_device *kbdev, unsigned int flags)
 	kbdev->shader_available_bitmap = 0u;
 	kbdev->tiler_available_bitmap = 0u;
 	kbdev->l2_available_bitmap = 0u;
+
+#ifdef CONFIG_MALI_GPU_DRM
+	/* Reset the G3d reg to configure the gpu's security */
+	if(kbdev->protected_mode)
+		configure_master_security(0, MASTER_G3D_ID);
+#endif
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, irq_flags);
 
 	/* Soft reset the GPU */

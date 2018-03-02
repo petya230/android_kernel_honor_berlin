@@ -138,7 +138,7 @@ void kbase_io_history_dump(struct kbase_device *kbdev)
 			&h->buf[(h->count - iters + i) % h->size];
 		char const access = (io->addr & 1) ? 'w' : 'r';
 
-		dev_err(kbdev->dev, "%6i: %c: reg 0x%p val %08x\n", i, access,
+		dev_err(kbdev->dev, "%6i: %c: reg 0x%pK val %08x\n", i, access,
 				(void *)(io->addr & ~0x1), io->value);
 	}
 

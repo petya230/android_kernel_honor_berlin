@@ -2037,7 +2037,7 @@ static u32 timeout_ms_to_ticks(struct kbase_device *kbdev, long timeout_ms,
 			return 1;
 		return ticks;
 	} else if (timeout_ms < 0) {
-		return default_ticks;
+		return default_ticks;/* [false alarm]: no problem - fortify check */
 	} else {
 		return old_ticks;
 	}
@@ -3674,6 +3674,26 @@ static int kbase_platform_device_probe(struct platform_device *pdev)
 		kbase_platform_device_remove(pdev);
 		return err;
 	}
+
+	const void *fpga_gpu_exist_override_dts;
+	u32 override_fpga_gpu_exist;
+	fpga_gpu_exist_override_dts = of_get_property(kbdev->dev->of_node,
+				"fpga-gpu-exist",
+				NULL);
+	if (fpga_gpu_exist_override_dts) {
+		override_fpga_gpu_exist = be32_to_cpup(fpga_gpu_exist_override_dts);
+		if (override_fpga_gpu_exist) {
+			unsigned int pctrl_value;
+			pctrl_value = readl(kbdev->pctrlreg + PERI_STAT_FPGA_GPU_EXIST) & PERI_STAT_FPGA_GPU_EXIST_MASK;
+			if(pctrl_value == 0)
+			{
+				dev_err(&pdev->dev, "No FPGA FOR GPU\n");
+				kbase_platform_device_remove(pdev);
+				return -ENODEV;
+			}
+		}
+	}
+
 	kbdev->inited_subsys |= inited_registers_map;
 
 	kbdev->gpu_outstanding = 0;

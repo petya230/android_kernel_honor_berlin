@@ -458,9 +458,11 @@ extern oal_void  frw_event_table_register(
                 frw_event_pipeline_enum        en_pipeline,
                 frw_event_sub_table_item_stru *pst_sub_table);
 #if (_PRE_MULTI_CORE_MODE_OFFLOAD_DMAC == _PRE_MULTI_CORE_MODE)
-oal_void frw_event_sub_rx_adapt_table_init(frw_event_sub_table_item_stru *pst_sub_table, oal_uint32 ul_table_nums, 
+oal_void frw_event_sub_rx_adapt_table_init(frw_event_sub_table_item_stru *pst_sub_table, oal_uint32 ul_table_nums,
                                                 frw_event_mem_stru *(*p_rx_adapt_func)(frw_event_mem_stru *));
 #endif
+extern oal_void  frw_timer_sys_start(void);
+extern oal_void  frw_timer_sys_stop(void);
 extern oal_void  frw_event_dump_event(oal_uint8 *puc_event);
 extern oal_uint32  frw_event_flush_event_queue(frw_event_type_enum_uint8 uc_event_type);
 extern oal_void frw_event_vap_pause_event(oal_uint8 uc_vap_id);

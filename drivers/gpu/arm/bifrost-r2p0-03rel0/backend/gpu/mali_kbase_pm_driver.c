@@ -37,6 +37,8 @@
 #include <backend/gpu/mali_kbase_device_internal.h>
 #include <backend/gpu/mali_kbase_irq_internal.h>
 #include <backend/gpu/mali_kbase_pm_internal.h>
+#include "mali_kbase_config_platform.h"
+#include "mali_kbase_config_hifeatures.h"
 
 #include <linux/of.h>
 
@@ -1438,6 +1440,12 @@ static int kbase_pm_reset_do_normal(struct kbase_device *kbdev)
 	} else {
 		dev_err(kbdev->dev, "Failed to hard-reset the GPU (timed out after %d ms)\n",
 								RESET_TIMEOUT);
+#ifdef CONFIG_HISI_ENABLE_HPM_DATA_COLLECT
+		/*benchmark data collect */
+		if (kbase_has_hi_feature(kbdev, KBASE_FEATURE_HI0009)) {
+			BUG_ON(1); //lint !e730
+		}
+#endif
 	}
 	return -EINVAL;
 }

@@ -27,6 +27,9 @@
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 13, 0))
 #include <linux/clk-private.h>
 #endif
+#include <linux/cpu.h>
+#include <linux/cpufreq.h>
+#include <linux/pm_opp.h>
 #include <linux/clkdev.h>
 #include <linux/delay.h>
 #include <linux/io.h>
@@ -109,6 +112,19 @@
 #define PPLL7CTRL0(ADDR)				NULL
 #endif
 
+#ifdef  SOC_PMCTRL_PPLL6CTRL0_ppll6_en_START
+#define PPLL6_EN						SOC_PMCTRL_PPLL6CTRL0_ppll6_en_START
+#define PPLL6_EN_ACPU_ADDR(ADDR)		SOC_PMCTRL_PPLL6CTRL0_ADDR(ADDR)
+#define PPLL6_GT						SOC_PMCTRL_PPLL6CTRL1_gt_clk_ppll6_START
+#define PPLL6_GT_ACPU_ADDR(ADDR)		SOC_PMCTRL_PPLL6CTRL1_ADDR(ADDR)
+#define PPLL6CTRL0(ADDR)				SOC_PMCTRL_PPLL6CTRL0_ADDR(ADDR)
+#else
+#define PPLL6_EN						0
+#define PPLL6_EN_ACPU_ADDR(ADDR)		NULL
+#define PPLL6_GT						0
+#define PPLL6_GT_ACPU_ADDR(ADDR)		NULL
+#define PPLL6CTRL0(ADDR)				NULL
+#endif
 
 /*vivobus*/
 #define SC_SEL_VIVOBUS_ADDR(BASE)		SOC_CRGPERIPH_CLKDIV10_ADDR(BASE)
@@ -123,7 +139,7 @@
  * divided by m is r
  */
 #define MULT_ROUND_UP(r, m)			((r) * (m) + (m) - 1)
-
+#define INVALID_HWSPINLOCK_ID			0xFF
 
 #ifdef CONFIG_HISI_CLK_MAILBOX_SUPPORT
 #define CLK_DVFS_IPC_CMD			0xC
@@ -135,6 +151,7 @@ enum {
 	PPLL1,
 	PPLL2,
 	PPLL3,
+	PPLL6 = 0x6,
 	PPLL7 = 0x7,
 	PPLLMAX,
 };
@@ -233,12 +250,11 @@ struct hs_clk {
 	void __iomem	*pctrl;
 	void __iomem	*mediacrg;
 	void __iomem	*iomcucrg;
+	void __iomem	*media1crg;
+	void __iomem	*media2crg;
 	spinlock_t	lock;
 };
 static struct hwspinlock	*clk_hwlock_9;
-#if 0
-static struct hwspinlock	*clk_hwlock_20;
-#endif
 static void __iomem __init *hs_clk_get_base(struct device_node *np);
 
 static struct hs_clk hs_clk = {
@@ -302,11 +318,6 @@ static int peri_dvfs_set_volt(u32 peri_dvfs_sensitive, u32 poll_id, u32 volt_lev
 		if (volt != PERI_VOLT_2) {
 			pr_err("[%s] fail to updata volt, ret = %d!\n",
 				__func__, volt);
-			/*after peri avs ok,then open behind*/
-#if 0
-			if (!IS_FPGA())
-				BUG_ON(1);
-#endif
 		}
 	}
 	return ret;
@@ -348,13 +359,13 @@ static int hi3xxx_clkgate_prepare(struct clk_hw *hw)
 		1(): direct avs
 		rate(HZ): if is according sensitive rate
 	*/
-	if (!strcmp(__clk_get_name(hw->clk), "clk_ldi0")) {
+	if (!strcmp(__clk_get_name(hw->clk), "clk_ldi0")) {/*lint !e421*/
 		cur_rate = clk_get_rate(hw->clk);
 		if (!cur_rate)
 			pr_err("[%s]soft rate:%ld must not be 0,please check!\n", __func__, cur_rate);
 		if (PERI_AVS_LDI0_SENSITIVE_FREQ <= cur_rate)
 			ret = peri_dvfs_set_volt(pclk->peri_dvfs_sensitive, pclk->perivolt_poll_id, PERI_VOLT_2);
-	} else if (!strcmp(__clk_get_name(hw->clk), "clk_edc0")) {
+	} else if (!strcmp(__clk_get_name(hw->clk), "clk_edc0")) {/*lint !e421*/
 		cur_rate = clk_get_rate(hw->clk);
 		if (!cur_rate)
 			pr_err("[%s]soft rate:%ld must not be 0,please check!\n", __func__, cur_rate);
@@ -505,11 +516,26 @@ static void __iomem *hi3xxx_clkgate_get_reg(struct clk_hw *hw)
 		ret = pclk->enable + hi3xxx_CLK_GATE_STATUS_OFFSET;
 		val = readl(ret);
 		val &= pclk->ebits;
-		pr_info("\n[%s]: reg = 0x%p, bits = 0x%x, regval = 0x%x\n",
+		pr_info("\n[%s]: reg = 0x%pK, bits = 0x%x, regval = 0x%x\n",
 			__clk_get_name(hw->clk), ret, pclk->ebits, val);
 	}
 
 	return ret;
+}
+
+static int hi3xxx_dumpgate(struct clk_hw *hw, char* buf)
+{
+	struct hi3xxx_periclk *pclk;
+	void __iomem	*ret = NULL;
+	u32 val = 0;
+	pclk = container_of(hw, struct hi3xxx_periclk, hw);
+
+	if (pclk->enable && buf) {
+		ret = pclk->enable + hi3xxx_CLK_GATE_STATUS_OFFSET;
+		val = readl(ret);
+		snprintf(buf, DUMP_CLKBUFF_MAX_SIZE, "[%s] : regAddress = 0x%pK, regval = 0x%x\n", __clk_get_name(hw->clk), ret, val);
+	}
+	return 0;
 }
 #endif
 
@@ -535,129 +561,10 @@ static struct clk_ops hi3xxx_clkgate_ops = {
 #ifdef CONFIG_HISI_CLK_DEBUG
 	.is_enabled = hi3xxx_clkgate_is_enabled,
 	.get_reg  = hi3xxx_clkgate_get_reg,
+	.dump_reg = hi3xxx_dumpgate,
 #endif
 };
-#if 0
-static int hi3xxx_clkvivobus_prepare(struct clk_hw *hw)
-{
-	struct hi3xxx_periclk *pclk;
 
-	pclk = container_of(hw, struct hi3xxx_periclk, hw);
-
-	if (NULL == clk_hwlock_20) {
-		clk_hwlock_20 = hwspin_lock_request_specific(pclk->flags);
-		if (NULL == clk_hwlock_20) {
-			pr_err("vivobus request hwspin lock failed flags:%d!\n", pclk->flags);
-			return -ENODEV;
-		}
-		pclk->clk_hwlock = clk_hwlock_20;
-	}
-	return 0;
-}
-
-static int hi3xxx_clkvivobus_enable(struct clk_hw *hw)
-{
-	struct hi3xxx_periclk *pclk;
-	u32 val, timeout = 0;
-
-	pclk = container_of(hw, struct hi3xxx_periclk, hw);
-
-	if (pclk->gate_abandon_enable)
-		return 0;
-	if (hwspin_lock_timeout(pclk->clk_hwlock, CLK_HWLOCK_TIMEOUT)) {
-		pr_err("vivobus enable hwspinlock timout!\n");
-		return -ENOENT;
-	}
-	/*1.vivobus sw if is pll3, vivobus pclk->enable is base addr*/
-	val = readl(SC_SEL_VIVOBUS_ADDR(pclk->enable));
-	pr_info("[%s]vivobus sel reg=0x%x pll=%d\n", __func__, val, (val & SC_SEL_VIVOBUS_MASK) >> 12);
-	if (PPLL3 == ((val & SC_SEL_VIVOBUS_MASK) >> SC_SEL_VIVOBUS_SHIFT)) {
-		/*lpmcu ppll3 en ctrl*/
-		val = readl(pclk->pmctrl + PPLLCTRL0(PPLL3));
-		val |= BIT(PPLLCTRL0_EN);
-		writel(val, pclk->pmctrl + PPLLCTRL0(PPLL3));
-		/*waiting lock*/
-		do {
-			val = readl(pclk->pmctrl + PPLLCTRL0(PPLL3));
-			val &= BIT(PPLLCTRL0_LOCK);
-			timeout++;
-			if (AP_PPLL_STABLE_TIME < timeout) {
-				pr_err("%s: ppll3 enable is timeout\n", __func__);
-			}
-		} while (!val);
-		/*output clock not gate*/
-		val = readl(pclk->pmctrl + PPLLCTRL1(PPLL3));
-		val |= BIT(PPLLCTRL1_GT);
-		writel(val, pclk->pmctrl + PPLLCTRL1(PPLL3));
-		udelay(1);
-	} else if (PPLL0 == ((val & SC_SEL_VIVOBUS_MASK) >> SC_SEL_VIVOBUS_SHIFT)) {
-	} else {
-		BUG_ON(1);
-	}
-	/*en gt_vivobus_div*/
-	writel(HW_EN(GT_CLK_VIVOBUS), GT_CLK_VIVOBUS_ADDR(pclk->enable));
-	udelay(1);
-	/*en clk_vivobus*/
-	writel(pclk->ebits, CLK_VIVOBUS_ADDR(pclk->enable));
-	hwspin_unlock(pclk->clk_hwlock);
-	udelay(1);
-}
-
-static void hi3xxx_clkvivobus_disable(struct clk_hw *hw)
-{
-	struct hi3xxx_periclk *pclk;
-	int val = 0;
-	pclk = container_of(hw, struct hi3xxx_periclk, hw);
-
-#ifndef CONFIG_HISI_CLK_ALWAYS_ON
-	if (pclk->enable) {
-		if (!pclk->always_on) {
-			if (hwspin_lock_timeout(pclk->clk_hwlock, CLK_HWLOCK_TIMEOUT)) {
-				pr_err("multicore disable hwspinlock timout!\n");
-				return;
-			}
-			/*dis clk_vivobus*/
-			writel(pclk->ebits, CLK_VIVOBUS_ADDR(pclk->enable) + 0x4);
-			udelay(1);
-			/*dis gt_vivobus_div*/
-			writel(HW_EN(GT_CLK_VIVOBUS), GT_CLK_VIVOBUS_ADDR(pclk->enable));
-			udelay(1);
-			/*vivibus sw if is pll3, vivobus pclk->enable is base addr*/
-			val = readl(SC_SEL_VIVOBUS_ADDR(pclk->enable));
-			/*en LPMCU ppll3*/
-			if (PPLL3 == ((val & SC_SEL_VIVOBUS_MASK) >> SC_SEL_VIVOBUS_SHIFT)) {
-				/*output clock gate*/
-				val = readl(pclk->pmctrl + PPLLCTRL1(PPLL3));
-				val &= ~(BIT(PPLLCTRL1_GT));
-				writel(val, pclk->pmctrl + PPLLCTRL1(PPLL3));
-				/*~en*/
-				val = readl(pclk->pmctrl + PPLLCTRL0(PPLL3));
-				val &= ~(BIT(PPLLCTRL0_EN));
-				writel(val, pclk->pmctrl + PPLLCTRL0(PPLL3));
-			} else if (PPLL0 == ((val & SC_SEL_VIVOBUS_MASK) >> SC_SEL_VIVOBUS_SHIFT)) {
-			} else {
-				BUG_ON(1);
-			}
-			hwspin_unlock(pclk->clk_hwlock);
-			udelay(1);
-		}
-	}
-	return;
-#endif
-}
-
-static void hi3xxx_clkvivobus_unprepare(struct clk_hw *hw)
-{
-	return;
-}
-
-static struct clk_ops hisi_clkvivobus_ops = {
-	.prepare        = hi3xxx_clkvivobus_prepare,
-	.unprepare      = hi3xxx_clkvivobus_unprepare,
-	.enable		= hi3xxx_clkvivobus_enable,
-	.disable	= hi3xxx_clkvivobus_disable,
-};
-#endif
 static void __init hi3xxx_clkgate_setup(struct device_node *np)
 {
 	struct hi3xxx_periclk *pclk;
@@ -743,10 +650,6 @@ static void __init hi3xxx_clkgate_setup(struct device_node *np)
 	init->flags = CLK_SET_RATE_PARENT | CLK_IGNORE_UNUSED;
 	init->parent_names = &parent_names;
 	init->num_parents = 1;
-#if 0
-	if (!strcmp(clk_name, "clk_vivobus"))
-		 init->ops = &hisi_clkvivobus_ops;
-#endif
 
 	if (of_property_read_u32_array(np, "hisilicon,hi3xxx-clkreset",
 				       &rdata[0], 2)) {
@@ -783,11 +686,8 @@ static void __init hi3xxx_clkgate_setup(struct device_node *np)
 			pclk->enable = NULL;
 	else
 			pclk->enable = reg_base + gdata[0];
-#if 0
-	if (!strcmp(clk_name, "clk_vivobus"))
-		pclk->enable = reg_base;
-#endif
-	pclk->ebits = gdata[1];
+	
+    pclk->ebits = gdata[1];
 	pclk->lock = &hs_clk.lock;
 	pclk->hw.init = init;
 	pclk->friend = clk_friend;
@@ -809,7 +709,7 @@ static void __init hi3xxx_clkgate_setup(struct device_node *np)
 	if (!of_property_read_string(np, "clock-output-names", &name))
 		clk_register_clkdev(clk, name, NULL);
 	of_clk_add_provider(np, of_clk_src_simple_get, clk);
-	return;
+	return;/*lint !e429*/
 err_clk:
 	kfree(init);
 	init = NULL;
@@ -1044,9 +944,43 @@ static void hi3xxx_multicore_abb_clkgate_unprepare(struct clk_hw *hw)
 	return;
 }
 
+#ifdef CONFIG_HISI_CLK_DEBUG
+static int hi3xxx_dump_abbclk(struct clk_hw *hw, char* buf)
+{
+	struct hi3xxx_periclk *pclk;
+	u32 val = 0;
+
+	pclk = container_of(hw, struct hi3xxx_periclk, hw);
+	if (NULL == clk_hwlock_9) {
+		clk_hwlock_9 = hwspin_lock_request_specific(pclk->flags);
+		if (NULL == clk_hwlock_9) {
+			pr_err("abb clk request hwspin lock failed !\n");
+			return -ENODEV;
+		}
+
+
+	}
+	pclk->clk_hwlock = clk_hwlock_9;
+	if (hwspin_lock_timeout(pclk->clk_hwlock, CLK_HWLOCK_TIMEOUT)) {
+		pr_err("abb clk enable hwspinlock timout!\n");
+		return -ENOENT;
+	}
+	if(buf){
+		val = hisi_pmic_reg_read(pclk->pmu_clk_enable);
+		snprintf(buf, DUMP_CLKBUFF_MAX_SIZE, "[%s] : regAddress = 0x%pK, regval = 0x%x\n", __clk_get_name(hw->clk), pclk->pmu_clk_enable, val);
+	}
+	hwspin_unlock(pclk->clk_hwlock);
+	return 0;
+
+}
+#endif
+
 static struct clk_ops hi3xxx_abb_clkgate_ops = {
 	.prepare        = hi3xxx_multicore_abb_clkgate_prepare,
 	.unprepare      = hi3xxx_multicore_abb_clkgate_unprepare,
+#ifdef CONFIG_HISI_CLK_DEBUG
+	.dump_reg = hi3xxx_dump_abbclk,
+#endif
 };
 static void __init hi3xxx_pmu_clkgate_setup(struct device_node *np)
 {
@@ -1078,8 +1012,9 @@ static void __init hi3xxx_pmu_clkgate_setup(struct device_node *np)
 		return;
 	}
 	if (of_property_read_u32_array(np, "hwspinlock-id", &lock_id, 1)) {
-		pr_err("[%s] %s node doesn't have hwspinliock-id property!\n",
+		pr_info("[%s] %s node doesn't have hwspinliock-id property!\n",
 			 __func__, np->name);
+		lock_id = INVALID_HWSPINLOCK_ID;
 	}
 	if (of_property_read_bool(np, "clock-id")) {
 		if (of_property_read_u32_array(np, "clock-id", &clock_id, 1)) {
@@ -1118,7 +1053,7 @@ static void __init hi3xxx_pmu_clkgate_setup(struct device_node *np)
 	}
 	init->name = kstrdup(clk_name, GFP_KERNEL);
 
-	if (!strcmp(clk_name, "clk_abb_192")) {
+	if (!strcmp(clk_name, "clk_abb_192")) {/*lint !e421*/
 		init->ops = &hi3xxx_abb_clkgate_ops;
 	} else {
 		init->ops = &hi3xxx_pmu_clkgate_ops;
@@ -1176,7 +1111,7 @@ static void __init hi3xxx_pmu_clkgate_setup(struct device_node *np)
 	if (!of_property_read_string(np, "clock-output-names", &name))
 		clk_register_clkdev(clk, name, NULL);
 	of_clk_add_provider(np, of_clk_src_simple_get, clk);
-	return;
+	return;/*lint !e429*/
 
 err_clk:
 	iounmap(pclk->sctrl);
@@ -1207,7 +1142,12 @@ static int ppll_enable_open(struct hi3xxx_ppll_clk *ppll_clk, int ppll)
 		val |= BIT(PPLL2_EN_ACPU);
 		writel(val, PPLL2_EN_ACPU_ADDR(ppll_clk->endisable_addr));
 		break;
-	case PPLL7:
+	case PPLL6:
+		val = readl(PPLL6_EN_ACPU_ADDR(ppll_clk->addr));//lint !e732
+		val |= BIT(PPLL6_EN);
+		writel(val, PPLL6_EN_ACPU_ADDR(ppll_clk->addr));
+		break;
+ 	case PPLL7:
 		val = readl(PPLL7_EN_ACPU_ADDR(ppll_clk->addr));
 		val |= BIT(PPLL7_EN);
 		writel(val, PPLL7_EN_ACPU_ADDR(ppll_clk->addr));
@@ -1219,36 +1159,10 @@ static int ppll_enable_open(struct hi3xxx_ppll_clk *ppll_clk, int ppll)
 	return 0;
 }
 
-static int ppll_enable_ready(struct hi3xxx_ppll_clk *ppll_clk, int ppll)
+static void ppll_nogate(struct hi3xxx_ppll_clk *ppll_clk, int ppll)
 {
 	u32 val;
-	u32 timeout;
-	timeout = 0;
-	/*waiting lock*/
-	switch (ppll) {
-	case PPLL2:
-	case PPLL3:
-		do {
-			val = readl(ppll_clk->addr + PPLLCTRL0(ppll));
-			val &= BIT(PPLLCTRL0_LOCK);
-			timeout++;
-			if (AP_PPLL_STABLE_TIME < timeout)
-				pr_err("%s: ppll-%d enable is timeout\n", __func__,ppll);
-		} while (!val);
-		break;
-	case PPLL7:
-		do {
-			val = readl(PPLL7CTRL0(ppll_clk->addr));
-			val &= BIT(PPLLCTRL0_LOCK);
-			timeout++;
-			if(AP_PPLL_STABLE_TIME < timeout)
-				pr_err("%s: ppll-%d enable is timeout\n", __func__,ppll);
-		} while (!val);
-		break;
-	default:
-		pr_err("[%s]: A wrong PPLL-%d is enable_ready\n", __func__, ppll);
-		break;
-	}
+
 	/*output clock not gate*/
 	switch (ppll) {
 	case PPLL3:
@@ -1261,6 +1175,11 @@ static int ppll_enable_ready(struct hi3xxx_ppll_clk *ppll_clk, int ppll)
 		val |= BIT(PPLL2_GT_ACPU);
 		writel(val, PPLL2_GT_ACPU_ADDR(ppll_clk->endisable_addr));
 		break;
+	case PPLL6:
+		val = (unsigned int)readl(PPLL6_GT_ACPU_ADDR(ppll_clk->addr));
+		val |= BIT(PPLL6_GT);
+		writel(val, PPLL6_GT_ACPU_ADDR(ppll_clk->addr));
+		break;
 	case PPLL7:
 		val = (unsigned int)readl(PPLL7_GT_ACPU_ADDR(ppll_clk->addr));
 		val |= BIT(PPLL7_GT);
@@ -1270,6 +1189,49 @@ static int ppll_enable_ready(struct hi3xxx_ppll_clk *ppll_clk, int ppll)
 		pr_err("[%s]: A wrong PPLL-%d is enable_ready\n", __func__, ppll);
 		break;
 	}
+}
+
+static int ppll_enable_ready(struct hi3xxx_ppll_clk *ppll_clk, int ppll)
+{
+	u32 val;
+	u32 timeout;
+	timeout = 0;
+	/*waiting lock*/
+
+	switch (ppll) {
+	case PPLL2:
+	case PPLL3:
+		do {
+			val = readl(ppll_clk->addr + PPLLCTRL0(ppll));//lint !e732
+			val &= BIT(PPLLCTRL0_LOCK);
+			timeout++;
+			if (AP_PPLL_STABLE_TIME < timeout)
+				pr_err("%s: ppll-%d enable is timeout\n", __func__,ppll);
+		} while (!val);
+		break;
+	case PPLL6:
+		do {
+			val = readl(PPLL6CTRL0(ppll_clk->addr));//lint !e732
+			val &= BIT(PPLLCTRL0_LOCK);
+			timeout++;
+			if(AP_PPLL_STABLE_TIME < timeout)
+				pr_err("%s: ppll-%d enable is timeout\n", __func__,ppll);
+		} while (!val);
+		break;
+	case PPLL7:
+		do {
+			val = readl(PPLL7CTRL0(ppll_clk->addr));//lint !e732
+			val &= BIT(PPLLCTRL0_LOCK);
+			timeout++;
+			if(AP_PPLL_STABLE_TIME < timeout)
+				pr_err("%s: ppll-%d enable is timeout\n", __func__,ppll);
+		} while (!val);
+		break;
+	default:
+		pr_err("[%s]: A wrong PPLL-%d is enable_ready\n", __func__, ppll);
+		break;
+	}
+	ppll_nogate(ppll_clk, ppll);
 	return 0;
 }
 
@@ -1297,6 +1259,16 @@ static void ppll_disable(struct hi3xxx_ppll_clk *ppll_clk, int ppll)
 		val = readl(PPLL2_DIS_ACPU_ADDR(ppll_clk->endisable_addr));
 		val |= BIT(PPLL2_EN_ACPU);
 		writel(val, PPLL2_DIS_ACPU_ADDR(ppll_clk->endisable_addr));
+		break;
+	case PPLL6:
+		/*output gate*/
+		val = (unsigned int)readl(PPLL6_GT_ACPU_ADDR(ppll_clk->addr));
+		val &= (~ BIT(PPLL6_GT));
+		writel(val, PPLL6_GT_ACPU_ADDR(ppll_clk->addr));
+		/*~en*/
+		val = (unsigned int)readl(PPLL6_EN_ACPU_ADDR(ppll_clk->addr));//lint !e838
+		val &= (~ BIT(PPLL6_EN));
+		writel(val, PPLL6_EN_ACPU_ADDR(ppll_clk->addr));
 		break;
 	case PPLL7:
 		/*output gate*/
@@ -1442,7 +1414,7 @@ static void __init hi3xxx_ppll_setup(struct device_node *np)
 
 	clk_register_clkdev(clk, clk_name, NULL);
 	of_clk_add_provider(np, of_clk_src_simple_get, clk);
-	return;
+	return;/*lint !e429*/
 err_clk:
 	iounmap(ppll_clk->sctrl);
 	ppll_clk->sctrl = NULL;
@@ -1685,7 +1657,7 @@ static int hi3xxx_clkdiv_bestdiv(struct clk_hw *hw, unsigned long rate,
 		parent_rate = *best_parent_rate;
 		bestdiv = DIV_ROUND_UP(parent_rate, rate);
 		bestdiv = bestdiv == 0 ? 1 : bestdiv;
-		bestdiv = bestdiv > maxdiv ? maxdiv : bestdiv;
+		bestdiv = bestdiv > maxdiv ? maxdiv : bestdiv;/*lint !e574*/
 		return bestdiv;
 	}
 
@@ -1695,12 +1667,12 @@ static int hi3xxx_clkdiv_bestdiv(struct clk_hw *hw, unsigned long rate,
 	 */
 	maxdiv = min(ULONG_MAX / rate, maxdiv);
 
-	for (i = 1; i <= maxdiv; i++) {
+	for (i = 1; i <= maxdiv; i++) {/*lint !e574*/
 		if (!hi3xxx_is_valid_table_div(dclk->table, i))
 			continue;
 		parent_rate = __clk_round_rate(clk_parent,
 					       MULT_ROUND_UP(rate, i));
-		now = parent_rate / i;
+		now = parent_rate / i;/*lint !e573*/
 		if (now <= rate && now > best) {
 			bestdiv = i;
 			best = now;
@@ -1725,7 +1697,7 @@ static long hi3xxx_clkdiv_round_rate(struct clk_hw *hw, unsigned long rate,
 		rate = 1;
 	div = hi3xxx_clkdiv_bestdiv(hw, rate, prate);
 
-	return *prate / div;
+	return *prate / div;/*lint !e573*/
 }
 
 static int hi3xxx_clkdiv_set_rate(struct clk_hw *hw, unsigned long rate,
@@ -1739,14 +1711,14 @@ static int hi3xxx_clkdiv_set_rate(struct clk_hw *hw, unsigned long rate,
 	div = parent_rate / rate;
 	value = hi3xxx_get_table_val(dclk->table, div);
 
-	if (value > WIDTH_TO_MASK(dclk->width))
+	if (value > WIDTH_TO_MASK(dclk->width))/*lint !e574*/
 		value = WIDTH_TO_MASK(dclk->width);
 
 	if (dclk->lock)
 		spin_lock_irqsave(dclk->lock, flags);
 
 	data = readl(dclk->reg);
-	data &= ~(WIDTH_TO_MASK(dclk->width) << dclk->shift);
+	data &= ~(WIDTH_TO_MASK(dclk->width) << dclk->shift);/*lint !e502*/
 	data |= value << dclk->shift;
 	data |= dclk->mbits;
 	writel(data, dclk->reg);
@@ -1783,11 +1755,26 @@ static void __iomem *hi3xxx_clkdiv_get_reg(struct clk_hw *hw)
 		ret = dclk->reg;
 		val = readl(ret);
 		val &= dclk->mbits;
-		pr_info("\n[%s]: reg = 0x%p, bits = 0x%x, regval = 0x%x\n",
+		pr_info("\n[%s]: reg = 0x%pK, bits = 0x%x, regval = 0x%x\n",
 			__clk_get_name(hw->clk), ret, dclk->mbits, val);
 	}
 
 	return ret;
+}
+
+static void __iomem *hi3xxx_dumpdiv(struct clk_hw *hw, char* buf)
+{
+	struct hi3xxx_divclk *dclk;
+	void __iomem	*ret = NULL;
+	u32 val = 0;
+	dclk = container_of(hw, struct hi3xxx_divclk, hw);
+
+	if (dclk->reg && buf) {
+		ret = dclk->reg;
+		val = readl(ret);
+		snprintf(buf, DUMP_CLKBUFF_MAX_SIZE, "[%s] : regAddress = 0x%pK, regval = 0x%x\n", __clk_get_name(hw->clk), dclk->reg, val);
+	}
+	return 0;
 }
 #endif
 
@@ -1798,6 +1785,7 @@ static struct clk_ops hi3xxx_clkdiv_ops = {
 #ifdef CONFIG_HISI_CLK_DEBUG
 	.check_divreg = hi3xxx_divreg_check,
 	.get_reg = hi3xxx_clkdiv_get_reg,
+	.dump_reg = hi3xxx_dumpdiv,
 #endif
 };
 
@@ -1907,7 +1895,7 @@ void __init hi3xxx_clkdiv_setup(struct device_node *np)
 	}
 	of_clk_add_provider(np, of_clk_src_simple_get, clk);
 	clk_register_clkdev(clk, clk_name, NULL);
-	return;
+	return;/*lint !e429*/
 err_clk:
 	kfree(init);
 	init = NULL;
@@ -1943,10 +1931,20 @@ static struct device_node *of_get_clk_cpu_node(int cluster)
 			np = NULL;
 			break;
 		} else if (((be32_to_cpup(mpidr + 1) >> 8) & 0xff) == cluster) {
-			if (!of_get_property(np, "operating-points", NULL)) {
+			if (of_get_property(np, "operating-points-v2", NULL)) {
+				pr_debug("cluster%d suppoet operating-points-v2\n", cluster);
 				of_node_put(np);
+				break;
+			} else if (of_get_property(np, "operating-points", NULL)) {
+				pr_debug("cluster%d suppoet operating-points-v1\n", cluster);
+				of_node_put(np);
+				break;
+			} else {
+				of_node_put(np);
+				pr_err("cluster%d can not find opp v1&v2\n", cluster);
 				np = NULL;
 			}
+
 			break;
 		}
 	}
@@ -1959,11 +1957,11 @@ static struct device_node *of_get_xfreq_node(const char *xfreq)
 {
 	struct device_node *np;
 
-	if (!strcmp(xfreq, "ddrfreq")) {
+	if (!strcmp(xfreq, "ddrfreq")) {/*lint !e421*/
 		np = of_find_compatible_node(NULL, NULL, "hisilicon,ddr_devfreq");
-	} else if (!strcmp(xfreq, "gpufreq")) {
+	} else if (!strcmp(xfreq, "gpufreq")) {/*lint !e421*/
 		np = of_find_compatible_node(NULL, NULL, "arm,mali-midgard");
-	} else if (!strcmp(xfreq, "sysctrl")) {
+	} else if (!strcmp(xfreq, "sysctrl")) {/*lint !e421*/
 		np = of_find_compatible_node(NULL, NULL, "hisilicon,sysctrl");
 	} else {
 		return NULL;
@@ -1971,42 +1969,74 @@ static struct device_node *of_get_xfreq_node(const char *xfreq)
 	return np;
 }
 
+
 int xfreq_clk_table_init(struct device_node *np, struct hi3xxx_xfreq_clk *xfreqclk)
 {
+	int count = 0, ret = 0, k = 0;
+	unsigned long long rate;
+	unsigned int volt, freq;
+	struct device_node *opp_np, *opp_np_chd;
 	const struct property *prop;
 	const __be32 *val;
 	int nr;
-	int k = 0;
 
-	prop = of_find_property(np, "operating-points", NULL);
-	if (!prop)
-		return -ENODEV;
-	if (!prop->value)
-		return -ENODATA;
+	opp_np = of_parse_phandle(np, "operating-points-v2", 0);
 
-	/*
-	 * Each OPP is a set of tuples consisting of frequency and
-	 * voltage like <freq-kHz vol-uV>.
-	 */
-	nr = prop->length / sizeof(u32);
-	if ((nr % 2) || (nr / 2) > MAX_FREQ_NUM) {
-		pr_err("%s: Invalid OPP list\n", __func__);
-		return -EINVAL;
+	if (opp_np) {
+		for_each_available_child_of_node(opp_np, opp_np_chd) {
+			count++;
+			ret = of_property_read_u64(opp_np_chd, "opp-hz", &rate);
+			if (ret) {
+				pr_err("%s: Failed to read opp-hz, %d\n", __func__,
+					ret);
+				return ret;
+			}
+			ret = of_property_read_u32(opp_np_chd, "opp-microvolt", &volt);
+			if (ret) {
+				pr_err("%s: Failed to read  opp-microvolt, %d\n", __func__,
+					ret);
+				return ret;
+			}
+			xfreqclk->freq[k] = (unsigned int)(rate / 1000);
+			xfreqclk->volt[k] = volt;
+			k++;
+		}
+		/* There should be one of more OPP defined */
+		if (WARN_ON(!count)) //lint !e730
+			return -ENOENT;
+		return ret;
+	} else {
+		prop = of_find_property(np, "operating-points", NULL);
+		if (!prop)
+			return -ENODEV;
+		if (!prop->value)
+			return -ENODATA;
+
+		/*
+		 * Each OPP is a set of tuples consisting of frequency and
+		 * voltage like <freq-kHz vol-uV>.
+		 */
+		nr = prop->length / sizeof(u32);/*lint !e573*/
+		if ((nr % 2) || (nr / 2) > MAX_FREQ_NUM) {
+			pr_err("%s: Invalid OPP list\n", __func__);
+			return -EINVAL;
+		}
+
+		xfreqclk->table_length = nr / 2;
+		val = prop->value;
+		while (nr) {
+			freq = be32_to_cpup(val++);
+			volt = be32_to_cpup(val++);
+			xfreqclk->freq[k] = freq;
+			xfreqclk->volt[k] = volt;
+			pr_debug("[%s]: the OPP k %d,freq %d\n", __func__, k, freq);
+			nr -= 2;
+			k++;
+		}
+
+		return 0;
 	}
 
-	xfreqclk->table_length = nr / 2;
-	val = prop->value;
-	while (nr) {
-		unsigned int freq = be32_to_cpup(val++);
-		unsigned int volt = be32_to_cpup(val++);
-		xfreqclk->freq[k] = freq;
-		xfreqclk->volt[k] = volt;
-		pr_debug("[%s]: the OPP k %d,freq %d\n", __func__, k, freq);
-		nr -= 2;
-		k++;
-	}
-
-	return 0;
 }
 
 #define FREQ_INDEX_MASK		0xF
@@ -2083,6 +2113,12 @@ static long hi3xxx_xfreq_clk_determine_rate(struct clk_hw *hw, unsigned long rat
 					struct clk **best_parent_clk)
 {
 	return rate;
+}
+#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 4, 0))
+static int hi3xxx_xfreq_clk_determine_rate(struct clk_hw *hw,
+			     struct clk_rate_request *req)
+{
+	return 0;
 }
 #else
 static long hi3xxx_xfreq_clk_determine_rate(struct clk_hw *hw, unsigned long rate,
@@ -2234,7 +2270,7 @@ void __init hi3xxx_xfreq_clk_setup(struct device_node *np)
 		xfreq_clk_table_init(xfreq_np, xfreqclk);
 		/*sort lowtohigh*/
 		for (i = 0; i < MAX_FREQ_NUM - 1; i++) {
-			for (k = MAX_FREQ_NUM - 1; k > i; k--) {
+			for (k = MAX_FREQ_NUM - 1; k > i; k--) {/*lint !e574*/
 				if (xfreqclk->freq[k] < xfreqclk->freq[k-1]) {
 					temp = xfreqclk->freq[k];
 					xfreqclk->freq[k] = xfreqclk->freq[k-1];
@@ -2253,7 +2289,7 @@ void __init hi3xxx_xfreq_clk_setup(struct device_node *np)
 			xfreqclk->freq[i-k] = xfreqclk->freq[i];
 		}
 		if (k > 0) {
-			for (i = MAX_FREQ_NUM - 1; i > MAX_FREQ_NUM - k - 1; i--)
+			for (i = MAX_FREQ_NUM - 1; i > MAX_FREQ_NUM - k - 1; i--)/*lint !e574*/
 				xfreqclk->freq[i] = 0;
 		}
 		for (i = 0; i < MAX_FREQ_NUM; i++)
@@ -2436,7 +2472,7 @@ static void __init hi3xxx_mclk_setup(struct device_node *np)
 
 	clk_register_clkdev(clk, clk_name, NULL);
 	of_clk_add_provider(np, of_clk_src_simple_get, clk);
-	return;
+	return;/*lint !e429*/
 
 err_clk:
 	kfree(init);
@@ -2447,7 +2483,7 @@ err_init:
 err_mclk:
 	return;
 }
-
+/*lint -save -e611*/
 CLK_OF_DECLARE(hi3xxx_mux, "hisilicon,hi3xxx-clk-mux", hi3xxx_clkmux_setup);
 CLK_OF_DECLARE(hi3xxx_div, "hisilicon,hi3xxx-clk-div", hi3xxx_clkdiv_setup);
 CLK_OF_DECLARE(hs_gate, "hisilicon,clk-gate", hs_clkgate_setup);
@@ -2456,7 +2492,7 @@ CLK_OF_DECLARE(hi3xxx_gate, "hisilicon,hi3xxx-clk-gate", hi3xxx_clkgate_setup);
 CLK_OF_DECLARE(hi3xxx_ppll, "hisilicon,ppll-ctrl", hi3xxx_ppll_setup);
 CLK_OF_DECLARE(hi3xxx_cpu, "hisilicon,hi3xxx-xfreq-clk", hi3xxx_xfreq_clk_setup);
 CLK_OF_DECLARE(hi3xxx_mclk, "hisilicon,interactive-clk", hi3xxx_mclk_setup);
-
+/*lint -restore*/
 static const struct of_device_id hs_of_match[] = {
 	{ .compatible = "hisilicon,clk-pmctrl",	.data = (void *)HS_PMCTRL, },
 	{ .compatible = "hisilicon,clk-sctrl",	.data = (void *)HS_SYSCTRL, },
@@ -2465,6 +2501,8 @@ static const struct of_device_id hs_of_match[] = {
 	{ .compatible = "hisilicon,clk-pctrl",	.data = (void *)HS_PCTRL, },
 	{ .compatible = "hisilicon,media-crg",	.data = (void *)HS_MEDIACRG, },
 	{ .compatible = "hisilicon,iomcu-crg",	.data = (void *)HS_IOMCUCRG, },
+	{ .compatible = "hisilicon,media1-crg",	.data = (void *)HS_MEDIA1CRG, },
+	{ .compatible = "hisilicon,media2-crg",	.data = (void *)HS_MEDIA2CRG, },
 	{},/*lint !e785 */
 };
 
@@ -2491,7 +2529,7 @@ void __iomem __init *hs_clk_base(u32 ctrl)
 		BUG_ON(1);
 	}
 	if (!np) {
-		pr_err("[%s] node %s doesn't have node!\n", __func__, np->name);
+		pr_err("[%s] node doesn't have node!\n", __func__);
 		goto out;
 	}
 	ret = of_iomap(np, 0);
@@ -2579,6 +2617,24 @@ static void __iomem __init *hs_clk_get_base(struct device_node *np)
 			hs_clk.iomcucrg = ret;
 		} else {
 			ret = hs_clk.iomcucrg;
+		}
+		break;
+	case HS_MEDIA1CRG:
+		if(!hs_clk.media1crg) {
+			ret = of_iomap(parent, 0);
+			WARN_ON(!ret);/*lint !e730 */
+			hs_clk.media1crg = ret;
+		} else {
+			ret = hs_clk.media1crg;
+		}
+		break;
+	case HS_MEDIA2CRG:
+		if(!hs_clk.media2crg) {
+			ret = of_iomap(parent, 0);
+			WARN_ON(!ret);/*lint !e730 */
+			hs_clk.media2crg = ret;
+		}else{
+			ret = hs_clk.media2crg;
 		}
 		break;
 

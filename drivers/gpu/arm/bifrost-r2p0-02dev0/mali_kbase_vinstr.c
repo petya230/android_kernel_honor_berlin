@@ -250,7 +250,7 @@ static void disable_hwcnt(struct kbase_vinstr_context *vinstr_ctx)
 
 	err = kbase_instr_hwcnt_disable_internal(kctx);
 	if (err) {
-		dev_warn(kbdev->dev, "Failed to disable HW counters (ctx:%p)",
+		dev_warn(kbdev->dev, "Failed to disable HW counters (ctx:%pK)",
 				kctx);
 		return;
 	}
@@ -261,7 +261,7 @@ static void disable_hwcnt(struct kbase_vinstr_context *vinstr_ctx)
 	/* Also release our Power Manager Active reference. */
 	kbase_pm_context_idle(kbdev);
 
-	dev_dbg(kbdev->dev, "HW counters dumping disabled for context %p", kctx);
+	dev_dbg(kbdev->dev, "HW counters dumping disabled for context %pK", kctx);
 }
 
 static int reprogram_hwcnt(struct kbase_vinstr_context *vinstr_ctx)
@@ -2017,7 +2017,7 @@ int kbase_vinstr_try_suspend(struct kbase_vinstr_context *vinstr_ctx)
 void kbase_vinstr_suspend(struct kbase_vinstr_context *vinstr_ctx)
 {
 	wait_event(vinstr_ctx->suspend_waitq,
-			(0 == kbase_vinstr_try_suspend(vinstr_ctx)));
+			(0 == kbase_vinstr_try_suspend(vinstr_ctx)));//lint !e666
 }
 
 void kbase_vinstr_resume(struct kbase_vinstr_context *vinstr_ctx)

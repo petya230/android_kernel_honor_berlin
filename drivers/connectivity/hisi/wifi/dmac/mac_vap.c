@@ -5491,7 +5491,7 @@ void mac_vap_init_user_security_port(mac_vap_stru  *pst_mac_vap,
     }
 
     /* DTS2015081201896:如果用户已经关联，仍需要初始化用户加密能力为不加密 */
-    mac_user_init_key(pst_mac_user);
+    //mac_user_init_key(pst_mac_user);
 }
 
 /*****************************************************************************

@@ -31,6 +31,7 @@
 
 #include "oal_hcc_host_if.h"
 #include "oam_ext_if.h"
+#include "frw_ext_if.h"
 
 #undef  THIS_FILE_ID
 #define THIS_FILE_ID OAM_FILE_ID_PLAT_PM_WLAN_C
@@ -550,6 +551,8 @@ oal_int32 wlan_pm_open(oal_void)
 
     wlan_pm_enable();
 
+    frw_timer_sys_start();
+
     /*将timeout值恢复为默认值，并启动定时器*/
     wlan_pm_set_timeout(WLAN_SLEEP_DEFAULT_CHECK_CNT);
 
@@ -666,6 +669,8 @@ oal_uint32 wlan_pm_close(oal_void)
         return OAL_ERR_CODE_ALREADY_CLOSE;
     }
 
+
+
     wlan_pm_disable();
 
     wlan_pm_stop_wdg(pst_wlan_pm);
@@ -682,6 +687,8 @@ oal_uint32 wlan_pm_close(oal_void)
         DECLARE_DFT_TRACE_KEY_INFO("wlan_power_off_fail",OAL_DFT_TRACE_FAIL);
         return OAL_FAIL;
     }
+
+    frw_timer_sys_stop();
 
     pst_wlan_pm->ul_wlan_power_state = POWER_STATE_SHUTDOWN;
 
@@ -1443,6 +1450,7 @@ void wlan_pm_sleep_work(oal_work_stru *pst_worker)
    oal_uint32           ul_ret;
    oal_uint8            uc_retry;
    oal_uint32           ul_wifi_pause_pm = OAL_FALSE;
+   static oal_uint8     uc_fail_sleep_count = 0;
 
 
    hcc_tx_transfer_lock(hcc_get_default_handler());
@@ -1541,7 +1549,7 @@ void wlan_pm_sleep_work(oal_work_stru *pst_worker)
        pst_wlan_pm->ul_sleep_fail_forbid++;
        OAM_WARNING_LOG1(0, OAM_SF_PWR,"wlan_pm_sleep_work device forbid sleep %ld\n",pst_wlan_pm->ul_sleep_stage);
        DECLARE_DFT_TRACE_KEY_INFO("wlan_forbid_sleep",OAL_DFT_TRACE_SUCC);
-       goto fail_sleep;
+       goto sleep_forbid;
    }
 
    pst_wlan_pm->ul_sleep_stage = SLEEP_CMD_SND;
@@ -1556,9 +1564,31 @@ void wlan_pm_sleep_work(oal_work_stru *pst_worker)
       OAM_WARNING_LOG1(0, OAM_SF_PWR,"wlan_pm_sleep_work release wakelock %lu!\n",pst_wlan_pm->pst_sdio->st_sdio_wakelock.lock_count);
    }
 
+   uc_fail_sleep_count = 0;
+
    return;
 
 fail_sleep:
+
+    uc_fail_sleep_count++;
+    wlan_pm_feed_wdg();
+    hcc_tx_transfer_unlock(hcc_get_default_handler());
+
+    /* pm唤醒失败超出门限，启动dfr流程 */
+    if (WLAN_WAKEUP_FAIL_MAX_TIMES < uc_fail_sleep_count)
+    {
+        OAM_ERROR_LOG1(0, OAM_SF_PWR,"Now ready to enter DFR process after [%d]times wlan_sleep_fail!", uc_fail_sleep_count);
+        uc_fail_sleep_count = 0;
+        wlan_pm_stop_wdg(pst_wlan_pm);
+        oal_sdio_exception_submit(oal_get_sdio_default_handler(), WIFI_WAKEUP_FAIL);
+        //wifi_exception_work_submit(TIMER_TIMEOUT);
+    }
+    CHR_EXCEPTION(CHR_WIFI_DRV(CHR_WIFI_DRV_EVENT_PLAT, CHR_PLAT_DRV_ERROR_WAKEUP_DEV));
+    return;
+
+sleep_forbid:
+
+    uc_fail_sleep_count = 0;
     wlan_pm_feed_wdg();
     hcc_tx_transfer_unlock(hcc_get_default_handler());
     return ;

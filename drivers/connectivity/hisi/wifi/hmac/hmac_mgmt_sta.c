@@ -3981,6 +3981,10 @@ OAL_STATIC oal_void  hmac_sta_up_rx_action(hmac_vap_stru *pst_hmac_vap, oal_netb
 #ifdef _PRE_WLAN_FEATURE_11R
         case MAC_ACTION_CATEGORY_FAST_BSS_TRANSITION:
         {
+            if(pst_hmac_vap->bit_11r_enable != OAL_TRUE)
+            {
+                break;
+            }
             hmac_roam_rx_ft_action(pst_hmac_vap, pst_netbuf);
             break;
         }

@@ -17,6 +17,9 @@
 #include "plat_uart.h"
 #include "board.h"
 
+#include "frw_ext_if.h"
+
+
 /*****************************************************************************
   2 Define global variable
 *****************************************************************************/
@@ -107,7 +110,13 @@ STATIC ssize_t store_wifi_pmdbg(struct device *dev, struct kobj_attribute *attr,
        case 6:
         wlan_pm_disable();
        break;
-#endif
+       case 7:
+       frw_timer_sys_start();
+       break;
+       case 8:
+       frw_timer_sys_stop();
+       break;
+#endif       
        default:
        break;
     }

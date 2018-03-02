@@ -1061,6 +1061,8 @@ static bool kbase_js_ctx_pullable(struct kbase_context *kctx, int js,
 	katom = jsctx_rb_peek(kctx, js);
 	if (!katom)
 		return false; /* No pullable atoms */
+	if (kctx->blocked_js[js][katom->sched_priority])
+		return false;
 	if (atomic_read(&katom->blocked))
 		return false; /* next atom blocked */
 	if (katom->atom_flags & KBASE_KATOM_FLAG_X_DEP_BLOCKED) {
@@ -1301,7 +1303,7 @@ bool kbasep_js_add_job(struct kbase_context *kctx,
 			/* Handle Refcount going from 0 to 1: schedule the
 			 * context on the Policy Queue */
 			KBASE_DEBUG_ASSERT(!kbase_ctx_flag(kctx, KCTX_SCHEDULED));
-			dev_dbg(kbdev->dev, "JS: Enqueue Context %p", kctx);
+			dev_dbg(kbdev->dev, "JS: Enqueue Context %pK", kctx);
 
 			/* Policy Queue was updated - caller must try to
 			 * schedule the head context */
@@ -1597,7 +1599,7 @@ static kbasep_js_release_result kbasep_js_runpool_release_ctx_internal(
 		int slot;
 		/* Last reference, and we've been told to remove this context
 		 * from the Run Pool */
-		dev_dbg(kbdev->dev, "JS: RunPool Remove Context %p because as_busy_refcount=%d, jobs=%d, allowed=%d",
+		dev_dbg(kbdev->dev, "JS: RunPool Remove Context %pK because as_busy_refcount=%d, jobs=%d, allowed=%d",
 				kctx, new_ref_count, js_kctx_info->ctx.nr_jobs,
 				kbasep_js_is_submit_allowed(js_devdata, kctx));
 
@@ -1714,7 +1716,7 @@ void kbasep_js_runpool_requeue_or_kill_ctx(struct kbase_device *kbdev,
 		/* Dying: don't requeue, but kill all jobs on the context. This
 		 * happens asynchronously */
 		dev_dbg(kbdev->dev,
-			"JS: ** Killing Context %p on RunPool Remove **", kctx);
+			"JS: ** Killing Context %pK on RunPool Remove **", kctx);
 		kbase_js_foreach_ctx_job(kctx, &kbase_jd_cancel);
 	}
 }
@@ -2289,7 +2291,8 @@ struct kbase_jd_atom *kbase_js_pull(struct kbase_context *kctx, int js)
 	katom = jsctx_rb_peek(kctx, js);
 	if (!katom)
 		return NULL;
-
+	if (kctx->blocked_js[js][katom->sched_priority])
+		return NULL;
 	if (atomic_read(&katom->blocked))
 		return NULL;
 
@@ -2323,6 +2326,7 @@ struct kbase_jd_atom *kbase_js_pull(struct kbase_context *kctx, int js)
 		atomic_inc(&kctx->kbdev->js_data.nr_contexts_runnable);
 	}
 	atomic_inc(&kctx->atoms_pulled_slot[katom->slot_nr]);
+	kctx->atoms_pulled_slot_pri[katom->slot_nr][katom->sched_priority]++;
 	jsctx_rb_pull(kctx, katom);
 
 	kbasep_js_runpool_retain_ctx_nolock(kctx->kbdev, kctx);
@@ -2344,6 +2348,7 @@ static void js_return_worker(struct work_struct *data)
 	struct kbasep_js_kctx_info *js_kctx_info = &kctx->jctx.sched_info;
 	struct kbasep_js_atom_retained_state retained_state;
 	int js = katom->slot_nr;
+	int prio = katom->sched_priority;
 	bool timer_sync = false;
 	bool context_idle = false;
 	unsigned long flags;
@@ -2370,9 +2375,25 @@ static void js_return_worker(struct work_struct *data)
 
 	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 
+	kctx->atoms_pulled_slot_pri[js][katom->sched_priority]--;
+
 	if (!atomic_read(&kctx->atoms_pulled_slot[js]) &&
 			jsctx_rb_none_to_pull(kctx, js))
 		timer_sync |= kbase_js_ctx_list_remove_nolock(kbdev, kctx, js);
+
+	/* If this slot has been blocked due to soft-stopped atoms, and all
+	 * atoms have now been processed, then unblock the slot */
+	if (!kctx->atoms_pulled_slot_pri[js][prio] &&
+			kctx->blocked_js[js][prio]) {
+		kctx->blocked_js[js][prio] = false;
+
+		/* Only mark the slot as pullable if the context is not idle -
+		 * that case is handled below */
+		if (atomic_read(&kctx->atoms_pulled) &&
+				kbase_js_ctx_pullable(kctx, js, true))
+			timer_sync |= kbase_js_ctx_list_add_pullable_nolock(
+					kbdev, kctx, js);
+	}
 
 	if (!atomic_read(&kctx->atoms_pulled)) {
 		if (!kctx->slots_pullable) {
@@ -2455,6 +2476,7 @@ bool kbase_js_complete_atom_wq(struct kbase_context *kctx,
 	bool timer_sync = false;
 	int atom_slot;
 	bool context_idle = false;
+	int prio = katom->sched_priority;
 
 	kbdev = kctx->kbdev;
 	atom_slot = katom->slot_nr;
@@ -2470,6 +2492,7 @@ bool kbase_js_complete_atom_wq(struct kbase_context *kctx,
 	if (katom->atom_flags & KBASE_KATOM_FLAG_JSCTX_IN_TREE) {
 		context_idle = !atomic_dec_return(&kctx->atoms_pulled);
 		atomic_dec(&kctx->atoms_pulled_slot[atom_slot]);
+		kctx->atoms_pulled_slot_pri[atom_slot][prio]--;
 
 		if (!atomic_read(&kctx->atoms_pulled) &&
 				!kctx->slots_pullable) {
@@ -2477,6 +2500,17 @@ bool kbase_js_complete_atom_wq(struct kbase_context *kctx,
 			kbase_ctx_flag_clear(kctx, KCTX_RUNNABLE_REF);
 			atomic_dec(&kbdev->js_data.nr_contexts_runnable);
 			timer_sync = true;
+		}
+
+		/* If this slot has been blocked due to soft-stopped atoms, and
+		 * all atoms have now been processed, then unblock the slot */
+		if (!kctx->atoms_pulled_slot_pri[atom_slot][prio]
+				&& kctx->blocked_js[atom_slot][prio]) {
+			kctx->blocked_js[atom_slot][prio] = false;
+			if (kbase_js_ctx_pullable(kctx, atom_slot, true))
+				timer_sync |=
+					kbase_js_ctx_list_add_pullable_nolock(
+						kbdev, kctx, atom_slot);
 		}
 	}
 	WARN_ON(!(katom->atom_flags & KBASE_KATOM_FLAG_JSCTX_IN_TREE));
@@ -2767,7 +2801,7 @@ void kbase_js_zap_context(struct kbase_context *kctx)
 	mutex_lock(&js_kctx_info->ctx.jsctx_mutex);
 	kbase_ctx_flag_set(kctx, KCTX_DYING);
 
-	dev_dbg(kbdev->dev, "Zap: Try Evict Ctx %p", kctx);
+	dev_dbg(kbdev->dev, "Zap: Try Evict Ctx %pK", kctx);
 
 	/*
 	 * At this point we know:
@@ -2827,7 +2861,7 @@ void kbase_js_zap_context(struct kbase_context *kctx)
 		KBASE_TRACE_ADD(kbdev, JM_ZAP_NON_SCHEDULED, kctx, NULL, 0u,
 						kbase_ctx_flag(kctx, KCTX_SCHEDULED));
 
-		dev_dbg(kbdev->dev, "Zap: Ctx %p scheduled=0", kctx);
+		dev_dbg(kbdev->dev, "Zap: Ctx %pK scheduled=0", kctx);
 
 		/* Only cancel jobs when we evicted from the policy
 		 * queue. No Power Manager active reference was held.
@@ -2847,7 +2881,7 @@ void kbase_js_zap_context(struct kbase_context *kctx)
 		 * Pool */
 		KBASE_TRACE_ADD(kbdev, JM_ZAP_SCHEDULED, kctx, NULL, 0u,
 						kbase_ctx_flag(kctx, KCTX_SCHEDULED));
-		dev_dbg(kbdev->dev, "Zap: Ctx %p is in RunPool", kctx);
+		dev_dbg(kbdev->dev, "Zap: Ctx %pK is in RunPool", kctx);
 
 		/* Disable the ctx from submitting any more jobs */
 		spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
@@ -2863,7 +2897,7 @@ void kbase_js_zap_context(struct kbase_context *kctx)
 		 * retained successfully */
 		KBASE_DEBUG_ASSERT(was_retained);
 
-		dev_dbg(kbdev->dev, "Zap: Ctx %p Kill Any Running jobs", kctx);
+		dev_dbg(kbdev->dev, "Zap: Ctx %pK Kill Any Running jobs", kctx);
 
 		/* Cancel any remaining running jobs for this kctx - if any.
 		 * Submit is disallowed which takes effect immediately, so no
@@ -2876,7 +2910,7 @@ void kbase_js_zap_context(struct kbase_context *kctx)
 		mutex_unlock(&js_devdata->queue_mutex);
 		mutex_unlock(&kctx->jctx.lock);
 
-		dev_dbg(kbdev->dev, "Zap: Ctx %p Release (may or may not schedule out immediately)",
+		dev_dbg(kbdev->dev, "Zap: Ctx %pK Release (may or may not schedule out immediately)",
 									kctx);
 
 		kbasep_js_runpool_release_ctx(kbdev, kctx);

@@ -1007,6 +1007,7 @@ static ssize_t loop_attr_show(struct device *dev, char *page,
 	return callback(lo, page);
 }
 
+/*cppcheck-suppress * */
 #define LOOP_ATTR_RO(_name)						\
 static ssize_t loop_attr_##_name##_show(struct loop_device *, char *);	\
 static ssize_t loop_attr_do_show_##_name(struct device *d,		\
@@ -1041,11 +1042,14 @@ static ssize_t loop_attr_backing_file_show(struct loop_device *lo, char *buf)
 
 static ssize_t loop_attr_offset_show(struct loop_device *lo, char *buf)
 {
+	/*lint -save -e421*/
+	/*cppcheck-suppress * */
 	return sprintf(buf, "%llu\n", (unsigned long long)lo->lo_offset);
 }
 
 static ssize_t loop_attr_sizelimit_show(struct loop_device *lo, char *buf)
 {
+	/*cppcheck-suppress * */
 	return sprintf(buf, "%llu\n", (unsigned long long)lo->lo_sizelimit);
 }
 
@@ -1053,6 +1057,7 @@ static ssize_t loop_attr_autoclear_show(struct loop_device *lo, char *buf)
 {
 	int autoclear = (lo->lo_flags & LO_FLAGS_AUTOCLEAR);
 
+	/*cppcheck-suppress * */
 	return sprintf(buf, "%s\n", autoclear ? "1" : "0");
 }
 
@@ -1060,7 +1065,9 @@ static ssize_t loop_attr_partscan_show(struct loop_device *lo, char *buf)
 {
 	int partscan = (lo->lo_flags & LO_FLAGS_PARTSCAN);
 
+	/*cppcheck-suppress * */
 	return sprintf(buf, "%s\n", partscan ? "1" : "0");
+	/*lint -restore*/
 }
 
 LOOP_ATTR_RO(backing_file); /*lint !e715 !e846 !e514 !e778 !e866 !e84 */
@@ -1327,7 +1334,9 @@ static int loop_clr_fd(struct loop_device *lo)
 	 */
 	if (lo->lo_refcnt > 1) {
 		lo->lo_flags |= LO_FLAGS_AUTOCLEAR;
+		/*lint -save -e455*/
 		mutex_unlock(&lo->lo_ctl_mutex);
+		/*lint -restore*/
 		return 0;
 	}
 
@@ -1382,7 +1391,9 @@ static int loop_clr_fd(struct loop_device *lo)
 	destroy_workqueue(lo->wq);
 	lo->wq = NULL;
 #endif
+	/*lint -save -e455*/
 	mutex_unlock(&lo->lo_ctl_mutex);
+	/*lint -restore*/
 	/*
 	 * Need not hold lo_ctl_mutex to fput backing file.
 	 * Calling fput holding lo_ctl_mutex triggers a circular
@@ -1579,14 +1590,17 @@ loop_get_status_old(struct loop_device *lo, struct loop_info __user *arg) {
 	struct loop_info info;
 	struct loop_info64 info64;
 	int err = 0;
+	int i;
 
 	if (!arg)
 		err = -EINVAL;
 	if (!err)
 		err = loop_get_status(lo, &info64);
+	for (i = 0; i < 4; i++)
+		info.reserved[i] = 0;
 	if (!err)
 		err = loop_info64_to_old(&info64, &info); /*lint !e645 */
-	if (!err && copy_to_user(arg, &info, sizeof(info))) /*lint !e645 */
+	if (!err && copy_to_user(arg, &info, sizeof(info))) /*lint !e645 !e613 !e668*/
 		err = -EFAULT;
 
 	return err;
@@ -1596,12 +1610,15 @@ static int
 loop_get_status64(struct loop_device *lo, struct loop_info64 __user *arg) {
 	struct loop_info64 info64;
 	int err = 0;
+	int i;
 
 	if (!arg)
 		err = -EINVAL;
+	for (i = 0; i < 2; i++)
+		info64.lo_init[i] = 0;
 	if (!err)
 		err = loop_get_status(lo, &info64);
-	if (!err && copy_to_user(arg, &info64, sizeof(info64))) /*lint !e645 */
+	if (!err && copy_to_user(arg, &info64, sizeof(info64))) /*lint !e645 !e613 !e668*/
 		err = -EFAULT;
 
 	return err;
@@ -1615,6 +1632,7 @@ static int loop_set_capacity(struct loop_device *lo, struct block_device *bdev)
 	return figure_loop_size(lo, lo->lo_offset, lo->lo_sizelimit);
 } /*lint !e715 */
 
+/*lint -save -e456 -e454 */
 static int lo_ioctl(struct block_device *bdev, fmode_t mode,
 	unsigned int cmd, unsigned long arg)
 {
@@ -1666,7 +1684,7 @@ static int lo_ioctl(struct block_device *bdev, fmode_t mode,
 out_unlocked:
 	return err;
 }
-
+/*lint -restore*/
 #ifdef CONFIG_COMPAT
 /*lint -save -e754 */
 struct compat_loop_info {
@@ -1727,8 +1745,11 @@ loop_info64_to_compat(const struct loop_info64 *info64,
 		      struct compat_loop_info __user *arg)
 {
 	struct compat_loop_info info;
+	int i;
 
 	memset(&info, 0, sizeof(info));
+	for (i = 0; i < LO_NAME_SIZE; i++)
+		info.lo_name[i] = 0;
 	info.lo_number = info64->lo_number; /*lint !e713 */
 	info.lo_device = info64->lo_device; /*lint !e712 */
 	info.lo_inode = info64->lo_inode; /*lint !e712 */
@@ -1855,6 +1876,8 @@ static void lo_release(struct gendisk *disk, fmode_t mode)
 	if (--lo->lo_refcnt)
 		goto out;
 
+	/*lint -save -e454*/
+	/*unlock in loop_clr_fd native code*/
 	if (lo->lo_flags & LO_FLAGS_AUTOCLEAR) {
 		/*
 		 * In autoclear mode, stop the loop thread
@@ -1863,6 +1886,7 @@ static void lo_release(struct gendisk *disk, fmode_t mode)
 		err = loop_clr_fd(lo);
 		if (!err)
 			return;
+	/*lint -restore*/
 	} else {
 		/*
 		 * Otherwise keep thread (if running) and config,
@@ -2136,7 +2160,7 @@ static int loop_add(struct loop_device **l, int i)
 	disk->fops		= &lo_fops;
 	disk->private_data	= lo;
 	disk->queue		= lo->lo_queue;
-	sprintf(disk->disk_name, "loop%d", i);
+	sprintf(disk->disk_name, "loop%d", i); /*lint !e421*/
 	add_disk(disk);
 	*l = lo;
 	return lo->lo_number;

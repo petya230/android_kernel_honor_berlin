@@ -106,10 +106,6 @@ static void updata_freq_volt_up_fn(struct work_struct *work)
 
 	if (volt != sw->target_volt) {
 		pr_err("[%s]schedule up volt failed, ret = %d!\n", __func__, volt);
-#if 0
-		if (!IS_FPGA())
-			BUG_ON(1);
-#endif
 	} else {
 		ret = clk_set_rate_nolock(sw->linkage, sw->target_freq);
 		if (ret < 0)
@@ -130,6 +126,12 @@ static long peri_dvfs_clk_determine_rate(struct clk_hw *hw, unsigned long rate,
 					struct clk **best_parent_clk)
 {
 	return rate;
+}
+#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 4, 0))
+static int peri_dvfs_clk_determine_rate(struct clk_hw *hw,
+			     struct clk_rate_request *req)
+{
+	return 0;
 }
 #else
 static long peri_dvfs_clk_determine_rate(struct clk_hw *hw, unsigned long rate,
@@ -175,12 +177,12 @@ static unsigned long peri_dvfs_clk_recalc_rate(struct clk_hw *hw,
 	source_name = dfclk->parent_names[vdec_mux_value];
 	if(0 == strncmp(source_name, "clk_ppll1", sizeof("clk_ppll1"))) {
 		pr_err("%s: vdec chose the wrong ppll: ppll1\n", __func__);
-		return -ENODEV;
+		return -ENODEV;/*lint !e570*/
 	}
 	ppll = __clk_lookup(source_name);
 	if (IS_ERR_OR_NULL(ppll)) {
 		pr_err("[%s] %s get failed!\n", __func__, source_name);
-		return -ENODEV;
+		return -ENODEV;/*lint !e570*/
 	}
 	ppll_rate = __clk_get_rate(ppll);
 	rate = ppll_rate/vdec_div_value;
@@ -189,7 +191,7 @@ static unsigned long peri_dvfs_clk_recalc_rate(struct clk_hw *hw,
 	clk_friend = __clk_lookup(dfclk->link);
 	if (IS_ERR_OR_NULL(clk_friend)) {
 		pr_err("[%s] %s get failed!\n", __func__, dfclk->link);
-		return -ENODEV;
+		return -ENODEV;/*lint !e570*/
 	}
 	ret = clk_set_rate_nolock(clk_friend, rate);
 	if (ret < 0)
@@ -304,7 +306,9 @@ static int peri_dvfs_clk_prepare(struct clk_hw *hw)
 	struct peri_dvfs_clk *dfclk = container_of(hw, struct peri_dvfs_clk, hw);
 	struct clk *friend_clk;
 	int ret = 0;
+#ifdef CONFIG_HISI_PERIDVFS
 	u32 cur_rate = 0;
+#endif
 
 	friend_clk = __clk_lookup(dfclk->link);
 	if (IS_ERR_OR_NULL(friend_clk)) {
@@ -438,14 +442,14 @@ static void __init hisi_peri_dvfs_clk_setup(struct device_node *np)
 			__func__, np->name);
 		goto err_prop;
 	}
-	if (of_property_read_u32(np, "hisilicon,clk-devfreq-id", &device_id)) {
+	if (of_property_read_u32(np, "hisilicon,clk-devfreq-id", (u32 *)&device_id)) {
 		pr_err("[%s] node %s doesn't have clk-devfreq-id property!\n",
 			__func__, np->name);
 		goto err_prop;
 	}
 	if (of_property_read_string(np, "clock-friend-names", &clk_friend))
 		clk_friend = NULL;
-	if (of_property_read_u32(np, "hisilicon,sensitive-freq", &sensitive_freq)) {
+	if (of_property_read_u32(np, "hisilicon,sensitive-freq", (u32 *)&sensitive_freq)) {
 		pr_err("[%s] node %s doesn't have sensitive-freqproperty!\n",
 			__func__, np->name);
 		goto err_prop;
@@ -525,7 +529,7 @@ static void __init hisi_peri_dvfs_clk_setup(struct device_node *np)
 #endif
 	of_clk_add_provider(np, of_clk_src_simple_get, clk);
 	clk_register_clkdev(clk, clk_name, NULL);
-	return;
+	return;/*lint !e429*/
 
 err_parent_name:
 	kfree(parent_names);
@@ -533,11 +537,11 @@ err_parent_name:
 err_clk:
 	kfree(init);
 	init = NULL;
-err_init:
+err_init:/*lint !e429*/
 	kfree(devfreq_clk);
 	devfreq_clk = NULL;
 err_prop:
 	return;
 }
 
-CLK_OF_DECLARE(hisi_peri_dvfs, "hisilicon,clkdev-dvfs", hisi_peri_dvfs_clk_setup);
+CLK_OF_DECLARE(hisi_peri_dvfs, "hisilicon,clkdev-dvfs", hisi_peri_dvfs_clk_setup);/*lint !e611*/

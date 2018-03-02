@@ -137,7 +137,7 @@ void kbase_job_hw_submit(struct kbase_device *kbdev,
 	katom->start_timestamp = ktime_get();
 
 	/* GO ! */
-	dev_dbg(kbdev->dev, "JS: Submitting atom %p from ctx %p to js[%d] with head=0x%llx, affinity=0x%llx",
+	dev_dbg(kbdev->dev, "JS: Submitting atom %pK from ctx %pK to js[%d] with head=0x%llx, affinity=0x%llx",
 				katom, kctx, js, jc_head, katom->affinity);
 
 	KBASE_TRACE_ADD_SLOT_INFO(kbdev, JM_SUBMIT, kctx, katom, jc_head, js,
@@ -866,7 +866,7 @@ void kbase_jm_wait_for_zero_jobs(struct kbase_context *kctx)
 	 * policy queue either */
 	wait_event(kctx->jctx.zero_jobs_wait, kctx->jctx.job_nr == 0);
 	wait_event(kctx->jctx.sched_info.ctx.is_scheduled_wait,
-		   !kbase_ctx_flag(kctx, KCTX_SCHEDULED));
+		   !kbase_ctx_flag(kctx, KCTX_SCHEDULED));//lint !e666
 
 	spin_lock_irqsave(&reset_data.lock, flags);
 	if (reset_data.stage == 1) {
@@ -887,7 +887,7 @@ void kbase_jm_wait_for_zero_jobs(struct kbase_context *kctx)
 	}
 	destroy_hrtimer_on_stack(&reset_data.timer);
 
-	dev_dbg(kbdev->dev, "Zap: Finished Context %p", kctx);
+	dev_dbg(kbdev->dev, "Zap: Finished Context %pK", kctx);
 
 	/* Ensure that the signallers of the waitqs have finished */
 	mutex_lock(&kctx->jctx.lock);
@@ -1355,6 +1355,12 @@ static void kbasep_reset_timeout_worker(struct work_struct *data)
 									0);
 		kbase_js_sched_all(kbdev);
 	}
+
+	/* May have unblocked other atoms in job slot.
+	 * Try to update all job slots */
+	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+	kbase_backend_slot_update(kbdev);
+	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 
 	kbase_pm_context_idle(kbdev);
 

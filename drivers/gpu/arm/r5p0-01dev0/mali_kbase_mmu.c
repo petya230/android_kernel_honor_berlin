@@ -1099,6 +1099,7 @@ void *kbase_mmu_dump(struct kbase_context *kctx, int nr_pages)
 			return NULL;
 		}
 
+		/* Add on the size for the end marker */
 		size += sizeof(u64);
 
 		if (size > nr_pages * PAGE_SIZE || size_left < sizeof(u64)) {
@@ -1107,6 +1108,7 @@ void *kbase_mmu_dump(struct kbase_context *kctx, int nr_pages)
 			return NULL;
 		}
 
+		/* Add the end marker */
 		memcpy(buffer, &end_marker, sizeof(u64));
 	}
 

@@ -810,7 +810,13 @@ struct base_dependency {
 	base_jd_dep_type dependency_type;    /**< Dependency type */
 };
 
-
+/* This structure has changed since UK 10.2 for which base_jd_core_req was a u16 value.
+ * In order to keep the size of the structure same, padding field has been adjusted
+ * accordingly and core_req field of a u32 type (to which UK 10.3 base_jd_core_req defines)
+ * is added at the end of the structure. Place in the structure previously occupied by u16 core_req
+ * is kept but renamed to compat_core_req and as such it can be used in ioctl call for job submission
+ * as long as UK 10.2 legacy is supported. Once when this support ends, this field can be left
+ * for possible future use. */
 typedef struct base_jd_atom_v2 {
 	u64 jc;			    /**< job-chain GPU address */
 	struct base_jd_udata udata;		    /**< user data */

@@ -20,7 +20,10 @@
 
 */
 
+/* Changes:
 
+	1.01	GRG 1998.12.20	 Added support for soft power switch
+*/
 
 #define	FRIQ_VERSION	"1.01" 
 

@@ -888,9 +888,6 @@ OAL_STATIC oal_void  dmac_event_fsm_action_subtable_register(oal_void)
     g_ast_dmac_wlan_ctx_event_sub_table[DMAC_WLAN_CTX_EVENT_SUB_TYPE_DSCR_OPT].p_func = dmac_pkt_mem_opt_stat_event_process;
 #endif
 
-#ifdef _PRE_WLAN_FEATURE_11K
-    g_ast_dmac_wlan_ctx_event_sub_table[DMAC_WLAN_CTX_EVENT_SUB_TYPE_RPT_SAVE_BSS_INFO].p_func = dmac_rrm_save_bss_info_event_process;
-#endif
 
     /* 注册DMAC模块WLAN_DRX事件子表 */
     g_ast_dmac_wlan_drx_event_sub_table[HAL_WLAN_DRX_EVENT_SUB_TYPE_RX].p_func = dmac_rx_process_data_event;

@@ -106,11 +106,26 @@ static int clk_gate_is_enabled(struct clk_hw *hw)
 
 	return reg ? 1 : 0;
 }
+#ifdef CONFIG_HISI_CLK_DEBUG
+static int hi3xxx_dumpgt(struct clk_hw *hw, char* buf)
+{
+	u32 reg;
+	struct clk_gate *gate = to_clk_gate(hw);
 
+	if (gate->reg && buf) {
+		reg = clk_readl(gate->reg);
+		snprintf(buf, DUMP_CLKBUFF_MAX_SIZE, "[%s] : regAddress = 0x%pK, regval = 0x%x\n", __clk_get_name(hw->clk), gate->reg, reg);
+	}
+	return 0;
+}
+#endif
 const struct clk_ops clk_gate_ops = {
 	.enable = clk_gate_enable,
 	.disable = clk_gate_disable,
 	.is_enabled = clk_gate_is_enabled,
+#ifdef CONFIG_HISI_CLK_DEBUG
+	.dump_reg = hi3xxx_dumpgt,
+#endif
 };
 EXPORT_SYMBOL_GPL(clk_gate_ops);
 

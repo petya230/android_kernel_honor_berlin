@@ -19,8 +19,12 @@ config HISI_CLK_PM_MONITOR
 	default n
 
 config HISI_CLK_HI3660
-	bool "3660 and boston test_chip clock spec"
+	bool "hi3660 clock spec"
 	default n
+
+config HISI_CLK_KIRIN
+        bool "boston and the version behind of boston clock spec"
+        default n
 
 config HISI_HI6250_CLK
 	bool "6250 clock spec"

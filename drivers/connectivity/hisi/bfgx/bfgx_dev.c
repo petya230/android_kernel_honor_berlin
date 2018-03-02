@@ -3675,11 +3675,7 @@ STATIC int32 ps_probe(struct platform_device *pdev)
 #endif
     if (g_board_info.have_ir)
     {
-        err = misc_deregister(&hw_ir_device);;
-        if (0 != err)
-        {
-            PS_PRINT_ERR("remove ir inode failed\n");
-        }
+        misc_deregister(&hw_ir_device);;
     }
     err_register_ir:
         misc_deregister(&hw_debug_device);

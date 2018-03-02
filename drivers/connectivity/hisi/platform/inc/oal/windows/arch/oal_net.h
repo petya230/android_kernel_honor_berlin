@@ -746,6 +746,7 @@ struct beacon_parameters {
 };
 typedef struct beacon_parameters    oal_beacon_parameters;
 
+/* lm add new code begin */
 /* 3.10内核中下发的修改beacon帧参数的结构体 */
 struct cfg80211_beacon_data
 {
@@ -830,6 +831,7 @@ struct cfg80211_ap_settings {
 	oal_uint32                       radar_required;
 };
 typedef struct cfg80211_ap_settings oal_ap_settings_stru;
+/* lm add new code end */
 
 struct cfg80211_update_ft_ies_params {
     oal_uint16                   md;
@@ -1014,7 +1016,6 @@ typedef struct oal_netbuf_tag
     oal_uint8       cb[OAL_WIN32_NETBUF_CB_SIZE];
     oal_uint32      len;
     oal_uint32      cloned;
-    oal_uint32      priority;
     oal_uint16      protocol;
     oal_uint16      vlan_tci;
     oal_uint8      *transport_header;
@@ -1404,7 +1405,7 @@ typedef struct oal_cfg80211_scan_request_tag
     /* internal */
     oal_wiphy_stru         *wiphy;
     oal_net_device_stru    *dev;
-
+    struct wireless_dev    *wdev;
     oal_bool_enum_uint8     aborted;
     oal_uint8               auc_arry[3];
 
@@ -1532,11 +1533,13 @@ typedef struct oal_cfg80211_ops_tag
     oal_int32 (*change_station)(oal_wiphy_stru *pst_wiphy, oal_net_device_stru *pst_dev, oal_uint8 *puc_mac, oal_station_parameters_stru *pst_sta_parms);
     oal_int32 (*get_station)(oal_wiphy_stru *pst_wiphy, oal_net_device_stru *pst_dev, oal_uint8 *puc_mac, oal_station_info_stru *pst_sta_info);
     oal_int32 (*dump_station)(oal_wiphy_stru *wiphy, oal_net_device_stru *dev, oal_int32 idx, oal_uint8 *mac, oal_station_info_stru *pst_sta_info);
+    /* lm add new code begin */
     oal_int32 (*change_beacon)(oal_wiphy_stru *pst_wiphy, oal_net_device_stru *pst_netdev, oal_beacon_data_stru *pst_beacon_info);
     oal_int32 (*start_ap)(oal_wiphy_stru *pst_wiphy, oal_net_device_stru *pst_netdev, oal_ap_settings_stru *pst_ap_settings);
     oal_int32 (*stop_ap)(oal_wiphy_stru *pst_wiphy, oal_net_device_stru *pst_netdev);
     oal_int32 (*change_bss)(oal_wiphy_stru *pst_wiphy, oal_net_device_stru *pst_netdev, oal_bss_parameters *pst_bss_params);
     oal_int32 (*set_power_mgmt)(oal_wiphy_stru  *pst_wiphy,oal_net_device_stru *pst_ndev, oal_bool_enum  enabled,oal_int32 ul_timeout);
+    /* lm add new code end */
 }oal_cfg80211_ops_stru;
 
 typedef struct

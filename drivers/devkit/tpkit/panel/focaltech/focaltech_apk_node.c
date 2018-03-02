@@ -45,7 +45,10 @@ const char __user *buff, size_t count, loff_t *ppos)
 
 	focal_dev_data = focal_get_device_data();
 	focal_pdata = focal_get_platform_data();
-
+	if(buflen >= WRITE_BUF_SIZE){
+		TS_LOG_DEBUG("%s:buff size is too large",	__func__);
+		return -EINVAL;
+	}
 	if (copy_from_user(&writebuf, buff, buflen)) {
 		TS_LOG_DEBUG("%s:copy from user error",	__func__);
 		return -EFAULT;
@@ -120,7 +123,7 @@ static ssize_t
 focal_proc_read(struct file *filp, char __user *buff, size_t count, loff_t *ppos)
 {
 	int ret = 0;
-	int num_read_chars = 0;
+	size_t num_read_chars = 0;
 	int readlen = 0;
 	u8 regvalue = 0x00, regaddr = 0x00;
 	u8 buf[READ_BUF_SIZE] ={0};
@@ -160,7 +163,10 @@ focal_proc_read(struct file *filp, char __user *buff, size_t count, loff_t *ppos
 	default:
 		break;
 	}
-
+	if (num_read_chars >= count){
+		TS_LOG_DEBUG("%s:buff size is too large",  __func__);
+		return -EINVAL ;
+	}
 	if (copy_to_user(buff, buf, num_read_chars)) {
 		TS_LOG_DEBUG("%s:copy to user error",  __func__);
 		return -EFAULT;

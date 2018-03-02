@@ -153,7 +153,7 @@ static void kbase_job_fault_resume_worker(struct work_struct *data)
 	 * atoms belong to the same context.
 	 */
 	wait_event(kctx->kbdev->job_fault_resume_wq,
-			 kbase_ctx_has_no_event_pending(kctx));
+			 kbase_ctx_has_no_event_pending(kctx));//lint !e666
 
 	atomic_set(&kctx->job_fault_count, 0);
 	kbase_jd_done_worker(&katom->work);

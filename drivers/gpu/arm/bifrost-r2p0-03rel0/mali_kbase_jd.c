@@ -34,6 +34,8 @@
 #include <mali_kbase_tlstream.h>
 
 #include "mali_kbase_dma_fence.h"
+#include "mali_kbase_config_platform.h"
+#include "mali_kbase_config_hifeatures.h"
 
 #define beenthere(kctx, f, a...)  dev_dbg(kctx->kbdev->dev, "%s:" f, __func__, ##a)
 
@@ -704,7 +706,7 @@ static void jd_try_submitting_deps(struct list_head *out_list,
 		struct list_head *pos;
 
 		list_for_each(pos, &node->dep_head[i]) {
-			struct kbase_jd_atom *dep_atom = list_entry(pos,
+			struct kbase_jd_atom *dep_atom = list_entry(pos,/* [false alarm]: no problem - fortify check */
 					struct kbase_jd_atom, dep_item[i]);
 
 			if (IS_GPU_ATOM(dep_atom) && !dep_atom->in_jd_list) {
@@ -1487,11 +1489,18 @@ void kbase_jd_done_worker(struct work_struct *data)
 		return;
 	}
 
-	if (katom->event_code != BASE_JD_EVENT_DONE)
+	if (katom->event_code != BASE_JD_EVENT_DONE) {
 		dev_err(kbdev->dev,
 			"t6xx: GPU fault 0x%02lx from job slot %d\n",
 					(unsigned long)katom->event_code,
 								katom->slot_nr);
+#ifdef CONFIG_HISI_ENABLE_HPM_DATA_COLLECT
+		/*benchmark data collect */
+		if (kbase_has_hi_feature(kbdev, KBASE_FEATURE_HI0009)) {
+			BUG_ON(1);  //lint !e730
+		}
+#endif
+	}
 
 	if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_8316))
 		kbase_as_poking_timer_release_atom(kbdev, kctx, katom);

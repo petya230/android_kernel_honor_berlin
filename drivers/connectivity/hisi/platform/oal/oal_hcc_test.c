@@ -78,7 +78,9 @@ struct hcc_test_stru g_hcc_test_stru[HCC_TEST_CASE_COUNT] = {
 
 #ifdef _PRE_CONFIG_HISI_PANIC_DUMP_SUPPORT
 oal_uint32 wifi_panic_debug = 0;
+#ifdef PLATFORM_DEBUG_ENABLE
 module_param(wifi_panic_debug, int, S_IRUGO|S_IWUSR);
+#endif
 OAL_STATIC LIST_HEAD(wifi_panic_log_head);
 #endif
 
@@ -1147,7 +1149,7 @@ OAL_STATIC struct attribute *hcc_test_sysfs_entries[] = {
         NULL
 };
 
-OAL_STATIC struct attribute_group hcc_test_attribute_group = {
+struct attribute_group hcc_test_attribute_group = {
         .name = "test",
         .attrs = hcc_test_sysfs_entries,
 };
@@ -1384,6 +1386,7 @@ oal_int32  hcc_test_init_module(struct hcc_handler* hcc)
         goto fail_create_sdio_group;
     }
 
+#ifdef PLATFORM_DEBUG_ENABLE
     /* create the files associated with this kobject */
     ret = sysfs_create_group(g_conn_syfs_hcc_object, &hcc_test_attribute_group);
     if (ret)
@@ -1392,6 +1395,7 @@ oal_int32  hcc_test_init_module(struct hcc_handler* hcc)
         OAL_IO_PRINT("sysfs create test group fail.ret=%d\n",ret);
         goto fail_create_hcc_test_group;
     }
+#endif
 
     ret = sysfs_create_group(g_conn_syfs_hcc_object,&hcc_attribute_group);
     if (ret)
@@ -1466,8 +1470,10 @@ fail_rx_cb_register:
 fail_g_hcc_test_event:
     sysfs_remove_group(g_conn_syfs_hcc_object, &hcc_attribute_group);
 fail_create_hcc_group:
+#ifdef PLATFORM_DEBUG_ENABLE
     sysfs_remove_group(g_conn_syfs_hcc_object, &hcc_test_attribute_group);
 fail_create_hcc_test_group:
+#endif
     sysfs_remove_group(g_conn_syfs_hcc_object, &hsdio_attribute_group);
 fail_create_sdio_group:
     kobject_put(g_conn_syfs_hcc_object);
@@ -1488,7 +1494,9 @@ oal_void  hcc_test_exit_module(struct hcc_handler* hcc)
         g_hcc_test_event->test_workqueue = NULL;
     }
     sysfs_remove_group(g_conn_syfs_hcc_object, &hcc_attribute_group);
+#ifdef PLATFORM_DEBUG_ENABLE
     sysfs_remove_group(g_conn_syfs_hcc_object, &hcc_test_attribute_group);
+#endif
     sysfs_remove_group(g_conn_syfs_hcc_object, &hsdio_attribute_group);
     kobject_put(g_conn_syfs_hcc_object);
     hcc_rx_unregister(hcc,HCC_ACTION_TYPE_TEST);

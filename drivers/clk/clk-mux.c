@@ -124,6 +124,19 @@ static int hisi_selreg_check(struct clk_hw *hw)
 	else
 		return 0;
 }
+
+static int hi3xxx_dumpmux(struct clk_hw *hw, char* buf)
+{
+	struct clk_mux *mux = to_clk_mux(hw);
+	u32 val = 0;
+
+	if (mux->reg && buf) {
+		val = readl(mux->reg) ;
+		snprintf(buf, DUMP_CLKBUFF_MAX_SIZE, "[%s] : regAddress = 0x%pK, regval = 0x%x\n", __clk_get_name(hw->clk), mux->reg, val);
+	}
+	return 0;
+
+}
 #endif
 
 const struct clk_ops clk_mux_ops = {
@@ -132,6 +145,7 @@ const struct clk_ops clk_mux_ops = {
 	.determine_rate = __clk_mux_determine_rate,
 #ifdef CONFIG_HISI_CLK_DEBUG
 	.check_selreg = hisi_selreg_check,
+	.dump_reg = hi3xxx_dumpmux,
 #endif
 };
 EXPORT_SYMBOL_GPL(clk_mux_ops);

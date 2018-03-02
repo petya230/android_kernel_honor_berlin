@@ -277,7 +277,14 @@ typedef struct
 #ifdef _PRE_WLAN_FEATURE_BTCOEX
     dmac_user_btcoex_stru                       st_dmac_user_btcoex_stru;
 #endif
+
+    oal_uint64                                  ull_sn;                                 /* 软件填写单播加密SN */
     /* 当前VAP工作在STA模式，以下字段为user是AP时独有字段，新添加字段请注意!!! */
+    oal_uint8                                   bit_ptk_need_install      : 1,          /* 需要更新单播秘钥 */
+                                                bit_is_rx_eapol_key_open  : 1,          /* 记录接收的eapol-key 是否为加密 */
+                                                bit_eapol_key_4_4_tx_succ : 1,          /* eapol-key 4/4 发送成功 */
+                                                bit_ptk_key_idx           : 3,          /* 保存单播秘钥key_idx */
+                                                bit_resv2                 : 2;
 }dmac_user_stru;
 
 /*****************************************************************************

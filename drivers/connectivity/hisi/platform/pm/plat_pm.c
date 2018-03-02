@@ -455,16 +455,20 @@ void host_wkup_dev_work(struct work_struct *work)
     }
 }
 
+#ifdef CONFIG_INPUTHUB
 /* sensorbub模块的函数，睡眠唤醒时用来查询sensorhub的状态 */
 extern int getSensorMcuMode(void);
 extern int get_iomcu_power_state(void);
+#endif
 
 void host_send_disallow_msg(struct work_struct *work)
 {
 #define MAX_TTYRESUME_LOOPCNT (300)
 #define MAX_SENSORHUB_LOOPCNT (30)
     uint32 loop_tty_resume_cnt = 0;
+#ifdef CONFIG_INPUTHUB
     uint32 loop_sensorhub_resume_cnt = 0;
+#endif
     struct ps_core_s *ps_core_d = NULL;
     struct pm_drv_data *pm_data = pm_get_drvdata();
 
@@ -498,6 +502,7 @@ void host_send_disallow_msg(struct work_struct *work)
             msleep(10);
         }
 
+#ifdef CONFIG_INPUTHUB
         if (UART_PCLK_FROM_SENSORHUB == get_uart_pclk_source())
         {
             /*查询sensorhub状态，如果不是wkup状态，uart的时钟可能会不对*/
@@ -516,6 +521,7 @@ void host_send_disallow_msg(struct work_struct *work)
                 }
             }
         }
+#endif
     }
     else
     {

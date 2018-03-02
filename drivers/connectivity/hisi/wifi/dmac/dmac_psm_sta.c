@@ -1025,7 +1025,6 @@ oal_void  dmac_psm_rx_process_data_sta(dmac_vap_stru *pst_dmac_vap, oal_netbuf_s
 {
     oal_uint8                *puc_dest_addr;      /* 目的地址 */
     mac_ieee80211_frame_stru *pst_frame_hdr;
-    mac_tx_ctl_stru          *pst_tx_ctl;
     mac_sta_pm_handler_stru  *pst_mac_sta_pm_handle;
 
     pst_mac_sta_pm_handle = (mac_sta_pm_handler_stru *)(pst_dmac_vap->pst_pm_handler);
@@ -1037,8 +1036,6 @@ oal_void  dmac_psm_rx_process_data_sta(dmac_vap_stru *pst_dmac_vap, oal_netbuf_s
 
     pst_frame_hdr = (mac_ieee80211_frame_stru *)OAL_NETBUF_HEADER(pst_buf);
     puc_dest_addr = pst_frame_hdr->auc_address1;
-
-    pst_tx_ctl  = (mac_tx_ctl_stru *)OAL_NETBUF_CB(pst_buf);
 
     if ((mac_mib_get_powermanagementmode(&(pst_dmac_vap->st_vap_base_info)) != WLAN_MIB_PWR_MGMT_MODE_PWRSAVE) ||
         (0 == pst_dmac_vap->st_vap_base_info.us_sta_aid))
@@ -1054,17 +1051,7 @@ oal_void  dmac_psm_rx_process_data_sta(dmac_vap_stru *pst_dmac_vap, oal_netbuf_s
         return;
     }
 
-    if (STA_PWR_SAVE_STATE_ACTIVE == STA_GET_PM_STATE(pst_mac_sta_pm_handle))
-    {
-        if ((OAL_TRUE == dmac_is_legacy_ac(pst_dmac_vap, pst_tx_ctl))
-			&&(((WLAN_NULL_FRAME != pst_frame_hdr->st_frame_control.bit_sub_type)
-     			&&(WLAN_QOS_NULL_FRAME != pst_frame_hdr->st_frame_control.bit_sub_type))))
-        {
-            pst_mac_sta_pm_handle->ul_psm_pkt_cnt++;
-        }
-
-    }
-    else
+    if (STA_PWR_SAVE_STATE_ACTIVE != STA_GET_PM_STATE(pst_mac_sta_pm_handle))
     {
         /* 如果此时处于doze状态先切到awake状态 */
         if (STA_PWR_SAVE_STATE_DOZE == STA_GET_PM_STATE(pst_mac_sta_pm_handle))
@@ -1135,7 +1122,7 @@ oal_void  dmac_psm_rx_process_data_sta(dmac_vap_stru *pst_dmac_vap, oal_netbuf_s
 oal_uint8 dmac_psm_tx_process_data_sta(dmac_vap_stru *pst_dmac_vap, mac_tx_ctl_stru *pst_tx_ctl)
 {
     oal_uint8                 uc_pwr_mgmt_bit = 0;
-    mac_sta_pm_handler_stru  *pst_mac_sta_pm_handle;
+    mac_sta_pm_handler_stru   *pst_mac_sta_pm_handle;
 
     pst_mac_sta_pm_handle = (mac_sta_pm_handler_stru *)(pst_dmac_vap->pst_pm_handler);
     if (OAL_PTR_NULL == pst_mac_sta_pm_handle)
@@ -1158,10 +1145,8 @@ oal_uint8 dmac_psm_tx_process_data_sta(dmac_vap_stru *pst_dmac_vap, mac_tx_ctl_s
 
     if (STA_PWR_SAVE_STATE_ACTIVE == STA_GET_PM_STATE(pst_mac_sta_pm_handle))
     {
-        /* 传统AC重启activity定时器 */
-        if (OAL_TRUE == dmac_is_legacy_ac(pst_dmac_vap, pst_tx_ctl)
-			&&(((WLAN_NULL_FRAME !=  mac_get_cb_frame_hdr(pst_tx_ctl)->st_frame_control.bit_sub_type)
-     			&&(WLAN_QOS_NULL_FRAME != mac_get_cb_frame_hdr(pst_tx_ctl)->st_frame_control.bit_sub_type))))
+        if ((WLAN_NULL_FRAME !=  mac_get_cb_frame_hdr(pst_tx_ctl)->st_frame_control.bit_sub_type)
+                &&(WLAN_QOS_NULL_FRAME != mac_get_cb_frame_hdr(pst_tx_ctl)->st_frame_control.bit_sub_type))
         {
             pst_mac_sta_pm_handle->ul_psm_pkt_cnt++;
         }

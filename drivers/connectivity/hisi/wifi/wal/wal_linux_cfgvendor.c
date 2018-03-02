@@ -37,6 +37,7 @@ extern "C" {
 #define OUI_HISI    0x001018
 
 #if (defined(_PRE_PRODUCT_ID_HI110X_HOST) || (LINUX_VERSION_CODE >= KERNEL_VERSION(3,14,0))) && (_PRE_OS_VERSION_LINUX == _PRE_OS_VERSION)
+extern oal_uint32 band_5g_enabled;
 
 /*****************************************************************************
  º¯ Êý Ãû  : wal_cfgvendor_del_radar_channel
@@ -326,6 +327,10 @@ OAL_STATIC oal_int32 wal_cfgvendor_do_get_feature_set(oal_void)
     l_feature_set |= WIFI_FEATURE_HOTSPOT;
 #endif
 
+    if (band_5g_enabled)
+    {
+        l_feature_set |= WIFI_FEATURE_INFRA_5G;
+    }
     return l_feature_set;
 }
 

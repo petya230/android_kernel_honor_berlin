@@ -24,7 +24,11 @@
 
 */
 
+/* Changes:
 
+	1.01	1998.05.03	Switched from cli()/sti() to spinlocks
+	1.02    1998.12.14      Added support for nice > 1
+*/
 	
 #define PS_VERSION	"1.02"
 

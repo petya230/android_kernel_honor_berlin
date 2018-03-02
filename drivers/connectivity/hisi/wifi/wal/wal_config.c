@@ -5403,7 +5403,7 @@ OAL_STATIC oal_uint32  wal_config_send_neighbor_req(mac_vap_stru *pst_mac_vap, o
 {
     return hmac_config_send_neighbor_req(pst_mac_vap, us_len, puc_param);
 }
-#endif
+#endif //_PRE_WLAN_FEATURE_11K
 
 OAL_STATIC oal_uint32  wal_config_vendor_cmd_get_channel_list(mac_vap_stru *pst_mac_vap, oal_uint16 *pus_len, oal_uint8 *puc_param)
 {

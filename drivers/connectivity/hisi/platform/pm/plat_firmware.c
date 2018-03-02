@@ -1302,13 +1302,25 @@ int32 exec_number_type_cmd(uint8 *Key, uint8 *Value)
 
         if (!OS_STR_CMP((int8 *)Key, WMEM_CMD_KEYWORD))
         {
+            if (NULL != OS_STR_STR((int8 *)Value, (int8 *)STR_REG_NFC_EN_KEEP))
+            {
+                if(V100 == get_ec_version())
+                {
+                    PS_PRINT_INFO("hi110x V100\n");
+                }
+                else
+                {
+                    PS_PRINT_INFO("hi110x V120\n");
+                    return SUCC;
+                }
+            }
+
             l_ret = number_type_cmd_send(Key, Value);
             if (0 > l_ret)
             {
                 PS_PRINT_ERR("send key=[%s],value=[%s] fail\n", Key, Value);
                 return l_ret;
             }
-
 
             l_ret = recv_expect_result(MSG_FROM_DEV_WRITEM_OK);
             if (0 > l_ret)

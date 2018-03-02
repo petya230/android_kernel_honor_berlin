@@ -41,10 +41,13 @@ extern "C" {
 oal_dlist_head_stru         g_ast_timer_list[WLAN_FRW_MAX_NUM_CORES];
 oal_spin_lock_stru          g_ast_timer_list_spinlock[WLAN_FRW_MAX_NUM_CORES];
 oal_timer_list_stru         g_st_timer;
+oal_spin_lock_stru          g_st_sys_timer_spinlock;    //系统timer的启动和删除的互斥锁
 oal_uint32                  g_ul_stop_timestamp = 0;
 oal_uint32                  g_ul_restart_timestamp = 0;
 oal_uint32                  g_ul_max_deep_sleep_time = 0;        //记录平台最大睡眠时间
 oal_uint32                  g_ul_need_restart = OAL_FALSE;
+oal_uint32                  g_ul_frw_open = OAL_FALSE;  //系统timer是否已启动的标记
+oal_uint32                  g_ul_frw_timer_running = 0; //timer运行次数
 
 
 #ifdef _PRE_DEBUG_MODE
@@ -59,6 +62,117 @@ oal_uint8                   g_uc_timeout_track_idx = 0;
 OAL_STATIC OAL_INLINE oal_void __frw_timer_immediate_destroy_timer(oal_uint32 ul_file_id,
                                                                                oal_uint32 ul_line_num,
                                                                                frw_timeout_stru *pst_timeout);
+
+/*****************************************************************************
+ 函 数 名  : frw_timer_sys_start
+ 功能描述  : frw系统timer启动，wifi开启的时候调用。加spinlock锁保护全局open标记。
+ 输入参数  : 无
+ 输出参数  : 无
+ 返 回 值  :
+ 调用函数  :
+ 被调函数  :
+
+ 修改历史      :
+  1.日    期   : 2017年1月10日
+    作    者   : z00274374
+    修改内容   : 新生成函数
+
+*****************************************************************************/
+
+oal_void  frw_timer_sys_start(void)
+{
+
+    OAL_IO_PRINT("frw_timer_sys_start\r\n");
+
+    oal_spin_lock_bh(&g_st_sys_timer_spinlock);
+
+    if(OAL_FALSE==g_ul_frw_open)
+    {
+    #ifdef _PRE_FRW_TIMER_BIND_CPU
+        oal_timer_start_on(&g_st_timer, FRW_TIMER_DEFAULT_TIME, 0);
+    #else
+        oal_timer_start(&g_st_timer, FRW_TIMER_DEFAULT_TIME);
+    #endif
+        g_ul_frw_open = OAL_TRUE;
+    }
+
+    oal_spin_unlock_bh(&g_st_sys_timer_spinlock);
+
+}
+
+/*****************************************************************************
+ 函 数 名  : frw_timer_sys_stop
+ 功能描述  : frw系统timer停止，wifi close的时候调用。加spinlock锁保护全局open标记。
+             oal_timer_delete_sync接口按内核要求需要放在spinlock锁外面，否则会死锁。
+ 输入参数  : 无
+ 输出参数  : 无
+ 返 回 值  :
+ 调用函数  :
+ 被调函数  :
+
+ 修改历史      :
+  1.日    期   : 2017年1月10日
+    作    者   : z00274374
+    修改内容   : 新生成函数
+
+*****************************************************************************/
+
+oal_void  frw_timer_sys_stop(void)
+{
+    OAL_IO_PRINT("frw_timer_sys_stop\r\n");
+
+    oal_spin_lock_bh(&g_st_sys_timer_spinlock);
+    if(OAL_TRUE==g_ul_frw_open)
+    {
+        g_ul_frw_open = OAL_FALSE;
+
+        oal_spin_unlock_bh(&g_st_sys_timer_spinlock);
+
+        oal_timer_delete_sync(&g_st_timer);
+
+        return;
+    }
+
+    oal_spin_unlock_bh(&g_st_sys_timer_spinlock);
+
+}
+
+/*****************************************************************************
+ 函 数 名  : frw_timer_sys_restart
+ 功能描述  : frw系统timer重启，timer回调接口中调用来重新启动timer。加spinlock锁保护全局open标记。
+             当open标记为true时，才重启。
+ 输入参数  : 无
+ 输出参数  : 无
+ 返 回 值  :
+ 调用函数  :
+ 被调函数  :
+
+ 修改历史      :
+  1.日    期   : 2017年1月10日
+    作    者   : z00274374
+    修改内容   : 新生成函数
+
+*****************************************************************************/
+
+oal_void  frw_timer_sys_restart(void)
+{
+    oal_spin_lock_bh(&g_st_sys_timer_spinlock);
+
+    /*Only restart when TRUE*/
+    if(OAL_TRUE==g_ul_frw_open)
+    {
+        #ifdef _PRE_FRW_TIMER_BIND_CPU
+            oal_timer_start_on(&g_st_timer, FRW_TIMER_DEFAULT_TIME, 0);
+        #else
+            oal_timer_start(&g_st_timer, FRW_TIMER_DEFAULT_TIME);
+        #endif
+    }
+
+    oal_spin_unlock_bh(&g_st_sys_timer_spinlock);
+
+}
+
+
 
 /*****************************************************************************
  函 数 名  : frw_timer_init
@@ -85,11 +199,10 @@ oal_void  frw_timer_init(oal_uint32 ul_delay, oal_timer_func p_func, oal_uint ui
         oal_spin_lock_init(&g_ast_timer_list_spinlock[ul_core_id]);
     }
     oal_timer_init(&g_st_timer, ul_delay, p_func, ui_arg);
-#ifdef _PRE_FRW_TIMER_BIND_CPU
-    oal_timer_start_on(&g_st_timer, FRW_TIMER_DEFAULT_TIME,0);
-#else
-    oal_timer_start(&g_st_timer, FRW_TIMER_DEFAULT_TIME);
-#endif
+    oal_spin_lock_init(&g_st_sys_timer_spinlock);
+
+    //frw_timer_sys_start();
+
 #ifdef _PRE_DEBUG_MODE
     OAL_MEMZERO(g_st_timeout_track, OAL_SIZEOF(frw_timeout_track_stru) * FRW_TIMEOUT_TRACK_NUM);
 #endif
@@ -767,6 +880,15 @@ oal_void  frw_timer_timeout_proc_event(oal_uint ui_arg)
     }
 #endif
 
+    g_ul_frw_timer_running++;
+
+    /*每2048*10ms,约20s输出一次*/
+    if(0==(g_ul_frw_timer_running&0x7FF))
+    {
+        OAL_IO_PRINT("frw_timer_timeout_proc_event %d\r\n",g_ul_frw_timer_running);
+    }
+
+
 #if defined(_PRE_FRW_TIMER_BIND_CPU) && defined(CONFIG_NR_CPUS)
     do{
         oal_uint32 cpu_id = smp_processor_id();
@@ -793,11 +915,7 @@ oal_void  frw_timer_timeout_proc_event(oal_uint ui_arg)
             if(OAL_FALSE == frw_is_vap_event_queue_empty(ul_core_id, uc_vap_id, FRW_EVENT_TYPE_TIMEOUT))
             {
                 /* 重启定时器 */
-#ifdef _PRE_FRW_TIMER_BIND_CPU
-                oal_timer_start_on(&g_st_timer, FRW_TIMER_DEFAULT_TIME, 0);
-#else
-                oal_timer_start(&g_st_timer, FRW_TIMER_DEFAULT_TIME);
-#endif
+                frw_timer_sys_restart();
                 return ;
             }
 
@@ -806,11 +924,7 @@ oal_void  frw_timer_timeout_proc_event(oal_uint ui_arg)
             if (OAL_UNLIKELY(OAL_PTR_NULL == pst_event_mem))
             {
                 /* 重启定时器 */
-#ifdef _PRE_FRW_TIMER_BIND_CPU
-                oal_timer_start_on(&g_st_timer, FRW_TIMER_DEFAULT_TIME,0);
-#else
-                oal_timer_start(&g_st_timer, FRW_TIMER_DEFAULT_TIME);
-#endif
+                frw_timer_sys_restart();
                 OAM_ERROR_LOG0(0, OAM_SF_FRW, "{frw_timer_timeout_proc_event:: FRW_EVENT_ALLOC failed!}");
                 return;
             }
@@ -839,11 +953,8 @@ oal_void  frw_timer_timeout_proc_event(oal_uint ui_arg)
 #endif
 /*lint +e539*//*lint +e830*/
     /* 重启定时器 */
-#ifdef _PRE_FRW_TIMER_BIND_CPU
-    oal_timer_start_on(&g_st_timer, FRW_TIMER_DEFAULT_TIME, 0);
-#else
-    oal_timer_start(&g_st_timer, FRW_TIMER_DEFAULT_TIME);
-#endif
+    frw_timer_sys_restart();
+
 }
 
 
@@ -919,7 +1030,7 @@ oal_void  frw_timer_dump_timer(oal_uint32 ul_core_id)
     frw_timeout_stru    *pst_timer;
     oal_uint32           ul_cnt = 0;
 
-    OAM_WARNING_LOG0(0, OAM_SF_ANY, "frw_timer_dump_timer::timer dump start.");
+    OAM_WARNING_LOG1(0, OAM_SF_ANY, "frw_timer_dump_timer::timer dump start. timestamp=%d",(oal_uint32)OAL_TIME_GET_STAMP_MS());
     OAL_DLIST_SEARCH_FOR_EACH(pst_dlist_entry, &g_ast_timer_list[ul_core_id])
     {
         pst_timer = OAL_DLIST_GET_ENTRY(pst_dlist_entry, frw_timeout_stru, st_entry);
@@ -933,6 +1044,7 @@ oal_void  frw_timer_dump_timer(oal_uint32 ul_core_id)
         ul_cnt++;
     }
     OAM_WARNING_LOG0(0, OAM_SF_ANY, "frw_timer_dump_timer::timer dump end.");
+
 }
 
 /*lint -e578*//*lint -e19*/
@@ -953,6 +1065,9 @@ oal_module_symbol(g_uc_timeout_track_idx);
 
 oal_module_symbol(frw_timer_restart);
 oal_module_symbol(frw_timer_stop);
+oal_module_symbol(frw_timer_sys_start);
+oal_module_symbol(g_ul_frw_open);
+
 
 
 

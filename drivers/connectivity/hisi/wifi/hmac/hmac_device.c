@@ -591,7 +591,22 @@ int hmac_fb_notify(struct notifier_block *nb,
     int                 *blank = NULL;
     hmac_device_stru    *pst_hmac_device;
 
-    /*struct fb_event *event = data;*/
+    /* 本接口只处理FB_EARLY_EVENT_BLANK一种事件 */
+    if(FB_EARLY_EVENT_BLANK != action)
+    {
+        return NOTIFY_OK;
+    }
+
+    if((NULL == fb_event)||(NULL == fb_event->data))
+    {
+        return NOTIFY_OK;
+    }
+
+    if(NULL == nb)
+    {
+        return NOTIFY_OK;
+    }
+
     pst_hmac_device = OAL_CONTAINER_OF(nb,hmac_device_stru, pm_notifier);
 
     blank = fb_event->data;

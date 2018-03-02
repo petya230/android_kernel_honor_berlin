@@ -1033,7 +1033,7 @@ typedef struct
     oal_bool_enum_uint8                 en_2040bss_switch;                      /* 20/40 bss检测开关 */
     oal_uint8                           uc_in_suspend;
 #ifdef _PRE_WLAN_FEATURE_11K
-    frw_timeout_stru                    st_backoff_meas_timer;
+    //frw_timeout_stru                    st_backoff_meas_timer;
 #endif
 
 #ifdef _PRE_WLAN_FEATURE_SMPS
@@ -1060,7 +1060,7 @@ typedef struct
     oal_bool_enum_uint8                 en_dbac_has_vip_frame;                 /* 标记DBAC运行时收到了关键帧 */
     oal_uint8                           uc_arpoffload_switch;
     oal_uint8                           uc_wapi;
-    oal_uint8                           uc_sar_pwr_limit;                      /* CE认证SAR标准最大功率限制 */
+    oal_uint8                           uc_reserve;
     oal_bool_enum_uint8                 en_is_random_mac_addr_scan;            /* 随机mac扫描开关,从hmac下发 */
     oal_uint8                           auc_mac_oui[WLAN_RANDOM_MAC_OUI_LEN];  /* 随机mac地址OUI,由Android下发 */
     oal_uint8                           auc_rsv[2];

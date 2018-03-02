@@ -2156,7 +2156,20 @@ int32 ps_tx_nfcbuf(struct ps_core_s *ps_core_d, const int8 __user *buf, size_t c
     return 0;
 }
 
-
+/**
+ * Prototype    : ps_tx_gnssbuf
+ * Description  : add packet head to recv gnss data buff from hal,and tx to tty uart
+ * input        : ps_core_d
+ * output       : not
+ * Calls        :
+ * Called By    :
+ *
+ *   History        :
+ *   1.Date         : 2012/11/05
+ *     Author       : wx144390
+ *     Modification : Created function
+ *
+ */
 int32 ps_tx_gnssbuf(struct ps_core_s *ps_core_d, const int8 __user *buf, size_t count)
 {
     struct sk_buff *skb;

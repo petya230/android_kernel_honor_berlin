@@ -1495,6 +1495,7 @@ void *kbase_mmu_dump(struct kbase_context *kctx, int nr_pages)
 		if (!size)
 			goto fail_free;
 
+		/* Add on the size for the end marker */
 		size += sizeof(u64);
 		/* Add on the size for the config */
 		if (kctx->api_version >= KBASE_API_VERSION(8, 4))
@@ -1506,6 +1507,7 @@ void *kbase_mmu_dump(struct kbase_context *kctx, int nr_pages)
 			goto fail_free;
 		}
 
+		/* Add the end marker */
 		memcpy(mmu_dump_buffer, &end_marker, sizeof(u64));
 	}
 

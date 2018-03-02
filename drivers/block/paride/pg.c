@@ -114,7 +114,12 @@
 
 */
 
+/* Changes:
 
+	1.01	GRG 1998.06.16	Bug fixes
+	1.02    GRG 1998.09.24  Added jumbo support
+
+*/
 
 #define PG_VERSION      "1.02"
 #define PG_MAJOR	97

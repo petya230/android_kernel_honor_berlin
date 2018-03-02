@@ -1467,7 +1467,8 @@ oal_uint32  hmac_config_start_vap(mac_vap_stru *pst_mac_vap, oal_uint16 us_len, 
         (MAC_VAP_STATE_AP_WAIT_START == pst_mac_vap->en_vap_state) ||
         (MAC_VAP_STATE_STA_FAKE_UP   == pst_mac_vap->en_vap_state))   /* 如果已经在up状态，则返回成功 */
     {
-        OAM_ERROR_LOG1(pst_mac_vap->uc_vap_id, OAM_SF_CFG, "{hmac_config_start_vap::state=%d, duplicate start again}", pst_mac_vap->en_vap_state);
+        /* DTS2016112800347:Hishare 时候启动p2p client 时vap state 为fake up， 属于正常，修改log 级别为warning */
+        OAM_WARNING_LOG1(pst_mac_vap->uc_vap_id, OAM_SF_CFG, "{hmac_config_start_vap::state=%d, duplicate start again}", pst_mac_vap->en_vap_state);
         return OAL_SUCC;
     }
 
@@ -5466,7 +5467,7 @@ oal_uint32  hmac_config_vap_info(mac_vap_stru *pst_mac_vap, oal_uint16 us_len, o
                     "vap id: %d  device id: %d  chip id: %d\n"
                     "vap state: %d\n"
                     "vap mode: %d   P2P mode:%d\n"
-                    "ssid: %s\n"
+                    "ssid: %.32s\n"
                     "hide_ssid :%d\n",
                     pst_mac_vap->uc_vap_id, pst_mac_vap->uc_device_id, pst_mac_vap->uc_chip_id,
                     pst_mac_vap->en_vap_state,
@@ -5506,7 +5507,7 @@ oal_uint32  hmac_config_vap_info(mac_vap_stru *pst_mac_vap, oal_uint16 us_len, o
     OAL_IO_PRINT("\n\n*********************VAP INFO************************\n\n"
                 "vap id:   %d\t device id: %d\t chip id: %d\n"
                 "vap mode: %d\t vap state: %d\n"
-                "ssid: %s\n"
+                "ssid: %.32s\n"
                 "band: %s\t bandwidth: %s\n"
                 "protocol: %s\n"
                 "channel number: %d \n"
@@ -8382,6 +8383,13 @@ oal_uint32  hmac_config_list_sta(mac_vap_stru *pst_mac_vap, oal_uint16 us_len, o
             }
             /* user结构体下的协议模式不区分a和g，需要根据频段区分 */
             en_protocol_mode = pst_mac_user->en_protocol_mode;
+            if (en_protocol_mode >= WLAN_PROTOCOL_BUTT)
+            {
+                OAM_ERROR_LOG1(pst_mac_vap->uc_vap_id, OAM_SF_CFG, "{hmac_config_list_sta:: protocol_mode wrong.}",
+                                en_protocol_mode);
+                pst_head = pst_res_hash->st_entry.pst_next;
+                continue;
+            }
             if ((WLAN_LEGACY_11G_MODE == en_protocol_mode)  && (WLAN_BAND_5G == pst_mac_vap->st_channel.en_band))
             {
                 en_protocol_mode = WLAN_LEGACY_11A_MODE;
@@ -9083,9 +9091,19 @@ oal_uint32  hmac_config_connect(mac_vap_stru *pst_mac_vap, oal_uint16 us_len, oa
         hmac_send_connect_result_to_dmac_sta(pst_hmac_vap, OAL_FAIL);
     }
     /* END:DTS2016101006389:如果当前状态为正在关联，则先停止当前连接，再继续发起连接 */
-
     pst_hmac_vap->en_auth_mode = st_conn_sec.en_auth_type;
+#ifdef _PRE_WLAN_FEATURE_11R
+   if(OAL_TRUE == pst_hmac_vap->bit_11r_enable)
+   {
+       if ((st_conn_sec.st_crypto.akm_suites[0] == WLAN_AUTH_SUITE_FT_1X) ||
+           (st_conn_sec.st_crypto.akm_suites[0] == WLAN_AUTH_SUITE_FT_PSK) ||
+           (st_conn_sec.st_crypto.akm_suites[0] == WLAN_AUTH_SUITE_FT_SHA256))
+        {
+            pst_hmac_vap->en_auth_mode = WLAN_WITP_AUTH_FT;
+        }
+   }
 
+#endif
     /* 获取hmac device 结构 */
     pst_hmac_device = hmac_res_get_mac_dev(pst_mac_vap->uc_device_id);
     if (OAL_PTR_NULL == pst_hmac_device)
@@ -9199,18 +9217,22 @@ oal_uint32  hmac_config_connect(mac_vap_stru *pst_mac_vap, oal_uint16 us_len, oa
     pst_hmac_vap->en_wps_active = st_conn_sec.en_wps_enable;
 
 #ifdef _PRE_WLAN_FEATURE_11R
-    puc_mde = mac_find_ie(MAC_EID_MOBILITY_DOMAIN, pst_bss_dscr->auc_mgmt_buff + MAC_80211_FRAME_LEN + MAC_SSID_OFFSET, pst_bss_dscr->ul_mgmt_len - MAC_80211_FRAME_LEN - MAC_SSID_OFFSET);
-    if (OAL_PTR_NULL != puc_mde)
+    if(OAL_TRUE == pst_hmac_vap->bit_11r_enable)
     {
-        oal_memcopy(st_conn_sec.auc_mde, puc_mde, 5);
+        puc_mde = mac_find_ie(MAC_EID_MOBILITY_DOMAIN, pst_bss_dscr->auc_mgmt_buff + MAC_80211_FRAME_LEN + MAC_SSID_OFFSET, pst_bss_dscr->ul_mgmt_len - MAC_80211_FRAME_LEN - MAC_SSID_OFFSET);
+        if ((OAL_PTR_NULL != puc_mde) && (WLAN_WITP_AUTH_FT == pst_hmac_vap->en_auth_mode))
+        {
+            oal_memcopy(st_conn_sec.auc_mde, puc_mde, 5);
+        }
+        ul_ret = mac_mib_init_ft_cfg(pst_mac_vap, st_conn_sec.auc_mde);
+        if (OAL_SUCC != ul_ret)
+        {
+            OAM_ERROR_LOG2(pst_mac_vap->uc_vap_id, OAM_SF_CFG,
+                           "{hmac_config_connect::mac_mib_init_ft_cfg fail[%d] MDE[%p]!}\r\n", ul_ret, puc_mde);
+            return ul_ret;
+        }
     }
-    ul_ret = mac_mib_init_ft_cfg(pst_mac_vap, puc_mde);
-    if (OAL_SUCC != ul_ret)
-    {
-        OAM_ERROR_LOG2(pst_mac_vap->uc_vap_id, OAM_SF_CFG,
-                       "{hmac_config_connect::mac_mib_init_ft_cfg fail[%d] MDE[%p]!}\r\n", ul_ret, puc_mde);
-        return ul_ret;
-    }
+
 #endif //_PRE_WLAN_FEATURE_11R
 
     ul_ret = hmac_check_capability_mac_phy_supplicant(pst_mac_vap, pst_bss_dscr);
@@ -16632,7 +16654,8 @@ oal_uint32 hmac_config_roam_org(mac_vap_stru *pst_mac_vap, oal_uint16 us_len, oa
 *****************************************************************************/
 oal_uint32 hmac_config_roam_start(mac_vap_stru *pst_mac_vap, oal_uint16 us_len, oal_uint8 *puc_param)
 {
-    hmac_vap_stru     *pst_hmac_vap;
+    hmac_vap_stru       *pst_hmac_vap;
+    oal_bool_enum_uint8  en_no_scan;
 
     pst_hmac_vap = (hmac_vap_stru *)mac_res_get_hmac_vap(pst_mac_vap->uc_vap_id);
     if (OAL_PTR_NULL == pst_hmac_vap)
@@ -16640,7 +16663,8 @@ oal_uint32 hmac_config_roam_start(mac_vap_stru *pst_mac_vap, oal_uint16 us_len, 
         OAM_ERROR_LOG0(pst_mac_vap->uc_vap_id, OAM_SF_CFG, "{hmac_config_roam_enable::pst_hmac_vap null.}");
         return OAL_ERR_CODE_PTR_NULL;
     }
-    return hmac_roam_start(pst_hmac_vap);
+    en_no_scan = (oal_bool_enum_uint8)(*puc_param);
+    return hmac_roam_start(pst_hmac_vap, en_no_scan);
 }
 
 /*****************************************************************************
@@ -16712,6 +16736,10 @@ oal_uint32 hmac_config_set_ft_ies(mac_vap_stru *pst_mac_vap, oal_uint16 us_len, 
         OAM_ERROR_LOG0(pst_mac_vap->uc_vap_id, OAM_SF_CFG, "{hmac_config_set_ft_ies::pst_hmac_vap null.}");
         return OAL_ERR_CODE_PTR_NULL;
     }
+    if(pst_hmac_vap->bit_11r_enable != OAL_TRUE)
+    {
+        return OAL_SUCC;
+    }
 
     pst_mac_ft_ies = (mac_cfg80211_ft_ies_stru *)puc_param;
     ul_ret = mac_mib_get_md_id(pst_mac_vap, &us_md_id);
@@ -16738,8 +16766,6 @@ oal_uint32 hmac_config_set_ft_ies(mac_vap_stru *pst_mac_vap, oal_uint16 us_len, 
         OAM_ERROR_LOG1(pst_mac_vap->uc_vap_id, OAM_SF_CFG, "{hmac_config_set_ft_ies::set_app_ie FAIL[%d].}", ul_ret);
         return ul_ret;
     }
-
-    OAM_ERROR_LOG1(pst_mac_vap->uc_vap_id, OAM_SF_CFG, "{hmac_config_set_ft_ies::set_app_ie OK LEN[%d].}", pst_mac_ft_ies->us_len);
 
     hmac_roam_reassoc(pst_hmac_vap);
 
@@ -18542,6 +18568,22 @@ oal_uint32  hmac_get_rx_pkcg_rsp(mac_vap_stru *pst_mac_vap, oal_uint8 uc_len, oa
 #endif
 
 #ifdef _PRE_WLAN_FEATURE_11K
+/*****************************************************************************
+ 函 数 名  : hmac_config_send_neighbor_req
+ 功能描述  : 发送neighbor req配置命令
+ 输入参数  :
+ 输出参数  : 无
+ 返 回 值  : oal_uint32
+ 调用函数  :
+ 被调函数  :
+
+ 修改历史      :
+  1.日    期   : 2016年6月15日
+    作    者   : y00196452
+    修改内容   : 新生成函数
+
+*****************************************************************************/
+
 oal_uint32  hmac_config_send_neighbor_req(mac_vap_stru *pst_mac_vap, oal_uint16 us_len, oal_uint8 *puc_param)
 {
     oal_uint32          ul_ret = OAL_SUCC;
@@ -18662,7 +18704,87 @@ oal_uint32  hmac_config_send_neighbor_req(mac_vap_stru *pst_mac_vap, oal_uint16 
 
     return ul_ret;
 }
+/*****************************************************************************
+ 函 数 名  : hmac_config_bcn_table_switch
+ 功能描述  : 收到table模式的beacon req处理开关
+ 输入参数  :
+ 输出参数  : 无
+ 返 回 值  : oal_uint32
+ 调用函数  :
+ 被调函数  :
+
+ 修改历史      :
+  1.日    期   : 2016年6月15日
+    作    者   : y00196452
+    修改内容   : 新生成函数
+
+*****************************************************************************/
+
+oal_uint32  hmac_config_bcn_table_switch(mac_vap_stru *pst_mac_vap, oal_uint16 us_len, oal_uint8 *puc_param)
+{
+    oal_uint32          ul_ret;
+
+    /***************************************************************************
+        抛事件到DMAC层, 同步DMAC数据
+    ***************************************************************************/
+    ul_ret = hmac_config_send_event(pst_mac_vap, WLAN_CFGID_BCN_TABLE_SWITCH, us_len, puc_param);
+
+    if (OAL_UNLIKELY(OAL_SUCC != ul_ret))
+    {
+        OAM_WARNING_LOG1(pst_mac_vap->uc_vap_id, OAM_SF_CFG, "{hmac_config_bcn_table_switch::hmac_config_send_event failed[%d].}", ul_ret);
+    }
+
+    return ul_ret;
+}
+#endif //_PRE_WLAN_FEATURE_11K
+/*****************************************************************************
+ 函 数 名  : hmac_config_voe_enable
+ 功能描述  : voe开关配置
+ 输入参数  :
+ 输出参数  : 无
+ 返 回 值  : oal_uint32
+ 调用函数  :
+ 被调函数  :
+
+ 修改历史      :
+  1.日    期   : 2016年6月15日
+    作    者   : y00196452
+    修改内容   : 新生成函数
+
+*****************************************************************************/
+
+oal_uint32  hmac_config_voe_enable(mac_vap_stru *pst_mac_vap, oal_uint16 us_len, oal_uint8 *puc_param)
+{
+    oal_uint32          ul_ret;
+    hmac_vap_stru                           *pst_hmac_vap;
+
+    pst_hmac_vap = mac_res_get_hmac_vap(pst_mac_vap->uc_vap_id);
+    if (OAL_PTR_NULL == pst_hmac_vap)
+    {
+        OAM_ERROR_LOG0(pst_mac_vap->uc_vap_id, OAM_SF_ANY, "{hmac_atcmdsrv_get_rx_pkcg::pst_hmac_vap null.}");
+        return OAL_ERR_CODE_PTR_NULL;
+    }
+
+#ifdef _PRE_WLAN_FEATURE_11K
+    pst_hmac_vap->bit_11k_enable = (((*puc_param) & 0x07) & BIT2) ? OAL_TRUE : OAL_FALSE;
+    pst_hmac_vap->bit_11v_enable = (((*puc_param) & 0x07) & BIT1) ? OAL_TRUE : OAL_FALSE;
 #endif
+#ifdef _PRE_WLAN_FEATURE_11R
+    pst_hmac_vap->bit_11r_enable = (((*puc_param) & 0x07) & BIT0) ? OAL_TRUE : OAL_FALSE;
+#endif
+
+    /***************************************************************************
+        抛事件到DMAC层, 同步DMAC数据
+    ***************************************************************************/
+    ul_ret = hmac_config_send_event(pst_mac_vap, WLAN_CFGID_VOE_ENABLE, us_len, puc_param);
+
+    if (OAL_UNLIKELY(OAL_SUCC != ul_ret))
+    {
+        OAM_WARNING_LOG1(pst_mac_vap->uc_vap_id, OAM_SF_CFG, "{hmac_config_voe_enable::hmac_config_send_event failed[%d].}", ul_ret);
+    }
+
+    return ul_ret;
+}
 
 /*****************************************************************************
  函 数 名  : hmac_config_vendor_cmd_get_channel_list

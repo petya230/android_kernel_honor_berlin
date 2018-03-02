@@ -125,9 +125,6 @@ extern oal_uint32 hmac_user_add_notify_alg_tx_adapt(frw_event_mem_stru *pst_even
 extern oal_uint32 hmac_proc_rx_process_sync_event_tx_adapt(frw_event_mem_stru *pst_event_mem);
 extern oal_uint32 hmac_chan_select_channel_mac_tx_adapt(frw_event_mem_stru *pst_event_mem);
 extern oal_uint32 hmac_chan_initiate_switch_to_new_channel_tx_adapt(frw_event_mem_stru *pst_event_mem);
-#ifdef _PRE_WLAN_FEATRUE_11K
-extern oal_uint32 hmac_proc_rpt_bss_info_tx_adapt(frw_event_mem_stru *pst_event_mem);
-#endif
 extern frw_event_mem_stru * hmac_cali2hmac_misc_event_rx_adapt(frw_event_mem_stru * pst_hcc_event_mem);
 
 #ifdef _PRE_WLAN_FEATRUE_FLOWCTL
