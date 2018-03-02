@@ -275,8 +275,10 @@ int set_hmp_policy(const char *pname, int prio, int state,
 	/*fill the input policy into hmp_policy*/
 	ret = fill_policy_in(pname, prio, state,
 		up_thresholds, down_thresholds);
-	if (ret < 0)
+	if (ret < 0) {
+		spin_unlock_bh(&hmpset_lock);
 		return -1;
+	}
 	debug_hmp_policy_struct("fill_policy_in", &hmp_policy[0]);
 	/*rearrange policys by priority*/
 	rearrange_policys();
@@ -362,18 +364,21 @@ static ssize_t policy_store(struct kobject *kobj,
 		case 1:
 			if ((args_len != 1))
 				goto err_store;
+			// cppcheck-suppress *
 			if (sscanf(tmp, "%1d", &input.prior) != 1)
 				goto err_store;
 			break;
 		case 2:
 			if ((args_len != 1))
 				goto err_store;
+			// cppcheck-suppress *
 			if (sscanf(tmp, "%1d", &input.policy_state) != 1)
 				goto err_store;
 			break;
 		case 3:
 			if ((args_len < 1) || (args_len > 4))
 				goto err_store;
+			// cppcheck-suppress *
 			if (sscanf(tmp, "%4u", &input.thrsh_up) != 1)
 				goto err_store;
 			break;
@@ -384,6 +389,7 @@ static ssize_t policy_store(struct kobject *kobj,
 			}
 			if ((args_len < 1) || (args_len > 4))
 				goto err_store;
+			// cppcheck-suppress *
 			if (sscanf(tmp, "%4u", &input.thrsh_down) != 1)
 				goto err_store;
 			break;
@@ -428,6 +434,8 @@ static ssize_t enable_store(struct kobject *kobj,
 {
 	unsigned int input;
 	int ret;
+
+	// cppcheck-suppress *
 	ret = sscanf(buf, "%u", &input);
 	if (ret != 1 || input > 1)
 		return -EINVAL;

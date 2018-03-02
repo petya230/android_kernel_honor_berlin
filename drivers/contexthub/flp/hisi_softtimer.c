@@ -49,7 +49,7 @@ struct softtimer_ctrl {
 };
 
 static struct softtimer_ctrl timer_control;
-
+/*lint  -e438 -e550 -e732 -e838*/
 static __inline__ unsigned int  timer_get_value(void)
 {
     unsigned int ret = 0;
@@ -65,6 +65,7 @@ static __inline__ unsigned int  timer_get_value(void)
         return 0;
     }
 }
+
 static void start_hard_timer(unsigned int ulvalue)
 {
     unsigned int ret = 0;
@@ -76,6 +77,7 @@ static void start_hard_timer(unsigned int ulvalue)
     ret = readl(timer_control.hard_timer_addr + TIMERCTRL(0));
     writel(ret | 0xA2, timer_control.hard_timer_addr + TIMERCTRL(0));
 }
+
 static void stop_hard_timer(void)
 {
     unsigned int ret = 0;
@@ -83,7 +85,8 @@ static void stop_hard_timer(void)
     writel(ret&(~0x80), timer_control.hard_timer_addr+TIMERCTRL(0));
     timer_control.softtimer_start_value = ELAPESD_TIME_INVAILD;
 }
-
+/*lint  +e438 +e550 +e732 +e838*/
+/*lint  -e834 -e838*/
 static unsigned int hard_timer_elapsed_time(void)
 {
     unsigned int ulTempValue = 0;
@@ -94,7 +97,8 @@ static unsigned int hard_timer_elapsed_time(void)
     return ((timer_control.softtimer_start_value < ulTempValue) ? 0 :
             (timer_control.softtimer_start_value - ulTempValue+1));
 }
-
+/*lint  +e834 +e838*/
+/*lint  -e826 -e64*/
 void hisi_softtimer_add(struct softtimer_list *timer)
 {
     unsigned int elapsed_time = hard_timer_elapsed_time();
@@ -197,7 +201,7 @@ int hisi_softtimer_delete(struct softtimer_list *timer)
     spin_unlock_bh(&timer_control.soft_timer_lock);
     return 0;
 }
-
+/*lint  +e826 +e64*/
 int hisi_softtimer_create(struct softtimer_list *sft_info, softtimer_func func,
        unsigned long para, unsigned int timeout)
 {
@@ -242,6 +246,7 @@ int hisi_softtimer_free(struct softtimer_list *p)
     p->init_flags = 0;
     return 0;
 }
+/*lint -e715 -e826*/
 static void thread_softtimer_fun(unsigned long arg)
 {
     struct softtimer_list     *p = NULL;
@@ -297,7 +302,8 @@ static void thread_softtimer_fun(unsigned long arg)
     spin_unlock(&timer_control.soft_timer_lock) ;
     timer_control.is_in_interrupt = TIMER_FALSE;
 }
-
+/*lint +e715 +e826*/
+/*lint -e715 -e732 -e838*/
 static irqreturn_t IntTimerHandler (int irq, void *dev_id)
 {
     unsigned int readValue = 0;
@@ -312,7 +318,7 @@ static irqreturn_t IntTimerHandler (int irq, void *dev_id)
     }
     return IRQ_HANDLED;
 }
-
+/*lint +e715 +e732 +e838*/
 void hisi_softtimer_uninit(void)
 {
     free_irq(timer_control.irqnum, NULL);
@@ -370,13 +376,14 @@ error:
     return ret;
 }
 EXPORT_SYMBOL_GPL(hisi_softtimer_init);
-
+/*lint -e715*/
 static void hisi_softtimer_timeout(unsigned long data)
 {
     printk(KERN_INFO "hisi_softtimer_timeout\n");
     return ;
 }
-
+/*lint +e715*/
+/*lint -e727*/
 struct softtimer_list timer = {0};
 void hisi_softtimer_test(int timeout)
 {
@@ -390,7 +397,8 @@ void hisi_softtimer_test(int timeout)
     hisi_softtimer_modify(&timer, timeout);
     hisi_softtimer_add(&timer);
 }
-
+/*lint +e727*/
+/*lint -e715*/
 int hisi_softtimer_suspend(struct platform_device *dev, pm_message_t state)
 {
     printk(KERN_ERR "%s %d:\n", __func__, __LINE__);

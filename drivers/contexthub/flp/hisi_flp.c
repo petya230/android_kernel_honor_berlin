@@ -1930,6 +1930,7 @@ static int flp_geofence_ioctl(flp_port_t *flp_port, unsigned int cmd, unsigned l
     }
     return 0;
 }
+/*lint +e438*/
 /*max complexiy must less than 15*/
 static int __flp_location_ioctl(flp_port_t *flp_port, unsigned int cmd, unsigned long arg)
 {
@@ -2033,7 +2034,7 @@ static int flp_location_ioctl(flp_port_t *flp_port, unsigned int cmd, unsigned l
     return 0;
 }
 
-
+/*lint -e732*/
 static long flp_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
     flp_port_t *flp_port  = (flp_port_t *)file->private_data;
@@ -2070,26 +2071,28 @@ static long flp_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
     }
     return 0 ;
 }
-
-static int flp_open(struct inode *inode, struct file *filp)
+/*lint +e732*/
+/*lint -e438*/
+static int flp_open(struct inode *inode, struct file *filp)/*lint -e715*/
 {
-    flp_port_t *flp_port ;
-    flp_port  = (flp_port_t *) kmalloc(sizeof(flp_port_t), GFP_KERNEL|__GFP_ZERO);
-    if (!flp_port) {
-        printk(KERN_ERR "flp_open no mem\n");
-        return -ENOMEM;
-    }
-    INIT_LIST_HEAD(&flp_port->list);
-    hisi_softtimer_create(&flp_port->sleep_timer,
-                            flp_sleep_timeout, (unsigned long)flp_port, 0);
-    INIT_WORK(&flp_port->work, flp_timerout_work);
-    mutex_lock(&g_flp_dev.lock);
-    list_add_tail(&flp_port->list, &g_flp_dev.list);
-    mutex_unlock(&g_flp_dev.lock);
-    wake_lock_init(&flp_port->wlock, WAKE_LOCK_SUSPEND, "hisi_flp");
-    filp->private_data = flp_port;
-    printk(KERN_ERR "%s %d: enter\n", __func__, __LINE__);
-    return 0;
+	flp_port_t *flp_port;
+	flp_port  = (flp_port_t *) kmalloc(sizeof(flp_port_t), GFP_KERNEL|__GFP_ZERO);
+	if (!flp_port) {
+		printk(KERN_ERR "flp_open no mem\n");
+		return -ENOMEM;
+	}
+	INIT_LIST_HEAD(&flp_port->list);
+	hisi_softtimer_create(&flp_port->sleep_timer,
+	            flp_sleep_timeout, (unsigned long)flp_port, 0);
+	INIT_WORK(&flp_port->work, flp_timerout_work);
+
+	mutex_lock(&g_flp_dev.lock);
+	list_add_tail(&flp_port->list, &g_flp_dev.list);
+	mutex_unlock(&g_flp_dev.lock);
+	wake_lock_init(&flp_port->wlock, WAKE_LOCK_SUSPEND, "hisi_flp");
+	filp->private_data = flp_port;
+	printk(KERN_ERR "%s %d: enter\n", __func__, __LINE__);
+	return 0;
 }
 
 static void __flp_release(flp_port_t *flp_port)
@@ -2170,13 +2173,15 @@ static int flp_release(struct inode *inode, struct file *file)
         g_flp_dev.ar_start_count, g_flp_dev.service_type);
     return 0;
 }
-
+/*lint +e438*/
+/*lint +e826*/
+/*lint -e785 -e64*/
 static const struct file_operations hisi_flp_fops = {
-    .owner =          THIS_MODULE,
-    .llseek =         no_llseek,
-    .unlocked_ioctl = flp_ioctl,
-    .open       =     flp_open,
-    .release    =     flp_release,
+	.owner =          THIS_MODULE,
+	.llseek =         no_llseek,
+	.unlocked_ioctl = flp_ioctl,
+	.open       =     flp_open,
+	.release    =     flp_release,
 };
 
 /*******************************************************************************************
@@ -2188,7 +2193,7 @@ static struct miscdevice hisi_flp_miscdev =
     .name =     "flp",
     .fops =     &hisi_flp_fops,
 };
-
+/*lint +e785 +e64*/
 
 /*******************************************************************************************
 Function:       hisi_flp_register
@@ -2276,9 +2281,3 @@ Return:        void
     return ret;
 }
 EXPORT_SYMBOL_GPL(hisi_flp_unregister);
-
-MODULE_AUTHOR("hisiflp <hisi@huawei.com>");
-MODULE_DESCRIPTION("Hisi flp driver");
-MODULE_LICENSE("GPL");
-
-

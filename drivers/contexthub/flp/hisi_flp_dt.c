@@ -23,6 +23,7 @@ static int generic_flp_probe(struct platform_device *pdev);
 static int generic_flp_remove(struct platform_device *pdev);
 
 unsigned int g_flp_debug_level = 0;
+/*lint -e715*/
 static ssize_t show_debug_level(struct device_driver *d, char *buf)
 {
     return snprintf(buf, PAGE_SIZE, "0x%08X\n", g_flp_debug_level);
@@ -54,7 +55,7 @@ static ssize_t store_debug_level(struct device_driver *d,
     printk(KERN_INFO "flp:%s debug_level:%d", buf, val);
     return (ssize_t)strnlen(buf, count);
 }
-
+/*lint +e715*/
 /*lint -e846 -e514 -e778 -e866 -e84 */
 static DRIVER_ATTR(debug_level, 0660, show_debug_level,
                 store_debug_level);
@@ -72,7 +73,7 @@ static int hisi_flp_pm_resume(struct device *dev)
     flp_port_resume();
     return 0;
 }
-
+/*lint -e785*/
 struct dev_pm_ops hisi_flp_pm_ops = {
     .suspend = hisi_flp_pm_suspend ,
     .resume  = hisi_flp_pm_resume ,
@@ -83,7 +84,7 @@ static const struct of_device_id generic_flp[] = {
     {},
 };
 MODULE_DEVICE_TABLE(of, generic_flp);
-
+/*lint -e64*/
 static struct platform_driver generic_flp_platdrv = {
     .driver = {
         .name	= "hisi-flp",
@@ -94,7 +95,8 @@ static struct platform_driver generic_flp_platdrv = {
     .probe		= generic_flp_probe,
     .remove     = generic_flp_remove,
 };
-
+/*lint +e64*/
+/*lint +e785*/
 static int generic_flp_probe(struct platform_device *pdev)
 {
     int ret;
@@ -113,21 +115,17 @@ static int generic_flp_remove(struct platform_device *pdev)
     hisi_flp_unregister();
     return 0;
 }
-
+/*lint -e64*/
 static int __init hisi_flp_init(void)
 {
     return platform_driver_register(&generic_flp_platdrv);
 }
-
+/*lint +e64*/
 static void __exit hisi_flp_exit(void)
 {
     platform_driver_unregister(&generic_flp_platdrv);
 }
-
+/*lint -e528 -esym(528,*) */
 late_initcall_sync(hisi_flp_init);
 module_exit(hisi_flp_exit);
-
-MODULE_AUTHOR(" hisi<hisi@huawei.com>");
-MODULE_DESCRIPTION("Generic huawei flp driver via DT");
-MODULE_LICENSE("GPL");
-
+/*lint +e528 -esym(528,*) */

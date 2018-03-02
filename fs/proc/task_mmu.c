@@ -637,7 +637,9 @@ static void show_smap_vma_flags(struct seq_file *m, struct vm_area_struct *vma)
 		/*
 		 * In case if we meet a flag we don't know about.
 		 */
+		/*lint -save -e585*/
 		[0 ... (BITS_PER_LONG-1)] = "??",
+		/*lint -restore*/
 
 		[ilog2(VM_READ)]	= "rd",
 		[ilog2(VM_WRITE)]	= "wr",
@@ -1516,7 +1518,6 @@ static int swapin_pte_range(pmd_t *pmd, unsigned long addr,
 	struct reclaim_walk_data *walk_data = walk->private;
 	struct vm_area_struct *vma = walk_data->vma;
 	pte_t *pte, entry;
-	struct page *page;
 
 	split_huge_page_pmd(vma, addr, pmd);
 	if (pmd_trans_unstable(pmd))
@@ -1878,7 +1879,7 @@ static int gather_pte_stats(pmd_t *pmd, unsigned long addr,
 		if (!page)
 			continue;
 		gather_stats(page, md, pte_dirty(*pte), 1);
-
+	/* cppcheck-suppress * */
 	} while (pte++, addr += PAGE_SIZE, addr != end);
 	pte_unmap_unlock(orig_pte, ptl);
 	return 0;

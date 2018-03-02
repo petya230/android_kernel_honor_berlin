@@ -3329,7 +3329,9 @@ struct bh_accounting {
 	int ratelimit;		/* Limit cacheline bouncing */
 };
 
+/*lint –save –e551*/
 static DEFINE_PER_CPU(struct bh_accounting, bh_accounting) = {0, 0};
+/*lint -restore*/
 
 static void recalc_bh_state(void)
 {

@@ -46,6 +46,8 @@
 #define SERVICE_NAME_LEN (64)
 #define SERVICE_NAME_OFFSET (64)
 #define ADD_SERVICE_CODE  3
+#define NS_PERMS 1000000
+#define BINDER_TIMEOUT_SCANF_SUCCESS 1
 
 #include <uapi/linux/android/binder.h>
 #include "binder_trace.h"
@@ -125,7 +127,8 @@ module_param_named(proc_no_lock, binder_debug_no_lock, bool, S_IWUSR | S_IRUGO);
 
 static DECLARE_WAIT_QUEUE_HEAD(binder_user_error_wait);
 static int binder_stop_on_user_error;
-
+static u64 transaction_timeout = 100000000;
+static u64 lock_timeout = 5000000;
 static int binder_set_stop_on_user_error(const char *val,
 					 struct kernel_param *kp)
 {
@@ -165,15 +168,13 @@ enum binder_stat_types {
 	BINDER_STAT_TRANSACTION_COMPLETE,
 	BINDER_STAT_COUNT
 };
-
 struct binder_stats {
 	int br[_IOC_NR(BR_FAILED_REPLY) + 1];
 	int bc[_IOC_NR(BC_DEAD_BINDER_DONE) + 1];
 	int obj_created[BINDER_STAT_COUNT];
 	int obj_deleted[BINDER_STAT_COUNT];
 };
-#define MAINLOCK_TIMEOUT (3000000)
-#define BINDER_TRANCTION_TIMEOUT (500000000)
+
 static struct binder_stats binder_stats;
 
 static inline void binder_stats_deleted(enum binder_stat_types type)
@@ -471,7 +472,7 @@ static inline void binder_lock(const char *tag)
 	mutex_lock(&binder_main_lock);
 	preempt_disable();
 	cur_time = binder_clock();
-	if (cur_time - pre_time > MAINLOCK_TIMEOUT) {
+	if (cur_time - pre_time > lock_timeout) {
 
 		trace_binder_mainlock_timeout(tag, comm, pre_time, cur_time);
 	}
@@ -2622,7 +2623,7 @@ retry:
 		if (cmd == BR_REPLY) {
 			struct binder_ref *ref;
 			ref = binder_get_ref(proc, t->target_handle, false);
-			if ( binder_clock() - t->timestamp > BINDER_TRANCTION_TIMEOUT) {
+			if ( binder_clock() - t->timestamp > transaction_timeout) {
 			trace_binder_transact_timeout(
 				 proc->tsk->comm,
 				 t->from_proc->tsk->comm,
@@ -3835,6 +3836,79 @@ BINDER_DEBUG_ENTRY(stats);
 BINDER_DEBUG_ENTRY(transactions);
 BINDER_DEBUG_ENTRY(transaction_log);
 
+static int binder_transaction_timeout_show(struct seq_file *m, void *unused)
+{
+	int do_lock = !binder_debug_no_lock;
+	if (do_lock)
+		binder_lock(__func__);
+	seq_printf(m, "binder transaction timeout: %llu ns\n", transaction_timeout);
+	if (do_lock)
+		binder_unlock(__func__);
+	return 0;
+}
+
+static int binder_transaction_timeout_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, binder_transaction_timeout_show, inode->i_private);
+}
+
+static ssize_t binder_transaction_timeout_write(struct file *file, const char __user *user_buf, size_t count, loff_t *ppos)
+{
+	unsigned int err;
+	unsigned int timeout;
+	err = sscanf(user_buf, "%u", &timeout);
+	if (err != BINDER_TIMEOUT_SCANF_SUCCESS)
+		return -EINVAL;
+        if (timeout > 0)
+	        transaction_timeout = (u64)timeout * NS_PERMS;
+	return count;
+}
+static const struct file_operations binder_transaction_timeout_fops = {
+	.open = binder_transaction_timeout_open,
+	.write = binder_transaction_timeout_write,
+	.read = seq_read,
+	.llseek = seq_lseek,
+	.release = single_release,
+	.owner = THIS_MODULE,
+};
+
+static int binder_lock_timeout_show(struct seq_file *m, void *unused)
+{
+	int do_lock = !binder_debug_no_lock;
+	if (do_lock)
+		binder_lock(__func__);
+	seq_printf(m, "binder lock timeout: %llu ns\n", lock_timeout);
+	if (do_lock)
+		binder_unlock(__func__);
+	return 0;
+}
+
+static int binder_lock_timeout_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, binder_lock_timeout_show, inode->i_private);
+}
+
+static ssize_t binder_lock_timeout_write(struct file *file, const char __user *user_buf, size_t count, loff_t *ppos)
+{
+	unsigned int err;
+	unsigned int timeout;
+	err = sscanf(user_buf, "%u", &timeout);
+	if (err != BINDER_TIMEOUT_SCANF_SUCCESS)
+		return -EINVAL;
+	if (timeout > 0)
+		lock_timeout = (u64)timeout * NS_PERMS;
+	return count;
+}
+
+static const struct file_operations binder_lock_timeout_fops = {
+	.open = binder_lock_timeout_open,
+	.write = binder_lock_timeout_write,
+	.read = seq_read,
+	.llseek = seq_lseek,
+	.release = single_release,
+	.owner = THIS_MODULE,
+};
+
 static int __init binder_init(void)
 {
 	int ret;
@@ -3874,6 +3948,16 @@ static int __init binder_init(void)
 				    binder_debugfs_dir_entry_root,
 				    &binder_transaction_log_failed,
 				    &binder_transaction_log_fops);
+		debugfs_create_file("binder_transaction_timeout",
+					S_IRUSR | S_IWUSR,
+					binder_debugfs_dir_entry_root,
+					NULL,
+					&binder_transaction_timeout_fops);
+		debugfs_create_file("binder_lock_timeout",
+					S_IRUSR | S_IWUSR,
+					binder_debugfs_dir_entry_root,
+					NULL,
+					&binder_lock_timeout_fops);
 	}
 	return ret;
 }

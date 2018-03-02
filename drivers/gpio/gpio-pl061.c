@@ -333,7 +333,7 @@ static int pl061_probe(struct amba_device *adev, const struct amba_id *id)
 	if (of_get_property(np, "gpio,hwspinlock", NULL)) {
 		gpio_hwlock = hwspin_lock_request_specific(GPIO_HWLOCK_ID);
 		if (gpio_hwlock == NULL)
-			return -EBUSY;
+			return -EBUSY;/*lint !e429*/
 	}
 
 	/* clear sec-flag of the controller */
