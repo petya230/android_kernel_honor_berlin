@@ -1,4 +1,15 @@
-
+/*
+ * drivers/power/huawei_charger.c
+ *
+ *huawei charger driver
+ *
+ * Copyright (C) 2012-2015 HUAWEI, Inc.
+ * Author: HUAWEI, Inc.
+ *
+ * This package is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+*/
 
 #include <linux/init.h>
 #include <linux/module.h>
@@ -178,34 +189,6 @@ int charger_dsm_report (int err_no,int *val)
 **********************************************************/
 void fcp_check_switch_status(struct charge_device_info *di)
 {
-#if 0
-    int val = -1;
-    int reg = 0;
-    int ret = -1;
-
-    if(di->ops->get_charge_state)/*check usb is on or not ,if not ,can not detect the switch status*/
-    {
-         ret = di->ops->get_charge_state(&reg);
-         if(ret)
-         {
-             hwlog_info("%s:read PG STAT fail.\n",__func__);
-             return ;
-         }
-         if(reg & CHAGRE_STATE_NOT_PG)
-         {
-             hwlog_info("%s:PG NOT GOOD can not check switch status.\n",__func__);
-             return ;
-         }
-    }
-    if(di->fcp_ops->fcp_read_switch_status)
-    {
-        val = di->fcp_ops->fcp_read_switch_status();
-        if(val)
-        {
-            charger_dsm_report(ERROR_SWITCH_ATTACH,NULL);
-        }
-    }
-#endif
 }
 /**********************************************************
 *  Function:       fcp_check_switch_status
@@ -215,44 +198,6 @@ void fcp_check_switch_status(struct charge_device_info *di)
 **********************************************************/
 void fcp_check_adapter_status(struct charge_device_info *di)
 {
-#if 0
-    int val = -1;
-    int reg = 0;
-    int ret = -1;
-
-    if(di->ops->get_charge_state)/*check usb is on or not ,if not ,can not detect the switch status*/
-    {
-         ret = di->ops->get_charge_state(&reg);
-         if(ret)
-         {
-             hwlog_info("%s:read PG STAT fail.\n",__func__);
-             return ;
-         }
-         if(reg & CHAGRE_STATE_NOT_PG)
-         {
-             hwlog_info("%s:PG NOT GOOD can not check adapter status.\n",__func__);
-             return ;
-         }
-    }
-    if(di->fcp_ops->fcp_read_adapter_status)
-    {
-        val = di->fcp_ops->fcp_read_adapter_status();
-
-    if( FCP_ADAPTER_OVLT == val)
-    {
-       charger_dsm_report(ERROR_ADAPTER_OVLT,NULL);
-    }
-
-    if( FCP_ADAPTER_OCURRENT == val)
-    {
-        charger_dsm_report(ERROR_ADAPTER_OCCURRENT,NULL);
-    }
-
-    if( FCP_ADAPTER_OTEMP == val)
-    {
-        charger_dsm_report(ERROR_ADAPTER_OTEMP,NULL);
-    }
-#endif
 }
 
 
@@ -934,7 +879,7 @@ static void charge_start_charging(struct charge_device_info *di)
     ret = di->ops->chip_init();
     if(ret)
         hwlog_err("chip init fail!!\n");
-    schedule_delayed_work(&di->charge_work,msecs_to_jiffies(0));
+    queue_delayed_work(system_power_efficient_wq, &di->charge_work,msecs_to_jiffies(0));
 }
 /**********************************************************
 *  Function:       charge_stop_charging
@@ -1027,7 +972,7 @@ static void charge_start_usb_otg(struct charge_device_info *di)
         if(ret)
            hwlog_err("[%s]set otg current fail!\n",__func__);
     }
-    schedule_delayed_work(&di->otg_work, msecs_to_jiffies(0));
+    queue_delayed_work(system_power_efficient_wq, &di->otg_work, msecs_to_jiffies(0));
 }
 /**********************************************************
 *  Function:       charge_otg_work
@@ -1040,7 +985,7 @@ static void charge_otg_work(struct work_struct *work)
     struct charge_device_info *di = container_of(work,struct charge_device_info, otg_work.work);
 
     charge_kick_watchdog(di);
-    schedule_delayed_work(&di->otg_work,msecs_to_jiffies(CHARGING_WORK_TIMEOUT));
+    queue_delayed_work(system_power_efficient_wq, &di->otg_work,msecs_to_jiffies(CHARGING_WORK_TIMEOUT));
 }
 /**********************************************************
 *  Function:       charge_fault_work
@@ -1063,6 +1008,7 @@ static void charge_fault_work(struct work_struct *work)
             break;
     }
 }
+
 /**********************************************************
 *  Function:       charge_update_status
 *  Discription:    update the states of charging
@@ -1109,6 +1055,7 @@ static void charge_update_status(struct charge_device_info *di)
     {
         hwlog_err("CHAGRE_STATE_BATT_OVP\n");
     }
+
     /*check charger TS state*/
     if(state & CHAGRE_STATE_NTC_FAULT) {
         ts_flag = TRUE;
@@ -1235,7 +1182,7 @@ static void charge_monitor_work(struct work_struct *work)
 
     charge_update_status(di);
     charge_kick_watchdog(di);
-    schedule_delayed_work(&di->charge_work,msecs_to_jiffies(CHARGING_WORK_TIMEOUT));
+    queue_delayed_work(system_power_efficient_wq, &di->charge_work,msecs_to_jiffies(CHARGING_WORK_TIMEOUT));
 }
 /**********************************************************
 *  Function:       charge_usb_work
@@ -1306,7 +1253,7 @@ static int charge_usb_notifier_call(struct notifier_block *usb_nb, unsigned long
     charge_wake_lock();
     charge_rename_charger_type((enum hisi_charger_type)event, di);
     charge_send_uevent(di);
-    schedule_work(&di->usb_work);
+    queue_work(system_power_efficient_wq, &di->usb_work);
     return NOTIFY_OK;
 }
 /**********************************************************
@@ -1322,7 +1269,7 @@ static int charge_fault_notifier_call(struct notifier_block *fault_nb,unsigned l
     struct charge_device_info *di = container_of(fault_nb, struct charge_device_info, fault_nb);
 
     di->charge_fault = (enum charge_fault_type)event;
-    schedule_work(&di->fault_work);
+    queue_work(system_power_efficient_wq, &di->fault_work);
     return NOTIFY_OK;
 }
 
@@ -1861,7 +1808,7 @@ static int charge_probe(struct platform_device *pdev)
     charge_wake_lock();
     charge_rename_charger_type(type,di);
     charge_send_uevent(di);
-    schedule_work(&di->usb_work);
+    queue_work(system_power_efficient_wq, &di->usb_work);
 #ifdef CONFIG_HUAWEI_HW_DEV_DCT
     /* detect current device successful, set the flag as present */
     set_hw_dev_flag(DEV_I2C_CHARGER);
@@ -2024,10 +1971,10 @@ static int charge_resume(struct platform_device *pdev)
     struct charge_device_info *di = platform_get_drvdata(pdev);
 
     hwlog_info("%s ++\n",__func__);
-    schedule_work(&resume_wakelock_work);
+    queue_work(system_power_efficient_wq, &resume_wakelock_work);
      if(di->charger_source == POWER_SUPPLY_TYPE_MAINS)
     {
-        schedule_delayed_work(&di->charge_work, msecs_to_jiffies(0));
+        queue_delayed_work(system_power_efficient_wq, &di->charge_work, msecs_to_jiffies(0));
     }
     charge_set_watchdog(di,WDT_TIME_40_S);
 

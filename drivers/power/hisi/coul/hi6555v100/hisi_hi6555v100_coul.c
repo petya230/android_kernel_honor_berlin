@@ -929,7 +929,7 @@ static irqreturn_t hi6555v100_coul_irq_cb(int irq,  void *_di)
 
     di->irq_mask |= val;
 
-    schedule_delayed_work(&di->irq_work, msecs_to_jiffies(0));
+    queue_delayed_work(system_power_efficient_wq, &di->irq_work, msecs_to_jiffies(0));
 
     return IRQ_HANDLED;
 }
@@ -1002,15 +1002,13 @@ static void hi6555v100_coul_clear_fifo(void)
 ********************************************************/
 static void hi6555v100_coul_enter_eco(void)
 {
-    unsigned char reg_val = 0;
+    unsigned char reg_val;
 
     HI6555V100_REGS_READ(HI6555V100_ECO_OUT_CLIN_REG_BASE, &last_eco_in, 4);
     HI6555V100_REGS_READ(HI6555V100_ECO_OUT_CLOUT_REG_BASE, &last_eco_out, 4);
-
     reg_val = HI6555V100_REG_READ(HI6555V100_COUL_STATE_REG);
     if (COUL_CALI_ING == reg_val) {
     	HI6555V100_COUL_INF("cali ing, don't do it again!\n");
-
         reg_val= ECO_COUL_CTRL_VAL;
     } else {
         HI6555V100_COUL_INF("calibrate!\n");
@@ -1125,7 +1123,9 @@ ssize_t hi6555v100_coul_set_reg_value(struct device *dev,
 	size_t status = count;
     if (strict_strtol(buf, 0, &val) < 0)
         return -EINVAL;
+	#ifdef CONFIG_HISI_DEBUG_FS
     HI6555V100_REG_WRITE(g_reg_addr,(char)val);
+	#endif
 	return status;
 
 }
@@ -1135,7 +1135,9 @@ ssize_t hi6555v100_coul_show_reg_info(struct device *dev,
                   char *buf)
 {
     u8 val = 0;
+	#ifdef CONFIG_HISI_DEBUG_FS
     val = HI6555V100_REG_READ(g_reg_addr);
+	#endif
 	return snprintf(buf, PAGE_SIZE, "reg[0x%x]=0x%x\n",(u32)g_reg_addr,val);
 }
 

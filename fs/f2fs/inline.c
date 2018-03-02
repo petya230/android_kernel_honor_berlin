@@ -12,6 +12,7 @@
 #include <linux/f2fs_fs.h>
 
 #include "f2fs.h"
+#include <trace/events/android_fs.h>
 #include "node.h"
 
 bool f2fs_may_inline_data(struct inode *inode)
@@ -49,7 +50,9 @@ void read_inline_data(struct page *page, struct page *ipage)
 	if (PageUptodate(page))
 		return;
 
+	/*lint -save -e666*/
 	f2fs_bug_on(F2FS_P_SB(page), page->index);
+	/*lint -restore*/
 
 	zero_user_segment(page, MAX_INLINE_DATA, PAGE_CACHE_SIZE);
 
@@ -81,14 +84,22 @@ int f2fs_read_inline_data(struct inode *inode, struct page *page)
 {
 	struct page *ipage;
 
+	trace_android_fs_dataread_start(inode, page_offset(page),
+					PAGE_SIZE, current->pid,
+					current->comm);
+
 	ipage = get_node_page(F2FS_I_SB(inode), inode->i_ino);
 	if (IS_ERR(ipage)) {
+		trace_android_fs_dataread_end(inode, page_offset(page),
+					      PAGE_SIZE);
 		unlock_page(page);
 		return PTR_ERR(ipage);
 	}
 
 	if (!f2fs_has_inline_data(inode)) {
 		f2fs_put_page(ipage, 1);
+		trace_android_fs_dataread_end(inode, page_offset(page),
+					      PAGE_SIZE);
 		return -EAGAIN;
 	}
 
@@ -99,6 +110,8 @@ int f2fs_read_inline_data(struct inode *inode, struct page *page)
 
 	SetPageUptodate(page);
 	f2fs_put_page(ipage, 1);
+	trace_android_fs_dataread_end(inode, page_offset(page),
+				      PAGE_SIZE);
 	unlock_page(page);
 	return 0;
 }
@@ -121,7 +134,9 @@ int f2fs_convert_inline_page(struct dnode_of_data *dn, struct page *page)
 	if (err)
 		return err;
 
+	/*lint -save -e666*/
 	f2fs_bug_on(F2FS_P_SB(page), PageWriteback(page));
+	/*lint -restore*/
 
 	read_inline_data(page, dn->inode_page);
 	set_page_dirty(page);
@@ -204,7 +219,9 @@ int f2fs_write_inline_data(struct inode *inode, struct page *page)
 		return -EAGAIN;
 	}
 
+	/*lint -save -e666*/
 	f2fs_bug_on(F2FS_I_SB(inode), page->index);
+	/*lint -restore*/
 
 	f2fs_wait_on_page_writeback(dn.inode_page, NODE, true);
 	src_addr = kmap_atomic(page);
@@ -297,7 +314,7 @@ struct f2fs_dir_entry *find_in_inline_dir(struct inode *dir,
 	make_dentry_ptr(NULL, &d, (void *)inline_dentry, 2);
 	de = find_target_dentry(dir, fname, namehash, NULL, &d, fstr);
 	unlock_page(ipage);
-	if (de)
+	if (de && !IS_ERR(de))
 		*res_page = ipage;
 	else
 		f2fs_put_page(ipage, 0);
@@ -346,6 +363,7 @@ int make_empty_inline_dir(struct inode *inode, struct inode *parent,
 	if (i_size_read(inode) < MAX_INLINE_DATA) {
 		i_size_write(inode, MAX_INLINE_DATA);
 		set_inode_flag(F2FS_I(inode), FI_UPDATE_DIR);
+		set_inode_flag(F2FS_I(inode), FI_ISIZE_CHANGED);
 	}
 	return 0;
 }
@@ -407,6 +425,7 @@ static int f2fs_convert_inline_dir(struct inode *dir, struct page *ipage,
 	if (i_size_read(dir) < PAGE_CACHE_SIZE) {
 		i_size_write(dir, PAGE_CACHE_SIZE);
 		set_inode_flag(F2FS_I(dir), FI_UPDATE_DIR);
+		set_inode_flag(F2FS_I(dir), FI_ISIZE_CHANGED);
 	}
 
 	sync_inode_page(&dn);

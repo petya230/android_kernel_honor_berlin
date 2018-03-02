@@ -1,6 +1,7 @@
 #ifndef _LINUX_KASAN_H
 #define _LINUX_KASAN_H
 
+#include <linux/sched.h>
 #include <linux/types.h>
 
 struct kmem_cache;
@@ -13,7 +14,6 @@ struct vm_struct;
 
 #include <asm/kasan.h>
 #include <asm/pgtable.h>
-#include <linux/sched.h>
 
 extern unsigned char kasan_zero_page[PAGE_SIZE];
 extern pte_t kasan_zero_pte[PTRS_PER_PTE];

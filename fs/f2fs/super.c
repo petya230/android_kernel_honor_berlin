@@ -25,10 +25,6 @@
 #include <linux/f2fs_fs.h>
 #include <linux/sysfs.h>
 
-#ifdef CONFIG_HISI_BB
-#include <linux/hisi/rdr_hisi_platform.h>
-#endif
-
 #include "f2fs.h"
 #include "node.h"
 #include "segment.h"
@@ -50,6 +46,10 @@ struct dsm_dev dsm_f2fs = {
     .buff_size = 1024,
 };
 struct dsm_client *f2fs_dclient = NULL;
+#endif
+
+#ifdef CONFIG_HISI_F2FS_MTIME
+#define TIME_NS_NEED_UPDATE_MTIME (10000000) /*gran is 10ms,just like hz=100*/
 #endif
 
 static bool restart = false;
@@ -131,26 +131,10 @@ enum {
 	F2FS_SBI,	/* struct f2fs_sb_info */
 };
 
-#ifdef CONFIG_HISI_BB
-static bool rdr_register_succ = true;
-void f2fs_rdr_reboot(void)
-{
-	if (rdr_register_succ)
-		rdr_syserr_process_for_ap((unsigned int)MODID_AP_S_F2FS, 0UL, 0UL);
-	else
-		kernel_restart("mountfail");
-}
-#endif
-
 static void f2fs_reboot(struct work_struct *work)
 {
 	if (work)
-#ifdef CONFIG_HISI_BB
-		f2fs_rdr_reboot();
-#else
 		kernel_restart("mountfail");
-#endif
-
 
 	/* should not be here */
 	panic("f2fs reboot error!");
@@ -337,7 +321,7 @@ void f2fs_msg(struct super_block *sb, const char *level, const char *fmt, ...)
 {
 	struct va_format vaf;
 	va_list args;
-#ifdef CONFIG_HUAWEI_F2FS_DSM
+#if defined(CONFIG_HUAWEI_F2FS_DSM) && !defined(CONFIG_HISI_PARTITION_HI3650)
 	char buf[256] = {0};
 #endif
 
@@ -346,12 +330,12 @@ void f2fs_msg(struct super_block *sb, const char *level, const char *fmt, ...)
 	vaf.va = &args;
 	printk("%sF2FS-fs (%s): %pV\n", level, sb->s_id, &vaf);
 
-#ifdef CONFIG_HUAWEI_F2FS_DSM
+#if defined(CONFIG_HUAWEI_F2FS_DSM) && !defined(CONFIG_HISI_PARTITION_HI3650)
 	vscnprintf(buf, sizeof(buf), fmt, args);
 #endif
 	va_end(args);
 
-#ifdef CONFIG_HUAWEI_F2FS_DSM
+#if defined(CONFIG_HUAWEI_F2FS_DSM) && !defined(CONFIG_HISI_PARTITION_HI3650)
 	if(!strcmp(level, KERN_ERR) || !strcmp(level, KERN_WARNING)) {
 		if (f2fs_dclient && !dsm_client_ocuppy(f2fs_dclient)) {
 			dsm_client_record(f2fs_dclient,"%sF2FS-fs (%s): %s\n", level, sb->s_id, buf);
@@ -587,6 +571,7 @@ static int f2fs_drop_inode(struct inode *inode)
 
 			sb_start_intwrite(inode->i_sb);
 			i_size_write(inode, 0);
+			set_inode_flag(F2FS_I(inode), FI_ISIZE_CHANGED);
 
 			if (F2FS_HAS_BLOCKS(inode))
 				f2fs_truncate(inode, true);
@@ -633,6 +618,9 @@ static void f2fs_put_super(struct super_block *sb)
 		remove_proc_entry("segment_info", sbi->s_proc);
 		remove_proc_entry("misc_info", sbi->s_proc);
 		remove_proc_entry("undiscard_info", sbi->s_proc);
+#ifdef CONFIG_HUAWEI_F2FS_DB_STAT
+		remove_proc_entry("db_stat", sbi->s_proc);
+#endif
 		remove_proc_entry(sb->s_id, f2fs_proc_root);
 	}
 	kobject_del(&sbi->s_kobj);
@@ -1014,6 +1002,49 @@ static const struct file_operations f2fs_seq_undiscard_info_fops = {
 	.release = single_release,
 };
 /*lint -restore*/
+
+#ifdef CONFIG_HUAWEI_F2FS_DB_STAT
+static int db_stat_seq_show(struct seq_file *seq, void *offset)
+{
+	struct super_block *sb = seq->private;
+	struct f2fs_sb_info *sbi = F2FS_SB(sb);
+	struct file_stats *fs = sbi->fstats;
+	int i, j;
+
+	seq_printf(seq, "%-20s %-16s ", "filename", "inode number");
+	seq_printf(seq, "%-16s %-16s %-16s %-16s \n",
+		"fsync", "app write", "fs write data", "fs write node");
+
+	/*lint -save -e574 -e737*/
+	for (i = 0; i < FILE_STAT_NUMBER; i++) {
+	/*lint --restore*/
+		seq_printf(seq, "%-20s ", fs[i].filename);
+		seq_printf(seq, "%-16u ", fs[i].ino);
+
+		for (j = 0; j < FSTATS_MAX; j++)
+			seq_printf(seq, "%-16llu ", fs[i].datas[j]);
+
+		seq_putc(seq, '\n');
+	}
+
+	return 0;
+}
+
+static int db_stat_open_fs(struct inode *inode, struct file *file)
+{
+	return single_open(file, db_stat_seq_show, PDE_DATA(inode));
+}
+
+/*lint -save -e64 -e785*/
+static const struct file_operations f2fs_seq_db_stat_fops = {
+	.owner = THIS_MODULE,
+	.open = db_stat_open_fs,
+	.read = seq_read,
+	.llseek = seq_lseek,
+	.release = single_release,
+};
+/*lint -restore*/
+#endif
 
 static void default_options(struct f2fs_sb_info *sbi)
 {
@@ -1462,6 +1493,13 @@ static int sanity_check_raw_super(struct super_block *sb,
 		return 1;
 	}
 
+	if (le32_to_cpu(raw_super->segment_count) > F2FS_MAX_SEGMENT) {
+		f2fs_msg(sb, KERN_INFO,
+			"Invalid segment count (%u)",
+			le32_to_cpu(raw_super->segment_count));
+		return 1;
+	}
+
 	/* check CP/SIT/NAT/SSA/MAIN_AREA area boundary */
 	if (sanity_check_area_boundary(sb, bh))
 		return 1;
@@ -1474,6 +1512,8 @@ int sanity_check_ckpt(struct f2fs_sb_info *sbi)
 	unsigned int total, fsmeta;
 	struct f2fs_super_block *raw_super = F2FS_RAW_SUPER(sbi);
 	struct f2fs_checkpoint *ckpt = F2FS_CKPT(sbi);
+	unsigned int main_segs, blocks_per_seg;
+	int i;
 
 	total = le32_to_cpu(raw_super->segment_count);
 	fsmeta = le32_to_cpu(raw_super->segment_count_ckpt);
@@ -1484,6 +1524,22 @@ int sanity_check_ckpt(struct f2fs_sb_info *sbi)
 
 	if (unlikely(fsmeta >= total))
 		return 1;
+
+	main_segs = le32_to_cpu(sbi->raw_super->segment_count_main);
+	blocks_per_seg = sbi->blocks_per_seg;
+
+	for (i = 0; i < NR_CURSEG_NODE_TYPE; i++) {
+		if (le32_to_cpu(ckpt->cur_node_segno[i]) >= main_segs ||
+		    le16_to_cpu(ckpt->cur_node_blkoff[i]) >= blocks_per_seg) {
+			return 1;
+		}
+	}
+	for (i = 0; i < NR_CURSEG_DATA_TYPE; i++) {
+		if (le32_to_cpu(ckpt->cur_data_segno[i]) >= main_segs ||
+		    le16_to_cpu(ckpt->cur_data_blkoff[i]) >= blocks_per_seg) {
+			return 1;
+		}
+	}
 
 	if (unlikely(f2fs_cp_error(sbi))) {
 		f2fs_msg(sbi->sb, KERN_ERR, "A bug case: need to run fsck");
@@ -1625,6 +1681,99 @@ int f2fs_commit_super(struct f2fs_sb_info *sbi, bool recover)
 	return err;
 }
 
+#ifdef CONFIG_HUAWEI_F2FS_DB_STAT
+int is_db_file(const char *src, const char *dbname)
+{
+	size_t src_len = strlen(src);
+	size_t dbname_len = strlen(dbname);
+
+	if (src_len != dbname_len)
+		return 0;
+
+	if (!strncasecmp(src, dbname, src_len))
+		return 1;
+
+	return 0;
+}
+
+char *db_filename[7] = {
+	"mmssms.db",
+	"mmssms.db-shm",
+	"mmssms.db-wal",
+	"mmssms.db-journal",
+	"contacts2.db",
+	"contacts2.db-shm",
+	"contacts2.db-wal",
+};
+
+void set_db_file(struct inode *inode,
+				const unsigned char *name)
+{
+	struct f2fs_sb_info *sbi = F2FS_I_SB(inode);
+	int i;
+
+	spin_lock(&sbi->fstats_lock);
+
+	/*lint -save -e574 -e737*/
+	for (i = 0; i < FILE_STAT_NUMBER; i++) {
+	/*lint --restore*/
+		if (is_db_file((const char *)name, db_filename[i])) {
+			/*lint -save -e712*/
+			sbi->fstats[i].ino = inode->i_ino;
+			/*lint --restore*/
+			break;
+		}
+	}
+
+	spin_unlock(&sbi->fstats_lock);
+}
+
+void init_file_stats(struct f2fs_sb_info *sbi)
+{
+	int i, j;
+
+	/*lint -save -e574 -e737*/
+	for (i = 0; i < FILE_STAT_NUMBER; i++) {
+	/*lint --restore*/
+		strncpy(sbi->fstats[i].filename, db_filename[i],
+						strlen(db_filename[i]));
+		/*lint -save -e570*/
+		sbi->fstats[i].ino = -1;
+		/*lint --restore*/
+
+		for (j = 0; j < FSTATS_MAX; j++)
+			sbi->fstats[i].datas[j] = 0;
+	}
+
+	spin_lock_init(&sbi->fstats_lock);
+}
+
+void fstats_update_datas(struct f2fs_sb_info *sbi,
+			unsigned long nid, enum fstats_type type, int delta)
+{
+	int i;
+
+	/*lint -save -e574 -e737*/
+	for (i = 0; i < FILE_STAT_NUMBER; i++) {
+	/*lint --restore*/
+		if (sbi->fstats[i].ino == nid)
+			break;
+	}
+
+	/*lint -save -e574 -e737*/
+	if (i == FILE_STAT_NUMBER)
+	/*lint --restore*/
+		return;
+
+	spin_lock(&sbi->fstats_lock);
+	/*lint -save -e737*/
+	sbi->fstats[i].datas[type] += delta;
+	/*lint --restore*/
+	spin_unlock(&sbi->fstats_lock);
+}
+#endif
+
+int f2fs_fill_super_done = 0;
 static int f2fs_fill_super(struct super_block *sb, void *data, int silent)
 {
 	struct f2fs_sb_info *sbi;
@@ -1641,11 +1790,15 @@ try_onemore:
 	raw_super = NULL;
 	valid_super_block = -1;
 	recovery = 0;
+	f2fs_fill_super_done = 0;
 
 	/* allocate memory for f2fs-specific super block info */
 	sbi = kzalloc(sizeof(struct f2fs_sb_info), GFP_KERNEL);
 	if (!sbi)
 		return -ENOMEM;
+#ifdef CONFIG_HUAWEI_F2FS_DB_STAT
+	init_file_stats(sbi);
+#endif
 
 	/* Load the checksum driver */
 	sbi->s_chksum_driver = crypto_alloc_shash("crc32", 0, 0);
@@ -1692,7 +1845,11 @@ try_onemore:
 	sb->s_xattr = f2fs_xattr_handlers;
 	sb->s_export_op = &f2fs_export_ops;
 	sb->s_magic = F2FS_SUPER_MAGIC;
+#ifdef CONFIG_HISI_F2FS_MTIME
+	sb->s_time_gran = TIME_NS_NEED_UPDATE_MTIME;
+#else
 	sb->s_time_gran = 1;
+#endif
 	sb->s_flags = (sb->s_flags & ~MS_POSIXACL) |
 		(test_opt(sbi, POSIX_ACL) ? MS_POSIXACL : 0);
 	memcpy(sb->s_uuid, raw_super->uuid, sizeof(raw_super->uuid));
@@ -1702,7 +1859,10 @@ try_onemore:
 	sbi->raw_super = raw_super;
 	sbi->valid_super_block = valid_super_block;
 	mutex_init(&sbi->gc_mutex);
-	mutex_init(&sbi->writepages);
+#if 1
+	spin_lock_init(&sbi->writepages_lock);
+#endif
+	sema_init(&sbi->writepages, 1);
 	mutex_init(&sbi->cp_mutex);
 	init_rwsem(&sbi->node_write);
 
@@ -1719,6 +1879,7 @@ try_onemore:
 		sbi->write_io[i].bio = NULL;
 	}
 
+	spin_lock_init(&sbi->cp_rwsem_lock);
 	init_rwsem(&sbi->cp_rwsem);
 	init_waitqueue_head(&sbi->cp_wait);
 	init_sb_info(sbi);
@@ -1830,6 +1991,10 @@ try_onemore:
 				 &f2fs_seq_misc_info_fops, sb);
 		proc_create_data("undiscard_info", S_IRUGO, sbi->s_proc,
 				 &f2fs_seq_undiscard_info_fops, sb);
+#ifdef CONFIG_HUAWEI_F2FS_DB_STAT
+		proc_create_data("db_stat", S_IRUGO, sbi->s_proc,
+				 &f2fs_seq_db_stat_fops, sb);
+#endif
 	}
 
 	sbi->s_kobj.kset = f2fs_kset;
@@ -1854,6 +2019,9 @@ try_onemore:
 		if (need_fsck)
 			set_sbi_flag(sbi, SBI_NEED_FSCK);
 
+		if (!retry)
+			goto skip_recovery;
+
 		err = recover_fsync_data(sbi);
 		if (err) {
 			need_fsck = true;
@@ -1862,6 +2030,8 @@ try_onemore:
 			goto free_kobj;
 		}
 	}
+
+skip_recovery:
 	/* recover_fsync_data() cleared this already */
 	clear_sbi_flag(sbi, SBI_POR_DOING);
 
@@ -1892,6 +2062,7 @@ try_onemore:
 
 	f2fs_update_time(sbi, CP_TIME);
 	f2fs_update_time(sbi, REQ_TIME);
+	f2fs_fill_super_done = 1;
 	return 0;
 
 free_kobj:
@@ -1903,6 +2074,9 @@ free_proc:
 		remove_proc_entry("segment_info", sbi->s_proc);
 		remove_proc_entry("misc_info", sbi->s_proc);
 		remove_proc_entry("undiscard_info", sbi->s_proc);
+#ifdef CONFIG_HUAWEI_F2FS_DB_STAT
+		remove_proc_entry("db_stat", sbi->s_proc);
+#endif
 		remove_proc_entry(sb->s_id, f2fs_proc_root);
 	}
 	f2fs_destroy_stats(sbi);
@@ -1981,25 +2155,6 @@ static void destroy_inodecache(void)
 	kmem_cache_destroy(f2fs_inode_cachep);
 }
 
-#ifdef CONFIG_HISI_BB
-int f2fs_register_exception(void)
-{
-	u32 ret;
-	struct rdr_exception_info_s einfo = {
-		{0,0}, (u32)MODID_AP_S_F2FS, (u32)MODID_AP_S_F2FS, (u32)RDR_ERR,
-		(u32)RDR_REBOOT_NOW, (u64)RDR_AP, (u64)RDR_AP, (u64)RDR_AP,
-		(u32)RDR_REENTRANT_DISALLOW, (u32)AP_S_F2FS, (u32)RDR_UPLOAD_YES, "f2fs.reboot", "f2fs.reboot",
-		0,0,0};
-
-	ret = (u32)rdr_register_exception(&einfo);
-	if (ret != (u32)MODID_AP_S_F2FS) {
-		printk("register exception fail [0x%x]\n", einfo.e_modid);
-		return -1;
-	}
-	return 0;
-}
-#endif
-
 static int __init init_f2fs_fs(void)
 {
 	int err;
@@ -2012,11 +2167,6 @@ static int __init init_f2fs_fs(void)
 		return -ENOMEM;
 	INIT_WORK(&f2fs_work, f2fs_reboot);
 
-#ifdef CONFIG_HISI_BB
-	err = f2fs_register_exception();
-	if (err)
-		rdr_register_succ = false;
-#endif
 	err = init_inodecache();
 	if (err)
 		goto fail;

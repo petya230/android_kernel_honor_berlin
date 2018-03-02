@@ -246,6 +246,41 @@ static struct page *alloc_bounce_page(struct fscrypt_ctx *ctx, gfp_t gfp_flags)
 	return ctx->w.bounce_page;
 }
 
+static struct page *do_encrypt_page(struct inode *inode,
+				    struct page *plaintext_page,
+				    pgoff_t index,
+				    gfp_t gfp_flags)
+{
+	struct fscrypt_ctx *ctx;
+	struct page *ciphertext_page = NULL;
+	int err;
+
+	ctx = fscrypt_get_ctx(inode, gfp_flags);
+	if (IS_ERR(ctx))
+		return (struct page *)ctx;
+
+	/* The encryption operation will require a bounce page. */
+	ciphertext_page = alloc_bounce_page(ctx, gfp_flags);
+	if (IS_ERR(ciphertext_page))
+		goto errout;
+
+	ctx->w.control_page = plaintext_page;
+	err = do_page_crypto(inode, FS_ENCRYPT, index, plaintext_page,
+			     ciphertext_page, gfp_flags);
+	if (err) {
+		ciphertext_page = ERR_PTR(err);
+		goto errout;
+	}
+	SetPagePrivate(ciphertext_page);
+	set_page_private(ciphertext_page, (unsigned long)ctx);
+	lock_page(ciphertext_page);
+	return ciphertext_page;
+
+errout:
+	fscrypt_release_ctx(ctx);
+	return ciphertext_page;
+}
+
 /**
  * fscypt_encrypt_page() - Encrypts a page
  * @inode:          The inode for which the encryption should take place
@@ -263,41 +298,43 @@ static struct page *alloc_bounce_page(struct fscrypt_ctx *ctx, gfp_t gfp_flags)
  * error value or NULL.
  */
 struct page *fscrypt_encrypt_page(struct inode *inode,
-				struct page *plaintext_page, gfp_t gfp_flags)
+				  struct page *plaintext_page, gfp_t gfp_flags)
 {
-	struct fscrypt_ctx *ctx;
-	struct page *ciphertext_page = NULL;
-	int err;
-
 	BUG_ON(!PageLocked(plaintext_page));
 
-	ctx = fscrypt_get_ctx(inode, gfp_flags);
-	if (IS_ERR(ctx))
-		return (struct page *)ctx;
-
-	/* The encryption operation will require a bounce page. */
-	ciphertext_page = alloc_bounce_page(ctx, gfp_flags);
-	if (IS_ERR(ciphertext_page))
-		goto errout;
-
-	ctx->w.control_page = plaintext_page;
-	err = do_page_crypto(inode, FS_ENCRYPT, plaintext_page->index,
-					plaintext_page, ciphertext_page,
-					gfp_flags);
-	if (err) {
-		ciphertext_page = ERR_PTR(err);
-		goto errout;
-	}
-	SetPagePrivate(ciphertext_page);
-	set_page_private(ciphertext_page, (unsigned long)ctx);
-	lock_page(ciphertext_page);
-	return ciphertext_page;
-
-errout:
-	fscrypt_release_ctx(ctx);
-	return ciphertext_page;
+	return do_encrypt_page(inode, plaintext_page, plaintext_page->index,
+			       gfp_flags);
 }
 EXPORT_SYMBOL(fscrypt_encrypt_page);
+
+/**
+ * fscypt_encrypt_dio_page() - Encrypts a dio page
+ * @inode:          The inode for which the encryption should take place
+ * @plaintext_page: The page to encrypt. Must be a dio page.
+ * @gfp_flags:      The gfp flag for memory allocation
+ *
+ * Allocates a ciphertext page and encrypts plaintext_page into it using the ctx
+ * encryption context.
+ *
+ * Called on the page write path.  The caller must call
+ * fscrypt_restore_control_page() or fscrypt_pullback_bio_page() on the
+ * returned ciphertext page to release the bounce buffer and the
+ * encryption context.
+ *
+ * Return: An allocated page with the encrypted content on success. Else, an
+ * error value or NULL.
+ *
+ * Note: fscrypt just run well when file system block size is equal to
+ *       PAGE_SIZE now, so this function only can be used in this case now.
+ */
+struct page *fscrypt_encrypt_dio_page(struct inode *inode,
+				      struct page *plaintext_page,
+				      pgoff_t index,
+				      gfp_t gfp_flags)
+{
+	return do_encrypt_page(inode, plaintext_page, index, gfp_flags);
+}
+EXPORT_SYMBOL(fscrypt_encrypt_dio_page);
 
 /**
  * f2crypt_decrypt_page() - Decrypts a page in-place
@@ -317,6 +354,26 @@ int fscrypt_decrypt_page(struct page *page)
 			FS_DECRYPT, page->index, page, page, GFP_NOFS);
 }
 EXPORT_SYMBOL(fscrypt_decrypt_page);
+
+/**
+ * fscrypt_decrypt_dio_page() - Decrypts a dio page in-place
+ * @page: The page to decrypt. Must be dio page.
+ *
+ * Decrypts page in-place using the ctx encryption context.
+ *
+ * Called from the read completion callback.
+ *
+ * Return: Zero on success, non-zero otherwise.
+ *
+ * Note: fscrypt just run well when file system block size is equal to
+ *       PAGE_SIZE now, so this function only can be used in this case now.
+ */
+int fscrypt_decrypt_dio_page(struct inode *inode, struct page *page,
+			     pgoff_t index)
+{
+	return do_page_crypto(inode, FS_DECRYPT, index, page, page, GFP_NOFS);
+}
+EXPORT_SYMBOL(fscrypt_decrypt_dio_page);
 
 int fscrypt_zeroout_range(struct inode *inode, pgoff_t lblk,
 				sector_t pblk, unsigned int len)
@@ -460,13 +517,26 @@ static void completion_pages(struct work_struct *work)
 	bio_put(bio);
 }
 
-void fscrypt_decrypt_bio_pages(struct fscrypt_ctx *ctx, struct bio *bio)
+static inline void do_decrypt_dio_bio_pages(struct fscrypt_ctx *ctx,
+					    struct bio *bio, work_func_t func)
 {
-	INIT_WORK(&ctx->r.work, completion_pages);
+	INIT_WORK(&ctx->r.work, func);
 	ctx->r.bio = bio;
 	queue_work(fscrypt_read_workqueue, &ctx->r.work);
 }
+
+void fscrypt_decrypt_bio_pages(struct fscrypt_ctx *ctx, struct bio *bio)
+{
+	do_decrypt_dio_bio_pages(ctx, bio, completion_pages);
+}
 EXPORT_SYMBOL(fscrypt_decrypt_bio_pages);
+
+void fscrypt_decrypt_dio_bio_pages(struct fscrypt_ctx *ctx, struct bio *bio,
+				   work_func_t func)
+{
+	do_decrypt_dio_bio_pages(ctx, bio, func);
+}
+EXPORT_SYMBOL(fscrypt_decrypt_dio_bio_pages);
 
 void fscrypt_pullback_bio_page(struct page **page, bool restore)
 {

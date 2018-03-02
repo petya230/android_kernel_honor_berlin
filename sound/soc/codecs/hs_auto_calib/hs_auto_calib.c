@@ -8,6 +8,7 @@
 #include <linux/of_gpio.h>
 #include "hs_auto_calib.h"
 
+/*lint -e574*/
 #define LOG_TAG "hs_auto_calib"
 
 #define OF_KEY_VALUE_GET(np, name, value, def_val)  \
@@ -15,7 +16,7 @@ do {\
 	ret = of_property_read_u32(np, name, value); \
 	if(ret != 0) { \
 		*value = def_val; \
-		logi("name is %d",*value); \
+		logi("param_name is %d",*value); \
 	} \
 } while(0)
 
@@ -55,7 +56,7 @@ void headset_auto_calib_init(struct device_node * np)
 	struct device_node *ncp = NULL;
 	/* ret is needed by OF_KEY_VALUE_GET */
 	int ret = 0;
-	char *status = NULL;
+	const char *status = NULL;
 	logi("begin\n");
 	/* re-config the keys */
 	ncp = of_get_child_by_name(np, "hs_auto_calib");
@@ -65,7 +66,7 @@ void headset_auto_calib_init(struct device_node * np)
 	if(of_property_read_string(ncp, "status", &status)) {
 		goto err;
 	}
-	if(!strcmp(status, "ok")) {
+	if(!strncmp(status, "ok", strlen(status))) {
 		hs_auto_calib_enable = true;
 	} else {
 		hs_auto_calib_enable = false;
@@ -160,8 +161,6 @@ static void store_error(void)
  */
 static void record_sort(int hkadc_value)
 {
-	int i = 0;
-	int j = 0;
 	int temp = 0;
 	logi("hkadc_value %d \n", hkadc_value);
 	if (hkadc_value < btn_voltage.key_play_max_value) {
@@ -248,8 +247,9 @@ void startup_FSM(enum adjust_State state, int hkadc_value, int * pr_btn_type)
 	}
 
 	logi("begin, adjust_state %d hkadc_value %d\n", state, hkadc_value);
-	int headset_type = 0;
+
 	while(1) {
+		int headset_type = 0;
 		switch(state) {
 		case REC_JUDGE:
 			//if all record is empty goto report ,else ERROR_JUDGE

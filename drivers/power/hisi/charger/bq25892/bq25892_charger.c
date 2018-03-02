@@ -1162,7 +1162,7 @@ static irqreturn_t bq25892_interrupt(int irq, void *_di)
     {
         di->irq_active = 0;
         disable_irq_nosync(di->irq_int);
-        schedule_work(&di->irq_work);
+        queue_work(system_power_efficient_wq, &di->irq_work);
     }
     else
     {

@@ -33,6 +33,7 @@
 #ifdef CONFIG_HUAWEI_IO_TRACING
 #include <trace/iotrace.h>
 DEFINE_TRACE(f2fs_detected_quasi);
+DEFINE_TRACE(block_bio_wbt_done);
 #endif
 
 struct bio_wait{
@@ -602,6 +603,8 @@ static void __wbt_wait(struct rq_wb *rwb, struct bio *bio, spinlock_t *lock)
 /*lint -save -e715*/
 static inline bool wbt_should_throttle(struct rq_wb *rwb, unsigned long rw)
 {
+	if (task_wb_in_sync_mode(current))
+		return false;
 	/*
 	 * If not a WRITE (or a discard), do nothing
 	 */
@@ -642,6 +645,10 @@ bool wbt_wait(struct rq_wb *rwb, struct bio *bio, spinlock_t *lock)
 	/*lint -save -e747*/
 	__wbt_wait(rwb, bio, lock);
 	/*lint -restore*/
+
+#ifdef CONFIG_HUAWEI_IO_TRACING
+    trace_block_bio_wbt_done(bio);
+#endif
 
 	if (!timer_pending(&rwb->window_timer))
 		rwb_arm_timer(rwb);

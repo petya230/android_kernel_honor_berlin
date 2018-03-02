@@ -45,11 +45,13 @@ static void sdcardfs_remove_super(struct sdcardfs_sb_info *sbi)
 	spin_unlock(&sdcardfs_list_lock);
 }
 
+#if 0
 void sdcardfs_drop_shared_icache(struct super_block *sb,
-	struct super_block *lower_sb, unsigned long ino)
+				struct inode *lower_inode)
 {
 	struct list_head *p;
 	struct sdcardfs_sb_info *sbi;
+	struct super_block *lower_sb = lower_inode->i_sb;
 
 	spin_lock(&sdcardfs_list_lock);
 	p = sdcardfs_list.next;
@@ -60,12 +62,13 @@ void sdcardfs_drop_shared_icache(struct super_block *sb,
 			continue;
 		}
 		spin_unlock(&sdcardfs_list_lock);
-		sdcardfs_drop_sb_icache(sbi->s_sb, ino);
+		sdcardfs_drop_sb_icache(sbi->s_sb, lower_inode->i_ino);
 		spin_lock(&sdcardfs_list_lock);
 		p = p->next;
 	}
 	spin_unlock(&sdcardfs_list_lock);
 }
+#endif
 
 /* final actions when unmounting a file system */
 static void sdcardfs_put_super(struct super_block *sb)

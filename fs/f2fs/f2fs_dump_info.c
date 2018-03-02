@@ -18,6 +18,7 @@
 #include <linux/sysfs.h>
 
 #include "f2fs.h"
+#include "segment.h"
 
 /* Display on console */
 #define DISP(fmt, ptr, member)				\
@@ -164,3 +165,51 @@ void f2fs_print_ckpt_info(struct f2fs_sb_info *sbi)
 	printk("\n\n");
 }
 
+extern int f2fs_fill_super_done;
+void f2fs_print_sbi_info(struct f2fs_sb_info *sbi)
+{
+	if (!f2fs_fill_super_done)
+		return;
+	if (sbi == NULL)
+		return;
+	f2fs_msg(sbi->sb, KERN_ALERT, "\n");
+	f2fs_msg(sbi->sb, KERN_ALERT, "+--------------------------------------------------------+\n");
+	f2fs_msg(sbi->sb, KERN_ALERT, "|       SBI(Real time dirty nodes/segments info)         |\n");
+	f2fs_msg(sbi->sb, KERN_ALERT, "+--------------------------------------------------------+\n");
+
+	f2fs_msg(sbi->sb, KERN_ALERT, "ndirty_node: %d\n", get_pages(sbi, F2FS_DIRTY_NODES));
+	f2fs_msg(sbi->sb, KERN_ALERT, "ndirty_dent: %d\n", get_pages(sbi, F2FS_DIRTY_DENTS));
+	f2fs_msg(sbi->sb, KERN_ALERT, "ndirty_meta: %d\n", get_pages(sbi, F2FS_DIRTY_META));
+	f2fs_msg(sbi->sb, KERN_ALERT, "ndirty_data: %d\n", get_pages(sbi, F2FS_DIRTY_DATA));
+	f2fs_msg(sbi->sb, KERN_ALERT, "ndirty_files: %d\n", sbi->ndirty_inode[DIR_INODE]);
+	f2fs_msg(sbi->sb, KERN_ALERT, "inmem_pages: %d\n", get_pages(sbi, F2FS_INMEM_PAGES));
+	f2fs_msg(sbi->sb, KERN_ALERT, "wb_pages: %d\n", get_pages(sbi, F2FS_WRITEBACK));
+	f2fs_msg(sbi->sb, KERN_ALERT, "total_count: %d\n", ((unsigned int)sbi->user_block_count)/((unsigned int)sbi->blocks_per_seg));
+	f2fs_msg(sbi->sb, KERN_ALERT, "rsvd_segs: %d\n", reserved_segments(sbi));
+	f2fs_msg(sbi->sb, KERN_ALERT, "overp_segs: %d\n", overprovision_segments(sbi));
+	f2fs_msg(sbi->sb, KERN_ALERT, "valid_count: %d\n", valid_user_blocks(sbi));
+	/*lint -save -e529 -e438*/
+	f2fs_msg(sbi->sb, KERN_ALERT, "inline_attr: %d\n", atomic_read(&sbi->inline_xattr));
+	f2fs_msg(sbi->sb, KERN_ALERT, "inline_inode: %d\n", atomic_read(&sbi->inline_inode));
+	f2fs_msg(sbi->sb, KERN_ALERT, "inline_dir: %d\n", atomic_read(&sbi->inline_dir));
+	/*lint -restore*/
+	f2fs_msg(sbi->sb, KERN_ALERT, "utilization: %d\n", utilization(sbi));
+
+	f2fs_msg(sbi->sb, KERN_ALERT, "free_segs: %d\n", free_segments(sbi));
+	f2fs_msg(sbi->sb, KERN_ALERT, "free_secs: %d\n", free_sections(sbi));
+	f2fs_msg(sbi->sb, KERN_ALERT, "prefree_count: %d\n", prefree_segments(sbi));
+	f2fs_msg(sbi->sb, KERN_ALERT, "dirty_count: %d\n", dirty_segments(sbi));
+	f2fs_msg(sbi->sb, KERN_ALERT, "node_pages: %d\n",(int)NODE_MAPPING(sbi)->nrpages);
+	f2fs_msg(sbi->sb, KERN_ALERT, "meta_pages: %d\n",(int)META_MAPPING(sbi)->nrpages);
+	f2fs_msg(sbi->sb, KERN_ALERT, "nats: %d\n", NM_I(sbi)->nat_cnt);
+	f2fs_msg(sbi->sb, KERN_ALERT, "dirty_nats: %d\n", SIT_I(sbi)->dirty_sentries);
+	f2fs_msg(sbi->sb, KERN_ALERT, "fnids: %d\n", NM_I(sbi)->fcnt);
+
+	f2fs_msg(sbi->sb, KERN_ALERT, "segment_count[LFS]: %d\n", sbi->segment_count[0]);
+	f2fs_msg(sbi->sb, KERN_ALERT, "segment_count[SSR]: %d\n", sbi->segment_count[1]);
+
+	f2fs_msg(sbi->sb, KERN_ALERT, "block_count[LFS]: %d\n", sbi->block_count[0]);
+	f2fs_msg(sbi->sb, KERN_ALERT, "block_count[SSR]: %d\n", sbi->block_count[1]);
+
+	f2fs_msg(sbi->sb, KERN_ALERT, "\n\n");
+}

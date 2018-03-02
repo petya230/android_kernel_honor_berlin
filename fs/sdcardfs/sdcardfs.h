@@ -471,7 +471,7 @@ static inline void sdcardfs_put_real_lower(const struct dentry *dent,
 		sdcardfs_put_lower_path(dent, real_lower);
 }
 
-void sdcardfs_drop_shared_icache(struct super_block *, struct super_block *, unsigned long);
+void sdcardfs_drop_shared_icache(struct super_block *, struct inode *);
 void sdcardfs_drop_sb_icache(struct super_block *, unsigned long);
 void sdcardfs_add_super(struct sdcardfs_sb_info *, struct super_block *);
 /* for packagelist.c */

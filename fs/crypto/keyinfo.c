@@ -82,7 +82,36 @@ out:
 	return res;
 }
 
-int derive_aes_gcm_key(u8 deriving_key[FS_AES_256_GCM_KEY_SIZE],
+int fscrypt_set_gcm_key(struct crypto_aead *tfm,
+			u8 deriving_key[FS_AES_256_GCM_KEY_SIZE])
+{
+	int res = 0;
+	unsigned int iv_len;
+
+	crypto_aead_set_flags(tfm, CRYPTO_TFM_REQ_WEAK_KEY);
+
+	iv_len = crypto_aead_ivsize(tfm);
+	if (iv_len != FS_KEY_DERIVATION_IV_SIZE) {
+		res = -EINVAL;
+		pr_err("fscrypt %s : IV length is incompatible\n", __func__);
+		goto out;
+	}
+
+	res = crypto_aead_setauthsize(tfm, FS_KEY_DERIVATION_TAG_SIZE);
+	if (res < 0) {
+		pr_err("fscrypt %s : Failed to set authsize\n", __func__);
+		goto out;
+	}
+
+	res = crypto_aead_setkey(tfm, deriving_key,
+					FS_AES_256_GCM_KEY_SIZE);
+	if (res < 0)
+		pr_err("fscrypt %s : Failed to set deriving key\n", __func__);
+out:
+	return res;
+}
+
+int fscrypt_derive_gcm_key(struct crypto_aead *tfm,
 				u8 source_key[FS_KEY_DERIVATION_CIPHER_SIZE],
 				u8 derived_key[FS_KEY_DERIVATION_CIPHER_SIZE],
 				u8 iv[FS_KEY_DERIVATION_IV_SIZE],
@@ -92,13 +121,15 @@ int derive_aes_gcm_key(u8 deriving_key[FS_AES_256_GCM_KEY_SIZE],
 	struct aead_request *req = NULL;
 	DECLARE_FS_COMPLETION_RESULT(ecr);
 	struct scatterlist src_sg, dst_sg;
-	unsigned int iv_len, ilen;
-	struct crypto_aead *tfm
-		= (struct crypto_aead *)crypto_alloc_aead("gcm(aes)", 0, 0);
+	unsigned int ilen;
+
+	if (!tfm) {
+		res = -EINVAL;
+		goto out;
+	}
 
 	if (IS_ERR(tfm)) {
 		res = PTR_ERR(tfm);
-		tfm = NULL;
 		goto out;
 	}
 
@@ -112,26 +143,6 @@ int derive_aes_gcm_key(u8 deriving_key[FS_AES_256_GCM_KEY_SIZE],
 	aead_request_set_callback(req,
 			CRYPTO_TFM_REQ_MAY_BACKLOG | CRYPTO_TFM_REQ_MAY_SLEEP,
 			derive_crypt_complete, &ecr);
-
-	iv_len = crypto_aead_ivsize(tfm);
-	if (iv_len != FS_KEY_DERIVATION_IV_SIZE) {
-		res = -EINVAL;
-		pr_err("IV length is incompatible\n");
-		goto out;
-	}
-
-	res = crypto_aead_setauthsize(tfm, FS_KEY_DERIVATION_TAG_SIZE);
-	if (res < 0) {
-		pr_err("Failed to set authsize\n");
-		goto out;
-	}
-
-	res = crypto_aead_setkey(tfm, deriving_key,
-					FS_AES_256_GCM_KEY_SIZE);
-	if (res < 0) {
-		pr_err("Failed to set deriving key\n");
-		goto out;
-	}
 
 	ilen = enc ? FS_KEY_DERIVATION_NONCE_SIZE :
 			FS_KEY_DERIVATION_CIPHER_SIZE;
@@ -152,8 +163,6 @@ int derive_aes_gcm_key(u8 deriving_key[FS_AES_256_GCM_KEY_SIZE],
 out:
 	if (req)
 		aead_request_free(req);
-	if (tfm)
-		crypto_free_aead(tfm);
 	return res;
 }
 
@@ -188,6 +197,7 @@ static int validate_user_key(struct fscrypt_info *crypt_info,
 	const struct user_key_payload *ukp;
 	int res;
 	u8 plain_text[FS_KEY_DERIVATION_CIPHER_SIZE] = {0};
+	struct crypto_aead *tfm = NULL;
 
 	keyring_key = fscrypt_request_key(ctx->master_key_descriptor,
 				prefix, prefix_size);
@@ -218,16 +228,32 @@ static int validate_user_key(struct fscrypt_info *crypt_info,
 		up_read(&keyring_key->sem);
 		goto out;
 	}
-	res = derive_aes_gcm_key(master_key->raw, ctx->nonce, plain_text, ctx->iv, 0);
+
+	tfm = (struct crypto_aead *)crypto_alloc_aead("gcm(aes)", 0, 0);
+	if (IS_ERR(tfm)) {
+		up_read(&keyring_key->sem);
+		res = (int)PTR_ERR(tfm);
+		tfm = NULL;
+		pr_err("fscrypt %s : tfm allocation failed!\n", __func__);
+		goto out;
+	}
+
+	res = fscrypt_set_gcm_key(tfm, master_key->raw);
 	up_read(&keyring_key->sem);
+	if (res)
+		goto out;
+	res = fscrypt_derive_gcm_key(tfm, ctx->nonce, plain_text, ctx->iv, 0);
 	if (res)
 		goto out;
 
 	memcpy(raw_key, plain_text, FS_KEY_DERIVATION_NONCE_SIZE);
 
 	crypt_info->ci_keyring_key = keyring_key;
+	crypt_info->ci_gtfm = tfm;
 	return 0;
 out:
+	if (tfm)
+		crypto_free_aead(tfm);
 	key_put(keyring_key);
 	return res;
 }
@@ -254,6 +280,8 @@ static void put_crypt_info(struct fscrypt_info *ci)
 		ci->ci_key_len = 0;
 	}
 	crypto_free_ablkcipher(ci->ci_ctfm);
+	if (ci->ci_gtfm)
+		crypto_free_aead(ci->ci_gtfm);
 	kmem_cache_free(fscrypt_info_cachep, ci);
 }
 
@@ -304,6 +332,7 @@ retry:
 	crypt_info->ci_filename_mode = ctx.filenames_encryption_mode;
 	crypt_info->ci_ctfm = NULL;
 	crypt_info->ci_keyring_key = NULL;
+	crypt_info->ci_gtfm = NULL;
 	crypt_info->ci_key = NULL;
 	crypt_info->ci_key_len = 0;
 	memcpy(crypt_info->ci_master_key, ctx.master_key_descriptor,

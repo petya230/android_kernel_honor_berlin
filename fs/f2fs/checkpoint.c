@@ -94,11 +94,7 @@ repeat:
 		f2fs_stop_checkpoint(sbi);
 		f2fs_msg(sbi->sb, KERN_ERR,"f2fs reboot for memory error!");
 		WARN_ON(1);
-#ifdef CONFIG_HISI_BB
-		f2fs_rdr_reboot();
-#else
 		kernel_restart("mountfail");
-#endif
 	}
 out:
 	return page;
@@ -735,6 +731,7 @@ int get_valid_checkpoint(struct f2fs_sb_info *sbi)
 
 	cp_block = (struct f2fs_checkpoint *)page_address(cur_page);
 	memcpy(sbi->ckpt, cp_block, blk_size);
+	sbi->ckpt_crc = cur_cp_crc(cp_block);
 
 	/* Sanity checking of checkpoint */
 	if (sanity_check_ckpt(sbi))
@@ -812,19 +809,9 @@ void update_dirty_page(struct inode *inode, struct page *page)
 	f2fs_trace_pid(page);
 }
 
-void add_dirty_dir_inode(struct inode *inode)
-{
-	struct f2fs_sb_info *sbi = F2FS_I_SB(inode);
-
-	spin_lock(&sbi->inode_lock[DIR_INODE]);
-	__add_dirty_inode(inode, DIR_INODE);
-	spin_unlock(&sbi->inode_lock[DIR_INODE]);
-}
-
 void remove_dirty_inode(struct inode *inode)
 {
 	struct f2fs_sb_info *sbi = F2FS_I_SB(inode);
-	struct f2fs_inode_info *fi = F2FS_I(inode);
 	enum inode_type type = S_ISDIR(inode->i_mode) ? DIR_INODE : FILE_INODE;
 
 	if (!S_ISDIR(inode->i_mode) && !S_ISREG(inode->i_mode) &&
@@ -834,12 +821,6 @@ void remove_dirty_inode(struct inode *inode)
 	spin_lock(&sbi->inode_lock[type]);
 	__remove_dirty_inode(inode, type);
 	spin_unlock(&sbi->inode_lock[type]);
-
-	/* Only from the recovery routine */
-	if (is_inode_flag_set(fi, FI_DELAY_IPUT)) {
-		clear_inode_flag(fi, FI_DELAY_IPUT);
-		iput(inode);
-	}
 }
 
 int sync_dirty_inodes(struct f2fs_sb_info *sbi, enum inode_type type)
@@ -979,11 +960,14 @@ static void wait_on_all_pages_writeback(struct f2fs_sb_info *sbi)
 	#endif
 }
 
+extern long long total;
+extern long cp_length;
+extern long count;
+
 static int do_checkpoint(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 {
 	struct f2fs_checkpoint *ckpt = F2FS_CKPT(sbi);
 	struct super_block *sb = sbi->sb;
-	struct curseg_info *curseg = CURSEG_I(sbi, CURSEG_WARM_NODE);
 	struct f2fs_nm_info *nm_i = NM_I(sbi);
 	unsigned long orphan_num = sbi->im[ORPHAN_INO].ino_num;
 	nid_t last_nid = nm_i->next_scan_nid;
@@ -992,17 +976,12 @@ static int do_checkpoint(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 	__u32 crc32 = 0;
 	int i;
 	int cp_payload_blks = __cp_payload(sbi);
-	block_t discard_blk = NEXT_FREE_BLKADDR(sbi, curseg);
-	bool invalidate = false;
 	struct curseg_info *seg_i = CURSEG_I(sbi, CURSEG_HOT_NODE);
 	u64 kbytes_written;
 
-	/*
-	 * This avoids to conduct wrong roll-forward operations and uses
-	 * metapages, so should be called prior to sync_meta_pages below.
-	 */
-	if (discard_next_dnode(sbi, discard_blk))
-		invalidate = true;
+	total = 0;
+	cp_length = 0;
+	count = 0;
 
 	/* Flush all the NAT/SIT pages */
 	while (get_pages(sbi, F2FS_DIRTY_META)) {
@@ -1079,6 +1058,9 @@ static int do_checkpoint(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 	if (is_sbi_flag_set(sbi, SBI_NEED_FSCK))
 		set_ckpt_flags(ckpt, CP_FSCK_FLAG);
 
+	/* set this flag to activate crc|cp_ver for recovery */
+	set_ckpt_flags(ckpt, CP_CRC_RECOVERY_FLAG);
+
 	/* update SIT/NAT bitmap */
 	get_sit_bitmap(sbi, __bitmap_ptr(sbi, SIT_BITMAP));
 	get_nat_bitmap(sbi, __bitmap_ptr(sbi, NAT_BITMAP));
@@ -1087,6 +1069,7 @@ static int do_checkpoint(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 	*((__le32 *)((unsigned char *)ckpt +
 				le32_to_cpu(ckpt->checksum_offset)))
 				= cpu_to_le32(crc32);
+	sbi->ckpt_crc = (u64)crc32;
 
 	start_blk = __start_cp_addr(sbi);
 
@@ -1165,14 +1148,6 @@ static int do_checkpoint(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 	/* wait for previous submitted meta pages writeback */
 	wait_on_all_pages_writeback(sbi);
 
-	/*
-	 * invalidate meta page which is used temporarily for zeroing out
-	 * block at the end of warm node chain.
-	 */
-	if (invalidate)
-		invalidate_mapping_pages(META_MAPPING(sbi), discard_blk,
-								discard_blk);
-
 	/*lint -save -e747*/
 	release_ino_entry(sbi, false);
 	/*lint -restore*/
@@ -1195,7 +1170,9 @@ int write_checkpoint(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 	struct f2fs_checkpoint *ckpt = F2FS_CKPT(sbi);
 	unsigned long long ckpt_ver;
 	int err = 0;
+	struct timespec cp_begin, cp_end;
 
+	getnstimeofday(&cp_begin);
 	mutex_lock(&sbi->cp_mutex);
 
 	if (!is_sbi_flag_set(sbi, SBI_IS_DIRTY) &&
@@ -1248,6 +1225,9 @@ int write_checkpoint(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 
 	/* unlock all the fs_lock[] in do_checkpoint() */
 	err = do_checkpoint(sbi, cpc);
+	if (total >= 15 * 1000 * 1000 * 1000LL)
+		f2fs_msg(sbi->sb, KERN_ALERT, "f2fs total discard latency, tm = %lldns, len = %ld, cnt = %ld\n",
+			total, cp_length, count);
 
 	unblock_operations(sbi);
 	stat_inc_cp_count(sbi->stat_info);
@@ -1261,6 +1241,11 @@ int write_checkpoint(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 	trace_f2fs_write_checkpoint(sbi->sb, cpc->reason, "finish checkpoint");
 out:
 	mutex_unlock(&sbi->cp_mutex);
+	getnstimeofday(&cp_end);
+	if ((cp_end.tv_sec - cp_begin.tv_sec) > 20)
+		f2fs_msg(sbi->sb, KERN_ALERT, "f2fs long time cp, time = %lds\n",
+				cp_end.tv_sec - cp_begin.tv_sec);
+
 	return err;
 }
 

@@ -210,12 +210,6 @@ static int sdcardfs_unlink(struct inode *dir, struct dentry *dentry)
 	sdcardfs_get_lower_path(dentry, &lower_path);
 	lower_dentry = lower_path.dentry;
 	dget(lower_dentry);
-
-	if (d_inode(lower_dentry) != NULL)
-		sdcardfs_drop_shared_icache(dir->i_sb,
-			d_inode(lower_dentry)->i_sb,
-			d_inode(lower_dentry)->i_ino);
-
 	lower_dir_dentry = lock_parent(lower_dentry);
 
 	err = mnt_want_write(lower_path.mnt);
@@ -553,12 +547,6 @@ static int sdcardfs_rmdir(struct inode *dir, struct dentry *dentry)
 	sdcardfs_get_real_lower(dentry, &lower_path);
 
 	lower_dentry = lower_path.dentry;
-
-	if (d_inode(lower_dentry) != NULL)
-		sdcardfs_drop_shared_icache(dir->i_sb,
-			d_inode(lower_dentry)->i_sb,
-			d_inode(lower_dentry)->i_ino);
-
 	lower_dir_dentry = lock_parent(lower_dentry);
 
 	err = mnt_want_write(lower_path.mnt);

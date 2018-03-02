@@ -49,8 +49,11 @@ extern struct dsm_client *f2fs_dclient;
 				dsm_client_record(f2fs_dclient,"F2FS bug: %s:%d\n", __func__, __LINE__); \
 				dsm_client_notify(f2fs_dclient, DSM_F2FS_NEED_FSCK); \
 			} \
+			f2fs_print_raw_sb_info(sbi); \
+			f2fs_print_ckpt_info(sbi); \
+			f2fs_print_sbi_info(sbi); \
 		} \
-	BUG_ON(condition); \
+		BUG_ON(condition); \
 	} while (0)
 #else
 #define f2fs_bug_on(sbi, condition)	BUG_ON(condition)
@@ -67,6 +70,9 @@ extern struct dsm_client *f2fs_dclient;
 				dsm_client_record(f2fs_dclient,"F2FS bug: %s:%d\n", __func__, __LINE__); \
 				dsm_client_notify(f2fs_dclient, DSM_F2FS_NEED_FSCK); \
 			} \
+			f2fs_print_raw_sb_info(sbi); \
+			f2fs_print_ckpt_info(sbi); \
+			f2fs_print_sbi_info(sbi); \
 			WARN_ON(1);					\
 			set_sbi_flag(sbi, SBI_NEED_FSCK);		\
 		}							\
@@ -197,7 +203,7 @@ enum {
 		(SM_I(sbi)->trim_sections * (sbi)->segs_per_sec)
 #define BATCHED_TRIM_BLOCKS(sbi)	\
 		(BATCHED_TRIM_SEGMENTS(sbi) << (sbi)->log_blocks_per_seg)
-#define DEF_CP_INTERVAL			60	/* 60 secs */
+#define DEF_CP_INTERVAL			30	/* 30 secs */
 #define DEF_IDLE_INTERVAL		0	/* 0 secs */
 
 struct cp_control {
@@ -511,6 +517,7 @@ struct f2fs_inode_info {
 	atomic_t dirty_pages;		/* # of dirty pages */
 	f2fs_hash_t chash;		/* hash value of given file name */
 	unsigned int clevel;		/* maximum level of given file name */
+	struct task_struct *task;	/* lookup and create consistency */
 	nid_t i_xattr_nid;		/* node id that contains xattrs */
 	unsigned long long xattr_ver;	/* cp version of xattr modification */
 
@@ -811,6 +818,27 @@ enum {
 	MAX_TIME,
 };
 
+#ifdef CONFIG_HUAWEI_F2FS_DB_STAT
+
+#define FILE_STAT_NAME_LEN	64
+enum fstats_type {
+	FSTATS_FSYNC,
+	FSTATS_APP,
+	FSTATS_FS_DATA,
+	FSTATS_FS_NODE,
+	FSTATS_MAX,
+};
+struct file_stats {
+	char filename[FILE_STAT_NAME_LEN];
+	u32 ino;
+	unsigned long long datas[FSTATS_MAX];
+};
+
+extern char *db_filename[7];
+
+#define FILE_STAT_NUMBER	(int)(sizeof(db_filename)/sizeof(char*))
+#endif
+
 extern const struct dentry_operations f2fs_ci_dops;
 #ifdef CONFIG_F2FS_FS_ENCRYPTION
 extern const struct dentry_operations f2fs_fscrypt_dops;
@@ -841,11 +869,25 @@ struct f2fs_sb_info {
 
 	/* for checkpoint */
 	struct f2fs_checkpoint *ckpt;		/* raw checkpoint pointer */
+	u64 ckpt_crc;				/* CRC of cp1 in a cp pack */
 	struct inode *meta_inode;		/* cache meta blocks */
 	struct mutex cp_mutex;			/* checkpoint procedure lock */
 	struct rw_semaphore cp_rwsem;		/* blocking FS operations */
+
+#if 1
+	/* used for debugging cp rwsem */
+	struct task_struct *cp_rwsem_owner;
+	unsigned long cp_rwsem_owner_j;
+	spinlock_t cp_rwsem_lock;
+#endif
+
 	struct rw_semaphore node_write;		/* locking node writes */
-	struct mutex writepages;		/* mutex for writepages() */
+#if 1
+	struct task_struct *writepages_owner;
+	unsigned long writepages_owner_j;
+	spinlock_t writepages_lock;
+#endif
+	struct semaphore writepages;		/* semaphore for writepages() */
 	wait_queue_head_t cp_wait;
 	unsigned long last_time[MAX_TIME];	/* to store time in jiffies */
 	long interval_time[MAX_TIME];		/* to store thresholds */
@@ -903,6 +945,9 @@ struct f2fs_sb_info {
 	struct f2fs_gc_kthread	*gc_thread;	/* GC thread */
 	unsigned int cur_victim_sec;		/* current victim section num */
 
+	/* threshold for converting bg victim for fg */
+	u64 fggc_threshold;
+
 	/* maximum # of trials to find a victim segment for SSR and GC */
 	unsigned int max_victim_search;
 
@@ -925,6 +970,12 @@ struct f2fs_sb_info {
 	int bg_gc;				/* background gc calls */
 	unsigned int ndirty_inode[NR_INODE_TYPE];	/* # of dirty inodes */
 #endif
+
+#ifdef CONFIG_HUAWEI_F2FS_DB_STAT
+	struct file_stats fstats[FILE_STAT_NUMBER];
+#endif
+	spinlock_t fstats_lock;
+
 	unsigned int last_victim[2];		/* last victim segment # */
 	spinlock_t stat_lock;			/* lock for stat operations */
 
@@ -1149,6 +1200,12 @@ static inline unsigned long long cur_cp_version(struct f2fs_checkpoint *cp)
 	return le64_to_cpu(cp->checkpoint_ver);
 }
 
+static inline __u64 cur_cp_crc(struct f2fs_checkpoint *cp)
+{
+	size_t crc_offset = le32_to_cpu(cp->checksum_offset);
+	return le32_to_cpu(*((__le32 *)((unsigned char *)cp + crc_offset)));
+}
+
 static inline bool is_set_ckpt_flags(struct f2fs_checkpoint *cp, unsigned int f)
 {
 	unsigned int ckpt_flags = le32_to_cpu(cp->ckpt_flags);
@@ -1171,6 +1228,21 @@ static inline void clear_ckpt_flags(struct f2fs_checkpoint *cp, unsigned int f)
 
 static inline void f2fs_lock_op(struct f2fs_sb_info *sbi)
 {
+#if 1
+	spin_lock(&sbi->cp_rwsem_lock);
+	if (sbi->cp_rwsem_owner &&
+		time_after(jiffies, sbi->cp_rwsem_owner_j + 3*HZ)) {
+		show_stack(current, NULL);
+		printk(KERN_ERR "cp_rwsem_timeout: %lu->%lu [%d]%s %llu/%llu\n",
+			sbi->cp_rwsem_owner_j, jiffies,
+			sbi->cp_rwsem_owner->pid, sbi->cp_rwsem_owner->comm,
+			sbi->cp_rwsem_owner->sched_info.last_arrival,
+			sbi->cp_rwsem_owner->sched_info.last_queued
+		);
+		show_stack(sbi->cp_rwsem_owner, NULL);
+	}
+	spin_unlock(&sbi->cp_rwsem_lock);
+#endif
 	down_read(&sbi->cp_rwsem);
 }
 
@@ -1182,10 +1254,19 @@ static inline void f2fs_unlock_op(struct f2fs_sb_info *sbi)
 static inline void f2fs_lock_all(struct f2fs_sb_info *sbi)
 {
 	down_write(&sbi->cp_rwsem);
+#if 1
+	sbi->cp_rwsem_owner = current;
+	sbi->cp_rwsem_owner_j = jiffies;
+#endif
 }
 
 static inline void f2fs_unlock_all(struct f2fs_sb_info *sbi)
 {
+#if 1
+	spin_lock(&sbi->cp_rwsem_lock);
+	sbi->cp_rwsem_owner = NULL;
+	spin_unlock(&sbi->cp_rwsem_lock);
+#endif
 	up_write(&sbi->cp_rwsem);
 }
 
@@ -1622,12 +1703,12 @@ enum {
 	FI_NO_ALLOC,		/* should not allocate any blocks */
 	FI_FREE_NID,		/* free allocated nide */
 	FI_UPDATE_DIR,		/* should update inode block for consistency */
-	FI_DELAY_IPUT,		/* used for the recovery */
 	FI_NO_EXTENT,		/* not to use the extent cache */
 	FI_INLINE_XATTR,	/* used for inline xattr */
 	FI_INLINE_DATA,		/* used for inline data*/
 	FI_INLINE_DENTRY,	/* used for inline dentry */
 	FI_APPEND_WRITE,	/* inode has appended data */
+	FI_ISIZE_CHANGED,	/* inode isize changed */
 	FI_UPDATE_WRITE,	/* inode has in-place-update data */
 	FI_NEED_IPU,		/* used for ipu per file */
 	FI_ATOMIC_FILE,		/* indicate atomic file */
@@ -1945,6 +2026,11 @@ extern __printf(3, 4)
 void f2fs_msg(struct super_block *, const char *, const char *, ...);
 int sanity_check_ckpt(struct f2fs_sb_info *sbi);
 extern void f2fs_add_restart_wq(void);
+#ifdef CONFIG_HUAWEI_F2FS_DB_STAT
+void fstats_update_datas(struct f2fs_sb_info *,
+			unsigned long, enum fstats_type, int);
+void set_db_file(struct inode *, const unsigned char *);
+#endif
 
 /*
  * hash.c
@@ -2014,7 +2100,6 @@ bool is_checkpointed_data(struct f2fs_sb_info *, block_t);
 void refresh_sit_entry(struct f2fs_sb_info *, block_t, block_t);
 void clear_prefree_segments(struct f2fs_sb_info *, struct cp_control *);
 void release_discard_addrs(struct f2fs_sb_info *);
-bool discard_next_dnode(struct f2fs_sb_info *, block_t);
 int npages_for_summary_flush(struct f2fs_sb_info *, bool);
 void allocate_new_segments(struct f2fs_sb_info *);
 int f2fs_trim_fs(struct f2fs_sb_info *, struct fstrim_range *);
@@ -2062,7 +2147,6 @@ void remove_orphan_inode(struct f2fs_sb_info *, nid_t);
 int recover_orphan_inodes(struct f2fs_sb_info *);
 int get_valid_checkpoint(struct f2fs_sb_info *);
 void update_dirty_page(struct inode *, struct page *);
-void add_dirty_dir_inode(struct inode *);
 void remove_dirty_inode(struct inode *);
 int sync_dirty_inodes(struct f2fs_sb_info *, enum inode_type);
 int write_checkpoint(struct f2fs_sb_info *, struct cp_control *);
@@ -2327,13 +2411,6 @@ void f2fs_update_extent_cache_range(struct dnode_of_data *dn,
 void init_extent_cache_info(struct f2fs_sb_info *);
 int __init create_extent_cache(void);
 void destroy_extent_cache(void);
-
-/*
- * hisi rdr support
- */
-#ifdef CONFIG_HISI_BB
-void f2fs_rdr_reboot(void);
-#endif
 
 /*
  * crypto support

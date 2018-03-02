@@ -102,3 +102,8 @@ config HUAWEI_F2FS_DSM
 config QUASI_DETECT
     bool "F2FS quasi io detect"
     default y
+config HISI_F2FS_MTIME
+	bool "reduce freq to update mtime"
+	default n
+	help
+		reduce freq to update mtime

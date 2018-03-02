@@ -12,6 +12,9 @@ enum hisi_charger_type {
 	PLEASE_PROVIDE_POWER,		/* host mode, provide power */
 };
 
+/**
+ * event types passed to hisi_usb_otg_event().
+ */
 enum otg_dev_event_type {
 	CHARGER_CONNECT_EVENT = 0,
 	CHARGER_DISCONNECT_EVENT,
@@ -24,7 +27,17 @@ enum otg_dev_event_type {
 int hisi_charger_type_notifier_register(struct notifier_block *nb);
 int hisi_charger_type_notifier_unregister(struct notifier_block *nb);
 enum hisi_charger_type hisi_get_charger_type(void);
+
+/**
+ * hisi_usb_otg_event() - Queue a event to be processed.
+ * @evnet_type: the event to be processed.
+ *
+ * The event will be added to tail of a queue, and processed in a work.
+ *
+ * Return: 0 means the event added sucessfully. others means event was rejected.
+ */
 int hisi_usb_otg_event(enum otg_dev_event_type event_type);
+
 void hisi_usb_otg_bc_again(void);
 int hisi_usb_otg_irq_notifier_register(struct notifier_block *nb);
 int hisi_usb_otg_irq_notifier_unregister(struct notifier_block *nb);

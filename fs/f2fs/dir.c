@@ -94,7 +94,7 @@ static struct f2fs_dir_entry *find_in_block(struct inode *dir,
 
 	make_dentry_ptr(NULL, &d, (void *)dentry_blk, 1);
 	de = find_target_dentry(dir, fname, namehash, max_slots, &d, fstr);
-	if (de)
+	if (de && !IS_ERR(de))
 		*res_page = dentry_page;
 	else
 		kunmap(dentry_page);
@@ -304,6 +304,9 @@ struct f2fs_dir_entry *__f2fs_find_entry(struct inode *dir,
 			break;
 	}
 out:
+	/* This is to increase the speed of f2fs_create */
+	if (!de)
+		F2FS_I(dir)->task = current;
 	return de;
 }
 
@@ -468,9 +471,14 @@ struct page *init_inode_metadata(struct inode *inode, struct inode *dir,
 			return page;
 
 		if (S_ISDIR(inode->i_mode)) {
+			/* in order to handle error case */
+			get_page(page);
 			err = make_empty_dir(inode, dir, page);
-			if (err)
-				goto error;
+			if (err) {
+				lock_page(page);
+				goto put_error;
+			}
+			put_page(page);
 		}
 
 		err = f2fs_init_acl(inode, dir, page, dpage);
@@ -514,13 +522,12 @@ struct page *init_inode_metadata(struct inode *inode, struct inode *dir,
 	return page;
 
 put_error:
-	f2fs_put_page(page, 1);
-error:
-	/* once the failed inode becomes a bad inode, i_mode is S_IFREG */
+	/* truncate empty dir pages */
 	truncate_inode_pages(&inode->i_data, 0);
-	truncate_blocks(inode, 0, false);
-	remove_dirty_inode(inode);
-	remove_inode_page(inode);
+
+	clear_nlink(inode);
+	update_inode(inode, page);
+	f2fs_put_page(page, 1);
 	return ERR_PTR(err);
 }
 
@@ -713,14 +720,43 @@ int __f2fs_add_link(struct inode *dir, const struct qstr *name,
 				struct inode *inode, nid_t ino, umode_t mode)
 {
 	struct fscrypt_name fname;
+	struct page *page = NULL;
+	struct f2fs_dir_entry *de = NULL;
 	int err;
 
 	err = fscrypt_setup_filename(dir, name, 0, &fname);
 	if (err)
 		return err;
 
-	err = __f2fs_do_add_link(dir, &fname, inode, ino, mode);
-
+	/*
+	 * An immature stakable filesystem shows a race condition between lookup
+	 * and create. If we have same task when doing lookup and create, it's
+	 * definitely fine as expected by VFS normally. Otherwise, let's just
+	 * verify on-disk dentry one more time, which guarantees filesystem
+	 * consistency more.
+	 */
+	if (current != F2FS_I(dir)->task) {
+		/* only creating files through sdcardfs can reach here */
+		struct fscrypt_str fstr = FSTR_INIT(NULL, 0);
+		de = __f2fs_find_entry(dir, &fname, &page, &fstr);
+		if (fstr.name) {
+			kfree(fstr.name);
+			fstr.name = NULL;
+			fstr.len = 0;
+		}
+		F2FS_I(dir)->task = NULL;
+	}
+	if (IS_ERR(de)) {
+		err = (int)PTR_ERR(de);
+	} else if (de) {
+		f2fs_dentry_kunmap(dir, page);
+		f2fs_put_page(page, 0);
+		err = -EEXIST;
+	} else if (!IS_ERR(page)) {
+		err = __f2fs_do_add_link(dir, &fname, inode, ino, mode);
+	} else {
+		err = (int)PTR_ERR(page);
+	}
 	fscrypt_free_filename(&fname);
 	f2fs_update_time(F2FS_I_SB(dir), REQ_TIME);
 	return err;
@@ -768,6 +804,7 @@ void f2fs_drop_nlink(struct inode *dir, struct inode *inode, struct page *page)
 	if (S_ISDIR(inode->i_mode)) {
 		drop_nlink(inode);
 		i_size_write(inode, 0);
+		set_inode_flag(F2FS_I(inode), FI_ISIZE_CHANGED);
 	}
 	up_write(&F2FS_I(inode)->i_sem);
 	update_inode_page(inode);

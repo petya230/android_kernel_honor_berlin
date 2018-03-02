@@ -87,7 +87,7 @@ fail:
 
 static int is_multimedia_file(const unsigned char *s, const char *sub)
 {
-	size_t slen = strlen(s);
+	size_t slen = strlen((const char *)s);
 	size_t sublen = strlen(sub);
 	unsigned int i;
 
@@ -101,7 +101,7 @@ static int is_multimedia_file(const unsigned char *s, const char *sub)
 	for (i = 1; i < slen - sublen; i++) {
 		if (s[i] != '.')
 			continue;
-		if (!strncasecmp(s + i + 1, sub, sublen))
+		if (!strncasecmp((const char *)s + i + 1, sub, sublen))
 			return 1;
 	}
 
@@ -125,6 +125,36 @@ static inline void set_cold_files(struct f2fs_sb_info *sbi, struct inode *inode,
 		}
 	}
 }
+
+#define F2FS_MONITOR_UNRM
+#ifdef F2FS_MONITOR_UNRM
+static bool is_unrm_file(struct inode *inode, struct dentry *dentry)
+{
+	char *ext[] = { "jpg", "png", NULL };
+	int i;
+
+	if (S_ISDIR(inode->i_mode))
+		return true;
+
+	for (i = 0; ext[i]; i++) {
+		if (is_multimedia_file(dentry->d_name.name, ext[i]))
+			return true;
+	}
+
+	return false;
+}
+
+static void inherit_parent_flag(struct inode *dir, struct inode *inode)
+{
+	if (!S_ISDIR(inode->i_mode))
+		return;
+
+	if (!(F2FS_I(dir)->i_flags & FS_UNRM_FL))
+		return;
+
+	F2FS_I(inode)->i_flags |= FS_UNRM_FL;
+}
+#endif
 
 static int f2fs_create(struct inode *dir, struct dentry *dentry, umode_t mode,
 						bool excl)
@@ -330,6 +360,10 @@ static struct dentry *f2fs_lookup(struct inode *dir, struct dentry *dentry,
 		goto err_out;
 	}
 
+#ifdef CONFIG_HUAWEI_F2FS_DB_STAT
+	set_db_file(inode, dentry->d_name.name);
+#endif
+
 	if (flags & LOOKUP_CASE_INSENSITIVE) {
 		struct qstr ci_name;
 
@@ -363,7 +397,6 @@ static struct dentry *f2fs_lookup(struct inode *dir, struct dentry *dentry,
 			f2fs_msg(F2FS_I_SB(dir)->sb, KERN_ERR,
 				 "Unable to recover dot dentries of inode %lu",
 				 inode->i_ino);
-
 	}
 	return ret;
 
@@ -382,74 +415,43 @@ static int f2fs_unlink(struct inode *dir, struct dentry *dentry)
 
 	trace_f2fs_unlink_enter(dir, dentry);
 
-	if (F2FS_I(inode)->i_flags & FS_UNRM_FL) {
-		struct page *ipage;
-		struct f2fs_inode *fi;
-		char *comm, *p;
-		__u32 name_len, left;
-		size_t comm_len, i;
+#ifdef F2FS_MONITOR_UNRM
+	if (F2FS_I(inode)->i_flags & FS_UNRM_FL ||
+	    F2FS_I(dir)->i_flags & FS_UNRM_FL) {
+		struct task_struct *tsk, *p_tsk, *pp_tsk;
+		struct dentry *dent;
+		int is_dir = S_ISDIR(inode->i_mode);
 		char *event;
 		char *envp[2];
 
+		if (!is_unrm_file(inode, dentry))
+			goto skip_report;
+
+		tsk = current->group_leader;
+		p_tsk = tsk->parent->group_leader;
+		pp_tsk = p_tsk->parent->group_leader;
+		if (is_dir)
+			dent = dentry;
+		else
+			dent = dentry->d_parent;
 		event = kmalloc(300UL, GFP_NOFS);
 		if (event) {
-			snprintf(event, 299UL, "UNLINK=%s:%s:%s",
-					current->group_leader->comm,
-					current->group_leader->parent->comm,
-					dentry->d_name.name);
+			scnprintf(event, 299UL, "UNLINK=%s@%s@%s@%s@%d",
+				  tsk->comm, p_tsk->comm, pp_tsk->comm,
+				  dent->d_name.name, is_dir);
 			envp[0] = event;
 			envp[1] = NULL;
 			kobject_uevent_env(&sbi->s_kobj, KOBJ_CHANGE, envp);
 			kfree(event);
 		}
 
-		ipage = get_node_page(sbi, inode->i_ino);
-		if (IS_ERR(ipage)) {
-			err = (int)PTR_ERR(ipage);
-			goto fail;
-		}
-
-		fi = F2FS_INODE(ipage);
-		name_len = le32_to_cpu(fi->i_namelen) + 1;
-
-		/*
-		 * If there is enough space left in i_name, save the murder's
-		 * name after the file name.
-		 */
-		comm = current->group_leader->comm;
-		comm_len = strlen(comm);
-		p = comm + (comm_len - 1);
-		left = F2FS_NAME_LEN - name_len;
-		if (left >= 8 && left < F2FS_NAME_LEN) {
-			if (left < comm_len)
-				comm_len = left;
-			for (i = 0; i < comm_len; i++) {
-				fi->i_name[name_len + i] = (__u8)(*p);
-				p--;
-			}
-			set_page_dirty(ipage);
-		}
-		f2fs_put_page(ipage, 1);
-
-#ifdef CONFIG_HUAWEI_F2FS_DSM
-		/* report this behavor to DSM */
-		if (f2fs_dclient &&!dsm_client_ocuppy(f2fs_dclient)) {
-			dsm_client_record(f2fs_dclient,
-				"unlink: %s is deleted by PID %d[%s](parent PID %d[%s])\n",
-				dentry->d_name.name,
-				current->group_leader->pid, comm,
-				current->group_leader->parent->pid,
-				current->group_leader->parent->comm);
-			dsm_client_notify(f2fs_dclient, DSM_F2FS_UNLINK_SIGNIF_FILE);
-		}
-#endif
-		pr_warning("F2FS-fs (%s) unlink: %s is deleted by PID %d[%s](parent PID %d[%s])\n",
-				sbi->sb->s_id,
-				dentry->d_name.name,
-				current->group_leader->pid, comm,
-				current->group_leader->parent->pid,
-				current->group_leader->parent->comm);
+		pr_warning("F2FS-fs (%s): %s: unlinked by %d[%s](parent %d[%s] grand %d[%s])\n",
+			   sbi->sb->s_id, dent->d_name.name,
+			   tsk->pid, tsk->comm, p_tsk->pid, p_tsk->comm,
+			   pp_tsk->pid, pp_tsk->comm);
 	}
+skip_report:
+#endif
 
 	de = f2fs_find_entry(dir, &dentry->d_name, &page, NULL);
 	if (IS_ERR(de)) {
@@ -622,6 +624,9 @@ static int f2fs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
 	inode->i_mapping->a_ops = &f2fs_dblock_aops;
 	mapping_set_gfp_mask(inode->i_mapping, GFP_F2FS_HIGH_ZERO);
 
+#ifdef F2FS_MONITOR_UNRM
+	inherit_parent_flag(dir, inode);
+#endif
 	f2fs_balance_fs(sbi, true);
 
 	set_inode_flag(F2FS_I(inode), FI_INC_LINK);

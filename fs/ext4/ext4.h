@@ -1625,6 +1625,23 @@ static inline int ext4_encrypted_inode(struct inode *inode)
 #define EXT4_FEATURE_INCOMPAT_LARGEDIR		0x4000 /* >2GB or 3-lvl htree */
 #define EXT4_FEATURE_INCOMPAT_INLINE_DATA	0x8000 /* data in inode */
 #define EXT4_FEATURE_INCOMPAT_ENCRYPT		0x10000
+#define EXT4_FEATURE_INCOMPAT_FUNCS(name, flagname) \
+static inline bool ext4_has_feature_##name(struct super_block *sb) \
+{ \
+	return ((EXT4_SB(sb)->s_es->s_feature_incompat & \
+		cpu_to_le32(EXT4_FEATURE_INCOMPAT_##flagname)) != 0); \
+} \
+static inline void ext4_set_feature_##name(struct super_block *sb) \
+{ \
+	EXT4_SB(sb)->s_es->s_feature_incompat |= \
+		cpu_to_le32(EXT4_FEATURE_INCOMPAT_##flagname); \
+} \
+static inline void ext4_clear_feature_##name(struct super_block *sb) \
+{ \
+	EXT4_SB(sb)->s_es->s_feature_incompat &= \
+		~cpu_to_le32(EXT4_FEATURE_INCOMPAT_##flagname); \
+}
+EXT4_FEATURE_INCOMPAT_FUNCS(meta_bg,		META_BG)
 
 #define EXT2_FEATURE_COMPAT_SUPP	EXT4_FEATURE_COMPAT_EXT_ATTR
 #define EXT2_FEATURE_INCOMPAT_SUPP	(EXT4_FEATURE_INCOMPAT_FILETYPE| \

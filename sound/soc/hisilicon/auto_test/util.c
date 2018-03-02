@@ -315,6 +315,7 @@ struct  file* at_util_log_file_open(char *path, char *file_name)
     struct  kstat   file_stat;
     mm_segment_t fs;
 
+    // cppcheck-suppress *
     file_name_len = sprintf(file_name_full,"%s%s",path,file_name);
     pr_info("file_name_full = %s.\n", file_name_full);
 
@@ -337,6 +338,7 @@ struct  file* at_util_log_file_open(char *path, char *file_name)
     fs = get_fs();
     set_fs(KERNEL_DS);
     memset(tmp_buf, 0, 64);
+    // cppcheck-suppress *
     tmp_len = sprintf(tmp_buf, "%s", "Open at_log_fs.\n");
     size = vfs_write(at_log_fp, tmp_buf, tmp_len, &at_log_fp->f_pos);
     //vfs_write(fp, is_log, strlen(is_log), &fp->f_pos);
@@ -413,6 +415,7 @@ extern int at_util_log(void *data_addr,unsigned int data_len)
     rtc_time_to_tm(now.tv_sec, &cur_tm);
 
     memset(tmp_buf,0,64);
+    // cppcheck-suppress *
     tmp_len = sprintf(tmp_buf, "%04d-%02d-%02d %02d:%02d:%02d.\n",
                                 cur_tm.tm_year+1900, cur_tm.tm_mon+1,
                                 cur_tm.tm_mday, cur_tm.tm_hour,

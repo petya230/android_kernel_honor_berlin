@@ -382,7 +382,7 @@ void f2fs_balance_fs(struct f2fs_sb_info *sbi, bool need)
 	 * We should do GC or end up with checkpoint, if there are so many dirty
 	 * dir/node pages without enough free segments.
 	 */
-	if (has_not_enough_free_secs(sbi, 0)) {
+	if (has_not_enough_free_secs(sbi, 0, 0)) {
 #ifdef CONFIG_HUAWEI_F2FS_DSM
 		/* report this behavor to DSM */
 		if (((FG_GC_count++ % 100) == 0) && f2fs_dclient
@@ -486,11 +486,12 @@ int f2fs_issue_flush(struct f2fs_sb_info *sbi)
 	if (test_opt(sbi, NOBARRIER))
 		return 0;
 
-	if (!test_opt(sbi, FLUSH_MERGE)) {
+	if (!test_opt(sbi, FLUSH_MERGE) || blk_flush_async_support(sbi->sb->s_bdev)) {
 		struct bio *bio = f2fs_bio_alloc(0);
 		int ret;
 
 		bio->bi_bdev = sbi->sb->s_bdev;
+		blk_flush_set_async(bio);
 		ret = submit_bio_wait(WRITE_FLUSH, bio);
 		bio_put(bio);
 		return ret;
@@ -618,6 +619,10 @@ static void locate_dirty_segment(struct f2fs_sb_info *sbi, unsigned int segno)
 	mutex_unlock(&dirty_i->seglist_lock);
 }
 
+long long total;
+long cp_length;
+long count;
+
 static int f2fs_issue_discard(struct f2fs_sb_info *sbi,
 				block_t blkstart, block_t blklen)
 {
@@ -627,6 +632,7 @@ static int f2fs_issue_discard(struct f2fs_sb_info *sbi,
 	unsigned int offset;
 	block_t i;
 	int ret;
+	struct timespec begin, end;
 
 	for (i = blkstart; i < blkstart + blklen; i++) {
 		se = get_seg_entry(sbi, GET_SEGNO(sbi, i));
@@ -636,30 +642,22 @@ static int f2fs_issue_discard(struct f2fs_sb_info *sbi,
 			sbi->discard_blks--;
 	}
 	trace_f2fs_issue_discard(sbi->sb, blkstart, blklen);
+	getnstimeofday(&begin);
 	ret = blkdev_issue_discard(sbi->sb->s_bdev, start, len, GFP_NOFS, 0);
+	getnstimeofday(&end);
+
+	if ((end.tv_sec - begin.tv_sec) * 1000 * 1000 * 1000 +
+			(end.tv_nsec - begin.tv_nsec) > 100 * 1000 * 1000LL)
+		f2fs_msg(sbi->sb, KERN_ALERT, "f2fs long time discard, time = %ldns, start = %ld, len = %ld\n",
+			(end.tv_sec - begin.tv_sec) * 1000 * 1000 * 1000 + (end.tv_nsec - begin.tv_nsec), start, len);
+
+	total += (end.tv_sec - begin.tv_sec) * 1000 * 1000 * 1000 + end.tv_nsec - begin.tv_nsec;
+	cp_length += blklen;
+	count++;
+	if (count >= 256 && (count & 255) == 0)
+		f2fs_msg(sbi->sb, KERN_ALERT, "%s: total discard latency, tm = %lldns, len = %ld, cnt = %ld\n",
+			__FUNCTION__, total, cp_length, count);
 	return ret;
-}
-
-bool discard_next_dnode(struct f2fs_sb_info *sbi, block_t blkaddr)
-{
-	int err = -EOPNOTSUPP;
-
-	if (test_opt(sbi, DISCARD)) {
-		struct seg_entry *se = get_seg_entry(sbi,
-				GET_SEGNO(sbi, blkaddr));
-		unsigned int offset = GET_BLKOFF_FROM_SEG0(sbi, blkaddr);
-
-		if (f2fs_test_bit(offset, se->discard_map))
-			return false;
-
-		err = f2fs_issue_discard(sbi, blkaddr, 1);
-	}
-
-	if (err) {
-		update_meta_page(sbi, NULL, blkaddr);
-		return true;
-	}
-	return false;
 }
 
 static void __add_discard_entry(struct f2fs_sb_info *sbi,
@@ -1237,7 +1235,7 @@ static int get_ssr_segment(struct f2fs_sb_info *sbi, int type)
 	struct curseg_info *curseg = CURSEG_I(sbi, type);
 	const struct victim_selection *v_ops = DIRTY_I(sbi)->v_ops;
 
-	if (IS_NODESEG(type) || !has_not_enough_free_secs(sbi, 0))
+	if (IS_NODESEG(type) || !has_not_enough_free_secs(sbi, 0, 0))
 		return v_ops->get_victim(sbi,
 				&(curseg)->next_segno, BG_GC, type, SSR);
 
@@ -1406,8 +1404,10 @@ static int __get_segment_type(struct page *page, enum page_type p_type)
 		return __get_segment_type_4(page, p_type);
 	}
 	/* NR_CURSEG_TYPE(6) logs by default */
+	/*lint -save -e666*/
 	f2fs_bug_on(F2FS_P_SB(page),
 		F2FS_P_SB(page)->active_logs != NR_CURSEG_TYPE);
+	/*lint -restore*/
 	return __get_segment_type_6(page, p_type);
 }
 
@@ -1428,7 +1428,7 @@ void allocate_data_block(struct f2fs_sb_info *sbi, struct page *page,
 
 	/* direct_io'ed data is aligned to the segment for better performance */
 	if (direct_io && curseg->next_blkoff &&
-				!has_not_enough_free_secs(sbi, 0))
+				!has_not_enough_free_secs(sbi, 0, 0))
 		__allocate_new_segments(sbi, type);
 
 	*new_blkaddr = NEXT_FREE_BLKADDR(sbi, curseg);
@@ -2449,8 +2449,7 @@ int build_segment_manager(struct f2fs_sb_info *sbi)
 	sm_info->ovp_segments = le32_to_cpu(ckpt->overprov_segment_count);
 	sm_info->main_segments = le32_to_cpu(raw_super->segment_count_main);
 	sm_info->ssa_blkaddr = le32_to_cpu(raw_super->ssa_blkaddr);
-	sm_info->rec_prefree_segments = sm_info->main_segments *
-					DEF_RECLAIM_PREFREE_SEGMENTS / 100;
+	sm_info->rec_prefree_segments = DEF_RECLAIM_PREFREE_SEGMENTS;
 	sm_info->ipu_policy = 1 << F2FS_IPU_FSYNC;
 	sm_info->min_ipu_util = DEF_MIN_IPU_UTIL;
 	sm_info->min_fsync_blocks = DEF_MIN_FSYNC_BLOCKS;

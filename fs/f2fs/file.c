@@ -213,9 +213,13 @@ static int f2fs_do_sync_file(struct file *file, loff_t start, loff_t end,
 		return ret;
 	}
 
+	inode_lock(inode);
+
 	/* if the inode is dirty, let's recover all the time */
-	f2fs_write_inode(inode, NULL);
-	goto go_write;
+	if (!datasync || is_inode_flag_set(fi, FI_ISIZE_CHANGED)) {
+		f2fs_write_inode(inode, NULL);
+		goto go_write;
+	}
 
 	/*
 	 * if there is no written data, don't waste time to write recovery info.
@@ -280,12 +284,19 @@ sync_nodes:
 	/* once recovery info is written, don't need to tack this */
 	remove_ino_entry(sbi, ino, APPEND_INO);
 	clear_inode_flag(fi, FI_APPEND_WRITE);
+
+	clear_inode_flag(fi, FI_ISIZE_CHANGED);
 flush_out:
 	remove_ino_entry(sbi, ino, UPDATE_INO);
 	clear_inode_flag(fi, FI_UPDATE_WRITE);
 	ret = f2fs_issue_flush(sbi);
 	f2fs_update_time(sbi, REQ_TIME);
+
+#ifdef CONFIG_HUAWEI_F2FS_DB_STAT
+	fstats_update_datas(sbi, inode->i_ino, FSTATS_FSYNC, 1);
+#endif
 out:
+	inode_unlock(inode);
 	trace_f2fs_sync_file_exit(inode, need_cp, datasync, ret);
 	f2fs_trace_ios(NULL, 1);
 	return ret;
@@ -798,7 +809,9 @@ int truncate_hole(struct inode *inode, pgoff_t pg_start, pgoff_t pg_end)
 		end_offset = ADDRS_PER_PAGE(dn.node_page, inode);
 		count = min(end_offset - dn.ofs_in_node, pg_end - pg_start);
 
+		/*lint -save -e666*/
 		f2fs_bug_on(F2FS_I_SB(inode), count == 0 || count > end_offset);
+		/*lint -restore*/
 
 		truncate_data_blocks_range(&dn, count);
 		f2fs_put_dnode(&dn);
@@ -995,8 +1008,10 @@ static int f2fs_collapse_range(struct inode *inode, loff_t offset, loff_t len)
 	truncate_pagecache(inode, new_size);
 
 	ret = truncate_blocks(inode, new_size, true);
-	if (!ret)
+	if (!ret) {
 		i_size_write(inode, new_size);
+		set_inode_flag(F2FS_I(inode), FI_ISIZE_CHANGED);
+	}
 
 	return ret;
 }
@@ -1094,6 +1109,7 @@ static int f2fs_zero_range(struct inode *inode, loff_t offset, loff_t len,
 out:
 	if (!(mode & FALLOC_FL_KEEP_SIZE) && i_size_read(inode) < new_size) {
 		i_size_write(inode, new_size);
+		set_inode_flag(F2FS_I(inode), FI_ISIZE_CHANGED);
 		mark_inode_dirty(inode);
 		update_inode_page(inode);
 	}
@@ -1153,8 +1169,10 @@ static int f2fs_insert_range(struct inode *inode, loff_t offset, loff_t len)
 	filemap_write_and_wait_range(inode->i_mapping, offset, LLONG_MAX);
 	truncate_pagecache(inode, offset);
 
-	if (!ret)
+	if (!ret) {
 		i_size_write(inode, new_size);
+		set_inode_flag(F2FS_I(inode), FI_ISIZE_CHANGED);
+	}
 	return ret;
 }
 
@@ -1210,6 +1228,7 @@ noalloc:
 	if (!(mode & FALLOC_FL_KEEP_SIZE) &&
 		i_size_read(inode) < new_size) {
 		i_size_write(inode, new_size);
+		set_inode_flag(F2FS_I(inode), FI_ISIZE_CHANGED);
 		mark_inode_dirty(inode);
 		update_inode_page(inode);
 	}
@@ -1374,6 +1393,9 @@ static int f2fs_ioc_start_atomic_write(struct file *filp)
 	if (!inode_owner_or_capable(inode))
 		return -EACCES;
 
+	if (!S_ISREG(inode->i_mode))
+		return -EINVAL;
+
 	if (f2fs_is_atomic_file(inode))
 		return 0;
 
@@ -1387,7 +1409,7 @@ static int f2fs_ioc_start_atomic_write(struct file *filp)
 	if (!get_dirty_pages(inode))
 		return 0;
 
-	f2fs_msg(F2FS_I_SB(inode)->sb, KERN_WARNING,
+	f2fs_msg(F2FS_I_SB(inode)->sb, KERN_INFO,
 		"Unexpected flush for atomic writes: ino=%lu, npages=%u",
 					inode->i_ino, get_dirty_pages(inode));
 	ret = filemap_write_and_wait_range(inode->i_mapping, 0, LLONG_MAX);
@@ -1435,6 +1457,9 @@ static int f2fs_ioc_start_volatile_write(struct file *filp)
 
 	if (!inode_owner_or_capable(inode))
 		return -EACCES;
+
+	if (!S_ISREG(inode->i_mode))
+		return -EINVAL;
 
 	if (f2fs_is_volatile_file(inode))
 		return 0;
@@ -1772,7 +1797,7 @@ static int f2fs_defragment_range(struct f2fs_sb_info *sbi,
 	 * avoid defragment running in SSR mode when free section are allocated
 	 * intensively
 	 */
-	if (has_not_enough_free_secs(sbi, sec_num)) {
+	if (has_not_enough_free_secs(sbi, 0, sec_num)) {
 		err = -EAGAIN;
 		goto out;
 	}
@@ -1951,6 +1976,13 @@ static ssize_t f2fs_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 
 	if (ret > 0) {
 		ssize_t err;
+
+#ifdef CONFIG_HUAWEI_F2FS_DB_STAT
+		/*lint -save -e712 -e747*/
+		fstats_update_datas(F2FS_I_SB(inode), inode->i_ino,
+							FSTATS_APP, ret);
+		/*lint --restore*/
+#endif
 
 		err = generic_write_sync(file, iocb->ki_pos - ret, ret);
 		if (err < 0)

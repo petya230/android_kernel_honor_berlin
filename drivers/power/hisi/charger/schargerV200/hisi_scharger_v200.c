@@ -363,7 +363,9 @@ static ssize_t hi6522_sysfs_show(struct device *dev,
 {
 	struct hi6522_sysfs_field_info *info;
 	struct hi6522_sysfs_field_info *info2;
+#ifdef CONFIG_HISI_DEBUG_FS
 	int ret;
+#endif
 	u8 v;
 
 	info = hi6522_sysfs_field_lookup(attr->attr.name);
@@ -424,10 +426,11 @@ static ssize_t hi6522_sysfs_show(struct device *dev,
 			return -EINVAL;
 		info->reg = info2->reg;
 	}
-
+#ifdef CONFIG_HISI_DEBUG_FS
 	ret = hi6522_read_mask(info->reg, info->mask, info->shift, &v);
 	if (ret)
 		return ret;
+#endif
 
 	return scnprintf(buf, PAGE_SIZE, "0x%hhx\n", v);
 }
@@ -609,10 +612,11 @@ static ssize_t hi6522_sysfs_store(struct device *dev,
 			return -EINVAL;
 		}
 	}
-
+#ifdef CONFIG_HISI_DEBUG_FS
 	ret = hi6522_write_mask(info->reg, info->mask, info->shift, v);
 	if (ret)
 		return ret;
+#endif
 
 	return count;
 }
@@ -2171,6 +2175,12 @@ int hi6522_get_ibus_ma(void)
 int hi6522_set_charger_hiz(int enable)
 {
 	struct hi6522_device_info *di = g_hi6522_dev;
+
+	if(NULL == di) {
+		SCHARGER_ERR("[%s] di is NULL!\n", __func__);
+		return 0;
+	}
+
 	if (di->ovlo_flag == 1) {
 		SCHARGER_ERR("[%s] HIZ,ovlo is not used\n", __func__);
 		return 0;
@@ -2244,11 +2254,6 @@ int hi6522_get_charge_state(unsigned int *state)
 	if ((reg3 & CHG_STATUS1_VBUS_OVP_6P5V) == CHG_STATUS1_VBUS_OVP_6P5V) {
 		*state |= CHAGRE_STATE_VBUS_OVP;
 	}
-#if 0
-	if ((reg & hi6522_BAT_FAULT_OVP) == hi6522_BAT_FAULT_OVP) {
-		*state |= CHAGRE_STATE_BATT_OVP;
-	}
-#endif
 	SCHARGER_INF("[%s],state:%d, reg1 = 0x%x, reg2 = 0x%x\n", __func__,
 		     *state, reg1, reg2);
 	return ret;
@@ -2530,7 +2535,7 @@ static void hi6522_dpm_check_work(struct work_struct *work)
 		}
 	}
 
-	schedule_delayed_work(&di->hi6522_dpm_check_work,
+	queue_delayed_work(system_power_efficient_wq, &di->hi6522_dpm_check_work,
 			      msecs_to_jiffies(dpm_check_delay_time_ms));
 }
 
@@ -2632,7 +2637,7 @@ struct charge_device_ops hi6522_ops = {
 static irqreturn_t hi6522_irq_handle(int irq, void *data)
 {
 	struct hi6522_device_info *di = (struct hi6522_device_info *)data;
-	schedule_work(&di->irq_work);
+	queue_work(system_power_efficient_wq, &di->irq_work);
 	disable_irq_nosync(di->irq_int);
 
 	return IRQ_HANDLED;
@@ -3017,7 +3022,7 @@ static int hi6522_dpm_switch_notifier_call(struct notifier_block *usb_nb,
 	case CHARGER_TYPE_UNKNOWN:
         di->ico_en = 1;
         batteryBufferFirst = 1;
-		schedule_delayed_work(&di->hi6522_dpm_check_work,
+		queue_delayed_work(system_power_efficient_wq, &di->hi6522_dpm_check_work,
 				      msecs_to_jiffies(0));
 		di->batfet_disable_flag = FALSE;
 		break;
@@ -3218,7 +3223,7 @@ static int hi6522_charger_probe(struct i2c_client *client,
 	if (type < CHARGER_TYPE_NONE) {
         di->ico_en = 1;
         di->ico_iin = IIN_LIMIT_2A;
-		schedule_delayed_work(&di->hi6522_dpm_check_work,
+		queue_delayed_work(system_power_efficient_wq, &di->hi6522_dpm_check_work,
 				      msecs_to_jiffies(0));
 	}
 	ret = hi6522_sysfs_create_group(di);

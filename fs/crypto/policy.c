@@ -57,6 +57,7 @@ static int create_encryption_context_from_policy(struct inode *inode,
 	struct key *keyring_key = NULL;
 	struct fscrypt_key *master_key;
 	const struct user_key_payload *ukp;
+	struct crypto_aead *tfm = NULL;
 
 	if (!inode->i_sb->s_cop->set_context)
 		return -EOPNOTSUPP;
@@ -145,14 +146,29 @@ got_key:
 		goto out;
 	}
 
-	res = derive_aes_gcm_key(master_key->raw, plain_text, ctx.nonce, ctx.iv, 1);
+	tfm = (struct crypto_aead *)crypto_alloc_aead("gcm(aes)", 0, 0);
+	if (IS_ERR(tfm)) {
+		up_read(&keyring_key->sem);
+		res = PTR_ERR(tfm);
+		tfm = NULL;
+		pr_err("fscrypt %s : tfm allocation failed!\n", __func__);
+		goto out;
+	}
+
+	res = fscrypt_set_gcm_key(tfm, master_key->raw);
 	up_read(&keyring_key->sem);
+	if (res)
+		goto out;
+
+	res = fscrypt_derive_gcm_key(tfm, plain_text, ctx.nonce, ctx.iv, 1);
 	if (res)
 		goto out;
 
 	res = inode->i_sb->s_cop->set_context(inode, &ctx, sizeof(ctx), NULL);
 
 out:
+	if (tfm)
+		crypto_free_aead(tfm);
 	key_put(keyring_key);
 	return res;
 }
@@ -263,9 +279,6 @@ int fscrypt_inherit_context(struct inode *parent, struct inode *child,
 	int res;
 	u8 nonce[FS_KEY_DERIVATION_NONCE_SIZE];
 	u8 plain_text[FS_KEY_DERIVATION_CIPHER_SIZE] = {0};
-	struct key *keyring_key = NULL;
-	struct fscrypt_key *master_key;
-	const struct user_key_payload *ukp;
 
 	if (!parent->i_sb->s_cop->set_context)
 		return -EOPNOTSUPP;
@@ -298,36 +311,7 @@ int fscrypt_inherit_context(struct inode *parent, struct inode *child,
 	get_random_bytes(ctx.iv, FS_KEY_DERIVATION_IV_SIZE);
 	memcpy(plain_text, nonce, FS_KEY_DERIVATION_NONCE_SIZE);
 
-
-	/* get DEK */
-	keyring_key = ci->ci_keyring_key;
-	if (!keyring_key) {
-		res = -ENOKEY;
-		return res;
-	}
-
-	down_read(&keyring_key->sem);
-
-	ukp = ((struct user_key_payload *)keyring_key->payload.data);
-	if (ukp->datalen != sizeof(struct fscrypt_key)) {
-		res = -EINVAL;
-		up_read(&keyring_key->sem);
-		return res;
-	}
-
-	master_key = (struct fscrypt_key *)ukp->data;
-	if (master_key->size != FS_AES_256_GCM_KEY_SIZE) {
-		printk_once(KERN_WARNING
-				"%s: key size incorrect: %d\n",
-				__func__, master_key->size);
-		res = -ENOKEY;
-		up_read(&keyring_key->sem);
-		return res;
-	}
-
-	res = derive_aes_gcm_key(master_key->raw, plain_text, ctx.nonce, ctx.iv, 1);
-	up_read(&keyring_key->sem);
-
+	res = fscrypt_derive_gcm_key(ci->ci_gtfm, plain_text, ctx.nonce, ctx.iv, 1);
 	if (res)
 		return res;
 

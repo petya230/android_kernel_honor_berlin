@@ -2224,6 +2224,7 @@ static inline void memalloc_noio_restore(unsigned int flags)
 #define PFA_SLEEP_ON_THROTL	25
 #define PFA_FLUSHER		26
 #define PFA_IN_PAGEFAULT	27
+#define PFA_WB_IN_SYNC_MODE	28
 
 #define TASK_PFA_TEST(name, func)					\
 	static inline bool task_##func(struct task_struct *p)		\
@@ -2257,6 +2258,9 @@ TASK_PFA_CLEAR(FLUSHER, flusher)
 TASK_PFA_TEST(IN_PAGEFAULT, in_pagefault)
 TASK_PFA_SET(IN_PAGEFAULT, in_pagefault)
 TASK_PFA_CLEAR(IN_PAGEFAULT, in_pagefault)
+TASK_PFA_TEST(WB_IN_SYNC_MODE, wb_in_sync_mode)
+TASK_PFA_SET(WB_IN_SYNC_MODE, wb_in_sync_mode)
+TASK_PFA_CLEAR(WB_IN_SYNC_MODE, wb_in_sync_mode)
 
 /*
  * task->jobctl flags

@@ -179,7 +179,8 @@ static void select_policy(struct f2fs_sb_info *sbi, int gc_type,
 		p->ofs_unit = sbi->segs_per_sec;
 	}
 
-	if (p->max_search > sbi->max_victim_search)
+	/* we need to check every dirty segments in the FG_GC case */
+	if (gc_type != FG_GC && p->max_search > sbi->max_victim_search)
 		p->max_search = sbi->max_victim_search;
 
 	p->offset = sbi->last_victim[p->gc_mode];
@@ -211,6 +212,8 @@ static unsigned int check_bg_victims(struct f2fs_sb_info *sbi)
 	 */
 	for_each_set_bit(secno, dirty_i->victim_secmap, MAIN_SECS(sbi)) {
 		if (sec_usage_check(sbi, secno))
+			continue;
+		if (no_fggc_candidate(sbi, secno))
 			continue;
 		clear_bit(secno, dirty_i->victim_secmap);
 		return secno * sbi->segs_per_sec;
@@ -342,6 +345,9 @@ static int get_victim_by_default(struct f2fs_sb_info *sbi,
 			goto next;
 		if (gc_type == BG_GC && test_bit(secno, dirty_i->victim_secmap))
 			goto next;
+		if (gc_type == FG_GC && p.alloc_mode == LFS &&
+								no_fggc_candidate(sbi, secno))
+			goto next;
 
 		cost = get_gc_cost(sbi, segno, &p);
 
@@ -457,7 +463,7 @@ next_step:
 		struct node_info ni;
 
 		/* stop BG_GC if there is not enough free sections. */
-		if (gc_type == BG_GC && has_not_enough_free_secs(sbi, 0))
+		if (gc_type == BG_GC && has_not_enough_free_secs(sbi, 0, 0))
 			return;
 
 		if (check_valid_map(sbi, segno, off) == 0)
@@ -480,6 +486,11 @@ next_step:
 		get_node_info(sbi, nid, &ni);
 		if (ni.blk_addr != start_addr + off) {
 			f2fs_put_page(node_page, 1);
+			f2fs_msg(sbi->sb, KERN_WARNING,
+				"%s: ssa node info mismatched.",
+				__func__);
+			if (!is_sbi_flag_set(sbi, SBI_NEED_FSCK))
+				set_sbi_flag(sbi, SBI_NEED_FSCK);
 			continue;
 		}
 
@@ -547,6 +558,11 @@ static bool is_alive(struct f2fs_sb_info *sbi, struct f2fs_summary *sum,
 
 	if (sum->version != dni->version) {
 		f2fs_put_page(node_page, 1);
+		f2fs_msg(sbi->sb, KERN_WARNING,
+				"%s: valid data with mismatched node version.",
+				__func__);
+		if (!is_sbi_flag_set(sbi, SBI_NEED_FSCK))
+			set_sbi_flag(sbi, SBI_NEED_FSCK);
 		return false;
 	}
 
@@ -739,7 +755,7 @@ next_step:
 		block_t start_bidx;
 
 		/* stop BG_GC if there is not enough free sections. */
-		if (gc_type == BG_GC && has_not_enough_free_secs(sbi, 0))
+		if (gc_type == BG_GC && has_not_enough_free_secs(sbi, 0, 0))
 			return;
 
 		if (check_valid_map(sbi, segno, off) == 0)
@@ -920,7 +936,7 @@ gc_more:
 		goto stop;
 	}
 
-	if (gc_type == BG_GC && has_not_enough_free_secs(sbi, sec_freed)) {
+	if (gc_type == BG_GC && has_not_enough_free_secs(sbi, sec_freed, 0)) {
 		gc_type = FG_GC;
 		/*
 		 * If there is no victim and no prefree segment but still not
@@ -931,7 +947,7 @@ gc_more:
 						prefree_segments(sbi)) {
 			write_checkpoint(sbi, &cpc);
 			segno = NULL_SEGNO;
-		} else if (has_not_enough_free_secs(sbi, 0)) {
+		} else if (has_not_enough_free_secs(sbi, 0, 0)) {
 			write_checkpoint(sbi, &cpc);
 		}
 	} else if (gc_type == BG_GC && !background) {
@@ -952,7 +968,7 @@ gc_more:
 		sbi->cur_victim_sec = NULL_SEGNO;
 
 	if (!sync) {
-		if (has_not_enough_free_secs(sbi, sec_freed))
+		if (has_not_enough_free_secs(sbi, sec_freed, 0))
 			goto gc_more;
 
 		if (gc_type == FG_GC)
@@ -970,5 +986,18 @@ stop:
 
 void build_gc_manager(struct f2fs_sb_info *sbi)
 {
+	u64 main_count, resv_count, ovp_count, blocks_per_sec;
+
 	DIRTY_I(sbi)->v_ops = &default_v_ops;
+
+	/* threshold of # of valid blocks in a section for victims of FG_GC */
+	/* lint -save -e647 */
+	main_count =(u64)SM_I(sbi)->main_segments << sbi->log_blocks_per_seg;
+	resv_count = (u64)SM_I(sbi)->reserved_segments << sbi->log_blocks_per_seg;
+	ovp_count = (u64)SM_I(sbi)->ovp_segments << sbi->log_blocks_per_seg;
+	blocks_per_sec = (u64)sbi->blocks_per_seg * sbi->segs_per_sec;
+	/* lint -restore */
+
+	sbi->fggc_threshold = div64_u64((main_count - ovp_count) * blocks_per_sec,
+					(main_count - resv_count));
 }

@@ -434,7 +434,9 @@ pgoff_t get_next_page_offset(struct dnode_of_data *dn, pgoff_t pgofs)
 		base += direct_index;
 		break;
 	default:
+		/*lint -save -e666*/
 		f2fs_bug_on(F2FS_I_SB(dn->inode), 1);
+		/*lint -restore*/
 	}
 
 	return ((pgofs - base) / skipped_unit + 1) * skipped_unit + base;
@@ -970,8 +972,10 @@ int remove_inode_page(struct inode *inode)
 		truncate_data_blocks_range(&dn, 1);
 
 	/* 0 is possible, after f2fs_new_inode() has failed */
+	/*lint -save -e666*/
 	f2fs_bug_on(F2FS_I_SB(inode),
 			inode->i_blocks != 0 && inode->i_blocks != 1);
+	/*lint -restore*/
 
 	/* will put inode & node pages */
 	truncate_node(&dn);
@@ -1579,6 +1583,12 @@ static int f2fs_write_node_page(struct page *page,
 	if (unlikely(f2fs_cp_error(sbi)))
 		f2fs_submit_merged_bio(sbi, NODE, WRITE);
 
+#ifdef CONFIG_HUAWEI_F2FS_DB_STAT
+	/*lint -save -e747*/
+	fstats_update_datas(sbi, ino_of_node(page),
+					FSTATS_FS_NODE, PAGE_SIZE);
+	/*lint --restore*/
+#endif
 	return 0;
 
 redirty_out:
@@ -1744,6 +1754,9 @@ void __build_free_nids(struct f2fs_sb_info *sbi, bool sync)
 	struct f2fs_journal *journal = curseg->journal;
 	int i = 0;
 	nid_t nid = nm_i->next_scan_nid;
+
+	if (unlikely(nid >= nm_i->max_nid))
+		nid = 0;
 
 	/* Enough entries */
 	if (nm_i->fcnt > NAT_ENTRY_PER_BLOCK)
@@ -1926,7 +1939,9 @@ void recover_inline_xattr(struct inode *inode, struct page *page)
 	struct f2fs_inode *ri;
 
 	ipage = get_node_page(F2FS_I_SB(inode), inode->i_ino);
+	/*lint -save -e666*/
 	f2fs_bug_on(F2FS_I_SB(inode), IS_ERR(ipage));
+	/*lint -restore*/
 
 	ri = F2FS_INODE(page);
 	if (!(ri->i_inline & F2FS_INLINE_XATTR)) {

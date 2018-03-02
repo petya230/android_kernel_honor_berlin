@@ -592,7 +592,7 @@ void hi6421v500_coul_set_offset_vol_mod(void)
 static void hi6421v500_coul_get_fifo_avg_data(struct vcdata *vc)
 {
     int i;
-    short vol_reset_value = 0xffff;
+    short vol_reset_value = 0xffff;/*lint !e604*/
     int abnormal_value_cnt = 0;
     static short vol_fifo[FIFO_DEPTH];
     static short cur_fifo[FIFO_DEPTH];
@@ -968,7 +968,7 @@ static irqreturn_t hi6421v500_coul_irq_cb(int irq,  void *_di)
 
     di->irq_mask |= val;
 
-    schedule_delayed_work(&di->irq_work, msecs_to_jiffies(0));
+    queue_delayed_work(system_power_efficient_wq, &di->irq_work, msecs_to_jiffies(0));
 
     return IRQ_HANDLED;
 }
@@ -1041,7 +1041,7 @@ static void hi6421v500_coul_clear_fifo(void)
 ********************************************************/
 static void hi6421v500_coul_enter_eco(void)
 {
-    unsigned char reg_val = 0;
+    unsigned char reg_val;
 
     HI6421V500_REGS_READ(HI6421V500_ECO_OUT_CLIN_REG_BASE, &last_eco_in, 4);
     HI6421V500_REGS_READ(HI6421V500_ECO_OUT_CLOUT_REG_BASE, &last_eco_out, 4);
@@ -1049,7 +1049,6 @@ static void hi6421v500_coul_enter_eco(void)
     reg_val = HI6421V500_REG_READ(HI6421V500_COUL_STATE_REG);
     if (COUL_CALI_ING == reg_val) {
     	HI6421V500_COUL_INF("cali ing, don't do it again!\n");
-
         reg_val= ECO_COUL_CTRL_VAL;
     } else {
         HI6421V500_COUL_INF("calibrate!\n");
@@ -1161,7 +1160,9 @@ ssize_t hi6421v500_coul_set_reg_value(struct device *dev,
 	size_t status = count;
     if (strict_strtol(buf, 0, &val) < 0)
         return -EINVAL;
+	#ifdef CONFIG_HISI_DEBUG_FS
     HI6421V500_REG_WRITE(g_reg_addr,(char)val);
+	#endif
 	return status;
 
 }
@@ -1171,7 +1172,9 @@ ssize_t hi6421v500_coul_show_reg_info(struct device *dev,
                   char *buf)
 {
     u8 val = 0;
+	#ifdef CONFIG_HISI_DEBUG_FS
     val = HI6421V500_REG_READ(g_reg_addr);
+	#endif
 	return snprintf(buf, PAGE_SIZE, "reg[0x%x]=0x%x\n", (u32)g_reg_addr, val);
 }
 
@@ -1269,12 +1272,12 @@ static int  hi6421v500_coul_probe(struct platform_device *pdev)
     np = di->dev->of_node;
     if(NULL == np){
         HI6421V500_COUL_ERR("%s np is null!\n",__FUNCTION__);
-        return -1;
+        return -1;/*lint !e429*/
     }
     di->irq = platform_get_irq_byname(pdev,"coulirq");
     if(di->irq < 0) {
         HI6421V500_COUL_ERR("failed to get irq resource!\n");
-        return -1;
+        return -1;/*lint !e429*/
     }
 
     platform_set_drvdata(pdev, di);
@@ -1313,7 +1316,7 @@ static int  hi6421v500_coul_probe(struct platform_device *pdev)
     }
 
     retval = of_property_read_u32(of_find_compatible_node(NULL, NULL, "hisi,coul_core"),
-			"r_coul_mohm", &r_coul_mohm);
+			"r_coul_mohm", (u32 *)&r_coul_mohm);
 	if (retval) {
 		r_coul_mohm = R_COUL_MOHM;
 		HI6421V500_COUL_ERR("get r_coul_mohm fail, use default value 10 mohm!\n");
@@ -1342,7 +1345,7 @@ static int  hi6421v500_coul_probe(struct platform_device *pdev)
         }
     }
     HI6421V500_COUL_INF("hi6421v500 coul probe ok!\n");
-    return 0;
+    return 0;/*lint !e429*/
 
 hi6421v500_failed_3:
     sysfs_remove_group(&di->dev->kobj, &hi6421v500_coul_attr_group);
@@ -1354,7 +1357,7 @@ hi6421v500_failed_1:
 hi6521v500_failed_0:
     platform_set_drvdata(pdev,NULL);
     HI6421V500_COUL_ERR("hi6421v500 coul probe failed!\n");
-    return retval;
+    return retval;/*lint !e429*/
 }
 
 /*******************************************************

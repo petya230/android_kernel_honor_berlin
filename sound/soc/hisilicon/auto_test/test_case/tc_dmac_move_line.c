@@ -41,6 +41,7 @@
 *****************************************************************************/
 #define DRV_NAME              "tc_dmac_move_line"
 #define TX_SIZE               0x100
+#define TMP_BUF_SIZE          100
 static int tc_dmac_move_line_probe (struct platform_device *pdev);
 static int tc_dmac_move_line_remove(struct platform_device *pdev);
 
@@ -317,44 +318,44 @@ int tc_dmac_move_line_dtcm2ocram(void)
 *****************************************************************************/
 void tc_dmac_move_line_test(void)
 {
-    char tmp_buf[100];
+    char tmp_buf[TMP_BUF_SIZE] = { 0 };
     int  tmp_len;
 
     if(AT_FAILED == tc_dmac_move_line_ddr2ddr()){
-        tmp_len = sprintf(tmp_buf,"%s\n","tc_dmac_move_line_ddr2ddr failed");
+        tmp_len = snprintf(tmp_buf,TMP_BUF_SIZE - 1,"%s\n","tc_dmac_move_line_ddr2ddr failed");
     } else {
-        tmp_len = sprintf(tmp_buf,"%s\n","tc_dmac_move_line_ddr2ddr success");
+        tmp_len = snprintf(tmp_buf,TMP_BUF_SIZE - 1,"%s\n","tc_dmac_move_line_ddr2ddr success");
     }
     at_util_log(tmp_buf,tmp_len);
 //    tc_dmac_move_line_ddr2ocram();
 //    tc_dmac_move_line_ocram2ddr();
 
     if(AT_FAILED == tc_dmac_move_line_ddr2itcm()){
-        tmp_len = sprintf(tmp_buf,"%s\n","tc_dmac_move_line_ddr2itcm failed");
+        tmp_len = snprintf(tmp_buf,TMP_BUF_SIZE - 1,"%s\n","tc_dmac_move_line_ddr2itcm failed");
     } else {
-        tmp_len = sprintf(tmp_buf,"%s\n","tc_dmac_move_line_ddr2itcm success");
+        tmp_len = snprintf(tmp_buf,TMP_BUF_SIZE - 1,"%s\n","tc_dmac_move_line_ddr2itcm success");
     }
     at_util_log(tmp_buf,tmp_len);
 
     if(AT_FAILED == tc_dmac_move_line_itcm2ddr()){
-        tmp_len = sprintf(tmp_buf,"%s\n","tc_dmac_move_line_itcm2ddr failed");
+        tmp_len = snprintf(tmp_buf,TMP_BUF_SIZE - 1,"%s\n","tc_dmac_move_line_itcm2ddr failed");
     } else {
-        tmp_len = sprintf(tmp_buf,"%s\n","tc_dmac_move_line_itcm2ddr success");
+        tmp_len = snprintf(tmp_buf,TMP_BUF_SIZE - 1,"%s\n","tc_dmac_move_line_itcm2ddr success");
     }
     at_util_log(tmp_buf,tmp_len);
 
     if(AT_FAILED == tc_dmac_move_line_ddr2dtcm()){
-        tmp_len = sprintf(tmp_buf,"%s\n","tc_dmac_move_line_ddr2dtcm failed");
+        tmp_len = snprintf(tmp_buf,TMP_BUF_SIZE - 1,"%s\n","tc_dmac_move_line_ddr2dtcm failed");
     } else {
-        tmp_len = sprintf(tmp_buf,"%s\n","tc_dmac_move_line_ddr2dtcm success");
+        tmp_len = snprintf(tmp_buf,TMP_BUF_SIZE - 1,"%s\n","tc_dmac_move_line_ddr2dtcm success");
     }
     at_util_log(tmp_buf,tmp_len);
 
 
     if(AT_FAILED == tc_dmac_move_line_dtcm2ddr()){
-        tmp_len = sprintf(tmp_buf,"%s\n","tc_dmac_move_line_dtcm2ddr failed");
+        tmp_len = snprintf(tmp_buf,TMP_BUF_SIZE - 1,"%s\n","tc_dmac_move_line_dtcm2ddr failed");
     }else {
-        tmp_len = sprintf(tmp_buf,"%s\n","tc_dmac_move_line_dtcm2ddr success");
+        tmp_len = snprintf(tmp_buf,TMP_BUF_SIZE - 1,"%s\n","tc_dmac_move_line_dtcm2ddr success");
     }
     at_util_log(tmp_buf,tmp_len);
 
