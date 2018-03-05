@@ -5251,7 +5251,12 @@ IMG_RESULT CORE_ProcessEvent(
             psCoreMsg->ui32Result = core_DevPowerPreS5(psDdDevContext);
             IMG_ASSERT(psCoreMsg->ui32Result == IMG_SUCCESS);
 
-            
+            /*!<
+                When a PPM suspend event is received, the userspace has already been frozen.
+                However, it necessary to wait for eventual interrupts to trigger, which could add new messages to
+                the queue (hence sleeping FRAME_PERIOD * 2). We then check the queue, and if not empty we post
+                ourselves to the end, effectively making the pipes drain.
+            */
             if (LST_first(&psDdDevContext->sCoreMsgList) != NULL)
             {
                 LST_add(&psDdDevContext->sCoreMsgList, psCoreMsg);

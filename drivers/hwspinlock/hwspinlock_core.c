@@ -106,7 +106,7 @@ int __hwspin_trylock(struct hwspinlock *hwlock, int mode, unsigned long *flags)
 	 *    'scheduling while atomic' etc.)
 	 */
 	if (mode == HWLOCK_IRQSTATE)
-		ret = spin_trylock_irqsave(&hwlock->lock, *flags);
+		ret = spin_trylock_irqsave(&hwlock->lock, *flags);/*lint !e613*/
 	else if (mode == HWLOCK_IRQ)
 		ret = spin_trylock_irq(&hwlock->lock);
 	else
@@ -122,11 +122,11 @@ int __hwspin_trylock(struct hwspinlock *hwlock, int mode, unsigned long *flags)
 	/* if hwlock is already taken, undo spin_trylock_* and exit */
 	if (!ret) {
 		if (mode == HWLOCK_IRQSTATE)
-			spin_unlock_irqrestore(&hwlock->lock, *flags);
+			spin_unlock_irqrestore(&hwlock->lock, *flags);/*lint !e613*/
 		else if (mode == HWLOCK_IRQ)
 			spin_unlock_irq(&hwlock->lock);
 		else
-			spin_unlock(&hwlock->lock);
+			spin_unlock(&hwlock->lock);/*lint !e455*/
 
 		return -EBUSY;
 	}
@@ -249,11 +249,11 @@ void __hwspin_unlock(struct hwspinlock *hwlock, int mode, unsigned long *flags)
 
 	/* Undo the spin_trylock{_irq, _irqsave} called while locking */
 	if (mode == HWLOCK_IRQSTATE)
-		spin_unlock_irqrestore(&hwlock->lock, *flags);
+		spin_unlock_irqrestore(&hwlock->lock, *flags);/*lint !e613*/
 	else if (mode == HWLOCK_IRQ)
 		spin_unlock_irq(&hwlock->lock);
 	else
-		spin_unlock(&hwlock->lock);
+		spin_unlock(&hwlock->lock);/*lint !e455*/
 }
 EXPORT_SYMBOL_GPL(__hwspin_unlock);
 

@@ -25,7 +25,7 @@
 #include <linux/io.h>
 #include <linux/pm_runtime.h>
 
-/*lint -e750 -e730 -e838 -e529 -e438 -e778 -e826 -e774 -e747 */
+/*lint -e750 -e730 -e838 -e529 -e438 -e778 -e826 -e774 -e747 -e527 -e456 -e454 -e455*/
 
 #define HI64XX_CFG_BASE_ADDR            0x20007000
 

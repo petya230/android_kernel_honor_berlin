@@ -1,4 +1,12 @@
-
+/*
+ * (C) 1999-2001 Paul `Rusty' Russell
+ * (C) 2002-2006 Netfilter Core Team <coreteam@netfilter.org>
+ * (C) 2011 Patrick McHardy <kaber@trash.net>
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
 
 #include <linux/module.h>
 #include <linux/types.h>
@@ -540,7 +548,9 @@ static int nf_nat_proto_clean(struct nf_conn *ct, void *data)
 
 	add_timer(&ct->timeout);
 
-	
+	/* don't delete conntrack.  Although that would make things a lot
+	 * simpler, we'd end up flushing all conntracks on nat rmmod.
+	 */
 	return 0;
 }
 

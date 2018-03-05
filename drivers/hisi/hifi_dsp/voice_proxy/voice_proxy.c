@@ -358,7 +358,7 @@ int32_t voice_proxy_add_work_queue_cmd(uint16_t msg_id)
 		//logi("msg_id 0x%x no send mailbox cnf queue work\n", msg_id);
 	}
 
-	return 0;
+	return 0;/*lint !e429*/
 }
 
 int32_t voice_proxy_add_data(voice_proxy_add_data_cb callback, int8_t *data, uint32_t size, uint16_t msg_id)
@@ -392,7 +392,7 @@ int32_t voice_proxy_add_data(voice_proxy_add_data_cb callback, int8_t *data, uin
 	spin_unlock_bh(&priv.command_lock);
 	wake_up(&priv.command_waitq);
 
-	return ret;
+	return ret;/*lint !e429*/
 }
 
 int32_t voice_proxy_add_cmd(uint16_t msg_id)
@@ -416,7 +416,7 @@ int32_t voice_proxy_add_cmd(uint16_t msg_id)
 	spin_unlock_bh(&priv.command_lock);
 	wake_up(&priv.command_waitq);
 
-	return 0;
+	return 0;/*lint !e429*/
 }
 
 /*

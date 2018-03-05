@@ -316,7 +316,7 @@ int bsp_read_bin(const char *partion_name, unsigned int offset,
 	}
 
 	fs = get_fs();
-	set_fs(KERNEL_DS);
+	set_fs(KERNEL_DS);/*lint !e501*/
 
 	pos = fp->f_pos;
 	ret = vfs_read(fp, (char __user *)buffer, length, &pos);

@@ -199,7 +199,7 @@ struct device_node * of_get_coresight_etb_data(
 	struct device_node *child_node = NULL;
 
 	nr_ctis =0;
-	if (of_get_property(node, ETB_CLUSTER, &etb_len))
+	if (of_get_property(node, ETB_CLUSTER, &etb_len))/* lint !e64 */
 		nr_ctis = etb_len/sizeof(uint32_t);
 	else
 		return ERR_PTR(-EINVAL);
@@ -221,7 +221,7 @@ struct device_node * of_get_coresight_funnel_data(
 	struct device_node *child_node = NULL;
 
 	nr_ctis =0;
-	if (of_get_property(node, FUNNEL_CLUSTER, &etb_len))
+	if (of_get_property(node, FUNNEL_CLUSTER, &etb_len))/* lint !e64 */
 		nr_ctis = etb_len/sizeof(uint32_t);
 	else
 		return ERR_PTR(-EINVAL);

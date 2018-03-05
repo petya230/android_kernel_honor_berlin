@@ -1,4 +1,38 @@
+/*
+    Conexant cx24116/cx24118 - DVBS/S2 Satellite demod/tuner driver
 
+    Copyright (C) 2006-2008 Steven Toth <stoth@hauppauge.com>
+    Copyright (C) 2006-2007 Georg Acher
+    Copyright (C) 2007-2008 Darron Broad
+	March 2007
+	    Fixed some bugs.
+	    Added diseqc support.
+	    Added corrected signal strength support.
+	August 2007
+	    Sync with legacy version.
+	    Some clean ups.
+    Copyright (C) 2008 Igor Liplianin
+	September, 9th 2008
+	    Fixed locking on high symbol rates (>30000).
+	    Implement MPEG initialization parameter.
+	January, 17th 2009
+	    Fill set_voltage with actually control voltage code.
+	    Correct set tone to not affect voltage.
+
+    This program is free software; you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation; either version 2 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program; if not, write to the Free Software
+    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+*/
 
 #include <linux/slab.h>
 #include <linux/kernel.h>

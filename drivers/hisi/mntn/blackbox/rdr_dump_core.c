@@ -169,7 +169,7 @@ int rdr_savebuf2fs(char *logpath, char *filename,
 		goto out2;
 	}
 	vfs_llseek(fp, 0L, SEEK_END);
-	ret = vfs_write(fp, buf, len, &(fp->f_pos));
+	ret = vfs_write(fp, buf, len, &(fp->f_pos));/*lint !e613 */
 	if (ret != len) {
 		BB_PRINT_ERR("%s():write file %s exception with ret %d.\n",
 			     __func__, path, ret);
@@ -178,7 +178,7 @@ int rdr_savebuf2fs(char *logpath, char *filename,
 
 	vfs_fsync(fp, 0);
 out1:
-	filp_close(fp, NULL);
+	filp_close(fp, NULL);/*lint !e668 */
 
 	/*根据权限要求，hisi_logs目录及子目录群组调整为root-system */
 	ret = (int)bbox_chown((const char __user *)path, ROOT_UID,
@@ -330,7 +330,7 @@ bool is_need_save_dfx2file(void)
 	char *buf;
 	int ret, fd_dfx, cnt;
 	char p_name[BDEVNAME_SIZE + 12];
-	bool is_need_save_dfx2file = false;
+	bool is_need_save_dfx2file = false;/*lint !e578 */
 	struct dfx_head_info *dfx_head_info;
 
 	if (!check_himntn(HIMNTN_DFXPARTITION_TO_FILE)) {

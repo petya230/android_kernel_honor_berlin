@@ -1,4 +1,14 @@
-
+/*
+ *  linux/kernel/signal.c
+ *
+ *  Copyright (C) 1991, 1992  Linus Torvalds
+ *
+ *  1997-11-02  Modified for POSIX.1b signals by Richard Henderson
+ *
+ *  2003-06-02  Jim Houston - Concurrent Computer Corp.
+ *		Changes to use preallocated sigqueue structures
+ *		to allow signals to be sent reliably.
+ */
 
 #include <linux/slab.h>
 #include <linux/export.h>

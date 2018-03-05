@@ -156,7 +156,7 @@ static int replicator_probe(struct platform_device *pdev)
 
 	pm_runtime_put(&pdev->dev);
 	dev_info(dev, "REPLICATOR initialized\n");
-	return 0;
+	return 0;/* lint !e429 */
 
 err_coresight_register:
 	devm_kfree(dev, desc);
@@ -168,7 +168,7 @@ out_disable_pm:
 	pm_runtime_disable(&pdev->dev);
 err_next:
 	devm_kfree(dev, drvdata);
-	return ret;
+	return ret;/* lint !e429 */
 }
 
 static int replicator_remove(struct platform_device *pdev)

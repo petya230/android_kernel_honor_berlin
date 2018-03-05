@@ -63,27 +63,27 @@ static int hisi_regulator_ip_core_probe(struct platform_device *pdev)
 	pmic->res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!pmic->res) {
 		dev_err(dev, "platform_get_resource err !\n");
-		return -ENOENT;
+		return -ENOENT;/*lint !e429*/
 	}
 
 	if (!devm_request_mem_region(dev, pmic->res->start,
 				     resource_size(pmic->res),
 				     pdev->name)) {
 		dev_err(dev, "cannot claim register memory\n");
-		return -ENOMEM;
+		return -ENOMEM;/*lint !e429*/
 	}
 
 	pmic->regs = devm_ioremap(dev, pmic->res->start,
 				  resource_size(pmic->res));
 	if (!pmic->regs) {
 		dev_err(dev, "cannot map register memory\n");
-		return -ENOMEM;
+		return -ENOMEM;/*lint !e429*/
 	}
 	platform_set_drvdata(pdev, pmic);
 
 	of_platform_populate(np, of_hisi_regulator_ip_core_child_match_tbl, NULL, dev);
 
-	return ret;
+	return ret;/*lint !e429*/
 
 }
 

@@ -174,7 +174,7 @@ static int tsgen_probe(struct platform_device *pdev)
 	dev_err(dev, "tsgen  initialized\n");
 	return 0;
 err:
-	return ret;
+	return ret;/* lint !e429 */
 }
 
 static int tsgen_remove(struct platform_device *pdev)

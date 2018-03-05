@@ -784,7 +784,7 @@ i2c_dw_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 	}
 
 	/* wait for tx to complete */
-	ret = wait_for_completion_timeout(&dev->cmd_complete, WAIT_FOR_COMPLETION);
+	ret = wait_for_completion_timeout(&dev->cmd_complete, WAIT_FOR_COMPLETION);/*lint !e647*/
 	if (ret == 0) {
 		int retry_num = 20;
 		dev_err(dev->dev, "controller timed out\n");
@@ -811,7 +811,7 @@ i2c_dw_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 	}
 
 	if ((!dev->cmd_err) && (controller->using_dma)) {
-		ret = wait_for_completion_timeout(&controller->dma_complete, WAIT_FOR_COMPLETION);
+		ret = wait_for_completion_timeout(&controller->dma_complete, WAIT_FOR_COMPLETION);/*lint !e647*/
 		if (ret == 0) {
 			dev_err(dev->dev, "wait for dma complete timed out, transfer %d, len = "
 					"%d, slave_addr = 0x%x, clk = %lu.\n", WAIT_FOR_COMPLETION,

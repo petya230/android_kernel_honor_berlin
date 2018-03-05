@@ -29,7 +29,7 @@
 #include <linux/hisi/hilog.h>
 #include <dsm/dsm_pub.h>
 
-/*lint -e750 -e730 -e785 */
+/*lint -e750 -e730 -e785 -e574*/
 #define LOG_TAG "Slimbus_6403"
 
 

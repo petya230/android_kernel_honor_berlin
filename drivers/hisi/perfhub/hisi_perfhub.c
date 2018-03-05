@@ -52,7 +52,7 @@ static int bind_cpu_cluster(enum cpu_cluster e_cpu_cluster, pid_t pid)
 
 	/* Prevent p going away */
 	get_task_struct(p);
-	pcred = __task_cred(p);
+	pcred = __task_cred(p);//lint !e1058 !e64
 	rcu_read_unlock();
 
 	if (p->flags & PF_NO_SETAFFINITY) {
@@ -114,7 +114,7 @@ static ssize_t perfhub_store(struct kobject *kobj, struct kobj_attribute *attr, 
 
 	tag = *buf;
 
-	pstrchr = strchr(buf, '|');
+	pstrchr = strchr(buf, '|');//lint !e158
 	if (NULL == pstrchr)
 		return -EINVAL;
 

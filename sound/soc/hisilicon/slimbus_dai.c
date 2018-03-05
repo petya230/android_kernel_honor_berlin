@@ -24,7 +24,7 @@
 #include <sound/soc.h>
 
 #include "slimbus.h"
-/*lint -e750*/
+/*lint -e750 -e429*/
 /* pcm devices */
 #define SLIMBUS_DEV_AUDIO           0
 #define SLIMBUS_DEV_DIRECT_AUDIO    1

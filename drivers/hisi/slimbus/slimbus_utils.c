@@ -27,7 +27,7 @@
 #include "slimbus_utils.h"
 #include "hi3630_asp_common.h"
 
-/*lint -e838 -e715*/
+/*lint -e838 -e715 -e573*/
 
 #define SLIMBUS_CLK_24576 (24576)
 #define SLIMBUS_CLK_21777 (21777)

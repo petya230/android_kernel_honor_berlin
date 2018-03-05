@@ -102,7 +102,7 @@ static void funnel_disable_hw(struct funnel_drvdata *drvdata, int inport)
 	CS_UNLOCK(drvdata->base);
 
 	functl = readl_relaxed(drvdata->base + FUNNEL_FUNCTL);
-	functl &= ~(1 << inport);
+	functl &= ~(1 << inport);/* lint !e502 */
 	writel_relaxed(functl, drvdata->base + FUNNEL_FUNCTL);
 	/* backup functl value for restore */
 	drvdata->functl = functl;
@@ -243,7 +243,7 @@ static int funnel_probe(struct amba_device *adev, const struct amba_id *id)
 	/* Validity for the resource is already checked by the AMBA core */
 	base = devm_ioremap_resource(dev, res);
 	if (IS_ERR(base))
-		return PTR_ERR(base);
+		return PTR_ERR(base);/* lint !e429 */
 
 	drvdata->base = base;
 	pm_runtime_put(&adev->dev);
@@ -274,7 +274,7 @@ static int funnel_probe(struct amba_device *adev, const struct amba_id *id)
 		funneldrvdata[funnel_count++] = drvdata;
 	}
 	dev_info(dev, "FUNNEL initialized\n");
-	return 0;
+	return 0;/* lint !e429 !593*/
 err_coresight_register:
 	devm_kfree(dev, desc);
 	if (!IS_ERR_OR_NULL(drvdata->atclk)) {
@@ -282,7 +282,7 @@ err_coresight_register:
 	}
 err_next:
 	devm_kfree(dev, drvdata);
-	return ret;
+	return ret;/* lint !e429 */
 }
 
 static int funnel_remove(struct amba_device *adev)
