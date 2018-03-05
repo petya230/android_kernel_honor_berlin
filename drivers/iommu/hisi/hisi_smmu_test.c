@@ -25,9 +25,6 @@
 #endif
 #undef IOMMU_DEBUG
 
-
-static struct sg_table *table;
-
 enum {
 	IOMMU_TEST,
 	ION_TEST,
@@ -126,7 +123,7 @@ static int free_memory(void)
 	struct scatterlist *sg = NULL;
 	unsigned int mem_size = 0;
 	if (table) {
-		for_each_sg(table->sgl, sg, table->nents, i) {
+		for_each_sg(table->sgl, sg, table->nents, i) { /*lint !e574 */
 			__free_pages(sg_page(sg), get_order(sg->length));
 			mem_size += sg->length;
 		}
@@ -145,7 +142,7 @@ static int free_memory(void)
  */
 static struct iommu_page_info *create_node(void)
 {
-	struct iommu_page_info *info = NULL;
+	struct iommu_page_info *info = NULL; /*lint !e578 */
 	struct page *page = NULL ;
 	info = kmalloc(sizeof(struct iommu_page_info), GFP_KERNEL);
 	if (!info) {
@@ -171,7 +168,7 @@ static int alloc_memory (unsigned int size)
 	int map_size = 0;
 	unsigned int sum = 0;
 	struct list_head pages;
-	struct iommu_page_info *info, *tmp_info;
+	struct iommu_page_info *info, *tmp_info; /*lint !e578 */
 	unsigned int i = 0, ret = 0;
 	struct scatterlist *sg = NULL;
 
@@ -186,9 +183,9 @@ static int alloc_memory (unsigned int size)
 		if (!info)
 			goto error;
 		list_add_tail(&info->list, &pages);
-		sum += (1 << info->order) *PAGE_SIZE;
+		sum += (1 << info->order) *PAGE_SIZE; /*lint !e647 */
 		i++;
-	} while (sum < map_size);
+	} while (sum < map_size); /*lint !e574 */
 
 	table = kzalloc(sizeof(struct sg_table), GFP_KERNEL);
 	if (!table) {
@@ -204,7 +201,7 @@ static int alloc_memory (unsigned int size)
 	list_for_each_entry_safe(info, tmp_info, &pages, list)
 	{
 		struct page *page = info->page;
-		sg_set_page(sg, page, (1 << info->order)*PAGE_SIZE, 0);
+		sg_set_page(sg, page, (1 << info->order)*PAGE_SIZE, 0); /*lint !e647 */
 		sg = sg_next(sg);
 		list_del(&info->list);
 		kfree(info);
@@ -320,7 +317,6 @@ ssize_t smmu_test_main(int type, unsigned int global_map_size, unsigned int glob
 		smmu_print_pgtable();
 		break;
 	default:
-		return -EINVAL;
 		break;
 	};
 	free_memory();
@@ -380,7 +376,7 @@ static int __init init_iommu_test(void)
 	if (err)
 		D("register device error \n");
 
-	return 0;
+	return 0; /*lint !e548*/
 
 }
 module_init(init_iommu_test);

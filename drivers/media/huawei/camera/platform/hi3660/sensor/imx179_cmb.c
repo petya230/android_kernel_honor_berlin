@@ -11,6 +11,7 @@
 #include "sensor_commom.h"
 #include "hw_csi.h"
 #include <linux/pinctrl/consumer.h>
+//lint -save -e650 -e31
 
 #define I2S(i) container_of(i, sensor_t, intf)
 static hwsensor_vtbl_t s_imx179_vtbl;
@@ -269,4 +270,5 @@ module_init(imx179_init_module);
 module_exit(imx179_exit_module);
 MODULE_DESCRIPTION("imx179");
 MODULE_LICENSE("GPL v2");
+//lint -restore
 

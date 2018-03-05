@@ -977,6 +977,7 @@ struct charge_device_ops bq2429x_ops = {
 	.check_charger_plugged = bq2429x_check_charger_plugged,
 	.check_input_dpm_state = bq2429x_check_input_dpm_state,
 	.set_charger_hiz = bq2429x_set_charger_hiz,
+	.get_charge_current = NULL,
 };
 
 /**********************************************************

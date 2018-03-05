@@ -24,6 +24,10 @@
 #include <huawei_platform/log/hw_log.h>
 #include "soc_rtctimerwdtv100_interface.h"
 #include <hisi_charging_watchdog.h>
+#ifdef CONFIG_HISI_BB
+#include <linux/hisi/rdr_pub.h>
+#include <linux/hisi/rdr_hisi_platform.h>
+#endif
 #define HWLOG_TAG hisi_chg_watchdog
 HWLOG_REGIST();
 
@@ -63,6 +67,67 @@ static inline void __chg_wdt_control(void __iomem *base, unsigned int value)
 {
 	__raw_writel(value, CHG_WATHDOG_WDCTRL_ADDR((char *)base));
 }
+
+/*******************************************************************************
+Function:       rdr_charge_syswdt_init
+Description:    init charger sys watchdog rdr
+Input:          NA
+Output:         NA
+Return:         success:0;fail:-1
+********************************************************************************/
+#ifdef CONFIG_HISI_BB
+static int rdr_charge_syswdt_init(void)
+{
+	struct rdr_exception_info_s einfo;
+	unsigned int ret;
+
+	memset(&einfo, 0, sizeof(struct rdr_exception_info_s));
+	einfo.e_modid = MODID_CHARGER_S_WDT;
+	einfo.e_modid_end = MODID_CHARGER_S_WDT;
+	/*处理级别最高. */
+	einfo.e_process_priority = RDR_ERR;
+	/* 立即重启 */
+	einfo.e_reboot_priority = RDR_REBOOT_NOW;
+	/* 通知AP保存日志.待修改 */
+	einfo.e_notify_core_mask = RDR_AP;
+	/* 通知AP重置状态.并且通知ap复位全系统 */
+	einfo.e_reset_core_mask = RDR_AP;
+	einfo.e_from_core = RDR_AP;
+	/* 不允许本异常重入(多次发生不重复处理). */
+	einfo.e_reentrant = (u32)RDR_REENTRANT_DISALLOW;
+	/* 异常类型初始化失败 */
+	einfo.e_exce_type = CHARGER_S_WDT;
+	einfo.e_upload_flag = (u32)RDR_UPLOAD_YES;
+	memcpy(einfo.e_from_module, "RDR_CHG_SYSWDT", sizeof("RDR_CHG_SYSWDT"));
+	memcpy(einfo.e_desc, "RDR_CHG_SYSWDT.", sizeof("RDR_CHG_SYSWDT"));
+
+	ret = rdr_register_exception(&einfo);
+	if (ret != MODID_CHARGER_S_WDT) {
+		hwlog_err(" register rdr_charge_syswdt failed.\n");
+		return -1;
+	}
+	return 0;
+}
+#endif
+
+/**********************************************************
+*  Function:       charge_watchdog_interrupt
+*  Description:    callback function for chargerIC fault irq in charging process
+*  Parameters:   irq:chargerIC fault interrupt
+*                      _di:hi6523_device_info
+*  return value:  IRQ_HANDLED-success or others
+**********************************************************/
+static irqreturn_t charger_watchdog_interrupt(int irq, void *_di)
+{
+	if (NULL == _di || 0 == irq ) {
+		hwlog_err("[charger_watchdog_interrupt]:di is null.\n");
+	}
+#ifdef CONFIG_HISI_BB
+	rdr_syserr_process_for_ap((u32)MODID_CHARGER_S_WDT, (u64)0, (u64)0);
+#endif
+	return IRQ_HANDLED;
+}
+
 /*******************************************************************************
 Function:       charge_feed_sys_wdt
 Description:    set timeout for charge watchdog
@@ -129,6 +194,7 @@ void charge_stop_sys_wdt(void)
 	if (0 != __chg_wdt_unlock_check(g_di->base)) {
 		hwlog_err("wdt unlock fail\n");
 	}
+	__chg_wdt_intclr(g_di->base, 0x0);
 	__chg_wdt_control(g_di->base, CHG_WATCHDOG_DIS);
 	__chg_wdt_lock(g_di->base, LOCK);
 	hwlog_info("++charge watchdog stop++\n");
@@ -146,7 +212,6 @@ static int hisi_chg_wdg_probe(struct platform_device *pdev)
 		ret = -ENOMEM;
 		goto out;
 	}
-
 	g_di->base = of_iomap(node, 0);
 	if (!g_di->base) {
 		hwlog_err("iomap error\n");
@@ -155,13 +220,31 @@ static int hisi_chg_wdg_probe(struct platform_device *pdev)
 	}
 
 	g_di->irq = irq_of_parse_and_map(node, 0);
-	disable_irq_nosync((unsigned int)g_di->irq);
+	if (0 == g_di->irq) {
+		hwlog_err("charge wdt irq is %d\n", g_di->irq);
+		goto free_iomap;
+	}
 	charge_stop_sys_wdt();
-
+	ret = request_irq(g_di->irq, charger_watchdog_interrupt,
+			(unsigned long)IRQF_NO_SUSPEND, "charge_syswdt_irq", g_di);
+	if (ret) {
+		hwlog_err("register charge wdt irq failed!\n");
+		goto free_iomap;
+	}
+#ifdef CONFIG_HISI_BB
+	ret = rdr_charge_syswdt_init();
+	if (ret) {
+		hwlog_err("init charge wdt rdr failed!\n");
+		goto free_iomap;
+	}
+#else
+    disable_irq_nosync((unsigned int)g_di->irq);
+#endif
 	platform_set_drvdata(pdev, g_di);
 	hwlog_info("Hisi charge watchdog ready\n");
 	return 0;
-
+free_iomap:
+	iounmap(g_di->base);
 free_dev:
 	kfree(g_di);
 out:

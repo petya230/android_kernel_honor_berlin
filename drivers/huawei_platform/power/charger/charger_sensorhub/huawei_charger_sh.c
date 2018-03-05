@@ -1,4 +1,15 @@
-
+/*
+ * drivers/power/huawei_charger_sh.c
+ *
+ *huawei charger sensorhub driver
+ *
+ * Copyright (C) 2012-2015 HUAWEI, Inc.
+ * Author: HUAWEI, Inc.
+ *
+ * This package is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+*/
 
 #include <linux/init.h>
 #include <linux/module.h>
@@ -34,18 +45,20 @@
 #include <linux/power/hisi/coul/hisi_coul_drv.h>
 #include <huawei_platform/power/charging_core_sh.h>
 #include <linux/workqueue.h>
-#include <huawei_platform/inputhub/iom7/inputhub_route.h>
-#include <huawei_platform/inputhub/iom7/protocol.h>
-#include <huawei_platform/inputhub/iom7/inputhub_bridge.h>
-#include <huawei_platform/inputhub/iom7/sensor_info.h>
+#include <inputhub_route.h>
+#include <protocol.h>
+#include <inputhub_bridge.h>
+#include <sensor_info.h>
 
 struct charge_sysfs_lock sysfs_lock;
+struct mutex charge_usb_notify_lock;
 extern struct charge_device_ops *g_ops;
 static struct device huawei_charger_dev;
 struct charge_device_info_sh *g_di_sh;
 
 #define CHARGER_BASE_ADDR_SH 512
 #define REG_NUM_SH 21
+#define TIMEOUT_SEC 5
 struct hisi_charger_bootloader_info {
 	bool info_vaild;
 	int ibus;
@@ -59,6 +72,7 @@ static int ico_enable;
 static int usb_continuous_notify_times;
 static struct hisi_charger_bootloader_info hisi_charger_info = { 0 };
 static struct wake_lock charge_lock;
+static struct wake_lock wlock;
 static enum charging_stat_t charging_status = CHARGING_CLOSE;
 
 extern struct CONFIG_ON_DDR *pConfigOnDDr;
@@ -66,8 +80,12 @@ extern int g_iom3_state;
 extern atomic_t iom3_rec_state;
 extern sys_status_t iom3_sr_status;
 extern struct charge_core_info_sh *g_core_info_sh;
+extern struct charger_platform_data charger_dts_data;
+extern struct fcp_adapter_device_ops sh_fcp_hi6523_ops;
+extern struct fcp_adapter_device_ops sh_fcp_fsa9688_ops;
 
 static int charge_send_notify_to_sensorhub(struct charge_device_info_sh *di);
+static void fcp_reg_dump(char* pstr);
 extern char *get_charger_info_p(void);
 extern int coul_get_battery_capacity(void);
 extern int coul_get_battery_fcc (void);
@@ -80,6 +98,7 @@ extern int coul_get_battery_delta_rc (void);
 extern int coul_get_battery_ocv (void);
 extern int coul_get_battery_resistance (void);
 
+/*lint -save -e* */
 struct sensorhub_scene g_scens = {
 	.stemps[0] = {
 		.stype = 0,
@@ -110,7 +129,99 @@ struct sensorhub_scene g_scens = {
 		.items = {{70,68,0,0,10000},{0,}},
 	},
 };
+/*lint -restore*/
 
+#if defined CONFIG_HUAWEI_DSM
+static struct charger_dsm {
+	int error_no;
+	bool notify_enable;
+	void (*dump)(char*);
+	char buf[ERR_NO_STRING_SIZE];
+};
+static struct charger_dsm err_count[] = {
+	{ERROR_FCP_VOL_OVER_HIGH, true, .dump = fcp_reg_dump, "fcp vbus is high "},
+	{ERROR_FCP_DETECT, true, .dump = fcp_reg_dump, "fcp detect fail "},
+	{ERROR_FCP_OUTPUT, true, .dump = fcp_reg_dump, "fcp voltage output fail "},
+	{ERROR_SWITCH_ATTACH, true, .dump = fcp_reg_dump, "fcp adapter connect fail "},
+	{ERROR_ADAPTER_OVLT, true, .dump = fcp_reg_dump, "fcp adapter voltage over high "},
+	{ERROR_ADAPTER_OCCURRENT, true, .dump = fcp_reg_dump, "fcp adapter current over high "},
+	{ERROR_ADAPTER_OTEMP, true, .dump = fcp_reg_dump, "fcp adapter temp over high "},
+	{ERROR_SAFE_PLOICY_LEARN, true, NULL, "battery safe ploicy learn"},
+	{ERROR_SAFE_PLOICY_LEARN1, true, NULL, "safe ploicy learn 1"},
+	{ERROR_SAFE_PLOICY_LEARN2, true, NULL, "safe ploicy learn 2"},
+	{ERROR_SAFE_PLOICY_LEARN3, true, NULL, "safe ploicy learn 3"},
+	{ERROR_BOOST_OCP, true, NULL, "otg ocp"},
+	{ERROR_CHARGE_VBAT_OVP, true, NULL, "vbat ovp"},
+	{SHB_ERR_FCP_VOL_OVER_HIGH, true, .dump = fcp_reg_dump, "sensorhub fcp vbus is high "},
+	{SHB_ERR_FCP_DETECT, true, .dump = fcp_reg_dump, "sensorhub fcp detect fail "},
+	{SHB_ERR_FCP_OUTPUT, true, .dump = fcp_reg_dump, "sensorhub fcp voltage output fail "},
+	{SHB_ERR_SWITCH_ATTACH, true, .dump = fcp_reg_dump, "sensorhub fcp adapter connect fail "},
+	{SHB_ERR_ADAPTER_OVLT, true, .dump = fcp_reg_dump, "sensorhub fcp adapter voltage over high "},
+	{SHB_ERR_ADAPTER_OCCURRENT, true, .dump = fcp_reg_dump, "sensorhub fcp adapter current over high "},
+	{SHB_ERR_ADAPTER_OTEMP, true, .dump = fcp_reg_dump, "sensorhub fcp adapter temp over high "},
+	{SHB_ERR_BOOST_OCP, true, NULL, "sensorhub otg ocp"},
+	{SHB_ERR_VBUS_HIGH, true, NULL, "sensorhub vbus over high"},
+	{SHB_ERR_VBAT_OVP, true, NULL, "sensorhub vbat over high"},
+};
+#endif
+
+static void fcp_reg_dump(char* pstr)
+{
+	hwlog_info("fcp_reg_dump sensorhub.\n");
+	if (charger_dts_data.fcp_support) {
+		if (!sh_fcp_hi6523_ops.reg_dump) {
+			hwlog_err("%s ops is null\n", __func__);
+		} else {
+			sh_fcp_hi6523_ops.reg_dump(pstr);
+		}
+	} else if (sh_fcp_fsa9688_ops.is_support_fcp && !sh_fcp_fsa9688_ops.is_support_fcp()) {
+		if (!sh_fcp_fsa9688_ops.reg_dump) {
+			hwlog_err("%s ops is null\n", __func__);
+		} else {
+			sh_fcp_fsa9688_ops.reg_dump(pstr);
+		}
+	} else
+		hwlog_err("%s nothing support fcp.\n", __func__);
+}
+
+/**********************************************************
+*  Function:       sensorhub_charger_dsm_report
+*  Description:    charger dsm report
+*  Parameters:   err_no val
+*  return value:  0:succ ;-1 :fail
+**********************************************************/
+int sensorhub_charger_dsm_report(int err_no, int *val)
+{
+	int ret = -1;
+#if defined CONFIG_HUAWEI_DSM
+	char dsm_buff[CHARGE_DMDLOG_SIZE] = { 0 };
+	char buf[ERR_NO_STRING_SIZE] = { 0 };
+	int i;
+	int err_count_size = sizeof(err_count)/sizeof(struct charger_dsm);
+
+	for (i = 0; i < err_count_size; i++) {
+		if ((err_no == err_count[i].error_no) &&
+			(true == err_count[i].notify_enable)) {/*every err_no report one times */
+			strncat(dsm_buff, err_count[i].buf, ERR_NO_STRING_SIZE - 1);
+			if (val) {  /*need report reg */
+				snprintf(buf, sizeof(buf), "val= %d\n", *val);
+				strncat(dsm_buff, buf, strlen(buf));
+			}
+			if (err_count[i].dump)
+				err_count[i].dump(dsm_buff);
+			if (!dsm_report(err_no, dsm_buff)) {
+				/*when it be set 1,it will not report */
+				err_count[i].notify_enable = false;
+				ret = 0;
+				break;
+			}
+		}
+	}
+#endif
+	return ret;
+}
+
+/*lint -save -e* */
 static int dump_bootloader_info(char *reg_value)
 {
 	char buff[26] = { 0 };
@@ -125,6 +236,7 @@ static int dump_bootloader_info(char *reg_value)
 	}
 	return 0;
 }
+/*lint -restore*/
 
 static int copy_bootloader_charger_info(void)
 {
@@ -171,6 +283,37 @@ void charge_wake_unlock(void)
 	}
 }
 
+static int notify_sensorhub_fcp(uint8_t stype, uint8_t rw)
+{
+	pkt_fcp_t pkt;
+	pkt_fcp_resp_t resp_pkt;
+
+	memset(&pkt, 0, sizeof(pkt));
+	memset(&resp_pkt, 0, sizeof(resp_pkt));
+
+	pkt.hd.tag = TAG_CHARGER;
+	pkt.hd.cmd = CMD_CMN_CONFIG_REQ;
+	pkt.hd.resp = RESP;
+	pkt.hd.length = sizeof(pkt.sub_cmd);
+	pkt.sub_cmd = CHARGE_SYSFS_FCP_SUPPORT;
+	if (0 == WAIT_FOR_MCU_RESP_DATA_AFTER_SEND(&pkt,
+						   inputhub_mcu_write_cmd
+						   (&pkt, sizeof(pkt)),
+						   5000, &resp_pkt,
+						   sizeof(resp_pkt))) {
+		hwlog_err("wait for notify sensorhub fcp timeout\n");
+		return -1;
+	} else {
+		if (resp_pkt.hd.errno != 0) {
+			hwlog_err("notify_sensorhub_fcp fail.\n");
+			return -1;
+		} else {
+			hwlog_info("notify_sensorhub_fcp success, result %d.\n", resp_pkt.wr);
+			return resp_pkt.wr;
+		}
+	}
+}
+
 int notify_sensorhub(uint8_t stype, uint8_t rw)
 {
 	write_info_t	pkg_ap;
@@ -187,10 +330,8 @@ int notify_sensorhub(uint8_t stype, uint8_t rw)
 	pkg_ap.cmd = CMD_CMN_CONFIG_REQ;
 	pkg_ap.wr_buf = sub_cmd;
 	pkg_ap.wr_len = sizeof(sub_cmd);
-	if (g_iom3_state == IOM3_ST_NORMAL)
-		ret=write_customize_cmd(&pkg_ap,  &pkg_mcu);
-	else
-		ret=write_customize_cmd_noresp(pkg_ap.tag, pkg_ap.cmd,  pkg_ap.wr_buf, pkg_ap.wr_len);
+
+	ret = write_customize_cmd(&pkg_ap,  &pkg_mcu);
 	if(ret) {
 		hwlog_err("send sysfs event notify to sensorhub fail, ret is %d, event is %d, rw is %d!\n", ret, stype, rw);
 		return -1;
@@ -218,11 +359,12 @@ static int charge_rename_charger_type(enum hisi_charger_type type,
 {
 	bool ret = TRUE;
 
-	if (di == NULL) {
-		hwlog_err("[%s]di is NULL!\n", __func__);
-		return ret;
+	if(CHARGER_TYPE_DCP == type && CHARGER_TYPE_NON_STANDARD == pConfigOnDDr->g_di.charger_type){
+		hwlog_info("update charger type!\n");
+		wake_lock_timeout(&wlock, TIMEOUT_SEC*HZ);
+		notify_sensorhub(CHARGE_UPDATE_CHARGER_TYPE,0);
+		charge_wake_unlock();
 	}
-
 	switch (type) {
 	case CHARGER_TYPE_SDP:
 		if(CHARGER_REMOVED == di->charger_type || CHARGER_TYPE_NON_STANDARD == di->charger_type
@@ -321,6 +463,7 @@ static void charge_send_uevent(struct charge_device_info_sh *di)
 	}
 }
 
+/*lint -save -e* */
 static enum fcp_check_stage_type fcp_get_stage(void)
 {
 	if (pConfigOnDDr == NULL) {
@@ -332,6 +475,7 @@ static enum fcp_check_stage_type fcp_get_stage(void)
 	} else
 		return pConfigOnDDr->g_di.fcp_stage;
 }
+/*lint -restore*/
 
 /**********************************************************
 *  Function:       set_charge_state
@@ -364,10 +508,15 @@ extern void hisi_usb_otg_bc_again(void);
 **********************************************************/
 void charge_type_dcp_detected_notify_sh(void)
 {
+	if(NULL == pConfigOnDDr)
+	{
+		return ;
+	}
 	if (CHARGER_TYPE_NON_STANDARD == pConfigOnDDr->g_di.charger_type) {
 		hisi_usb_otg_bc_again();
 		hwlog_info(" stop phy enter! \n");
-		charge_send_notify_to_sensorhub(&pConfigOnDDr->g_di);
+		wake_lock_timeout(&wlock, TIMEOUT_SEC*HZ);
+		notify_sensorhub(CHARGE_UPDATE_CHARGER_TYPE,0);
 	}
 }
 
@@ -428,6 +577,7 @@ static void charge_process_vr_charge_event(struct charge_device_info_sh *di)
 	}
 }
 
+/*lint -save -e* */
 void update_charging_info(struct charge_device_info_sh *di)
 {
 	di->battery_fcc = coul_get_battery_fcc();
@@ -444,6 +594,7 @@ void update_charging_info(struct charge_device_info_sh *di)
 	di->pd_charge = get_pd_charge_flag();
 	hwlog_info("full charge capacity is 0x%x, current capacity is 0x%x.\n", di->battery_fcc, di->battery_capacity);
 }
+/*lint -restore*/
 
 /**********************************************************
 *  Function:       charge_send_notify_to_sensorhub
@@ -458,6 +609,10 @@ static int charge_send_notify_to_sensorhub(struct charge_device_info_sh *di)
 	pkt_cmn_interval_req_t pkt_charge_info;
 	int ret = 0;
 
+	if(NULL == di)
+	{
+		return -1;
+	}
 	memset(&pkt_charge_info, 0, sizeof(pkt_charge_info));
 	memset(&pkg_ap, 0, sizeof(pkg_ap));
 	memset(&pkg_mcu, 0, sizeof(pkg_mcu));
@@ -470,27 +625,38 @@ static int charge_send_notify_to_sensorhub(struct charge_device_info_sh *di)
 		case USB_EVENT_OTG_ID:
 		case CHARGER_TYPE_VR:
 		case CHARGER_TYPE_PD:
-			if (charging_status == CHARGING_OPEN && g_iom3_state == IOM3_ST_NORMAL)
+			pkt_charge_info.param.reserved[0] = (uint8_t)di->charger_type;
+			pkt_charge_info.param.reserved[1] = (uint8_t)di->charger_source;
+			if (charging_status == CHARGING_OPEN && g_iom3_state == IOM3_ST_NORMAL) {
+				hwlog_warn("charger has already opend.\n");
 				return 0;
-			else
+			} else if ((IOM3_RECOVERY_UNINIT == atomic_read(&iom3_rec_state)) || (IOM3_ST_RECOVERY == g_iom3_state)) {
+				di->charger_type = CHARGER_REMOVED;
+				hwlog_warn("sensorhub is in initial stage.\n");
+				return 0;
+			} else
 				charging_status = CHARGING_OPEN;
-			update_charging_info(&pConfigOnDDr->g_di);
+			update_charging_info(di);
 			pkg_ap.tag = TAG_CHARGER;
 			pkg_ap.cmd = CMD_CMN_INTERVAL_REQ;
 			pkg_ap.wr_buf = &pkt_charge_info.param;
 			pkg_ap.wr_len = sizeof(pkt_charge_info) - sizeof(pkt_charge_info.hd);
 			if (g_iom3_state == IOM3_ST_NORMAL)
 				ret=write_customize_cmd(&pkg_ap,  NULL);
-			else
+			else if (g_iom3_state == IOM3_ST_REPEAT)
 				ret=write_customize_cmd_noresp(pkg_ap.tag, pkg_ap.cmd,  pkg_ap.wr_buf, pkg_ap.wr_len);
+			else {
+				hwlog_warn("open notify can not send to sensorhub. sensorhub maybe in recovery mode.\n");
+				return 0;
+			}
 			if(ret) {
 				hwlog_err("send start notify to sensorhub fail, ret is %d, charger type is %d\n", ret, di->charger_type);
 				return -1;
 			} else {
-				hwlog_info( "send start notify to sensorhub success, charger type is %d\n", di->charger_type);
+				hwlog_info( "send start notify to sensorhub success, charger type is %d, type %d, source %d.\n",
+					di->charger_type, pkt_charge_info.param.reserved[0], pkt_charge_info.param.reserved[1]);
 				return 0;
 			}
-			break;
 
 		case CHARGER_REMOVED:	/*not connected*/
 			if (charging_status == CHARGING_CLOSE)
@@ -501,7 +667,14 @@ static int charge_send_notify_to_sensorhub(struct charge_device_info_sh *di)
 			pkg_ap.cmd = CMD_CMN_CLOSE_REQ;
 			pkg_ap.wr_buf = NULL;
 			pkg_ap.wr_len = 0;
-			ret=write_customize_cmd(&pkg_ap,  &pkg_mcu);
+			if (g_iom3_state == IOM3_ST_NORMAL) {
+				ret = write_customize_cmd(&pkg_ap,  &pkg_mcu);
+			} else if (g_iom3_state == IOM3_ST_REPEAT)
+				ret = write_customize_cmd_noresp(pkg_ap.tag, pkg_ap.cmd, pkg_ap.wr_buf, pkg_ap.wr_len);
+			else {
+				hwlog_warn("close notify can not send to sensorhub. sensorhub maybe in recovery mode.\n");
+				return 0;
+			}
 			if(ret) {
 				hwlog_err("send close notify to sensorhub fail, ret is %d, charger type is %d\n", ret, di->charger_type);
 				return -1;
@@ -514,7 +687,6 @@ static int charge_send_notify_to_sensorhub(struct charge_device_info_sh *di)
 					return 0;
 				}
 			}
-			break;
 
 		default:
 			hwlog_err("charge_send_notify_to_sensorhub unsupport charger type %d\n", di->charger_type);
@@ -537,6 +709,12 @@ int charge_usb_notifier_call_sh(struct notifier_block *usb_nb,
 	bool filter_flag = TRUE;
 	enum hisi_charger_type charge_type = (enum hisi_charger_type)event;
 
+	if (NULL == pConfigOnDDr) {
+		hwlog_err("charge_usb_notifier_call_sh pConfigOnDDr is null.\n");
+		return NOTIFY_OK;
+	}
+	mutex_lock(&charge_usb_notify_lock);
+	hwlog_info("charge_usb_notifier_call_sh called in!event is %ld. charger type %d.\n", event, pConfigOnDDr->g_di.charger_type);
 	//charger_type_ever_notify = true;
 	if (charge_type == CHARGER_TYPE_UNKNOWN)
 		charge_wake_lock();
@@ -550,16 +728,18 @@ int charge_usb_notifier_call_sh(struct notifier_block *usb_nb,
 	}
 	if(filter_flag) {
 		hwlog_info("not use work,filter_flag=%d\n",filter_flag);
+		mutex_unlock(&charge_usb_notify_lock);
 		return NOTIFY_OK;
 	}
 
 	charge_send_uevent(&pConfigOnDDr->g_di);
-        hwlog_info("charge_usb_notifier_call_sh called!event is %ld.\n", event);
+        hwlog_info("charge_usb_notifier_call_sh called!event is %ld. charger type %d.\n", event, pConfigOnDDr->g_di.charger_type);
         charge_send_notify_to_sensorhub(&pConfigOnDDr->g_di);
+	mutex_unlock(&charge_usb_notify_lock);
 	return NOTIFY_OK;
 }
 
-#if CONFIG_SYSFS
+#ifdef CONFIG_SYSFS
 #define CHARGE_SYSFS_FIELD(_name, n, m, store)                \
 {                                                   \
     .attr = __ATTR(_name, m, charge_sysfs_show, store),    \
@@ -578,6 +758,7 @@ static ssize_t charge_sysfs_store(struct device *dev,
 				  struct device_attribute *attr,
 				  const char *buf, size_t count);
 
+/*lint -save -e* */
 static struct charge_sysfs_field_info {
 	struct device_attribute attr;
 	u8 name;
@@ -628,6 +809,7 @@ static struct attribute *charge_sysfs_attrs[ARRAY_SIZE(charge_sysfs_field_tbl) +
 static const struct attribute_group charge_sysfs_attr_group = {
 	.attrs = charge_sysfs_attrs,
 };
+/*lint -restore*/
 
 /**********************************************************
 *  Function:       charge_sysfs_init_attrs
@@ -635,6 +817,8 @@ static const struct attribute_group charge_sysfs_attr_group = {
 *  Parameters:   NULL
 *  return value:  NULL
 **********************************************************/
+
+/*lint -save -e* */
 static void charge_sysfs_init_attrs(void)
 {
 	int i, limit = ARRAY_SIZE(charge_sysfs_field_tbl);
@@ -644,6 +828,7 @@ static void charge_sysfs_init_attrs(void)
 	}
 	charge_sysfs_attrs[limit] = NULL;	/* Has additional entry for this */
 }
+/*lint -restore*/
 
 /**********************************************************
 *  Function:       charge_sysfs_field_lookup
@@ -651,6 +836,8 @@ static void charge_sysfs_init_attrs(void)
 *  Parameters:   name:device attribute name
 *  return value:  charge_sysfs_field_tbl[]
 **********************************************************/
+
+/*lint -save -e* */
 static struct charge_sysfs_field_info *charge_sysfs_field_lookup(const char *name)
 {
 	int i, limit = ARRAY_SIZE(charge_sysfs_field_tbl);
@@ -666,6 +853,7 @@ static struct charge_sysfs_field_info *charge_sysfs_field_lookup(const char *nam
 
 	return &charge_sysfs_field_tbl[i];
 }
+/*lint -restore*/
 
 /**********************************************************
 *  Function:       charge_sysfs_show
@@ -675,6 +863,8 @@ static struct charge_sysfs_field_info *charge_sysfs_field_lookup(const char *nam
 *                      buf:string of node value
 *  return value:  0-sucess or others-fail
 **********************************************************/
+
+/*lint -save -e* */
 static ssize_t charge_sysfs_show(struct device *dev,
 				 struct device_attribute *attr, char *buf)
 {
@@ -682,7 +872,7 @@ static ssize_t charge_sysfs_show(struct device *dev,
 	int ret;
 
 	info = charge_sysfs_field_lookup(attr->attr.name);
-	if (!info)
+	if (!info || !pConfigOnDDr)
 		return -EINVAL;
 
 	switch (info->name) {
@@ -817,7 +1007,7 @@ static ssize_t charge_sysfs_show(struct device *dev,
 		mutex_unlock(&sysfs_lock.bootloader_info_lock);
 		return ret;
 	case CHARGE_SYSFS_VR_CHARGER_TYPE:
-		notify_sensorhub(CHARGE_SYSFS_VR_CHARGER_TYPE, 1);
+		//notify_sensorhub(CHARGE_SYSFS_VR_CHARGER_TYPE, 1);
 		return snprintf(buf, PAGE_SIZE, "%d\n", pConfigOnDDr->g_di.sysfs_data.vr_charger_type);
 	case CHARGE_SYSFS_CHARGE_TERM_VOLT_DESIGN:
 		notify_sensorhub(CHARGE_SYSFS_CHARGE_TERM_VOLT_DESIGN, 1);
@@ -833,14 +1023,18 @@ static ssize_t charge_sysfs_show(struct device *dev,
 		notify_sensorhub(CHARGE_SYSFS_CHARGE_TERM_CURR_SETTING, 1);
 		return snprintf(buf, PAGE_SIZE, "%d\n", pConfigOnDDr->g_core_info.data.iterm);
 	case CHARGE_SYSFS_FCP_SUPPORT:
-		notify_sensorhub(CHARGE_SYSFS_FCP_SUPPORT, 1);
-		return snprintf(buf, PAGE_SIZE, "%d\n", pConfigOnDDr->g_di.sysfs_data.fcp_support);
+		mutex_lock(&sysfs_lock.fcp_support_lock);
+		pConfigOnDDr->g_di.sysfs_data.fcp_support = notify_sensorhub_fcp(CHARGE_SYSFS_FCP_SUPPORT, 1);
+		ret = snprintf(buf, PAGE_SIZE, "%d\n", pConfigOnDDr->g_di.sysfs_data.fcp_support);
+		mutex_unlock(&sysfs_lock.fcp_support_lock);
+		return ret;
 	default:
 		hwlog_err("(%s)NODE ERR!!HAVE NO THIS NODE:(%d)\n", __func__, info->name);
 		break;
 	}
 	return 0;
 }
+/*lint -restore*/
 
 /**********************************************************
 *  Function:       charge_sysfs_store
@@ -851,6 +1045,8 @@ static ssize_t charge_sysfs_show(struct device *dev,
 *                      count:unused
 *  return value:  0-sucess or others-fail
 **********************************************************/
+
+/*lint -save -e* */
 static ssize_t charge_sysfs_store(struct device *dev,
 				  struct device_attribute *attr,
 				  const char *buf, size_t count)
@@ -860,7 +1056,7 @@ static ssize_t charge_sysfs_store(struct device *dev,
 	enum charge_status_event events = VCHRG_POWER_NONE_EVENT;
 
 	info = charge_sysfs_field_lookup(attr->attr.name);
-	if (!info)
+	if (!info || !pConfigOnDDr)
 		return -EINVAL;
 
 	switch (info->name) {
@@ -1146,8 +1342,8 @@ static ssize_t charge_sysfs_store(struct device *dev,
 		pConfigOnDDr->g_di.sysfs_data.vr_charger_type = val;
 		hwlog_info("Set vr_charger_type = %d\n",
 			   pConfigOnDDr->g_di.sysfs_data.vr_charger_type);
-		charge_process_vr_charge_event(&pConfigOnDDr->g_di);//////////??????
-		notify_sensorhub(CHARGE_SYSFS_VR_CHARGER_TYPE, 0);
+		//charge_process_vr_charge_event(&pConfigOnDDr->g_di);//////////??????
+		//notify_sensorhub(CHARGE_SYSFS_VR_CHARGER_TYPE, 0);
 		break;
 	case CHARGE_SYSFS_THERMAL_INPUT:
 		if(!buf || sizeof(struct sensorhub_scene)!= count) {
@@ -1170,7 +1366,9 @@ static ssize_t charge_sysfs_store(struct device *dev,
 	}
 	return count;
 }
+/*lint -restore*/
 
+/*lint -save -e* */
 static bool charge_check_ts(void)
 {
 	if (pConfigOnDDr == NULL) {
@@ -1194,6 +1392,7 @@ static bool charge_check_otg_state(void)
 	} else
 		return pConfigOnDDr->g_di.otg_flag;
 }
+/*lint -restore*/
 
 /**********************************************************
 *  Function:       charge_sysfs_create_group
@@ -1308,6 +1507,8 @@ struct notifier_block usb_nb;
 *  Parameters:   pdev:platform_device
 *  return value:  0-sucess or others-fail
 **********************************************************/
+
+/*lint -save -e* */
 static int charge_probe(struct platform_device *pdev)
 {
 	int ret = 0;
@@ -1358,6 +1559,11 @@ static int charge_probe(struct platform_device *pdev)
 	mutex_init(&sysfs_lock.dump_reg_lock);
 	mutex_init(&sysfs_lock.dump_reg_head_lock);
 	mutex_init(&sysfs_lock.bootloader_info_lock);
+	mutex_init(&sysfs_lock.fcp_support_lock);
+	mutex_init(&charge_usb_notify_lock);
+
+	wake_lock_init(&charge_lock, WAKE_LOCK_SUSPEND, "charge_wakelock");
+	wake_lock_init(&wlock, WAKE_LOCK_SUSPEND, "sensorhub_wakelock");
 
 #ifndef CONFIG_HLTHERM_RUNTEST
 	di->is_hltherm_runtest_mode = 0;
@@ -1409,9 +1615,12 @@ static int charge_probe(struct platform_device *pdev)
 
 charge_fail_1:
 	charge_sysfs_remove_group(&huawei_charger_dev);
+	wake_lock_destroy(&charge_lock);
+	wake_lock_destroy(&wlock);
 charge_fail_0:
 	return ret;
 }
+/*lint -restore*/
 
 /**********************************************************
 *  Function:       charge_remove
@@ -1423,6 +1632,8 @@ static int charge_remove(struct platform_device *pdev)
 {
 	hisi_charger_type_notifier_unregister(&usb_nb);
 	charge_sysfs_remove_group(&huawei_charger_dev);
+	wake_lock_destroy(&charge_lock);
+	wake_lock_destroy(&wlock);
 	g_ops = NULL;
 	return 0;
 }
@@ -1457,6 +1668,7 @@ static void charge_shutdown(struct platform_device *pdev)
 	return;
 }
 
+/*lint -save -e* */
 static struct of_device_id charge_match_table[] = {
 	{
 	 .compatible = "huawei,charger_sensorhub",
@@ -1465,6 +1677,7 @@ static struct of_device_id charge_match_table[] = {
 	{
 	 },
 };
+/*lint -restore*/
 
 static struct platform_driver charge_driver = {
 	.probe = charge_probe,
@@ -1483,6 +1696,8 @@ static struct platform_driver charge_driver = {
 *  Parameters:   NULL
 *  return value:  0-sucess or others-fail
 **********************************************************/
+
+/*lint -save -e* */
 static int __init charge_init(void)
 {
 	return platform_driver_register(&charge_driver);
@@ -1502,6 +1717,8 @@ static void __exit charge_exit(void)
 //late_initcall(charge_init);
 device_initcall_sync(charge_init);
 module_exit(charge_exit);
+/*lint -restore*/
+
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("huawei charger sensorhub module driver");
 MODULE_AUTHOR("HUAWEI Inc");

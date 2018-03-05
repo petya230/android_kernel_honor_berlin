@@ -944,22 +944,27 @@ void PolicySourceDiscovery(void)
     switch (PolicySubIndex)
     {
         case 0:
-            platform_set_timer(&PolicyStateTimer, tTypeCSendSourceCap);                             // Initialize the SourceCapabilityTimer
+            platform_start_timer(&PolicyStateTimer, tTypeCSendSourceCap);                             // Initialize the SourceCapabilityTimer
             PolicySubIndex++;                                                   // Increment the sub index
+            g_Idle = TRUE;
             break;
         default:
+            g_Idle = TRUE;
             if ((HardResetCounter > nHardResetCount) && (platform_check_timer(&NoResponseTimer)) && (PolicyHasContract == TRUE))
             {                                                                   // If we previously had a contract in place...
+                g_Idle = FALSE;
                 PolicyState = peErrorRecovery;                                  // Go to the error recovery state since something went wrong
                 PolicySubIndex = 0;
             }
             else if ((HardResetCounter > nHardResetCount) && (platform_check_timer(&NoResponseTimer)) && (PolicyHasContract == FALSE))
             {                                                                   // Otherwise...
+                g_Idle = FALSE;
                 PolicyState = peSourceDisabled;                             // Go to the disabled state since we are assuming that there is no PD sink attached
                 PolicySubIndex = 0;                                             // Reset the sub index for the next state
             }
-            if (platform_check_timer(&PolicyStateTimer))                                          // Once the timer expires...
+            if (PolicyStateTimer.expired == TRUE)                                          // Once the timer expires...
             {
+                g_Idle = FALSE;
                 if (CapsCounter > nCapsCount)                                   // If we have sent the maximum number of capabilities messages...
                     PolicyState = peSourceDisabled;                             // Go to the disabled state, no PD sink connected
                 else                                                            // Otherwise...
@@ -3569,7 +3574,6 @@ void convertAndProcessVdmMessage(SopType sop)
     // note: may need to rethink the interface. but this is quicker to develop right now
     FSC_U32 vdm_arr[7];
     for (i = 0; i < PolicyRxHeader.NumDataObjects; i++) {
-        vdm_arr[i] = 0;
         vdm_arr[i] = PolicyRxDataObj[i].object;
     }
     if (processVdmMessage(sop, vdm_arr, PolicyRxHeader.NumDataObjects) == 0)

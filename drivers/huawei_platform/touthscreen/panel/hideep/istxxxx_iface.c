@@ -225,9 +225,9 @@ static ssize_t hideep_iface_read(struct file *file, char __user *buf,
 			rd_len = 0;
 	} else if ((*offset) == ADDR_IMG) {
 		TS_LOG_INFO("reading image\n");
-		drv_info->im_size = count;
+		drv_info->im_size = (count < IST_VR_SIZE_LENGTH) ? count : IST_VR_SIZE_LENGTH;
 		rd_buffer = drv_info->im_buff;
-		rd_len = count;
+		rd_len = (count < IST_VR_SIZE_LENGTH) ? count : IST_VR_SIZE_LENGTH;
 	} else {
 		TS_LOG_ERR("ist510e_read : undefined address\n");
 		return -EFAULT;

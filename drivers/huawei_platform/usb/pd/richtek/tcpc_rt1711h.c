@@ -37,7 +37,9 @@
 #include <huawei_platform/usb/pd/richtek/tcpci.h>
 #include <huawei_platform/usb/pd/richtek/rt1711h.h>
 #include <huawei_platform/log/hw_log.h>
+#ifdef CONFIG_HUAWEI_DSM
 #include <dsm/dsm_pub.h>
+#endif
 #include <media/huawei/hw_extern_pmic.h>
 #include "huawei_platform/power/charger/charger_ap/direct_charger/loadswitch/rt9748/rt9748.h"
 #include <huawei_platform/usb/hw_pd_dev.h>
@@ -81,6 +83,7 @@ struct rt1711_chip {
 	int chip_id;
 };
 
+#ifdef CONFIG_HUAWEI_DSM
 static struct dsm_client *pd_richtek_dclient = NULL;
 static struct dsm_dev pd_richtek_dev = {
         .name = "dsm_pd_richtek",
@@ -91,7 +94,6 @@ static struct dsm_dev pd_richtek_dev = {
         .buff_size = 1024,
 };
 
-#if defined CONFIG_HUAWEI_DSM
 #define ERR_NO_STRING_SIZE 128
 struct richtek_dsm {
        int error_no;
@@ -115,7 +117,6 @@ static struct richtek_dsm err_count[] = {
        {ERROR_RT_DATA_ROLE_ISNOT_PD_ROLE_DFP, true, "the data role is not pd role dfp"},
        {ERROR_RT_SVID_DATA_NULL, true, "the svid data is null"},
 };
-#endif
 
 /**********************************************************
 *  Function:       rt_dsm_report
@@ -125,7 +126,6 @@ static struct richtek_dsm err_count[] = {
 **********************************************************/
 int rt_dsm_report(int err_no, void *buf)
 {
-#if defined CONFIG_HUAWEI_DSM
         if (NULL == buf || NULL == pd_richtek_dclient) {
                 hwlog_info("buf is NULL or richtek_dclient is NULL!\n");
                 return -1;
@@ -139,10 +139,8 @@ int rt_dsm_report(int err_no, void *buf)
         }
         hwlog_info("richtek dsm is busy!\n");
         return -1;
-#endif
-
-        return 0;
 }
+#endif
 
 #ifdef CONFIG_RT_REGMAP
 RT_REG_DECL(TCPC_V10_REG_VID, 2, RT_VOLATILE, {});
@@ -245,14 +243,18 @@ static int rt1711_read_device(void *client, u32 reg, int len, void *dst)
 {
 	struct i2c_client *i2c = (struct i2c_client *)client;
 	int ret = 0, count = 5;
+#ifdef CONFIG_DIRECT_CHARGER
 	ls_i2c_mutex_lock();
+#endif
 	while (count) {
 		if (len > 1) {
 			ret = i2c_smbus_read_i2c_block_data(i2c, reg, len, dst);
 			if (ret < 0)
 				count--;
 			else{
+#ifdef CONFIG_DIRECT_CHARGER
 				ls_i2c_mutex_unlock();
+#endif
 				return ret;
 			}
 		} else {
@@ -261,13 +263,17 @@ static int rt1711_read_device(void *client, u32 reg, int len, void *dst)
 				count--;
 			else {
 				*(u8 *)dst = (u8)ret;
+#ifdef CONFIG_DIRECT_CHARGER
 				ls_i2c_mutex_unlock();
+#endif
 				return ret;
 			}
 		}
 		udelay(100);
 	}
+#ifdef CONFIG_DIRECT_CHARGER
 	ls_i2c_mutex_unlock();
+#endif
 	return ret;
 }
 
@@ -277,7 +283,9 @@ static int rt1711_write_device(void *client, u32 reg, int len, const void *src)
 	struct i2c_client *i2c = (struct i2c_client *)client;
 	int ret = 0, count = 5;
 
+#ifdef CONFIG_DIRECT_CHARGER
 	ls_i2c_mutex_lock();
+#endif
 	while (count) {
 		if (len > 1) {
 			ret = i2c_smbus_write_i2c_block_data(i2c,
@@ -285,7 +293,9 @@ static int rt1711_write_device(void *client, u32 reg, int len, const void *src)
 			if (ret < 0)
 				count--;
 			else{
+#ifdef CONFIG_DIRECT_CHARGER
 				ls_i2c_mutex_unlock();
+#endif
 				return ret;
 			}
 		} else {
@@ -294,13 +304,17 @@ static int rt1711_write_device(void *client, u32 reg, int len, const void *src)
 			if (ret < 0)
 				count--;
 			else{
+#ifdef CONFIG_DIRECT_CHARGER
 				ls_i2c_mutex_unlock();
+#endif
 				return ret;
 			}
 		}
 		udelay(100);
 	}
+#ifdef CONFIG_DIRECT_CHARGER
 	ls_i2c_mutex_unlock();
+#endif
 	return ret;
 }
 
@@ -1528,6 +1542,7 @@ static int rt1711_i2c_probe(struct i2c_client *client,
 	int ret = 0, chip_id;
 	bool use_dt = client->dev.of_node;
 
+	hwlog_err("probe +++++++++++++++++++++++++++++");
 	hw_extern_pmic_config(RT_PMIC_LDO_3,RTUSB_VIN_3V3, 1);
 	pr_info("%s:PD PMIC ENABLE IS CALLED\n", __func__);
 	pr_info("%s\n", __func__);
@@ -1582,6 +1597,7 @@ static int rt1711_i2c_probe(struct i2c_client *client,
 		goto err_irq_init;
 	}
 
+#ifdef CONFIG_HUAWEI_DSM
 	if (!pd_richtek_dclient)
 	{
 		pd_richtek_dclient = dsm_register_client(&pd_richtek_dev);
@@ -1589,9 +1605,8 @@ static int rt1711_i2c_probe(struct i2c_client *client,
 	if (NULL == pd_richtek_dclient)
 	{
 		hwlog_err("pd richtek register dsm fail\n");
-		return -EINVAL;
 	}
-
+#endif
 
 	tcpc_schedule_init_work(chip->tcpc);
 
@@ -1663,15 +1678,28 @@ static void rt1711_shutdown(struct i2c_client *client)
 {
 	struct rt1711_chip *chip = i2c_get_clientdata(client);
 	struct tcpc_device *tcpc = chip->tcpc;
+	u8 tmp[2] = {0};
 
 	/* Please reset IC here */
 	if (chip != NULL) {
 		if (chip->irq)
 			disable_irq(chip->irq);
-	} else {
-		i2c_smbus_write_byte_data(
+	} 
+	i2c_smbus_write_byte_data(
 			client, RT1711H_REG_SWRESET, 0x01);
-	}
+	mdelay(1);
+
+	memset(tmp, 0, 2);
+	 i2c_smbus_write_i2c_block_data(client,
+                                      TCPC_V10_REG_ALERT_MASK, 2, tmp);
+
+	memset(tmp, 0xff, 2);
+	i2c_smbus_write_i2c_block_data(client,
+                                      TCPC_V10_REG_ALERT, 2, tmp);
+
+	i2c_smbus_write_byte_data(
+			client, RT1711H_REG_BMC_CTRL, 0x08);
+	dev_info(&client->dev, "%s\n", __func__);
 }
 
 static int rt1711_pm_suspend_runtime(struct device *device)
@@ -1739,7 +1767,8 @@ static int __init rt1711_init(void)
 
 	return i2c_add_driver(&rt1711_driver);
 }
-module_init(rt1711_init);
+//module_init(rt1711_init);
+late_initcall(rt1711_init);
 
 static void __exit rt1711_exit(void)
 {

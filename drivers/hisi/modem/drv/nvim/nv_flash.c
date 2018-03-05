@@ -1,4 +1,50 @@
-
+/*
+ * Copyright (C) Huawei Technologies Co., Ltd. 2012-2015. All rights reserved.
+ * foss@huawei.com
+ *
+ * If distributed as part of the Linux kernel, the following license terms
+ * apply:
+ *
+ * * This program is free software; you can redistribute it and/or modify
+ * * it under the terms of the GNU General Public License version 2 and
+ * * only version 2 as published by the Free Software Foundation.
+ * *
+ * * This program is distributed in the hope that it will be useful,
+ * * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * * GNU General Public License for more details.
+ * *
+ * * You should have received a copy of the GNU General Public License
+ * * along with this program; if not, write to the Free Software
+ * * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA
+ *
+ * Otherwise, the following license terms apply:
+ *
+ * * Redistribution and use in source and binary forms, with or without
+ * * modification, are permitted provided that the following conditions
+ * * are met:
+ * * 1) Redistributions of source code must retain the above copyright
+ * *    notice, this list of conditions and the following disclaimer.
+ * * 2) Redistributions in binary form must reproduce the above copyright
+ * *    notice, this list of conditions and the following disclaimer in the
+ * *    documentation and/or other materials provided with the distribution.
+ * * 3) Neither the name of Huawei nor the names of its contributors may
+ * *    be used to endorse or promote products derived from this software
+ * *    without specific prior written permission.
+ *
+ * * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
+ *
+ */
 
 #ifdef __cplusplus
 #if __cplusplus
@@ -7,12 +53,15 @@ extern "C" {
 #endif
 
 #include "nv_file.h"
+#include "nv_ctrl.h"
 #include "nv_comm.h"
 #include "nv_debug.h"
 #include <linux/err.h>
 #include <linux/mtd/mtd.h>
 #include "ptable_com.h"
 #include "bsp_blk.h"
+#include "nv_partition_upgrade.h"
+#include "nv_cust.h"
 
 /*lint -save -e438 -e958*/
 static struct nv_flash_file_header_stru g_nv_file[NV_FILE_BUTT] = {
@@ -31,13 +80,11 @@ static struct nv_flash_file_header_stru g_nv_file[NV_FILE_BUTT] = {
                           {NULL,NV_FILE_XNV_MAP_CARD_3, 0,0,0,0,IMAGE_NVDLD,    NV_XNV_CARD3_MAP_PATH,    NV_DLOAD_SEC_NAME, NULL},
                                                                   };
 
-static struct nv_flash_global_ctrl_stru g_flash_info = {};
+static struct nv_global_ctrl_stru g_flash_info = {};
 static struct nv_global_debug_stru g_flash_debug[NV_FILE_OPS_MAX_API] = {};
 
 static struct nv_sec_file_block_info g_sec_info = {};
 
-extern s32 bsp_blk_write_dload(const char *partition_name, u32 partition_offset,
-    void* ptr_ram_addr, u32 length);
 /*reseverd1 used to reg branch*/
 void nv_file_debug(u32 type,u32 reseverd1,u32 reserved2,u32 reserved3,u32 reserved4)
 {
@@ -56,26 +103,26 @@ void nv_flash_help(u32 type)
     {
         for(i = 0;i< NV_FILE_OPS_MAX_API;i++)
         {
-            printf("************flash fun id %d************\n",i);
-            printf("call num             : 0x%x\n",g_flash_debug[i].callnum);
-            printf("out branch (reseved1): 0x%x\n",g_flash_debug[i].reseved1);
-            printf("reseved2             : 0x%x\n",g_flash_debug[i].reseved2);
-            printf("reseved3             : 0x%x\n",g_flash_debug[i].reseved3);
-            printf("reseved4             : 0x%x\n",g_flash_debug[i].reseved4);
-            printf("***************************************\n");
+            nv_printf("************flash fun id %d************\n",i);
+            nv_printf("call num             : 0x%x\n",g_flash_debug[i].callnum);
+            nv_printf("out branch (reseved1): 0x%x\n",g_flash_debug[i].reseved1);
+            nv_printf("reseved2             : 0x%x\n",g_flash_debug[i].reseved2);
+            nv_printf("reseved3             : 0x%x\n",g_flash_debug[i].reseved3);
+            nv_printf("reseved4             : 0x%x\n",g_flash_debug[i].reseved4);
+            nv_printf("***************************************\n");
         }
         return ;
     }
 
     i = type;
 
-    nv_mntn_record("************flash fun id %d************\n",i);
-    nv_mntn_record("call num             : 0x%x\n",g_flash_debug[i].callnum);
-    nv_mntn_record("out branch (reseved1): 0x%x\n",g_flash_debug[i].reseved1);
-    nv_mntn_record("reseved2             : 0x%x\n",g_flash_debug[i].reseved2);
-    nv_mntn_record("reseved3             : 0x%x\n",g_flash_debug[i].reseved3);
-    nv_mntn_record("reseved4             : 0x%x\n",g_flash_debug[i].reseved4);
-    nv_mntn_record("**************************************\n");
+    nv_printf("************flash fun id %d************\n",i);
+    nv_printf("call num             : 0x%x\n",g_flash_debug[i].callnum);
+    nv_printf("out branch (reseved1): 0x%x\n",g_flash_debug[i].reseved1);
+    nv_printf("reseved2             : 0x%x\n",g_flash_debug[i].reseved2);
+    nv_printf("reseved3             : 0x%x\n",g_flash_debug[i].reseved3);
+    nv_printf("reseved4             : 0x%x\n",g_flash_debug[i].reseved4);
+    nv_printf("**************************************\n");
 }
 
 u32 nv_get_nand_info(const s8* name,struct nv_nand_info_stru* nand_info)
@@ -85,7 +132,7 @@ u32 nv_get_nand_info(const s8* name,struct nv_nand_info_stru* nand_info)
     mtd = get_mtd_device_nm(name);
     if (IS_ERR(mtd))
     {
-        printf("[%s]:get mtd device err! %s\n",__func__,name);
+        nv_printf("[%s]:get mtd device err! %s\n",__func__,name);
         return NV_ERROR;
     }
     nand_info->page_size  = (u32)mtd->writesize;
@@ -150,7 +197,7 @@ u32 nv_count_file_sec_info(const s8* name,u32 len,u32* file_sec)
     ret = nv_get_nand_info(name,&nand_info);
     if(ret)
     {
-        printf("[%s]  ret : 0x%x\n",__func__,ret);
+        nv_printf("[%s]  ret : 0x%x\n",__func__,ret);
         return NV_ERROR;
     }
     block_size  = nand_info.block_size;
@@ -159,7 +206,7 @@ u32 nv_count_file_sec_info(const s8* name,u32 len,u32* file_sec)
 
     if((len > nand_info.total_size)||(block_count > total_count))
     {
-        printf("[%s]: name %s file len 0x%x,sec size 0x%x\n",__func__,name,len,nand_info.total_size);
+        nv_printf("[%s]: name %s file len 0x%x,sec size 0x%x\n",__func__,name,len,nand_info.total_size);
         return NV_ERROR;
     }
 
@@ -176,7 +223,7 @@ u32 nv_count_file_sec_info(const s8* name,u32 len,u32* file_sec)
         offset += block_size;
         if(offset > nand_info.total_size)
         {
-            printf("[%s]:name %s,offset 0x%x,sec size 0x%x\n",__func__,name,offset,nand_info.total_size);
+            nv_printf("[%s]:name %s,offset 0x%x,sec size 0x%x\n",__func__,name,offset,nand_info.total_size);
             return BSP_ERR_NV_NAND_ALL_BAD;
         }
     }
@@ -186,20 +233,20 @@ u32 nv_count_file_sec_info(const s8* name,u32 len,u32* file_sec)
 /*
  *get file info in back ,default,nvdload
  */
-u32 nv_sec_file_info_init(const s8* name,struct nv_file_info_stru* sec_info,u32* off_info)
+u32 nv_sec_file_info_init(const s8* name, nv_file_map_s* sec_info,u32* off_info)
 {
     u32 ret = NV_ERROR;
     u32 file_len = 0;
-    struct nv_file_info_stru info;
-    struct nv_ctrl_file_info_stru ctrl_info;
+    nv_file_map_s  info;
+    nv_ctrl_info_s ctrl_info;
     u8* file_info;
 
     *off_info = 0;
     /*first: read nv ctrl file*/
-    ret = (u32)bsp_blk_read((char*)name,0,&ctrl_info,sizeof(ctrl_info),NULL);
+    ret = (u32)bsp_blk_read((char*)name,0,&ctrl_info,sizeof(ctrl_info));
     if(NAND_OK != ret)
     {
-        printf("[%s]:patrition name %s,read file ret 0x%x,\n",__func__,name,ret);
+        nv_printf("[%s]:patrition name %s,read file ret 0x%x,\n",__func__,name,ret);
         return ret;
     }
 
@@ -207,13 +254,13 @@ u32 nv_sec_file_info_init(const s8* name,struct nv_file_info_stru* sec_info,u32*
     /* coverity[uninit_use] */
     if(ctrl_info.magicnum != NV_CTRL_FILE_MAGIC_NUM)
     {
-        printf("[%s]:enter this way  1111! %s\n",__func__,name);
+        nv_printf("[%s]:enter this way  1111! %s\n",__func__,name);
         return NV_OK;
     }
 
-    if(ctrl_info.file_size > ctrl_info.file_num * sizeof(struct nv_file_list_info_stru))
+    if(ctrl_info.file_size > ctrl_info.file_num * sizeof(nv_file_info_s))
     {
-        printf("[%s]:ctrl_info.file_size:0x%x file num:0x%x\n",__func__,ctrl_info.file_size, ctrl_info.file_num);
+        nv_printf("[%s]:ctrl_info.file_size:0x%x file num:0x%x\n",__func__,ctrl_info.file_size, ctrl_info.file_num);
         return BSP_ERR_NV_INVALID_PARAM;
     }
     /*third: read all nv ctrl file*/
@@ -221,22 +268,22 @@ u32 nv_sec_file_info_init(const s8* name,struct nv_file_info_stru* sec_info,u32*
     file_info = (u8*)nv_malloc(ctrl_info.file_size+1);
     if(NULL == file_info)
     {
-        printf("[%s]:enter this way  2222! %s\n",__func__,name);
+        nv_printf("[%s]:enter this way  2222! %s\n",__func__,name);
         return BSP_ERR_NV_MALLOC_FAIL;
     }
-    ret = (u32)bsp_blk_read((char*)name,sizeof(struct nv_ctrl_file_info_stru),file_info,ctrl_info.file_size,NULL);
+    ret = (u32)bsp_blk_read((char*)name,sizeof(nv_ctrl_info_s),file_info,ctrl_info.file_size);
     if(NAND_OK != ret)
     {
-        printf("[%s]:enter this way 3333! %s\n",__func__,name);
+        nv_printf("[%s]:enter this way 3333! %s\n",__func__,name);
         goto init_end;
     }
 
     /*fourth: count nv file len base the ctrl file info*/
     /* coverity[uninit_use_in_call] */
-    ret = nv_get_bin_file_len(&ctrl_info,(struct nv_file_list_info_stru*)file_info,&file_len);
+    ret = nv_get_bin_file_len(&ctrl_info,(nv_file_info_s*)file_info,&file_len);
     if(ret)
     {
-        printf("[%s]:enter this way 4444! %s\n",__func__,name);
+        nv_printf("[%s]:enter this way 4444! %s\n",__func__,name);
         goto init_end;
     }
 
@@ -244,7 +291,7 @@ u32 nv_sec_file_info_init(const s8* name,struct nv_file_info_stru* sec_info,u32*
     ret = nv_count_file_sec_info(name,file_len,off_info);
     if(ret)
     {
-        printf("[%s]:enter this way 5555! %s\n",__func__,name);
+        nv_printf("[%s]:enter this way 5555! %s\n",__func__,name);
         goto init_end;
     }
 
@@ -260,27 +307,73 @@ init_end:
     return NV_OK;
 }
 
+u32 nv_dload_file_head_init(void)
+{
+    u32 ret;
+    u32 total_len;
+    nv_dload_head nv_dload;
+
+    g_sec_info.nv_dload[0] = 0;
+
+    ret = (u32)bsp_blk_read((char*)NV_DLOAD_SEC_NAME, (loff_t)0, &nv_dload, sizeof(nv_dload_head));
+    if(ret)
+    {
+        nv_printf("read nvdload error! ret = 0x%x\n", ret);
+        return ret;
+    }
+
+    if( nv_dload.nv_bin.magic_num != NV_FILE_EXIST)
+    {
+        nv_printf("dload file is not exsit! magic_num = 0x%x\n", nv_dload.nv_bin.magic_num);
+        return BSP_ERR_NV_NO_FILE;
+    }
+
+    g_flash_info.nv_dload.nv_bin.magic_num = NV_FILE_EXIST;
+
+    /*second count file total len*/
+    total_len = sizeof(nv_dload_head);
+    total_len += ((nv_dload.nv_bin.magic_num == NV_FILE_EXIST)?nv_dload.nv_bin.len:0);
+    total_len += ((nv_dload.xnv_map.magic_num == NV_FILE_EXIST)?nv_dload.xnv_map.len:0);
+    total_len += ((nv_dload.xnv.magic_num == NV_FILE_EXIST)?nv_dload.xnv.len:0);
+    total_len += ((nv_dload.cust_map.magic_num == NV_FILE_EXIST)?nv_dload.cust_map.len:0);
+    total_len += ((nv_dload.cust.magic_num == NV_FILE_EXIST)?nv_dload.cust.len:0);
+
+    ret = nv_count_file_sec_info((const s8*)NV_DLOAD_SEC_NAME, total_len, g_sec_info.nv_dload);
+    if(ret)
+    {
+        nv_printf("set sec info err! ret : 0x%x\n", ret);
+        return NV_ERROR;
+    }
+
+    /* set dload_nv file info */
+    g_flash_info.dload_nv.magic_num = NV_FILE_EXIST;
+    g_flash_info.dload_nv.off = 0;
+    g_flash_info.dload_nv.len = total_len;
+
+    nv_printf("read nv.bin head.file len 0x%x .\n", g_flash_info.dload_nv.len);
+    return NV_OK;
+}
 
 u32 nv_dload_file_info_init(void)
 {
     u32 ret = NV_ERROR;
-    struct nv_dload_packet_head_stru nv_dload;
-    STRU_XNV_MAP_FILE_INFO * other_card_info = NULL;
+    nv_dload_packet_head_s nv_dload;
+    xnv_map_file_s * other_card_info = NULL;
     u32 total_len;
     u32 i = 0;
     u32 multi_card = 0;
 
     g_sec_info.nv_dload[0] = 0;
     /*first read file packet head*/
-    ret = (u32)bsp_blk_read((char*)NV_DLOAD_SEC_NAME,0,&nv_dload,sizeof(nv_dload),NULL);
+    ret = (u32)bsp_blk_read((char*)NV_DLOAD_SEC_NAME,0,&nv_dload,sizeof(nv_dload));
     if(ret)
     {
-        printf("[%s]:ret 0x%x,\n",__func__,ret);
+        nv_printf("[%s]:ret 0x%x,\n",__func__,ret);
         return ret;
     }
     if( nv_dload.nv_bin.magic_num != NV_FILE_EXIST)
     {
-        printf("dload file not exsit, nv_dload.nv_bin.magic_num = 0x%x\n", nv_dload.nv_bin.magic_num);
+        nv_printf("dload file not exsit, nv_dload.nv_bin.magic_num = 0x%x\n", nv_dload.nv_bin.magic_num);
 
         memset((void *)&(g_flash_info.nv_dload), 0, sizeof(g_flash_info.nv_dload));
         if(g_flash_info.other_card_info)
@@ -296,18 +389,18 @@ u32 nv_dload_file_info_init(void)
     /*是否支持双卡外的其他卡*/
     if(multi_card)
     {
-        other_card_info = (STRU_XNV_MAP_FILE_INFO *)nv_malloc(nv_dload.ulSimNumEx * sizeof(STRU_XNV_MAP_FILE_INFO));
-        g_flash_info.other_card_info = (STRU_XNV_MAP_FILE_INFO *)nv_malloc(nv_dload.ulSimNumEx * sizeof(STRU_XNV_MAP_FILE_INFO));
+        other_card_info = (xnv_map_file_s *)nv_malloc(nv_dload.ulSimNumEx * sizeof(xnv_map_file_s));
+        g_flash_info.other_card_info = (xnv_map_file_s *)nv_malloc(nv_dload.ulSimNumEx * sizeof(xnv_map_file_s));
         if((!other_card_info)||(!g_flash_info.other_card_info))
         {
             if(other_card_info){nv_free(other_card_info);other_card_info = NULL;}
             // cppcheck-suppress *
             if(g_flash_info.other_card_info){nv_free(g_flash_info.other_card_info);g_flash_info.other_card_info = NULL;}
-            printf("%s :malloc fail\n",__func__);
+            nv_printf("%s :malloc fail\n",__func__);
             return BSP_ERR_NV_MALLOC_FAIL;
         }
         ret = bsp_blk_read((char*)NV_DLOAD_SEC_NAME,sizeof(nv_dload), other_card_info, \
-            (nv_dload.ulSimNumEx * sizeof(STRU_XNV_MAP_FILE_INFO)), NULL);;
+            (nv_dload.ulSimNumEx * sizeof(xnv_map_file_s)));;
         if(ret)
         {
             nv_free(other_card_info);
@@ -315,7 +408,7 @@ u32 nv_dload_file_info_init(void)
             // cppcheck-suppress *
             nv_free(g_flash_info.other_card_info);
             g_flash_info.other_card_info = NULL;
-            printf("%s :read nvdload error! ret = 0x%x\n",__func__,ret);
+            nv_printf("%s :read nvdload error! ret = 0x%x\n",__func__,ret);
             return ret;
         }
 
@@ -350,13 +443,13 @@ u32 nv_dload_file_info_init(void)
     {
         if(other_card_info){nv_free(other_card_info);other_card_info = NULL;}
         if(g_flash_info.other_card_info){nv_free(g_flash_info.other_card_info);g_flash_info.other_card_info = NULL;}
-        printf("[%s] ret : 0x%x\n",__func__,ret);
+        nv_printf("[%s] ret : 0x%x\n",__func__,ret);
         return NV_ERROR;
     }
     memcpy(&g_flash_info.nv_dload,&nv_dload,sizeof(nv_dload));
     if(multi_card)
     {
-        memcpy(g_flash_info.other_card_info, other_card_info, nv_dload.ulSimNumEx * sizeof(STRU_XNV_MAP_FILE_INFO));
+        memcpy(g_flash_info.other_card_info, other_card_info, nv_dload.ulSimNumEx * sizeof(xnv_map_file_s));
         if(other_card_info){nv_free(other_card_info);}
     }
     return NV_OK;
@@ -380,7 +473,7 @@ u32 nv_mtd_read(struct nv_flash_file_header_stru* ffp,FSZ off,u32 len,u8* ptr)
     {
         return ret;
     }
-    ret = (u32)bsp_blk_read((char*)mtd->name,offset,ptr,len,NULL);
+    ret = (u32)bsp_blk_read((char*)mtd->name,offset,ptr,len);
 
     return ret;
 }
@@ -407,7 +500,8 @@ u32 nv_mtd_write(struct nv_flash_file_header_stru* ffp,FSZ off,u32 len,u8* ptr)
     }
     if ( NV_FILE_SYS_NV == ffp->flash_type )
     {
-        ret = (u32)bsp_blk_write_dload((char*)mtd->name,offset,ptr,len);
+        ret = (u32)bsp_blk_erase((char*)mtd->name);
+        ret |= (u32)bsp_blk_write((char*)mtd->name,offset,ptr,len);
     }
     else
     {
@@ -517,9 +611,23 @@ static inline u32 nv_get_cust_info(u32 card_type,u32* offset,u32* len)
     }
     return NV_ERROR;
 }
+
+u32 nv_get_dload_nv_info(u32* offset,u32* len)
+{
+    if(g_flash_info.dload_nv.magic_num == NV_FILE_EXIST)
+    {
+        *offset = g_flash_info.dload_nv.off;
+        *len    = g_flash_info.dload_nv.len;
+        return NV_OK;
+    }
+    else
+    {
+        return NV_ERROR;
+    }
+}
 static inline u32 nv_get_sys_nv_info(const s8* mode,u32* offset,u32* len)
 {
-    s32 ret = strcmp(NV_FILE_READ,mode);
+    s32 ret = strncmp(mode, NV_FILE_READ, sizeof(NV_FILE_READ));
 
     nv_check_file_mode(mode);
 
@@ -543,7 +651,7 @@ static inline u32 nv_get_sys_nv_info(const s8* mode,u32* offset,u32* len)
 }
 static inline u32 nv_get_default_info(const s8* mode,u32* offset,u32* len)
 {
-    s32 ret = strcmp(NV_FILE_READ,mode);
+    s32 ret = strncmp(mode, NV_FILE_READ, sizeof(NV_FILE_READ));
 
     nv_check_file_mode(mode);
 
@@ -566,7 +674,7 @@ static inline u32 nv_get_default_info(const s8* mode,u32* offset,u32* len)
 }
 static inline u32 nv_get_back_info(const s8* mode,u32* offset,u32* len)
 {
-    s32 ret = strcmp(NV_FILE_READ,mode);
+    s32 ret = strncmp(mode, NV_FILE_READ, sizeof(NV_FILE_READ));
 
     nv_check_file_mode(mode);
 
@@ -602,15 +710,26 @@ u32 nv_flash_init(void)
         osl_sem_init(1,&g_nv_file[i].file_sem);
     }
 
-    memset(&g_flash_info,0,sizeof(struct nv_flash_global_ctrl_stru));
+    memset(&g_flash_info,0,sizeof(struct nv_global_ctrl_stru));
     memset(&g_sec_info,0xff,sizeof(struct nv_sec_file_block_info));
 
-    /*get dload info*/
-    ret = nv_dload_file_info_init();
+    g_flash_emmc_info_ptr = &g_flash_info;
+
+    if(nv_upgrade_xnv_compressed())
+    {
+        nv_printf("nv.bin is compress file,\n");
+        ret = nv_dload_file_head_init();
+    }
+    else
+    {
+        /*get dload info*/
+        ret = nv_dload_file_info_init();
+    }
     if(ret)
     {
         nv_file_debug(NV_FILE_INIT_API,1,ret,0,0);
     }
+
     /*get sys nv file info*/
     ret = nv_sec_file_info_init(g_nv_file[NV_FILE_SYS_NV].name,&g_flash_info.sys_nv,g_sec_info.sys_nv);
     if(ret)
@@ -618,6 +737,7 @@ u32 nv_flash_init(void)
         nv_file_debug(NV_FILE_INIT_API,2,ret,0,0);
         goto nv_flash_init_err;
     }
+
     /*get backup info*/
     ret = nv_sec_file_info_init(g_nv_file[NV_FILE_BACKUP].name,&g_flash_info.bak_sec,g_sec_info.nv_bak);
     if(ret)
@@ -635,7 +755,7 @@ u32 nv_flash_init(void)
     }
     return NV_OK;
 nv_flash_init_err:
-    nv_mntn_record("\n[%s]\n",__func__);
+    nv_record("\n[%s]\n",__func__);
     nv_flash_help(NV_FILE_INIT_API);
     return NV_ERROR;
 }
@@ -656,13 +776,13 @@ FILE* nv_flash_open(const s8* path,const s8* mode)
 
     for(i=0; i<NV_FILE_BUTT; i++)
     {
-        if(0 == strcmp(path,g_nv_file[i].path))
+        if(0 == strncmp(path, g_nv_file[i].path, strlen(g_nv_file[i].path) + 1))
         {
             ffp = &g_nv_file[i];
             mtd = get_mtd_device_nm(ffp->name);
             if(IS_ERR(mtd))
             {
-                printf("[%s]:get mtd device err! %s\n",__func__,ffp->name);
+                nv_printf("[%s]:get mtd device err! %s\n",__func__,ffp->name);
                 return NULL;
             }
             g_nv_file[i].mtd = mtd;
@@ -678,7 +798,14 @@ FILE* nv_flash_open(const s8* path,const s8* mode)
     switch(ffp->flash_type)
     {
         case NV_FILE_DLOAD:
-            ret = nv_get_nvbin_info(&offset,&len);
+            if(nv_upgrade_xnv_compressed())
+            {
+                ret = nv_get_dload_nv_info(&offset,&len);
+            }
+            else
+            {
+                ret = nv_get_nvbin_info(&offset,&len);
+            }
             break;
         case NV_FILE_BACKUP:
             ret = nv_get_back_info(mode,&offset,&len);
@@ -758,7 +885,7 @@ u32 nv_flash_read(u8* ptr, u32 size, u32 count, FILE* fp)
     if(ret != NAND_OK)
     {
         nv_file_debug(NV_FILE_READ_API,2,(u32)ret,real_size,ffp->flash_type);
-        nv_mntn_record("\n[%s]\n",__func__);
+        nv_record("\n[%s]\n",__func__);
         nv_flash_help(NV_FILE_READ_API);
         return -1;
     }
@@ -773,7 +900,7 @@ u32 nv_flash_write(u8* ptr, u32 size, u32 count, FILE* fp)
     u32 len = size*count;
     struct nv_flash_file_header_stru* ffp = (struct nv_flash_file_header_stru*)fp;
     u32* sec_off = NULL;
-    struct nv_file_info_stru* file_info;
+    nv_file_map_s* file_info;
 
     nv_file_debug(NV_FILE_WRITE_API,0,0,size,count);
 
@@ -820,7 +947,7 @@ u32 nv_flash_write(u8* ptr, u32 size, u32 count, FILE* fp)
     return len;
 
 nv_flash_write_err:
-    nv_mntn_record("\n[%s]\n",__func__);
+    nv_record("\n[%s]\n",__func__);
     nv_flash_help(NV_FILE_WRITE_API);
     return BSP_ERR_NV_INVALID_PARAM;
 }
@@ -860,7 +987,7 @@ u32 nv_flash_seek(FILE* fp,u32 offset,s32 whence)
     ffp->seek = ret;
     return NV_OK;
 out:
-    nv_mntn_record("\n[%s]\n",__func__);
+    nv_record("\n[%s]\n",__func__);
     nv_flash_help(NV_FILE_SEEK_API);
     return BSP_ERR_NV_INVALID_PARAM;
 }
@@ -897,7 +1024,7 @@ u32 nv_flash_remove(const s8* path)
 
     for(i=0;i<NV_FILE_BUTT;i++)
     {
-        if(0 == strcmp(path,g_nv_file[i].path))
+        if(0 == strncmp(path, g_nv_file[i].path, strlen(g_nv_file[i].path) + 1))
         {
             ffp = &g_nv_file[i];
             break;
@@ -915,7 +1042,7 @@ u32 nv_flash_remove(const s8* path)
             g_flash_info.nv_dload.nv_bin.magic_num = NV_FLASH_NULL;
             break;
         case NV_FILE_BACKUP:
-            memset(&g_flash_info.bak_sec,NV_FLASH_FILL,sizeof(struct nv_file_info_stru));
+            memset(&g_flash_info.bak_sec,NV_FLASH_FILL,sizeof(nv_file_map_s));
             goto flash_erase;
         case NV_FILE_CUST_CARD_1:
             g_flash_info.nv_dload.cust_xml[0].magic_num = NV_FLASH_NULL;
@@ -958,7 +1085,7 @@ u32 nv_flash_remove(const s8* path)
             }
             break;
         case NV_FILE_DEFAULT:
-            memset(&g_flash_info.def_sec,NV_FLASH_FILL,sizeof(struct nv_file_info_stru));
+            memset(&g_flash_info.def_sec,NV_FLASH_FILL,sizeof(nv_file_map_s));
             goto flash_erase;
         case NV_FILE_SYS_NV:
             memset(&g_flash_info.sys_nv,NV_FLASH_FILL,sizeof(g_flash_info.sys_nv));
@@ -974,7 +1101,7 @@ flash_erase:
     mtd = get_mtd_device_nm(ffp->name);
     if(IS_ERR(mtd))
     {
-        printf("[%s]:get mtd device err! %s\n",__func__,ffp->name);
+        nv_printf("[%s]:get mtd device err! %s\n",__func__,ffp->name);
         return NV_ERROR;
     }
     erase.addr = 0;
@@ -990,7 +1117,7 @@ flash_erase:
     if(ret)
     {
         nv_file_debug(NV_FILE_REMOVE_API,2,(u32)ret,(u32)ffp->flash_type,0);
-        nv_mntn_record("[%s]:ret 0x%x,mtd->name %s\n",__func__,ret,mtd->name);
+        nv_record("[%s]:ret 0x%x,mtd->name %s\n",__func__,ret,mtd->name);
         return (u32)ret;
     }
 
@@ -1050,7 +1177,7 @@ u32 nv_flash_access(const s8* path,s32 mode)
 
     for(i=0; i<NV_FILE_BUTT; i++)
     {
-        if(0 == strcmp(path,g_nv_file[i].path))
+        if(0 == strncmp(path, g_nv_file[i].path, strlen(g_nv_file[i].path) + 1))
         {
             ffp = &g_nv_file[i];
             break;
@@ -1166,7 +1293,7 @@ u32 nv_flash_update_info(const s8* path)
 
     for(i=0; i<NV_FILE_BUTT; i++)
     {
-        if(0 == strcmp(path,g_nv_file[i].path))
+        if(0 == strncmp(path, g_nv_file[i].path, strlen(g_nv_file[i].path) + 1))
         {
             break;
         }
@@ -1174,11 +1301,18 @@ u32 nv_flash_update_info(const s8* path)
     switch(i)
     {
         case NV_FILE_DLOAD:
-            ret = nv_dload_file_info_init();
+            if(nv_upgrade_xnv_compressed())
+            {
+                ret= nv_dload_file_head_init();
+            }
+            else
+            {
+                ret = nv_dload_file_info_init();
+            }
 
             if((ret != BSP_ERR_NV_NO_FILE)&&(ret != NV_OK))
             {
-                printf("update dload file fail\n");
+                nv_printf("update dload file fail\n");
             }
             else
             {
@@ -1190,21 +1324,21 @@ u32 nv_flash_update_info(const s8* path)
             ret = nv_sec_file_info_init(g_nv_file[NV_FILE_BACKUP].name,&g_flash_info.bak_sec,g_sec_info.nv_bak);
             if(ret)
             {
-                printf("update backup file fail\n");
+                nv_printf("update backup file fail\n");
             }
             break;
         case NV_FILE_SYS_NV:
             ret = nv_sec_file_info_init(g_nv_file[NV_FILE_SYS_NV].name,&g_flash_info.sys_nv,g_sec_info.sys_nv);
             if(ret)
             {
-                printf("update sys file fail\n");
+                nv_printf("update sys file fail\n");
             }
             break;
         case NV_FILE_DEFAULT:
             ret = nv_sec_file_info_init(g_nv_file[NV_FILE_DEFAULT].name,&g_flash_info.def_sec,g_sec_info.nv_default);
             if(ret)
             {
-                printf("update default file fail\n");
+                nv_printf("update default file fail\n");
             }
             break;
         default:
@@ -1216,15 +1350,15 @@ u32 nv_flash_update_info(const s8* path)
 
 void show_flash_info(void)
 {
-    struct nv_dload_packet_head_stru nv_dload;
-    struct nv_ctrl_file_info_stru ctrl_info;
+    nv_dload_packet_head_s nv_dload;
+    nv_ctrl_info_s ctrl_info;
     u8* file_info;
     s32 ret = -1 ;
     u32 i = 0;
 
-    printf("\n******************sys info*********************\n");
-    printf("\n************sys nv info in mem**************\n");
-    ret = bsp_blk_read((char*)NV_DLOAD_SEC_NAME,0,&ctrl_info,sizeof(ctrl_info),NULL);
+    nv_printf("\n******************sys info*********************\n");
+    nv_printf("\n************sys nv info in mem**************\n");
+    ret = bsp_blk_read((char*)NV_DLOAD_SEC_NAME,0,&ctrl_info,sizeof(ctrl_info));
     if(ret)
         return;
      /* coverity[uninit_use] */
@@ -1238,102 +1372,102 @@ void show_flash_info(void)
     {
         return;
     }
-    ret = bsp_blk_read((char*)NV_DLOAD_SEC_NAME,sizeof(ctrl_info),file_info,ctrl_info.file_size,NULL);
+    ret = bsp_blk_read((char*)NV_DLOAD_SEC_NAME,sizeof(ctrl_info),file_info,ctrl_info.file_size);
     if(ret){
         nv_free(file_info);
         return;
     }
-    printf("\n********sys mem info*******\n");
-    printf("nv   :flag 0x%x,off 0x%x,len 0x%x\n",g_flash_info.sys_nv.magic_num,\
+    nv_printf("\n********sys mem info*******\n");
+    nv_printf("nv   :flag 0x%x,off 0x%x,len 0x%x\n",g_flash_info.sys_nv.magic_num,\
         g_flash_info.sys_nv.off,g_flash_info.sys_nv.len);
-    printf("\n************sys info in nand**************\n");
+    nv_printf("\n************sys info in nand**************\n");
     /* coverity[uninit_use_in_call] */
-    printf("magic :0x%x,file num: %d,nv num :0x%x,modem num :%d\n",\
+    nv_printf("magic :0x%x,file num: %d,nv num :0x%x,modem num :%d\n",\
         ctrl_info.magicnum,ctrl_info.file_num,ctrl_info.ref_count,ctrl_info.modem_num);
 
     for(i= 0;i< NV_DLOAD_FILE_BLOCK_NUM;i++)
-        printf("nv img file %d block off :0x%x\n",i,g_sec_info.sys_nv[i]);
+        nv_printf("nv img file %d block off :0x%x\n",i,g_sec_info.sys_nv[i]);
 
-    printf("\n******************dload info*******************\n");
-    ret = bsp_blk_read((char*)NV_DLOAD_SEC_NAME,0,&nv_dload,sizeof(nv_dload),NULL);
+    nv_printf("\n******************dload info*******************\n");
+    ret = bsp_blk_read((char*)NV_DLOAD_SEC_NAME,0,&nv_dload,sizeof(nv_dload));
     if(ret){
         nv_free(file_info);
         return;
     }
-    printf("\n********dload mem info*******\n");
-    printf("nv   : flag 0x%x,len 0x%x,off 0x%x\n",g_flash_info.nv_dload.nv_bin.magic_num,\
+    nv_printf("\n********dload mem info*******\n");
+    nv_printf("nv   : flag 0x%x,len 0x%x,off 0x%x\n",g_flash_info.nv_dload.nv_bin.magic_num,\
         g_flash_info.nv_dload.nv_bin.len,g_flash_info.nv_dload.nv_bin.off);
 
-    printf("xnv1 : flag 0x%x,len 0x%x,off 0x%x\n",g_flash_info.nv_dload.xnv_xml[0].magic_num,\
+    nv_printf("xnv1 : flag 0x%x,len 0x%x,off 0x%x\n",g_flash_info.nv_dload.xnv_xml[0].magic_num,\
         g_flash_info.nv_dload.xnv_xml[0].len,g_flash_info.nv_dload.xnv_xml[0].off);
-    printf("cust1: flag 0x%x,len 0x%x,off 0x%x\n",g_flash_info.nv_dload.cust_xml[0].magic_num,\
+    nv_printf("cust1: flag 0x%x,len 0x%x,off 0x%x\n",g_flash_info.nv_dload.cust_xml[0].magic_num,\
         g_flash_info.nv_dload.cust_xml[0].len,g_flash_info.nv_dload.cust_xml[0].off);
 
-    printf("xnv2 : flag 0x%x,len 0x%x,off 0x%x\n",g_flash_info.nv_dload.xnv_xml[1].magic_num,\
+    nv_printf("xnv2 : flag 0x%x,len 0x%x,off 0x%x\n",g_flash_info.nv_dload.xnv_xml[1].magic_num,\
         g_flash_info.nv_dload.xnv_xml[1].len,g_flash_info.nv_dload.xnv_xml[1].off);
-    printf("cust2: flag 0x%x,len 0x%x,off 0x%x\n",g_flash_info.nv_dload.cust_xml[1].magic_num,\
+    nv_printf("cust2: flag 0x%x,len 0x%x,off 0x%x\n",g_flash_info.nv_dload.cust_xml[1].magic_num,\
         g_flash_info.nv_dload.cust_xml[1].len,g_flash_info.nv_dload.cust_xml[1].off);
 
-    printf("xnv map1: flag 0x%x,len 0x%x,off 0x%x\n",g_flash_info.nv_dload.xnv_map[0].magic_num,\
+    nv_printf("xnv map1: flag 0x%x,len 0x%x,off 0x%x\n",g_flash_info.nv_dload.xnv_map[0].magic_num,\
         g_flash_info.nv_dload.xnv_map[0].len,g_flash_info.nv_dload.xnv_map[0].off);
-    printf("xnv map2: flag 0x%x,len 0x%x,off 0x%x\n",g_flash_info.nv_dload.xnv_map[1].magic_num,\
+    nv_printf("xnv map2: flag 0x%x,len 0x%x,off 0x%x\n",g_flash_info.nv_dload.xnv_map[1].magic_num,\
         g_flash_info.nv_dload.xnv_map[1].len,g_flash_info.nv_dload.xnv_map[1].off);
 
     if(NV_SUPPORT_MULTI_CARD)
     {
         for(i = 0; i < g_flash_info.nv_dload.ulSimNumEx; i++)
         {
-            printf("xnv%d : flag 0x%x,len 0x%x,off 0x%x\n",i, g_flash_info.other_card_info[i].stXnvFile.magic_num,\
+            nv_printf("xnv%d : flag 0x%x,len 0x%x,off 0x%x\n",i, g_flash_info.other_card_info[i].stXnvFile.magic_num,\
                 g_flash_info.other_card_info[i].stXnvFile.len, g_flash_info.other_card_info[i].stXnvFile.off);
-            printf("cust%d: flag 0x%x,len 0x%x,off 0x%x\n",i ,g_flash_info.other_card_info[i].stCustFile.magic_num,\
+            nv_printf("cust%d: flag 0x%x,len 0x%x,off 0x%x\n",i ,g_flash_info.other_card_info[i].stCustFile.magic_num,\
                 g_flash_info.other_card_info[i].stCustFile.len,g_flash_info.other_card_info[i].stCustFile.off);
-            printf("xnv map%d: flag 0x%x,len 0x%x,off 0x%x\n",i, g_flash_info.other_card_info[i].stMapFile.off,\
+            nv_printf("xnv map%d: flag 0x%x,len 0x%x,off 0x%x\n",i, g_flash_info.other_card_info[i].stMapFile.off,\
                 g_flash_info.other_card_info[i].stMapFile.len, g_flash_info.other_card_info[i].stMapFile.off);
 
         }
     }
-    printf("\n********dload mtd info*******\n");
-    printf("nv   : flag 0x%x,len 0x%x,off 0x%x\n",nv_dload.nv_bin.magic_num,\
+    nv_printf("\n********dload mtd info*******\n");
+    nv_printf("nv   : flag 0x%x,len 0x%x,off 0x%x\n",nv_dload.nv_bin.magic_num,\
         nv_dload.nv_bin.len,nv_dload.nv_bin.off);
     /* coverity[uninit_use] */
-    printf("xnv1 : flag 0x%x,len 0x%x,off 0x%x\n",nv_dload.xnv_xml[0].magic_num,\
+    nv_printf("xnv1 : flag 0x%x,len 0x%x,off 0x%x\n",nv_dload.xnv_xml[0].magic_num,\
         nv_dload.xnv_xml[0].len,nv_dload.xnv_xml[0].off);
      /* coverity[uninit_use] */
-    printf("cust1: flag 0x%x,len 0x%x,off 0x%x\n",nv_dload.cust_xml[0].magic_num,\
+    nv_printf("cust1: flag 0x%x,len 0x%x,off 0x%x\n",nv_dload.cust_xml[0].magic_num,\
         nv_dload.cust_xml[0].len,nv_dload.cust_xml[0].off);
 
-    printf("xnv2 : flag 0x%x,len 0x%x,off 0x%x\n",nv_dload.xnv_xml[1].magic_num,\
+    nv_printf("xnv2 : flag 0x%x,len 0x%x,off 0x%x\n",nv_dload.xnv_xml[1].magic_num,\
         nv_dload.xnv_xml[1].len,nv_dload.xnv_xml[1].off);
-    printf("cust2: flag 0x%x,len 0x%x,off 0x%x\n",nv_dload.cust_xml[1].magic_num,\
+    nv_printf("cust2: flag 0x%x,len 0x%x,off 0x%x\n",nv_dload.cust_xml[1].magic_num,\
         nv_dload.cust_xml[1].len,nv_dload.cust_xml[1].off);
      /* coverity[uninit_use] */
-    printf("xnv map1: flag 0x%x,len 0x%x,off 0x%x\n",nv_dload.xnv_map[0].magic_num,\
+    nv_printf("xnv map1: flag 0x%x,len 0x%x,off 0x%x\n",nv_dload.xnv_map[0].magic_num,\
         nv_dload.xnv_map[0].len,nv_dload.xnv_map[0].off);
-    printf("xnv map2: flag 0x%x,len 0x%x,off 0x%x\n",nv_dload.xnv_map[1].magic_num,\
+    nv_printf("xnv map2: flag 0x%x,len 0x%x,off 0x%x\n",nv_dload.xnv_map[1].magic_num,\
         nv_dload.xnv_map[1].len,nv_dload.xnv_map[1].off);
 
     if(NV_SUPPORT_MULTI_CARD)
     {
         for(i = 0; i < nv_dload.ulSimNumEx; i++)
         {
-            printf("xnv%d : flag 0x%x,len 0x%x,off 0x%x\n",i ,nv_dload.xnv_file[i].stXnvFile.magic_num,\
+            nv_printf("xnv%d : flag 0x%x,len 0x%x,off 0x%x\n",i ,nv_dload.xnv_file[i].stXnvFile.magic_num,\
                 nv_dload.xnv_file[i].stXnvFile.len,nv_dload.xnv_file[i].stXnvFile.off);
              /* coverity[uninit_use] */
-            printf("cust%d: flag 0x%x,len 0x%x,off 0x%x\n",i ,nv_dload.xnv_file[i].stCustFile.magic_num,\
+            nv_printf("cust%d: flag 0x%x,len 0x%x,off 0x%x\n",i ,nv_dload.xnv_file[i].stCustFile.magic_num,\
                 nv_dload.xnv_file[i].stCustFile.len,nv_dload.xnv_file[i].stCustFile.off);
-             printf("xnv map%d: flag 0x%x,len 0x%x,off 0x%x\n",i ,nv_dload.xnv_file[i].stMapFile.magic_num,\
+             nv_printf("xnv map%d: flag 0x%x,len 0x%x,off 0x%x\n",i ,nv_dload.xnv_file[i].stMapFile.magic_num,\
                  nv_dload.xnv_file[i].stMapFile.len,nv_dload.xnv_file[i].stMapFile.off);
         }
     }
     for(i= 0;i<NV_DLOAD_FILE_BLOCK_NUM;i++)
-        printf("nv dload file %d block off :0x%x\n",i,g_sec_info.nv_dload[i]);
+        nv_printf("nv dload file %d block off :0x%x\n",i,g_sec_info.nv_dload[i]);
 
-    printf("\n******************backup info******************\n");
-    printf("\n********backup mem info******\n");
-    printf("backup flag: 0x%x, len : 0x%x, off:0x%x\n",g_flash_info.bak_sec.magic_num,\
+    nv_printf("\n******************backup info******************\n");
+    nv_printf("\n********backup mem info******\n");
+    nv_printf("backup flag: 0x%x, len : 0x%x, off:0x%x\n",g_flash_info.bak_sec.magic_num,\
         g_flash_info.bak_sec.len,g_flash_info.bak_sec.off);
-    printf("\n********backup mtd info******\n");
-    ret = bsp_blk_read((char*)NV_BACK_SEC_NAME,0,&ctrl_info,sizeof(ctrl_info),NULL);
+    nv_printf("\n********backup mtd info******\n");
+    ret = bsp_blk_read((char*)NV_BACK_SEC_NAME,0,&ctrl_info,sizeof(ctrl_info));
     if(ret){
         nv_free(file_info);
         return;
@@ -1342,23 +1476,23 @@ void show_flash_info(void)
     {
         ctrl_info.file_size = 144;
     }
-    ret = bsp_blk_read((char*)NV_BACK_SEC_NAME,sizeof(ctrl_info),file_info,ctrl_info.file_size,NULL);
+    ret = bsp_blk_read((char*)NV_BACK_SEC_NAME,sizeof(ctrl_info),file_info,ctrl_info.file_size);
     if(ret){
         nv_free(file_info);
         return;
     }
-    printf("magic :0x%x,file num: %d,nv num :0x%x,modem num :%d\n",\
+    nv_printf("magic :0x%x,file num: %d,nv num :0x%x,modem num :%d\n",\
         ctrl_info.magicnum,ctrl_info.file_num,ctrl_info.ref_count,ctrl_info.modem_num);
     for(i= 0;i<NV_BIN_FILE_BLOCK_NUM;i++)
-        printf("nv back file %d block off :0x%x\n",i,g_sec_info.nv_bak[i]);
+        nv_printf("nv back file %d block off :0x%x\n",i,g_sec_info.nv_bak[i]);
 
-    printf("\n******************default info*****************\n");
-    printf("\n********default mem info*****\n");
-    printf("default flag: 0x%x, len : 0x%x, off:0x%x\n",g_flash_info.def_sec.magic_num,\
+    nv_printf("\n******************default info*****************\n");
+    nv_printf("\n********default mem info*****\n");
+    nv_printf("default flag: 0x%x, len : 0x%x, off:0x%x\n",g_flash_info.def_sec.magic_num,\
         g_flash_info.def_sec.len,g_flash_info.def_sec.off);
 
-    printf("\n********default mtd info*****\n");
-    ret = bsp_blk_read((char*)NV_DEF_SEC_NAME,0,&ctrl_info,sizeof(ctrl_info),NULL);
+    nv_printf("\n********default mtd info*****\n");
+    ret = bsp_blk_read((char*)NV_DEF_SEC_NAME,0,&ctrl_info,sizeof(ctrl_info));
     if(ret){
         nv_free(file_info);
         return;
@@ -1367,69 +1501,18 @@ void show_flash_info(void)
     {
         ctrl_info.file_size = 144;
     }
-    ret = bsp_blk_read((char*)NV_DEF_SEC_NAME,sizeof(ctrl_info),file_info,ctrl_info.file_size,NULL);
+    ret = bsp_blk_read((char*)NV_DEF_SEC_NAME,sizeof(ctrl_info),file_info,ctrl_info.file_size);
     if(ret){
         nv_free(file_info);
         return;
     }
-    printf("magic :0x%x,file num: %d,nv num :0x%x,modem num :%d\n",\
+    nv_printf("magic :0x%x,file num: %d,nv num :0x%x,modem num :%d\n",\
         ctrl_info.magicnum,ctrl_info.file_num,ctrl_info.ref_count,ctrl_info.modem_num);
     for(i= 0;i<NV_BIN_FILE_BLOCK_NUM;i++)
-        printf("nv default file %d block off :0x%x\n",i,g_sec_info.nv_default[i]);
+        nv_printf("nv default file %d block off :0x%x\n",i,g_sec_info.nv_default[i]);
     nv_free(file_info);
 }
 
-
-
-#if 0
-void nv_bak_bad_block_flag(u32 num)
-{
-    struct mtd_info* mtd;
-    u32 sec_off;
-
-    mtd = get_mtd_device_nm((char*)NV_BACK_SEC_NAME);
-    if(!mtd)
-    {
-        return;
-    }
-    sec_off = num*mtd->erasesize;
-
-    mtd_block_markbad(mtd,sec_off);
-    put_mtd_device(mtd);
-}
-
-void nv_dload_bad_block_flag(u32 num)
-{
-    struct mtd_info* mtd;
-    u32 sec_off;
-
-    mtd = get_mtd_device_nm((char*)NV_DLOAD_SEC_NAME);
-    if(!mtd)
-    {
-        return;
-    }
-    sec_off = num*mtd->erasesize;
-
-    mtd_block_markbad(mtd,sec_off);
-    put_mtd_device(mtd);
-}
-
-void nv_def_bad_block_flag(u32 num)
-{
-    struct mtd_info* mtd;
-    u32 sec_off;
-
-    mtd = get_mtd_device_nm((char*)NV_DEF_SEC_NAME);
-    if(!mtd)
-    {
-        return;
-    }
-    sec_off = num*mtd->erasesize;
-
-    mtd_block_markbad(mtd,sec_off);
-    put_mtd_device(mtd);
-}
-#endif
 /*lint -restore*/
 EXPORT_SYMBOL(show_flash_info);
 EXPORT_SYMBOL(nv_flash_help);

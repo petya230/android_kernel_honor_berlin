@@ -618,6 +618,137 @@ static const struct file_operations dwc3_link_state_fops = {
 	.release		= single_release,
 };
 
+#ifdef CONFIG_HISI_DEBUG_FS
+static int dwc3_maximum_speed_show(struct seq_file *s, void *unused)
+{
+	struct dwc3		*dwc = s->private;
+	unsigned long		flags;
+
+	spin_lock_irqsave(&dwc->lock, flags);
+	seq_printf(s, "current maximum_speed %s\n"
+		      "Usage:\n"
+		      " write \"full\" into this file to force USB full-speed\n"
+		      " write \"high\" into this file to force USB high-speed\n",
+			usb_speed_string((enum usb_device_speed)dwc->maximum_speed));
+	spin_unlock_irqrestore(&dwc->lock, flags);
+	return 0;
+}
+
+static int dwc3_maximum_speed_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, dwc3_maximum_speed_show, inode->i_private);
+}
+
+static ssize_t dwc3_maximum_speed_write(struct file *file,
+		const char __user *ubuf, size_t count, loff_t *ppos)
+{
+	struct seq_file		*s = file->private_data;
+	struct dwc3		*dwc = s->private;
+	unsigned long		flags;
+	u32			maximum_speed;
+	char			buf[8] = {0};
+
+	if (copy_from_user(buf, ubuf, min_t(size_t, sizeof(buf) - 1, count)))
+		return -EFAULT;
+
+	if (!strncmp(buf, "super+", 6))
+		maximum_speed = USB_SPEED_SUPER;
+	else if (!strncmp(buf, "super", 5))
+		maximum_speed = USB_SPEED_SUPER;
+	else if (!strncmp(buf, "high", 4))
+		maximum_speed = USB_SPEED_HIGH;
+	else if (!strncmp(buf, "full", 4))
+		maximum_speed = USB_SPEED_FULL;
+	else if (!strncmp(buf, "clear", 5))
+		maximum_speed = USB_SPEED_UNKNOWN;
+	else
+		return -EINVAL;
+
+	spin_lock_irqsave(&dwc->lock, flags);
+	dwc->maximum_speed = maximum_speed;
+	spin_unlock_irqrestore(&dwc->lock, flags);
+
+	return count;
+}
+
+static const struct file_operations dwc3_maximum_speed_fops = {
+	.open			= dwc3_maximum_speed_open,
+	.write			= dwc3_maximum_speed_write,
+	.read			= seq_read,
+	.llseek			= seq_lseek,
+	.release		= single_release,
+};
+
+static int dwc3_ep_dbg_show(struct seq_file *s, void *unused)
+{
+	struct dwc3		*dwc = s->private;
+	unsigned long		flags;
+	int i;
+
+	spin_lock_irqsave(&dwc->lock, flags);
+	seq_printf(s, "ep status list:\n");
+	for (i = 0; i < DWC3_ENDPOINTS_NUM; i++) {
+		seq_printf(s, "%d: %s\t%s", i, dwc->eps[i]->name,
+				(dwc->eps[i]->endpoint.driver_data == NULL)
+				? "free" : "used");
+
+		seq_printf(s, "\t%s\n", (dwc->eps[i]->name[0] == 'x')
+				? "fake_ep_err" : "ok");
+	}
+	seq_printf(s, "\nwrite \"ep_index  1\" to the file to fake ep err\n");
+	seq_printf(s, "\nwrite \"ep_index  0\" to the file to set ep ok\n");
+	spin_unlock_irqrestore(&dwc->lock, flags);
+
+	return 0;
+}
+static int dwc3_ep_dbg_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, dwc3_ep_dbg_show, inode->i_private);
+}
+
+static ssize_t dwc3_ep_dbg_write(struct file *file,
+		const char __user *ubuf, size_t count, loff_t *ppos)
+{
+	struct seq_file		*s = file->private_data;
+	struct dwc3		*dwc = s->private;
+	char			buf[10] = {0};
+	int			ep_num;
+	int			set_use;
+	unsigned long		flags;
+
+	if (copy_from_user(buf, ubuf, min_t(size_t, sizeof(buf) - 1, count)))
+		return -EFAULT;
+
+	if (sscanf(buf, "%d %d", &ep_num, &set_use) > 5) {
+		return -EINVAL;
+	}
+
+	if (ep_num < 0 || ep_num == 0 || ep_num == 1
+			|| ep_num >= DWC3_ENDPOINTS_NUM) {
+		printk(KERN_ERR "input %d error\n", ep_num);
+		return -EINVAL;
+	}
+
+	spin_lock_irqsave(&dwc->lock, flags);
+	set_use = !!set_use;
+	if (set_use)
+		dwc->eps[ep_num]->name[0] = 'x';
+	else
+		dwc->eps[ep_num]->name[0] = 'e';
+	spin_unlock_irqrestore(&dwc->lock, flags);
+
+	return count;
+}
+
+static const struct file_operations dwc3_ep_dbg_fops = {
+	.open			= dwc3_ep_dbg_open,
+	.write			= dwc3_ep_dbg_write,
+	.read			= seq_read,
+	.llseek			= seq_lseek,
+	.release		= single_release,
+};
+#endif
+
 int dwc3_debugfs_init(struct dwc3 *dwc)
 {
 	struct dentry		*root;
@@ -674,6 +805,25 @@ int dwc3_debugfs_init(struct dwc3 *dwc)
 		}
 	}
 
+#ifdef CONFIG_HISI_DEBUG_FS
+	if (IS_ENABLED(CONFIG_USB_DWC3_DUAL_ROLE) ||
+			IS_ENABLED(CONFIG_USB_DWC3_GADGET)) {
+		file = debugfs_create_file("maximum_speed", S_IRUGO | S_IWUSR, root,
+				dwc, &dwc3_maximum_speed_fops);
+		if (!file) {
+			ret = -ENOMEM;
+			goto err1;
+		}
+	}
+
+	file = debugfs_create_file("ep_dbg", S_IRUGO | S_IWUSR, root,
+			dwc, &dwc3_ep_dbg_fops);
+	if (!file) {
+		ret = -ENOMEM;
+		goto err1;
+	}
+
+#endif
 	return 0;
 
 err1:

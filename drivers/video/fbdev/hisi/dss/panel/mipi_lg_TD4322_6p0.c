@@ -2386,6 +2386,7 @@ static int mipi_lg_probe(struct platform_device *pdev)
 	uint32_t lcd_v_back_porch = 12;
 	uint32_t lcd_v_pulse_width = 4;
 	uint32_t lcd_support_dynamic_gamma = 0;
+	uint32_t lcd_disable_all_funcs = 0;
 
 	g_lcd_control_tp_power = true;
 
@@ -2394,6 +2395,12 @@ static int mipi_lg_probe(struct platform_device *pdev)
 		HISI_FB_ERR("not found device node %s!\n", DTS_COMP_LG_TD4322_6P0);
 		goto err_return;
 	}
+
+	ret = of_property_read_u32(np, "lcd_disable_all_funcs", &lcd_disable_all_funcs);
+	if (ret) {
+		lcd_disable_all_funcs = 0;
+	}
+	HISI_FB_INFO("lcd_disable_all_funcs = %d\n", lcd_disable_all_funcs);
 
 	ret = of_property_read_u32(np, LCD_DISPLAY_TYPE_NAME, &lcd_display_type);
 	if (ret) {
@@ -2758,7 +2765,7 @@ static int mipi_lg_probe(struct platform_device *pdev)
 	pinfo->dirty_region_info.top_start = -1;
 	pinfo->dirty_region_info.bottom_start = -1;
 
-	if(runmode_is_factory()) {
+	if (runmode_is_factory() || lcd_disable_all_funcs) {
 		HISI_FB_INFO("Factory mode, disable features: dirty update etc.\n");
 		pinfo->dirty_region_updt_support = 0;
 		pinfo->prefix_ce_support = 0;
@@ -2778,6 +2785,14 @@ static int mipi_lg_probe(struct platform_device *pdev)
 		g_support_mode = 0;
 		pinfo->color_temp_rectify_support = 0;
 	}
+
+	if (lcd_disable_all_funcs) {
+		pinfo->color_temperature_support = 0;
+		pinfo->gamma_support = 0;
+		pinfo->xcc_support = 0;
+		pinfo->dsi_bit_clk_upt_support = 0;
+	}
+
 	//The host processor must wait for more than 15us from the end of write data transfer to a command 2Ah/2Bh
 	if (pinfo->dirty_region_updt_support == 1)
 		pinfo->mipi.hs_wr_to_time = 17000;        // measured in nS

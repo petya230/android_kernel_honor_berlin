@@ -1,4 +1,21 @@
-
+/* drivers/input/touchscreen/nt36772/nt36772_mp_ctrlram.c
+ *
+ * Copyright (C) 2010 - 2016 Novatek, Inc.
+ *
+ * $Revision: 5629 $
+ * $Date: 2016-07-15 11:24:48 +0800 (星期五, 15 七月 2016) $
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
+ *
+ */
 
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
@@ -2586,6 +2603,7 @@ err_nvt_i2c_read:
 	strncat(mmitest_result, test_2_result, strlen(test_2_result));
 	strncat(mmitest_result, test_3_result, strlen(test_3_result));
 	strncat(mmitest_result, test_4_result, strlen(test_4_result));
+	//----add static data in SH ,Mallon 20160928---
 	mmi_add_static_data();
 	strncat(mmitest_result, ";", strlen(";"));
 	if (0 == strlen(mmitest_result) || strstr(mmitest_result, "F")) {

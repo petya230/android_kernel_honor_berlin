@@ -1158,6 +1158,25 @@ static void charge_turn_on_charging(struct charge_device_info *di)
     hwlog_debug("input_current is [%d],charge_current is [%d],terminal_voltage is [%d],charge_enable is [%d]\n",
         di->input_current,di->charge_current,vterm,di->charge_enable);
 }
+
+/**********************************************************
+*  Function:       charge_safe_protect
+*  Discription:    do safe protect ops
+*  Parameters:   di:charge_device_info
+*  return value:  NULL
+**********************************************************/
+static void charge_safe_protect(struct charge_device_info *di)
+{
+	if (NULL == di) {
+		hwlog_err("%s:NULL pointer!!\n", __func__);
+		return;
+	}
+	/*do soft ovp protect for 5V/9V charge*/
+	if (di->ops && di->ops->soft_vbatt_ovp_protect) {
+		di->ops->soft_vbatt_ovp_protect();
+	}
+}
+
 /**********************************************************
 *  Function:       charge_monitor_work
 *  Discription:    monitor the charging process
@@ -1175,6 +1194,7 @@ static void charge_monitor_work(struct work_struct *work)
     charge_select_charging_current(di);
 
     charge_turn_on_charging(di);
+	charge_safe_protect(di);
 
     charge_full_handle(di);
     charge_update_vindpm(di);

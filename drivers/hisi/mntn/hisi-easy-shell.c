@@ -11,7 +11,7 @@
 #define ES_TTY_MINORS       1
 #define ES_TTY_IOCTL_SIGN   0x4AFA0000
 #define ES_TTY_IOCTL_CALL   0x4AFA0001
-#define VALID_SIGN(tty_termios) ((ES_TTY_MAJOR<<24) | C_BAUD(tty_termios))
+#define VALID_SIGN(tty_termios) (((unsigned)ES_TTY_MAJOR<<24) | C_BAUD(tty_termios))
 
 /*it's ecall an variable, if the first input parameter is this value
 the same as the one defined in ecall.c*/
@@ -198,7 +198,7 @@ unsigned long long reg_write_u16(unsigned int pAddr, unsigned short value)
 		return 0;
 	}
 
-	writew(value, virAddr);
+	writew(value, virAddr); /*lint !e144*/
 	REG_VIR_ADDR_UNMAP(virAddr);
 	return 0;
 }
@@ -221,7 +221,7 @@ unsigned long long reg_write_u8(unsigned int pAddr, unsigned char value)
 		return 0;
 	}
 
-	writeb(value, virAddr);
+	writeb(value, virAddr); /*lint !e144*/
 	REG_VIR_ADDR_UNMAP(virAddr);
 	return 0;
 }
@@ -287,7 +287,7 @@ unsigned short reg_read_u16(unsigned int pAddr)
 		return 0;
 	}
 
-	value = readw(virAddr);
+	value = readw(virAddr); /*lint !e578*/
 	REG_VIR_ADDR_UNMAP(virAddr);
 
 	return value;
@@ -312,7 +312,7 @@ unsigned char reg_read_u8(unsigned int pAddr)
 		return 0;
 	}
 
-	value = readb(virAddr);
+	value = readb(virAddr); /*lint !e578*/
 	REG_VIR_ADDR_UNMAP(virAddr);
 
 	return value;
@@ -502,7 +502,7 @@ static int shell_ioctl(struct tty_struct *tty, unsigned int cmd,
 		ret =
 		    strncpy_from_user(temp_call_arg.func_name,
 				      func_name_user, len);
-		if (ret >= len) {
+		if (ret >= (long long)len) {
 			printk("%s: strncpy_from_user fail, too long!\n",
 			       __func__);
 			kfree(temp_call_arg.func_name);
@@ -527,7 +527,7 @@ static int shell_ioctl(struct tty_struct *tty, unsigned int cmd,
 			ret =
 			    strncpy_from_user(temp_call_arg.arg_str1,
 					      arg_str1_user, len);
-			if (ret >= len) {
+			if (ret >= (long long)len) {
 				printk
 				    ("%s: strncpy_from_user fail, too long!\n",
 				     __func__);
@@ -623,7 +623,7 @@ static long shell_compact_ioctl(struct tty_struct *tty, unsigned int cmd,
 			printk("%s: out of memory\n", __func__);
 			return -ENOMEM;
 		}
-		user_func = (unsigned long)temp_call_arg.func_name;
+		user_func = (unsigned long)temp_call_arg.func_name; /*lint !e571*/
 		user_func = user_func | 0xFFFFFFFF;
 		if (!user_func) {
 			printk("%s: user_func is null\n", __func__);
@@ -633,7 +633,7 @@ static long shell_compact_ioctl(struct tty_struct *tty, unsigned int cmd,
 		ret =
 		    strncpy_from_user(func_name, (const char __user *)user_func,
 				      len);
-		if (ret >= len) {
+		if (ret >= (long)len) {
 			kfree(func_name);
 			printk("%s: strncpy_from_user fail, too long!\n",
 			       __func__);
@@ -789,6 +789,6 @@ call_no_symbol:
 	printk("Invalid function, value = -1\n");
 	set_fs(old_fs);
 	return -1;
-}
+} /*lint !e429*/
 
 module_init(shell_init)

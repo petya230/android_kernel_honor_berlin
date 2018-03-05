@@ -2031,7 +2031,7 @@ static ssize_t mipi_lg_panel_lcd_test_config_store(struct platform_device *pdev,
 		HISI_FB_INFO("current test cmd:%s\n", lcd_cmd_now);
 	} else {
 		memcpy(lcd_cmd_now, "INVALID", strlen("INVALID") + 1);
-		HISI_FB_INFO("invalid test cmd:%s\n");
+		HISI_FB_INFO("invalid test cmd:\n");
 	}
 
 	return count;

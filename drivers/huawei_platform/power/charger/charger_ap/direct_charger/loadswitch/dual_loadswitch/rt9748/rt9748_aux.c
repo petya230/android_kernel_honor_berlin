@@ -143,6 +143,8 @@ static int rt9748_read_byte(u8 reg, u8 *value)
 	struct rt9748_device_info *di = g_rt9748_dev;
 	return rt9748_read_block(di, value, reg, 1);
 }
+
+/*lint -save -e* */
 static ssize_t rt9748_sysfs_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
 	return 0;
@@ -163,6 +165,7 @@ static ssize_t rt9748_sysfs_store(struct device *dev,
 {
 	return count;
 }
+/*lint -restore*/
 
 /**********************************************************
 *  Function:       fan54151_sysfs_create_group
@@ -219,6 +222,8 @@ static int rt9748_write_mask(u8 reg, u8 MASK, u8 SHIFT, u8 value)
 *                      value:register value
 *  return value:  0-sucess or others-fail
 **********************************************************/
+
+/*lint -save -e* */
 static int rt9748_read_mask(u8 reg, u8 MASK, u8 SHIFT, u8 *value)
 {
 	int ret = 0;
@@ -233,7 +238,7 @@ static int rt9748_read_mask(u8 reg, u8 MASK, u8 SHIFT, u8 *value)
 
 	return 0;
 }
-
+/*lint -restore*/
 
 /**********************************************************
 *  Function:       rt9748_reg_init
@@ -516,6 +521,7 @@ static int rt9748_config_vdrop_ovp_reg_threshold_mv(int vdrop_ovp_threshold)
 				hwlog_err("%s: config vdrop ovp threshold fail\n", __func__);
 				return -1;
 			}
+			break;
 		case loadswitch_bq25870:
 			if (BQ25870_VDROP_OVP_MIN_0_MV  > vdrop_ovp_threshold)
 			{
@@ -735,6 +741,7 @@ static int rt9748_config_ibus_ocp_threshold_ma(int ocp_threshold)
 	return ret;
 }
 
+/*lint -save -e* */
 static int rt9748_get_vbus_voltage_mv(int *vbus)
 {
 	int ret = 0;
@@ -866,6 +873,7 @@ static int rt9748_get_bat_current_ma(int * ibat)
 	}
 	return 0;
 }
+/*lint -restore*/
 
 static int loadswitch_get_device_id(void)
 {
@@ -950,6 +958,8 @@ static int rt9748_charge_init(void )
 	}
 	return 0;
 }
+
+/*lint -save -e* */
 static int batinfo_init(void)
 {
 	int ret = 0;
@@ -962,6 +972,7 @@ static int batinfo_init(void)
 	}
 	return 0;
 }
+/*lint -restore*/
 
 static int rt9748_charge_exit(void)
 {
@@ -975,11 +986,13 @@ static int rt9748_charge_exit(void)
 	}
 	return ret;
 }
+
+/*lint -save -e* */
 static int rt9748_batinfo_exit(void)
 {
 	return 0;
 }
-
+/*lint -restore*/
 static int rt9748_is_ls_close(void)
 {
 	u8 reg = 0;
@@ -1011,6 +1024,8 @@ static struct loadswitch_ops  rt9748_sysinfo_ops ={
 *  Parameters:   work:loadswitch fault interrupt workqueue
 *  return value:  NULL
 **********************************************************/
+
+/*lint -save -e* */
 static void rt9748_irq_work(struct work_struct *work)
 {
 	struct rt9748_device_info *di = container_of(work, struct rt9748_device_info, irq_work);
@@ -1062,6 +1077,7 @@ static void rt9748_irq_work(struct work_struct *work)
 	//*clear irq*/
 	enable_irq(di->irq_int);
 }
+/*lint -restore*/
 
 /**********************************************************
 *  Function:       rt9748_interrupt
@@ -1070,6 +1086,8 @@ static void rt9748_irq_work(struct work_struct *work)
 *                      _di:rt9748_device_info
 *  return value:  IRQ_HANDLED-sucess or others
 **********************************************************/
+
+/*lint -save -e* */
 static irqreturn_t rt9748_interrupt(int irq, void *_di)
 {
 	struct rt9748_device_info *di = _di;
@@ -1082,6 +1100,7 @@ static void parse_dts(struct device_node *np, struct rt9748_device_info *di)
 {
 	return;
 }
+/*lint -restore*/
 
 /**********************************************************
 *  Function:       rt9748_probe
@@ -1090,6 +1109,8 @@ static void parse_dts(struct device_node *np, struct rt9748_device_info *di)
 *                      id:i2c_device_id
 *  return value:  0-sucess or others-fail
 **********************************************************/
+
+/*lint -save -e* */
 static int rt9748_probe(struct i2c_client *client, const struct i2c_device_id *id)
 {
 	int ret = 0;
@@ -1166,6 +1187,7 @@ rt9748_fail_0:
 
 	return ret;
 }
+/*lint -restore*/
 
 /**********************************************************
 *  Function:       rt9748_remove
@@ -1173,6 +1195,8 @@ rt9748_fail_0:
 *  Parameters:   client:i2c_client
 *  return value:  0-sucess or others-fail
 **********************************************************/
+
+/*lint -save -e* */
 static int rt9748_remove(struct i2c_client *client)
 {
 	struct rt9748_device_info *di = i2c_get_clientdata(client);
@@ -1189,6 +1213,7 @@ static int rt9748_remove(struct i2c_client *client)
 	}
 	return 0;
 }
+/*lint -restore*/
 
 MODULE_DEVICE_TABLE(i2c, rt9748);
 static struct of_device_id rt9748_of_match[] = {
@@ -1243,8 +1268,11 @@ static void __exit rt9748_exit(void)
 	i2c_del_driver(&rt9748_driver);
 }
 
+/*lint -save -e* */
 module_init(rt9748_init);
 module_exit(rt9748_exit);
+/*lint -restore*/
+
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("rt9748 module driver");
 MODULE_AUTHOR("HW Inc");

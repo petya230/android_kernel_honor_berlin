@@ -25,10 +25,30 @@
 #include <linux/hisi/hisi_adc.h>
 #include <linux/delay.h>
 #include <huawei_platform/power/huawei_charger_sh.h>
-#include <huawei_platform/inputhub/iom7/inputhub_route.h>
-#include <huawei_platform/inputhub/iom7/inputhub_bridge.h>
+#include <inputhub_route.h>
+#include <inputhub_bridge.h>
 
 struct uscp_device_info_sh* g_device_uscp = NULL;
+static struct dsm_client *uscp_client = NULL;
+static struct dsm_dev dsm_uscp =
+{
+    .name = "dsm_usb_short_circuit_protect",
+    .fops = NULL,
+    .buff_size = 1024,
+};
+
+void dsm_uscp_report(uint32_t uscp_id)
+{
+	if (!uscp_client)
+		return;
+
+	if (!dsm_client_ocuppy(uscp_client)) {
+                hwlog_info("sensorhub uscp record and notify\n");
+                dsm_client_record(uscp_client, "sensorhub usb short happened!\n");
+                dsm_client_notify(uscp_client, uscp_id);
+	}
+}
+
 static int uscp_probe(struct platform_device *pdev)
 {
     struct device_node* np;
@@ -90,6 +110,17 @@ static int uscp_probe(struct platform_device *pdev)
         goto free_mem;
     }
     hwlog_info("interval_switch_temp = %d\n", di->interval_switch_temp);
+
+    if (!uscp_client)
+    {
+        uscp_client = dsm_register_client(&dsm_uscp);
+    }
+    if (NULL == uscp_client)
+    {
+        hwlog_err("uscp sensorhub register dsm fail\n");
+        ret = -EINVAL;
+        goto free_mem;
+    }
 
     hwlog_info("uscp sensorhub probe ok!\n");
     return 0;

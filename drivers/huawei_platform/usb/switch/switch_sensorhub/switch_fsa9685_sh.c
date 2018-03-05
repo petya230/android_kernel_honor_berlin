@@ -37,9 +37,9 @@
 #include <chipset_common/hwusb/hw_usb_rwswitch.h>
 #include <huawei_platform/power/huawei_charger_sh.h>
 #include <huawei_platform/usb/switch/switch_fsa9685.h>
-#include <huawei_platform/inputhub/iom7/inputhub_route.h>
-#include <huawei_platform/inputhub/iom7/protocol.h>
-#include <huawei_platform/inputhub/iom7/sensor_info.h>
+#include <inputhub_route.h>
+#include <protocol.h>
+#include <sensor_info.h>
 
 static struct mutex accp_detect_lock;
 static struct mutex accp_adaptor_reg_lock;
@@ -81,54 +81,45 @@ static void usb_switch_wake_unlock(void)
 **********************************************************/
 static int fsa9685_write_reg(int reg, int val)
 {
-	int ret = -1;
-	write_info_t	pkg_ap;
-	read_info_t pkg_mcu;
-	pkt_i2c_write_req_t *pkt_i2c_write = kzalloc(sizeof(pkt_i2c_write_req_t) + 1, GFP_KERNEL);
-	if (!pkt_i2c_write) {
-		hwlog_err("fsa9685_write_reg alloc failed in %s\n", __func__);
-		return -1;
-	}
-
-	memset(&pkg_ap, 0, sizeof(pkg_ap));
-	memset(&pkg_mcu, 0, sizeof(pkg_mcu));
-
-	pkt_i2c_write->addr = switch_fsa9685_data.i2c_address;
-	pkt_i2c_write->busid = 3;
-	pkt_i2c_write->reg = reg;
-	pkt_i2c_write->length= 1;
-	memcpy(pkt_i2c_write->data, &val, 1);
-	
-	pkg_ap.tag=TAG_I2C;
-	pkg_ap.cmd=CMD_I2C_WRITE_REQ;
-	pkg_ap.wr_buf=&pkt_i2c_write->busid;
-	pkg_ap.wr_len=sizeof(*pkt_i2c_write) - sizeof(pkt_i2c_write->hd) + 1;
-	if (g_iom3_state == IOM3_ST_NORMAL)
-		ret=write_customize_cmd(&pkg_ap,  &pkg_mcu);
-	else
-		ret=write_customize_cmd_noresp(pkg_ap.tag, pkg_ap.cmd,  pkg_ap.wr_buf, pkg_ap.wr_len);
-	if (ret) {
-		hwlog_err("fsa9685 write value %d to register %d fail, ret=%d\n", val, reg, ret);
-		kfree(pkt_i2c_write);
-		return -1;
+	uint8_t tx_buf[2];
+	int ret;
+	tx_buf[0] = (uint8_t)reg;
+	tx_buf[1] = (uint8_t)val;
+	ret = mcu_i2c_rw(switch_fsa9685_data.cfg.bus_num, (uint8_t)switch_fsa9685_data.cfg.i2c_address,
+		tx_buf, 2, NULL, 0);
+	if (ret < 0) {
+		hwlog_err("fsa9685 write value %d to register %d fail!\n", val, reg);
 	} else {
-		if (pkg_mcu.errno != 0) {
-			hwlog_err("fsa9685 write value %d to register %d fail!\n", val, reg);
-			kfree(pkt_i2c_write);
-			return -1;
-		} else {
-			hwlog_info("fsa9685 write value %d to register %d success!\n", val, reg);
-		#ifdef CONFIG_FSA9685_DEBUG_FS
-    			chip_regs[reg] = val;
-		#endif
-			kfree(pkt_i2c_write);
-			return 0;
-		}
+		hwlog_info("fsa9685 write value %d to register %d success!\n", val, reg);
+#ifdef CONFIG_FSA9685_DEBUG_FS
+		chip_regs[reg] = val;
+#endif
 	}
+	return ret;
 }
 
 /**********************************************************
-*  Function:       bq25892_read_byte
+*  Function:       fsa9685_read_block
+*  Discription:    register read block interface
+*  Parameters:   reg:register name
+*                      value:register value
+			len:register number
+*  return value:  0-sucess or others-fail
+**********************************************************/
+static int fsa9685_read_block(int reg, u8*value, unsigned len)
+{
+	int ret = mcu_i2c_rw(3, (uint8_t)switch_fsa9685_data.cfg.i2c_address,
+		(uint8_t*)&reg,	1, value, len);
+	if (ret < 0) {
+		hwlog_err("fsa9685 read register %d fail!\n", reg);
+	} else {
+		hwlog_info("fsa9685 read value %d from register %d success!\n", *value, reg);
+	}
+	return ret;
+}
+
+/**********************************************************
+*  Function:       fsa9685_read_reg
 *  Discription:    register read byte interface
 *  Parameters:   reg:register name
 *                      value:register value
@@ -136,43 +127,17 @@ static int fsa9685_write_reg(int reg, int val)
 **********************************************************/
 static int fsa9685_read_reg(int reg)
 {
-	int ret = -1;
-	write_info_t	pkg_ap;
-	read_info_t pkg_mcu;
-	pkt_i2c_read_req_t pkt_i2c_read;
 	uint8_t value;
+	int ret = -1;
 
-	memset(&pkg_ap, 0, sizeof(pkg_ap));
-	memset(&pkg_mcu, 0, sizeof(pkg_mcu));
-
-	pkt_i2c_read.addr = switch_fsa9685_data.i2c_address;
-	pkt_i2c_read.busid = 3;
-	pkt_i2c_read.reg = reg;
-	pkt_i2c_read.length= 1;
-	
-	pkg_ap.tag=TAG_I2C;
-	pkg_ap.cmd=CMD_I2C_READ_REQ;
-	pkg_ap.wr_buf=&pkt_i2c_read.busid;
-	pkg_ap.wr_len=sizeof(pkt_i2c_read) - sizeof(pkt_i2c_read.hd);
-	if (g_iom3_state == IOM3_ST_NORMAL)
-		ret=write_customize_cmd(&pkg_ap,  &pkg_mcu);
-	else
-		ret=write_customize_cmd_noresp(pkg_ap.tag, pkg_ap.cmd,  pkg_ap.wr_buf, pkg_ap.wr_len);
-	if (ret) {
-		hwlog_err("fsa9685 read register %d fail, ret=%d\n", reg, ret);
-		return -1;
+	ret = fsa9685_read_block(reg, &value, 1);
+	if (ret < 0) {
+		return ret;
 	} else {
-		if (pkg_mcu.errno != 0) {
-			hwlog_err("fsa9685 read register %d fail!\n", reg);
-			return -1;
-		} else {
-			memcpy(&value, pkg_mcu.data, 1);
-			hwlog_info("fsa9685 read value %d from register %d success!\n", value, reg);
-		#ifdef CONFIG_FSA9685_DEBUG_FS
-    			chip_regs[reg] = value;
-		#endif
-			return value;
-		}
+	#ifdef CONFIG_FSA9685_DEBUG_FS
+    		chip_regs[reg] = value;
+	#endif
+		return value;
 	}
 }
 
@@ -229,7 +194,6 @@ static int fsa9685_manual_switch(int input_select)
         hwlog_err("%s: write reg FSA9685_REG_MANUAL_SW_1 error!!! ret=%d\n", __func__, ret);
         return ret;
     }
-    fsa9685_read_reg(FSA9685_REG_MANUAL_SW_1);//temp
     value = fsa9685_read_reg(FSA9685_REG_CONTROL);
     if (value < 0){
         ret = -ERR_FSA9685_READ_REG_CONTROL;
@@ -244,7 +208,6 @@ static int fsa9685_manual_switch(int input_select)
         hwlog_err("%s: write FSA9685_REG_CONTROL error!!! ret=%d\n", __func__, ret);
         return ret;
     }
-    fsa9685_read_reg(FSA9685_REG_CONTROL);//temp
     return 0;
 }
 
@@ -443,7 +406,6 @@ static void fsa9685_intb_work(struct work_struct *work)
             }
             if (reg_dev_type1 & FSA9685_DCP_DETECTED) {
                 hwlog_info("%s: FSA9685_DCP_DETECTED\n", __func__);
-		charge_wake_unlock();
                 charge_type_dcp_detected_notify_sh();
             }
             if ((reg_dev_type1 & FSA9685_USBOTG_DETECTED) && switch_fsa9685_data.fsa9685_usbid_enable) {
@@ -469,9 +431,7 @@ static void fsa9685_intb_work(struct work_struct *work)
             }
             if (reg_dev_type3 & FSA9685_CUSTOMER_ACCESSORY5) {
                 hwlog_info("%s: FSA9685_CUSTOMER_ACCESSORY5, 365K\n", __func__);
-                fsa9685_manual_sw(FSA9685_USB1_ID_TO_IDBYPASS);
                 pedestal_attach = 1;
-                usb_custom_acc5_event(pedestal_attach);
             }
             if (reg_dev_type3 & FSA9685_FM8_ACCESSORY) {
                 hwlog_info("%s: FSA9685_FM8_DETECTED\n", __func__);
@@ -521,7 +481,6 @@ static void fsa9685_intb_work(struct work_struct *work)
             if (pedestal_attach ==1) {
                 hwlog_info("%s: FSA9685_CUSTOMER_ACCESSORY5_DETACH\n", __func__);
                 pedestal_attach = 0;
-                usb_custom_acc5_event(pedestal_attach);
             }
             if (reg_dev_type2 & FSA9685_JIG_UART) {
                 hwlog_info("%s: FSA9685_JIG_UART\n", __func__);
@@ -620,8 +579,8 @@ static ssize_t jigpin_ctrl_store(struct device *dev,
         hwlog_err("%s:write FSA9685_REG_CONTROL error!\n",__func__);
         return ret;
     }
-    if (FSA9683_I2C_ADDR == switch_fsa9685_data.i2c_address
-          || CBTL9689_I2C_ADDR == switch_fsa9685_data.i2c_address) {
+    if (FSA9683_I2C_ADDR == switch_fsa9685_data.cfg.i2c_address
+          || CBTL9689_I2C_ADDR == switch_fsa9685_data.cfg.i2c_address) {
         ret = fsa9685_write_reg_mask(FSA9685_REG_WD_CTRL,
                    FSA9685_WD_CTRL_JIG_MANUAL_EN,FSA9685_WD_CTRL_JIG_MANUAL_EN);
         if (ret < 0) {
@@ -632,7 +591,7 @@ static ssize_t jigpin_ctrl_store(struct device *dev,
     switch (jig_val) {
         case JIG_PULL_DEFAULT_DOWN:
             hwlog_info("%s:pull down jig pin to default state\n", __func__);
-            if (FSA9683_I2C_ADDR == switch_fsa9685_data.i2c_address) {
+            if (FSA9683_I2C_ADDR == switch_fsa9685_data.cfg.i2c_address) {
                 ret = fsa9685_write_reg_mask(FSA9685_REG_MANUAL_SW_2,
                             FSA9683_REG_JIG_DEFAULT_DOWN, REG_JIG_MASK);
                 if (ret < 0) {
@@ -650,7 +609,7 @@ static ssize_t jigpin_ctrl_store(struct device *dev,
             break;
         case JIG_PULL_UP:
             hwlog_info("%s:pull up jig pin to cut battery\n", __func__);
-            if(FSA9683_I2C_ADDR == switch_fsa9685_data.i2c_address){
+            if(FSA9683_I2C_ADDR == switch_fsa9685_data.cfg.i2c_address){
                 ret = fsa9685_write_reg_mask(FSA9685_REG_MANUAL_SW_2,
                             FSA9683_REG_JIG_UP, REG_JIG_MASK);
                 if (ret < 0) {
@@ -863,29 +822,31 @@ static int is_sh_support_fcp(void)
 **********************************************************/
 static ssize_t fcp_mmi_show(struct device *dev,struct device_attribute *attr, char *buf)
 {
-        int result = FCP_TEST_FAIL;
-	write_info_t	pkg_ap;
-	read_info_t	pkg_mcu;
-	uint8_t sub_cmd[2] = {0,};
-	int ret = 0;
+	pkt_fcp_t pkt;
+	pkt_fcp_resp_t resp_pkt;
+	int result = FCP_TEST_FAIL;
 
-	memset(&pkg_ap, 0, sizeof(pkg_ap));
-	memset(&pkg_mcu, 0, sizeof(pkg_mcu));
+	memset(&pkt, 0, sizeof(pkt));
+	memset(&resp_pkt, 0, sizeof(resp_pkt));
 
-	sub_cmd[0] = CHARGE_SYSFS_FCP_SUPPORT;
-	sub_cmd[1] = 1;
-	pkg_ap.tag = TAG_CHARGER;
-	pkg_ap.cmd = CMD_CMN_CONFIG_REQ;
-	pkg_ap.wr_buf = sub_cmd;
-	pkg_ap.wr_len = sizeof(sub_cmd);
-	ret = write_customize_cmd(&pkg_ap,  &pkg_mcu);
-	if(ret) {
-		hwlog_err("get fcp mmi show from sensorhub fail, ret is %d\n", ret);
+	pkt.hd.tag = TAG_CHARGER;
+	pkt.hd.cmd = CMD_CMN_CONFIG_REQ;
+	pkt.hd.resp = RESP;
+	pkt.hd.length = sizeof(pkt.sub_cmd);
+	pkt.sub_cmd = CHARGE_SYSFS_FCP_SUPPORT;
+	if (0 == WAIT_FOR_MCU_RESP_DATA_AFTER_SEND(&pkt,
+						   inputhub_mcu_write_cmd
+						   (&pkt, sizeof(pkt)),
+						   5000, &resp_pkt,
+						   sizeof(resp_pkt))) {
+		hwlog_err("fcp_mmi_show wait for notify sensorhub fcp timeout\n");
+		return -1;
 	} else {
-		if(pkg_mcu.errno!=0) {
-			hwlog_err("get fcp mmi show from sensorhub fail, errno is %d\n", pkg_mcu.errno);
+		if (resp_pkt.hd.errno != 0) {
+			hwlog_err("get fcp mmi show from sensorhub fail, errno is %d\n", resp_pkt.hd.errno);
+			return -1;
 		} else {
-			memcpy(&result, pkg_mcu.data, sizeof(int));
+			memcpy(&result, &resp_pkt.wr, sizeof(int));
 			hwlog_info("%s: fcp mmi result  %d\n",__func__,result);
 		}
 	}
@@ -903,35 +864,7 @@ static const struct of_device_id switch_fsa9685_ids[] = {
 };
 #endif
 MODULE_DEVICE_TABLE(of, switch_fsa9685_ids);
-#if 0
-static void gpio_config(void)
-{
-	int ret = 0;
-	
-	switch_irq = gpio_to_irq(switch_fsa9685_data.gpio_intb);
-	if (switch_irq < 0) {
-	    hwlog_err("%s: gpio_to_irq error!!! ret=%d, gpio=%d, irq=%d.\n", __func__, ret, switch_fsa9685_data.gpio_intb, switch_irq);
-	    return;
-	}
 
-	ret = gpio_request(switch_fsa9685_data.gpio_intb, "fsa9685_int");
-	if (ret < 0) {
-	    hwlog_err("%s: gpio_request error!!! ret=%d. gpio=%d.\n", __func__, ret, switch_fsa9685_data.gpio_intb);
-	    return;
-	}
-
-	ret = gpio_direction_input(switch_fsa9685_data.gpio_intb);
-	if (ret < 0) {
-	    hwlog_err("%s: gpio_direction_input error!!! ret=%d. gpio=%d.\n", __func__, ret, switch_fsa9685_data.gpio_intb);
-	    return;
-	}
-
-	ret = request_irq(switch_irq, fsa9685_irq_sh_handler, IRQF_NO_SUSPEND | IRQF_TRIGGER_FALLING, "fsa9685_int", NULL);
-	if (ret < 0) {
-	    hwlog_err("%s: request_irq error!!! ret=%d.\n", __func__, ret);
-	}
-}
-#endif
 void fsa9685_get_gpio_int(void)
 {
     int gpio_value = 0;
@@ -943,9 +876,51 @@ void fsa9685_get_gpio_int(void)
 	if (g_iom3_state == IOM3_ST_NORMAL)
         	schedule_work(&g_intb_work_sh);
 	else
-		fsa9685_intb_work(&g_intb_work_sh);	
+		fsa9685_intb_work(&g_intb_work_sh);
     }
 }
+
+/**********************************************************
+*  Function:        fsa9685_reg_dump
+*  Discription:     dump register for charger dsm
+*  Parameters:    ptr
+*  return value:   void
+**********************************************************/
+#define DUMP_REG_NUM 26
+#define DUMP_STR_LENTH 14
+
+static void fsa9685_reg_dump(char* ptr)
+{
+	u8 reg[DUMP_REG_NUM] = { 0 };
+	u8 i =0;
+	char buff[DUMP_STR_LENTH] = {0};
+
+	fsa9685_read_block(1, &reg[0], 15);
+	fsa9685_read_block(64, &reg[15], 9);
+	fsa9685_read_block(91, &reg[24], 2);
+
+	for (i = 0; i < 15; i++) {
+		snprintf(buff, sizeof(buff), "r[%d]0x%-3x", i+1, reg[i]);
+		strncat(ptr, buff, strlen(buff));
+	}
+	snprintf(buff, sizeof(buff), "\n");
+	strncat(ptr, buff, strlen(buff));
+	for (i = 15; i < 24; i++) {
+		snprintf(buff, sizeof(buff), "r[%d]0x%-3x", i+49, reg[i]);
+		strncat(ptr, buff, strlen(buff));
+	}
+	snprintf(buff, sizeof(buff), "\n");
+	strncat(ptr, buff, strlen(buff));
+	for (i = 24; i < 26; i++) {
+		snprintf(buff, sizeof(buff), "r[%d]0x%-3x", i+67, reg[i]);
+		strncat(ptr, buff, strlen(buff));
+	}
+}
+
+struct fcp_adapter_device_ops sh_fcp_fsa9688_ops = {
+	.reg_dump = fsa9685_reg_dump,
+	.is_support_fcp = is_sh_support_fcp,
+};
 
 static struct switch_extra_ops huawei_switch_extra_ops = {
 	.manual_switch = fsa9685_manual_switch,
@@ -955,14 +930,14 @@ static struct switch_extra_ops huawei_switch_extra_ops = {
 
 static int fsa9685_probe(struct platform_device *pdev)
 {
-    int ret = 0; 
+    int ret = 0;
 #ifdef CONFIG_FSA9685_DEBUG_FS
     struct class *switch_class = NULL;
     struct device * new_dev = NULL;
 #endif
 
     hwlog_info("%s: ------sensorhub entry.\n", __func__);
-	
+
 #ifdef CONFIG_FSA9685_DEBUG_FS
     ret = device_create_file(&pdev->dev, &dev_attr_dump_regs);
     if (ret < 0) {
@@ -1021,7 +996,7 @@ static int fsa9685_probe(struct platform_device *pdev)
     if (ret) {
     	hwlog_err("register extra switch ops failed!\n");
     }
-	
+
     hwlog_info("%s: ------sensorhub end. ret = %d.\n", __func__, ret);
     return ret;
 

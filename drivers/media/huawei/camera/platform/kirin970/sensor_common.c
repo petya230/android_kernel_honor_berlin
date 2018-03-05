@@ -33,7 +33,7 @@ int mclk_config(sensor_t *s_ctrl, unsigned int id, unsigned int clk, int on)
     }
     dev = s_ctrl->dev;
 
-    cam_info("%s enter.id(%u), clk(%u), on(%d)", __func__, id, clk, on);
+    cam_debug("%s enter.id(%u), clk(%u), on(%d)", __func__, id, clk, on);
 
 
 
@@ -109,34 +109,18 @@ int mclk_config(sensor_t *s_ctrl, unsigned int id, unsigned int clk, int on)
     } else {
         if((0 == id) && (NULL != s_ctrl->isp_snclk0)) {
             clk_disable_unprepare(s_ctrl->isp_snclk0);
-            cam_info("clk_disable_unprepare snclk0.\n");
+            cam_debug("clk_disable_unprepare snclk0.\n");
         }else if((1 == id) && (NULL != s_ctrl->isp_snclk1)) {
             clk_disable_unprepare(s_ctrl->isp_snclk1);
-            cam_info("clk_disable_unprepare snclk1.\n");
+            cam_debug("clk_disable_unprepare snclk1.\n");
         }else if((2 == id) && (NULL != s_ctrl->isp_snclk2)) {
             clk_disable_unprepare(s_ctrl->isp_snclk2);
-            cam_info("clk_disable_unprepare snclk2.\n");
+            cam_debug("clk_disable_unprepare snclk2.\n");
         }
     }
 
     return 0;
 }
-
-void hwcam_mclk_enable(int index, int enable)
-{
-	cam_info("%s index = %d, enable=%d", __func__,index, enable);
-
-	if (POWER_ON == enable) {
-		if (CAMERA_SENSOR_PRIMARY == index) {
-			ISP_SETREG8(REG_ISP_CLK_DIVIDER, 0x44);
-		} else {
-			ISP_SETREG8(REG_ISP_CLK_DIVIDER, 0x44);
-		}
-	} else {
-		ISP_SETREG8(REG_ISP_CLK_DIVIDER, 0);
-	}
-}
-
 
 int hw_mclk_config(sensor_t *s_ctrl,
 	struct sensor_power_setting *power_setting, int state)
@@ -155,9 +139,8 @@ int hw_mclk_config(sensor_t *s_ctrl,
 		sensor_index = s_ctrl->board_info->sensor_index;
 	}
 
-	//hwcam_mclk_enable(sensor_index, state);
-       mclk_config(s_ctrl,sensor_index,
-            s_ctrl->board_info->mclk, state);
+	mclk_config(s_ctrl,sensor_index,
+		s_ctrl->board_info->mclk, state);
 
 	if (0 != power_setting->delay) {
 		hw_camdrv_msleep(power_setting->delay);
@@ -170,7 +153,7 @@ int hw_sensor_gpio_config(gpio_t pin_type, hwsensor_board_info_t *sensor_info,
 	struct sensor_power_setting *power_setting, int state)
 {
 	if (hisi_is_clt_flag()) {
-		cam_info("%s just return for CLT camera.", __func__);
+		cam_debug("%s just return for CLT camera.", __func__);
 		return 0;
 	}
 
@@ -193,7 +176,7 @@ int hw_sensor_gpio_config(gpio_t pin_type, hwsensor_board_info_t *sensor_info,
 	}
 
 	if(pin_type == FSIN) {
-		cam_info("pin_level: %d", gpio_get_value(sensor_info->gpios[pin_type].gpio));
+		cam_debug("pin_level: %d", gpio_get_value(sensor_info->gpios[pin_type].gpio));
 		rc = 0;
 	} else {
 		rc = gpio_direction_output(sensor_info->gpios[pin_type].gpio,
@@ -223,9 +206,9 @@ int hw_sensor_ldo_config(ldo_index_t ldo, hwsensor_board_info_t *sensor_info,
 	int index;
 	int rc = -1;
 	const char *ldo_names[LDO_MAX]
-		= {"dvdd", "dvdd2", "avdd", "avdd2", "vcm", "vcm2", "iopw","misp", "avdd0", "avdd1"};
+		= {"dvdd", "dvdd2", "avdd", "avdd2", "vcm", "vcm2", "iopw","misp", "avdd0", "avdd1", "miniisp", "iovdd", "oisdrv"};
 
-	cam_info("%s enter, ldo:%s state:%d", __func__, ldo_names[ldo], state);
+	cam_debug("%s enter, ldo:%s state:%d", __func__, ldo_names[ldo], state);
 
 	if (hw_is_fpga_board())
 		return 0;
@@ -311,7 +294,7 @@ int hw_sensor_pmic_config(hwsensor_board_info_t *sensor_info,
 int hw_sensor_power_up(sensor_t *s_ctrl)
 {
 	if (hisi_is_clt_flag()) {
-		cam_info("%s just return for CLT camera.", __func__);
+		cam_debug("%s just return for CLT camera.", __func__);
 		return 0;
 	}
 
@@ -325,15 +308,15 @@ int hw_sensor_power_up(sensor_t *s_ctrl)
 
 	if (s_ctrl->p_atpowercnt){
         if (atomic_read(s_ctrl->p_atpowercnt)) {
-            cam_info("%s (%d): sensor has already powered up, p_atpowercnt.", __func__, __LINE__);
+            cam_debug("%s (%d): sensor has already powered up, p_atpowercnt.", __func__, __LINE__);
             return 0;
         }
     }else{
         if (atomic_read(&s_powered)) {
-            cam_info("%s (%d): sensor has already powered up.", __func__, __LINE__);
+            cam_debug("%s (%d): sensor has already powered up.", __func__, __LINE__);
             return 0;
         }
-	}   
+	}
 
 	/* fpga board compatibility */
 	if (hw_is_fpga_board()) {
@@ -342,10 +325,10 @@ int hw_sensor_power_up(sensor_t *s_ctrl)
 
 	pmic_ctrl = hisi_get_pmic_ctrl();
 	if(pmic_ctrl != NULL) {
-		cam_info("pmic power on!");
+		cam_debug("pmic power on!");
 		pmic_ctrl->func_tbl->pmic_on(pmic_ctrl, 0);
 	} else {
-		cam_info("%s zpc pimc ctrl is null.", __func__);
+		cam_debug("%s pimc ctrl is null.", __func__);
 	}
 
 	for (index = 0; index < power_setting_array->size; index++) {
@@ -365,9 +348,14 @@ int hw_sensor_power_up(sensor_t *s_ctrl)
 				rc = 0;
 			}
 			break;
+		case SENSOR_OIS_DRV:
+			cam_debug("%s, seq_type:%u SENSOR_OIS_DRV", __func__, power_setting->seq_type);
+			rc = hw_sensor_ldo_config(LDO_OISDRV, s_ctrl->board_info,
+				power_setting, POWER_ON);
+			break;
 		case SENSOR_IOVDD:
 			cam_debug("%s, seq_type:%u SENSOR_IOVDD", __func__, power_setting->seq_type);
-			rc = hw_sensor_ldo_config(LDO_IOPW, s_ctrl->board_info,
+			rc = hw_sensor_ldo_config(LDO_IOVDD, s_ctrl->board_info,
 				power_setting, POWER_ON);
 			break;
 		case SENSOR_AVDD:
@@ -385,12 +373,12 @@ int hw_sensor_power_up(sensor_t *s_ctrl)
 			}
 			break;
 		case SENSOR_VCM_AVDD:
-			cam_info("%s, seq_type:%u SENSOR_VCM_AVDD", __func__, power_setting->seq_type);
+			cam_debug("%s, seq_type:%u SENSOR_VCM_AVDD", __func__, power_setting->seq_type);
 			rc = hw_sensor_ldo_config(LDO_VCM, s_ctrl->board_info,
 				power_setting, POWER_ON);
 			break;
 		case SENSOR_VCM_AVDD2:
-			cam_info("%s, seq_type:%u SENSOR_VCM_AVDD2", __func__, power_setting->seq_type);
+			cam_debug("%s, seq_type:%u SENSOR_VCM_AVDD2", __func__, power_setting->seq_type);
 			rc = hw_sensor_ldo_config(LDO_VCM2, s_ctrl->board_info,
 				power_setting, POWER_ON);
 			if(rc) {
@@ -399,22 +387,22 @@ int hw_sensor_power_up(sensor_t *s_ctrl)
 			}
 			break;
 		case SENSOR_AVDD0:
-			cam_info("%s, seq_type:%u SENSOR_AVDD0", __func__, power_setting->seq_type);
+			cam_debug("%s, seq_type:%u SENSOR_AVDD0", __func__, power_setting->seq_type);
 			rc = hw_sensor_ldo_config(LDO_AVDD0, s_ctrl->board_info,
 				power_setting, POWER_ON);
 			break;
 		case SENSOR_AVDD1:
-			cam_info("%s, seq_type:%u SENSOR_AVDD1", __func__, power_setting->seq_type);
+			cam_debug("%s, seq_type:%u SENSOR_AVDD1", __func__, power_setting->seq_type);
 			rc = hw_sensor_ldo_config(LDO_AVDD1, s_ctrl->board_info,
 				power_setting, POWER_ON);
 			break;
 		case SENSOR_MISP_VDD:
-			cam_info("%s, seq_type:%u SENSOR_MISP_VDD", __func__, power_setting->seq_type);
+			cam_debug("%s, seq_type:%u SENSOR_MISP_VDD", __func__, power_setting->seq_type);
 			rc = hw_sensor_ldo_config(LDO_MISP, s_ctrl->board_info,
 				power_setting, POWER_ON);
 			break;
 		case SENSOR_MCLK:
-			cam_info("%s, seq_type:%u SENSOR_MCLK", __func__, power_setting->seq_type);
+			cam_debug("%s, seq_type:%u SENSOR_MCLK", __func__, power_setting->seq_type);
 			rc = hw_mclk_config(s_ctrl, power_setting, POWER_ON);
 			break;
 		case SENSOR_I2C:
@@ -423,27 +411,31 @@ int hw_sensor_power_up(sensor_t *s_ctrl)
 			break;
 
 		case SENSOR_LDO_EN:
-			cam_info("%s, seq_type:%u SENSOR_LDO_EN", __func__, power_setting->seq_type);
+			cam_debug("%s, seq_type:%u SENSOR_LDO_EN", __func__, power_setting->seq_type);
 			rc = hw_sensor_gpio_config(LDO_EN, s_ctrl->board_info,
 				power_setting, POWER_ON);
 			break;
+		case SENSOR_AVDD1_EN:
+			cam_debug("%s, seq_type:%u SENSOR_AVDD1_EN", __func__, power_setting->seq_type);
+			rc = hw_sensor_gpio_config(AVDD1_EN, s_ctrl->board_info, power_setting, POWER_ON);
+			break;
 		case SENSOR_DVDD0_EN:
-			cam_info("%s, seq_type:%u SENSOR_DVDD0_EN", __func__, power_setting->seq_type);
+			cam_debug("%s, seq_type:%u SENSOR_DVDD0_EN", __func__, power_setting->seq_type);
 			rc = hw_sensor_gpio_config(DVDD0_EN, s_ctrl->board_info,
 				power_setting, POWER_ON);
 			break;
 		case SENSOR_DVDD1_EN:
-			cam_info("%s, seq_type:%u SENSOR_DVDD1_EN", __func__, power_setting->seq_type);
+			cam_debug("%s, seq_type:%u SENSOR_DVDD1_EN", __func__, power_setting->seq_type);
 			rc = hw_sensor_gpio_config(DVDD1_EN, s_ctrl->board_info,
 				power_setting, POWER_ON);
 			break;
 		case SENSOR_IOVDD_EN:
-			cam_info("%s, seq_type:%u SENSOR_IOVDD_EN", __func__, power_setting->seq_type);
+			cam_debug("%s, seq_type:%u SENSOR_IOVDD_EN", __func__, power_setting->seq_type);
 			rc = hw_sensor_gpio_config(IOVDD_EN, s_ctrl->board_info,
 				power_setting, POWER_ON);
 			break;
 		case SENSOR_MISPDCDC_EN:
-			cam_info("%s, seq_type:%u SENSOR_MISPDCDC_EN", __func__, power_setting->seq_type);
+			cam_debug("%s, seq_type:%u SENSOR_MISPDCDC_EN", __func__, power_setting->seq_type);
 			rc = hw_sensor_gpio_config(MISPDCDC_EN, s_ctrl->board_info,
 				power_setting, POWER_ON);
 			break;
@@ -453,7 +445,7 @@ int hw_sensor_power_up(sensor_t *s_ctrl)
 				power_setting, POWER_ON);
 			break;
 		case SENSOR_RST:
-			cam_info("%s, seq_type:%u SENSOR_RST", __func__, power_setting->seq_type);
+			cam_debug("%s, seq_type:%u SENSOR_RST", __func__, power_setting->seq_type);
 			rc = hw_sensor_gpio_config(RESETB, s_ctrl->board_info,
 				power_setting, POWER_ON);
 			break;
@@ -472,8 +464,13 @@ int hw_sensor_power_up(sensor_t *s_ctrl)
 			rc = hw_sensor_gpio_config(SUSPEND, s_ctrl->board_info,
 				power_setting, POWER_OFF);
 			break;
+		case SENSOR_SUSPEND2:
+			cam_debug("%s, seq_type:%u SENSOR_SUSPEND2", __func__, power_setting->seq_type);
+			rc = hw_sensor_gpio_config(SUSPEND2, s_ctrl->board_info,
+				power_setting, POWER_OFF);
+			break;
 		case SENSOR_RST2:
-			cam_info("%s, seq_type:%u SENSOR_RST2", __func__, power_setting->seq_type);
+			cam_debug("%s, seq_type:%u SENSOR_RST2", __func__, power_setting->seq_type);
 			rc = hw_sensor_gpio_config(RESETB2, s_ctrl->board_info,
 				power_setting, POWER_ON);
 			break;
@@ -513,10 +510,10 @@ int hw_sensor_power_up(sensor_t *s_ctrl)
 
 	if (s_ctrl->p_atpowercnt){
         atomic_set(s_ctrl->p_atpowercnt, 1);
-        cam_info("%s (%d): sensor  powered up finish", __func__, __LINE__);
+        cam_debug("%s (%d): sensor  powered up finish", __func__, __LINE__);
     }else{
         atomic_set(&s_powered, 1);
-        cam_info("%s (%d): sensor  powered up finish", __func__, __LINE__);
+        cam_debug("%s (%d): sensor  powered up finish", __func__, __LINE__);
     }
 
 	return rc;
@@ -525,7 +522,7 @@ int hw_sensor_power_up(sensor_t *s_ctrl)
 int hw_sensor_power_down(sensor_t *s_ctrl)
 {
 	if (hisi_is_clt_flag()) {
-		cam_info("%s just return for CLT camera.", __func__);
+		cam_debug("%s just return for CLT camera.", __func__);
 		return 0;
 	}
 
@@ -540,12 +537,12 @@ int hw_sensor_power_down(sensor_t *s_ctrl)
 
 	if (s_ctrl->p_atpowercnt){
         if (!atomic_read(s_ctrl->p_atpowercnt)) {
-            cam_info("%s(%d): sensor hasn't powered up.", __func__, __LINE__);
+            cam_debug("%s(%d): sensor hasn't powered up.", __func__, __LINE__);
             return 0;
         }
     }else{
         if (!atomic_read(&s_powered)) {
-            cam_info("%s (%d): sensor hasn't powered up.", __func__, __LINE__);
+            cam_debug("%s (%d): sensor hasn't powered up.", __func__, __LINE__);
             return 0;
         }
     }
@@ -572,9 +569,14 @@ int hw_sensor_power_down(sensor_t *s_ctrl)
 				rc = 0;
 			}
 			break;
+		case SENSOR_OIS_DRV:
+			cam_debug("%s, seq_type:%u SENSOR_OIS_DRV", __func__, power_setting->seq_type);
+			rc = hw_sensor_ldo_config(LDO_OISDRV, s_ctrl->board_info,
+				power_setting, POWER_OFF);
+			break;
 		case SENSOR_IOVDD:
 			cam_debug("%s, seq_type:%u SENSOR_IOVDD", __func__, power_setting->seq_type);
-			rc = hw_sensor_ldo_config(LDO_IOPW, s_ctrl->board_info,
+			rc = hw_sensor_ldo_config(LDO_IOVDD, s_ctrl->board_info,
 				power_setting, POWER_OFF);
 			break;
 		case SENSOR_AVDD:
@@ -621,7 +623,7 @@ int hw_sensor_power_down(sensor_t *s_ctrl)
 				power_setting, POWER_OFF);
 			break;
 		case SENSOR_RST:
-			cam_info("%s, seq_type:%u SENSOR_RST", __func__, power_setting->seq_type);
+			cam_debug("%s, seq_type:%u SENSOR_RST", __func__, power_setting->seq_type);
 			rc = hw_sensor_gpio_config(RESETB, s_ctrl->board_info,
 				power_setting, POWER_OFF);
 			break;
@@ -633,6 +635,11 @@ int hw_sensor_power_down(sensor_t *s_ctrl)
 		case SENSOR_SUSPEND:
 			cam_debug("%s, seq_type:%u SENSOR_SUSPEND", __func__, power_setting->seq_type);
 			rc = hw_sensor_gpio_config(SUSPEND, s_ctrl->board_info,
+				power_setting, POWER_OFF);
+			break;
+		case SENSOR_SUSPEND2:
+			cam_debug("%s, seq_type:%u SENSOR_SUSPEND2", __func__, power_setting->seq_type);
+			rc = hw_sensor_gpio_config(SUSPEND2, s_ctrl->board_info,
 				power_setting, POWER_OFF);
 			break;
 		case SENSOR_RST2:
@@ -668,37 +675,42 @@ int hw_sensor_power_down(sensor_t *s_ctrl)
 			break;
 
 		case SENSOR_DVDD0_EN:
-			cam_info("%s, seq_type:%u SENSOR_DVDD0_EN", __func__, power_setting->seq_type);
+			cam_debug("%s, seq_type:%u SENSOR_DVDD0_EN", __func__, power_setting->seq_type);
 			rc = hw_sensor_gpio_config(DVDD0_EN, s_ctrl->board_info,
 				power_setting, POWER_OFF);
 			break;
 		case SENSOR_DVDD1_EN:
-			cam_info("%s, seq_type:%u SENSOR_DVDD1_EN", __func__, power_setting->seq_type);
+			cam_debug("%s, seq_type:%u SENSOR_DVDD1_EN", __func__, power_setting->seq_type);
 			rc = hw_sensor_gpio_config(DVDD1_EN, s_ctrl->board_info,
 				power_setting, POWER_OFF);
 			break;
 		case SENSOR_IOVDD_EN:
-			cam_info("%s, seq_type:%u SENSOR_IOVDD_EN", __func__, power_setting->seq_type);
+			cam_debug("%s, seq_type:%u SENSOR_IOVDD_EN", __func__, power_setting->seq_type);
 			rc = hw_sensor_gpio_config(IOVDD_EN, s_ctrl->board_info,
 				power_setting, POWER_OFF);
 			break;
+		case SENSOR_AVDD1_EN:
+			cam_debug("%s, seq_type:%u SENSOR_AVDD1_EN", __func__, power_setting->seq_type);
+			rc = hw_sensor_gpio_config(AVDD1_EN, s_ctrl->board_info,
+				power_setting, POWER_OFF);
+			break;
 		case SENSOR_MISPDCDC_EN:
-			cam_info("%s, seq_type:%u SENSOR_MISPDCDC_EN", __func__, power_setting->seq_type);
+			cam_debug("%s, seq_type:%u SENSOR_MISPDCDC_EN", __func__, power_setting->seq_type);
 			rc = hw_sensor_gpio_config(MISPDCDC_EN, s_ctrl->board_info,
 				power_setting, POWER_OFF);
 			break;
 		case SENSOR_AVDD0:
-			cam_info("%s, seq_type:%u SENSOR_AVDD0", __func__, power_setting->seq_type);
+			cam_debug("%s, seq_type:%u SENSOR_AVDD0", __func__, power_setting->seq_type);
 			rc = hw_sensor_ldo_config(LDO_AVDD0, s_ctrl->board_info,
 				power_setting, POWER_OFF);
 			break;
 		case SENSOR_AVDD1:
-			cam_info("%s, seq_type:%u SENSOR_AVDD1", __func__, power_setting->seq_type);
+			cam_debug("%s, seq_type:%u SENSOR_AVDD1", __func__, power_setting->seq_type);
 			rc = hw_sensor_ldo_config(LDO_AVDD1, s_ctrl->board_info,
 				power_setting, POWER_OFF);
 			break;
 		case SENSOR_MISP_VDD:
-			cam_info("%s, seq_type:%u SENSOR_MISP_VDD", __func__, power_setting->seq_type);
+			cam_debug("%s, seq_type:%u SENSOR_MISP_VDD", __func__, power_setting->seq_type);
 			rc = hw_sensor_ldo_config(LDO_MISP, s_ctrl->board_info,
 				power_setting, POWER_OFF);
 			break;
@@ -860,7 +872,7 @@ int hw_sensor_i2c_write_seq( sensor_t *s_ctrl, void *data)
 	int data_length = sizeof(struct sensor_i2c_reg)*cdata->cfg.setting.size;
 	long rc = 0;
 
-	cam_info("%s: enter setting=%pK size=%d.\n", __func__,
+	cam_debug("%s: enter setting=%pK size=%d.\n", __func__,
 			cdata->cfg.setting.setting,
 			(unsigned int)cdata->cfg.setting.size);
 
@@ -935,7 +947,7 @@ int hwsensor_writefile(int index, const char *sensor_name)
 
     if (index == CAMERA_SENSOR_INVALID)
         return -1;
-    cam_info("%s index=%d,sensor_name=%s.\n", __func__, index, sensor_name);
+    cam_debug("%s index=%d,sensor_name=%s.\n", __func__, index, sensor_name);
 
     snprintf(file_name, FILE_NAME_LEN, "/data/camera/hisi_sensor%d", index);
 
@@ -977,8 +989,12 @@ int hw_sensor_get_dt_data(struct platform_device *pdev,
     int count = 0;
 	u32 i, index = 0;
 	char *gpio_tag = NULL;
+    /* enum gpio_t */
 	const char *gpio_ctrl_types[IO_MAX] =
-		{"reset", "fsin", "pwdn", "vcm_pwdn", "suspend", "reset2", "ldo_en", "ois", "ois2", "dvdd0-en", "dvdd1-en", "iovdd-en", "mispdcdc-en"};
+		{"reset", "fsin", "pwdn", "vcm_pwdn", "suspend", "suspend2", "reset2",\
+			"ldo_en", "ois", "ois2", "dvdd0-en", "dvdd1-en",\
+         "iovdd-en", "mispdcdc-en", "mipisw", "reset3", "pwdn2", \
+         "avdd1_en", "avdd2_en"};
 
 	cam_debug("enter %s", __func__);
 	sensor_info = kzalloc(sizeof(hwsensor_board_info_t),

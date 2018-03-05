@@ -1,4 +1,20 @@
-
+/*
+ * Copyright (C) 2010 - 2016 Novatek, Inc.
+ *
+ * $Revision: 4301 $
+ * $Date: 2016-04-22 17:28:06 +0800 (星期五, 22 四月 2016) $
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
+ *
+ */
 	 
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -567,14 +583,18 @@ static int novatek_wakeup_gesture_enable_switch(struct
 {
 	TS_LOG_INFO("%s enter\n", __func__);
 	
+//---Taylor add : for debug begin---
 return NO_ERR;
+//---Taylor add : for debug end---
 }
 
 static int novatek_holster_switch(struct ts_holster_info *info)
 {
 	TS_LOG_INFO("%s enter\n", __func__);
 
+//---Taylor add : for debug begin---
 return NO_ERR;
+//---Taylor add : for debug end---
 }
 #endif
 

@@ -61,7 +61,6 @@ static int max77813_read_block(struct max77813_device_info *di, u8 *value,
 	}
 }
 
-
 /**********************************************************
 *  Function:       max77813_read_byte
 *  Discription:    register read byte interface
@@ -74,12 +73,94 @@ static int max77813_read_byte(u8 reg, u8 *value)
 	struct max77813_device_info *di = g_max77813_dev;
 	return max77813_read_block(di, value, reg, 1);
 }
+static int max77813_write_block(struct max77813_device_info *di, u8 *value, u8 reg, unsigned num_bytes)
+{
+	struct i2c_msg msg[1];
+	int ret = 0;
+
+	*value = reg;
+
+	msg[0].addr = di->client->addr;
+	msg[0].flags = 0;
+	msg[0].buf = value;
+	msg[0].len = num_bytes + 1;
+
+	ret = i2c_transfer(di->client->adapter, msg, 1);
+
+	/* i2c_transfer returns number of messages transferred */
+	if (ret != 1)
+	{
+		hwlog_err("i2c_write failed to transfer all messages\n");
+		if (ret < 0)
+			return ret;
+		else
+			return -EIO;
+	}
+	else
+	{
+		return 0;
+	}
+}
+static int max77813_write_byte(u8 reg, u8 value)
+{
+	struct max77813_device_info *di = g_max77813_dev;
+	/* 2 bytes offset 1 contains the data offset 0 is used by i2c_write */
+	u8 temp_buffer[2] = { 0 };
+
+	/* offset 1 contains the data */
+	temp_buffer[1] = value;
+	return max77813_write_block(di, temp_buffer, reg, 1);
+}
+static int max77813_write_mask(u8 reg, u8 MASK, u8 SHIFT, u8 value)
+{
+	int ret = 0;
+	u8 val = 0;
+
+	ret = max77813_read_byte(reg, &val);
+	if (ret < 0)
+		return ret;
+
+	val &= ~MASK;
+	val |= ((value << SHIFT) & MASK);
+
+	ret = max77813_write_byte(reg, val);
+
+	return ret;
+}
 static int max77813_sysfs_create_group(struct max77813_device_info *di)
 {
 	return 0;
 }
 static int max77813_sysfs_remove_group(struct max77813_device_info *di)
 {
+	return 0;
+}
+int max77813_forced_pwm_enable(int enable)
+{
+	int ret;
+	u8 reg;
+	u8 value = enable ? 0x1 : 0x0;
+
+	ret = max77813_read_byte(MAX77813_CONFIG1, &reg);
+	if (ret)
+	{
+		hwlog_err("%s: read fail\n", __func__);
+		return -1;
+	}
+	hwlog_info("%s:before write config1 reg = 0x%x\n", __func__, reg);
+	ret = max77813_write_mask(MAX77813_CONFIG1,MAX77813_FORCED_PWM_MASK, MAX77813_FORCED_PWM_SHIFT, value);
+	if (ret)
+	{
+		hwlog_err("%s: max77813 pwm enable fail, val = %d\n", __func__, enable);
+		return -1;
+	}
+	ret = max77813_read_byte(MAX77813_CONFIG1, &reg);
+	if (ret)
+	{
+		hwlog_err("%s: read fail\n", __func__);
+		return -1;
+	}
+	hwlog_info("%s:config1 reg = 0x%x\n", __func__, reg);
 	return 0;
 }
 

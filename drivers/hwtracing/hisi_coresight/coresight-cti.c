@@ -876,7 +876,7 @@ static ssize_t cti_show_trigin(struct device *dev,
 				 */
 				size += scnprintf(&buf[size], PAGE_SIZE - size -
 						  1, " %#lx %#lx,", trig, ch);
-				if (size >= PAGE_SIZE - 2) {
+				if (size >= (ssize_t)PAGE_SIZE - 2) {
 					dev_err(dev, "show buffer full\n");
 					goto err;
 				}
@@ -924,7 +924,7 @@ static ssize_t cti_show_trigout(struct device *dev,
 				 */
 				size += scnprintf(&buf[size], PAGE_SIZE - size -
 						  1, " %#lx %#lx,", trig, ch);
-				if (size >= PAGE_SIZE - 2) {
+				if (size >= (ssize_t)PAGE_SIZE - 2) {
 					dev_err(dev, "show buffer full\n");
 					goto err;
 				}
@@ -948,6 +948,7 @@ static ssize_t cti_store_map_trigin(struct device *dev,
 	unsigned long val1, val2;
 	int ret;
 
+	/* cppcheck-suppress * */
 	if (sscanf(buf, "%lx %lx", &val1, &val2) != 2)
 		return -EINVAL;
 
@@ -1064,7 +1065,7 @@ static ssize_t cti_show_trig(struct device *dev, struct device_attribute *attr,
 			 */
 			size += scnprintf(&buf[size], PAGE_SIZE - size -
 					  1, " %#lx,", ch);
-			if (size >= PAGE_SIZE - 2) {
+			if (size >= (ssize_t)PAGE_SIZE - 2) {
 				dev_err(dev, "show buffer full\n");
 				goto err;
 			}
@@ -1187,7 +1188,7 @@ static ssize_t cti_show_gate(struct device *dev, struct device_attribute *attr,
 			 */
 			size += scnprintf(&buf[size], PAGE_SIZE - size -
 					  1, " %#lx,", ch);
-			if (size >= PAGE_SIZE - 2) {
+			if (size >= (ssize_t)PAGE_SIZE - 2) {
 				dev_err(dev, "show buffer full\n");
 				goto err;
 			}
@@ -1348,9 +1349,9 @@ static int cti_probe(struct platform_device *pdev)
 		ctidrvdata[cti_count++] = drvdata;
 
 	dev_err(dev, "CTI initialized\n");
-	return 0;
+	return 0;/* lint !e429 !e593 */
 err:
-	return ret;
+	return ret;/* lint !e429*/
 }
 
 static int cti_remove(struct platform_device *pdev)

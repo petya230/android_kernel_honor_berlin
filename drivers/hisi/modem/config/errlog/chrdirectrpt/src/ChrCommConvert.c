@@ -31,7 +31,7 @@ extern "C" {
 *****************************************************************************/
 /* 直通新接口定义，新增事件或XML结构改变时必须更新 */
 VOS_UINT8  aucProductName[20] = {"COMMON#102"};
-VOS_UINT8  ucLogVersion       = 3;
+VOS_UINT8  ucLogVersion       = 12;
 
 
 /*****************************************************************************
@@ -481,7 +481,7 @@ VOS_INT32 ConvertField_Array(VOS_UINT8 *p, VOS_UINT32 ulSize, VOS_UINT32 *pLen, 
             }
 
             *pLen = pField->FieldLength;
-            memcpy_s(p, ulSize, pStruct, *pLen);
+            memcpy_s(p, ulSize, pStruct, *pLen);/* [false alarm]:*/
 
             *pStructLen = pField->FieldLength;
             break;

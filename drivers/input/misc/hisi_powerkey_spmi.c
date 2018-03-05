@@ -88,7 +88,9 @@ static struct dsm_dev dsm_power_key = {
 
 static struct dsm_client *power_key_dclient;
 #endif
-
+#ifdef CONFIG_HISI_BB
+static u32 reboot_reason_flag;
+#endif
 bool power_key_ps; /*default value is false*/
 struct hisi_powerkey_info {
 	struct input_dev *idev;
@@ -105,8 +107,13 @@ int long_presspowerkey_happen(void *data)
 		down(&long_presspowerkey_happen_sem);
 #ifdef CONFIG_HISI_BB
 		if (STAGE_BOOTUP_END != get_boot_keypoint()) {
+			pr_err("press6s in boot\n");
 			save_log_to_dfx_tempbuffer(AP_S_PRESS6S);
 			sys_sync();
+		}else {
+			reboot_reason_flag = get_reboot_reason();
+			set_reboot_reason(AP_S_PRESS6S);
+			pr_err("press6s:reboot_reason_flag=%u\n", reboot_reason_flag);
 		}
 #endif
 	}
@@ -186,7 +193,10 @@ static irqreturn_t hisi_powerkey_handler(int irq, void *data)
 				}
 			}
 		}
-
+#ifdef CONFIG_HISI_BB
+		if (AP_S_PRESS6S == get_reboot_reason())
+			set_reboot_reason(reboot_reason_flag);
+#endif
 		printk(KERN_ERR "[%s]power key release interrupt!\n",
 		       __func__);
 		input_report_key(info->idev, KEY_POWER, POWER_KEY_RELEASE);

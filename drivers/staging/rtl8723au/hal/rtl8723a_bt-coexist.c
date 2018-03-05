@@ -49,6 +49,7 @@ if ((BTCoexDbgLevel == _bt_dbg_on_)) {\
 	}								\
 	printk("\n");							\
 }
+/*  Added by Annie, 2005-11-22. */
 #define MAX_STR_LEN	64
 /*  I want to see ASCII 33 to 126 only. Otherwise, I print '?'. */
 #define PRINTABLE(_ch)	(_ch >= ' ' && _ch <= '~')

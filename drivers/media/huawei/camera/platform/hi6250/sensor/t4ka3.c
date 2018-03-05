@@ -257,6 +257,7 @@ struct sensor_power_setting t4ka3_power_down_setting_dvdd120[] = {
     },
 };
 
+struct mutex t4ka3_power_lock;
 static sensor_t s_t4ka3 =
 {
     .intf = { .vtbl = &s_t4ka3_vtbl, },
@@ -416,16 +417,30 @@ t4ka3_config(
 	cam_debug("t4ka3 cfgtype = %d",data->cfgtype);
 	switch(data->cfgtype){
 		case SEN_CONFIG_POWER_ON:
+			mutex_lock(&t4ka3_power_lock);
 			if(false == power_on_status){
-			ret = si->vtbl->power_up(si);
-				power_on_status = true;
+				ret = si->vtbl->power_up(si);
+				if (0 == ret)
+				{
+					power_on_status = true;
+				}
 			}
+			/*lint -e455 -esym(455,*)*/
+			mutex_unlock(&t4ka3_power_lock);
+			/*lint -e455 +esym(455,*)*/
 			break;
 		case SEN_CONFIG_POWER_OFF:
+			mutex_lock(&t4ka3_power_lock);
 			if(true == power_on_status){
-			ret = si->vtbl->power_down(si);
-				power_on_status = false;
+				ret = si->vtbl->power_down(si);
+				if (0 == ret)
+				{
+					power_on_status = false;
+				}
 			}
+			/*lint -e455 -esym(455,*)*/
+			mutex_unlock(&t4ka3_power_lock);
+			/*lint -e455 +esym(455,*)*/
 			break;
 		case SEN_CONFIG_WRITE_REG:
 			break;
@@ -478,6 +493,7 @@ t4ka3_platform_probe(
 		goto t4ka3_sensor_probe_fail;
 	}
 	s_t4ka3.dev = &pdev->dev;
+	mutex_init(&t4ka3_power_lock);
 	rc = hwsensor_register(pdev, &s_t4ka3.intf);
 	rc = rpmsg_sensor_register(pdev, (void*)&s_t4ka3);
 t4ka3_sensor_probe_fail:

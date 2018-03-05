@@ -10,15 +10,6 @@
 /* other defs */
 #define USB3OTG_ACLK_FREQ		240000000
 
-int hisi_usb_vbus_value(void)
-{
-	unsigned long base = 0;
-	/*lint -e747 -e712*/
-	unsigned int pmic_status1 = hisi_pmic_reg_read(PMIC_STATUS1_ADDR(base));
-	/*lint +e747 +e712*/
-	return !!(pmic_status1 & (1 << 7));
-}
-
 static int usb3_regu_init(struct hisi_dwc3_device *hisi_dwc3)
 {
 	int ret;

@@ -19,6 +19,7 @@
 #include <linux/module.h>
 #include <linux/device.h>
 #include <linux/err.h>
+#include <linux/stringify.h>
 
 #include "balong_acm.h"
 
@@ -640,6 +641,13 @@ static int acm_set_alt(struct usb_function *f, unsigned intf, unsigned alt)
 	if (intf == acm->ctrl_id) {
 		is_setting = 1;
 		if (acm->notify) {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,4,0)
+			VDBG(cdev, "reset acm control interface %d\n", intf);
+			usb_ep_disable(acm->notify);
+			VDBG(cdev, "init acm ctrl interface %d\n", intf);
+			if (config_ep_by_speed(cdev->gadget, f, acm->notify))
+				return -EINVAL;
+#else
 			if (acm->notify->driver_data) {
 				VDBG(cdev, "reset acm control interface %d\n", intf);
 				usb_ep_disable(acm->notify);
@@ -648,18 +656,25 @@ static int acm_set_alt(struct usb_function *f, unsigned intf, unsigned alt)
 				if (config_ep_by_speed(cdev->gadget, f, acm->notify))
 					return -EINVAL;
 			}
+#endif
 			ret = usb_ep_enable(acm->notify);
 			if (ret < 0) {
 				ERROR(cdev, "Enable acm interface ep failed\n");
 				return ret;
 			}
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,4,0)
 			acm->notify->driver_data = acm;
+#endif
 		}
 	}
 
 	if (intf == acm->data_id) {
 		is_setting = 1;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,4,0)
+		if (acm->port.in->enabled) {
+#else
 		if (acm->port.in->driver_data) {
+#endif
 			DBG(cdev, "reset acm ttyGS%d\n", acm->port_num);
 			gacm_cdev_disconnect(&acm->port);
 		}
@@ -685,7 +700,6 @@ static int acm_set_alt(struct usb_function *f, unsigned intf, unsigned alt)
 	D("-\n");
 	return 0;
 }
-
 static void acm_disable(struct usb_function *f)
 {
 	struct f_acm    *acm = func_to_acm(f);
@@ -698,14 +712,15 @@ static void acm_disable(struct usb_function *f)
 
 	if (acm->notify) {
 		usb_ep_disable(acm->notify);
+#if LINUX_VERSION_CODE <  KERNEL_VERSION(4,4,0)
 		acm->notify->driver_data = NULL;
+#endif
 	}
 
 	bsp_usb_set_enum_stat(acm->data_id, 0);
 
 	D("-\n");
 }
-
 /*-------------------------------------------------------------------------*/
 
 /**
@@ -998,20 +1013,25 @@ acm_bind(struct usb_configuration *c, struct usb_function *f)
 	if (!ep)
 		goto fail;
 	acm->port.in = ep;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,4,0)
 	ep->driver_data = cdev; /* claim */
-
+#endif
 	ep = usb_ep_autoconfig(cdev->gadget, &acm_fs_out_desc);
 	if (!ep)
 		goto fail;
 	acm->port.out = ep;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,4,0)
 	ep->driver_data = cdev; /* claim */
+#endif
 
 	if (acm->support_notify) {
 		ep = usb_ep_autoconfig(cdev->gadget, &acm_fs_notify_desc);
 		if (!ep)
 			goto fail;
 		acm->notify = ep;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,4,0)
 		ep->driver_data = cdev; /* claim */
+#endif
 
 		/* allocate notification */
 		acm->notify_req = gs_acm_cdev_alloc_req(ep,
@@ -1045,8 +1065,13 @@ acm_bind(struct usb_configuration *c, struct usb_function *f)
 	D("to assign desc\n");
 	acm_set_config_vendor(acm);
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,4,0)
+	status = usb_assign_descriptors(f, acm_fs_cur_function, acm_hs_cur_function,
+				acm_ss_cur_function, acm_ss_cur_function);
+#else
 	status = usb_assign_descriptors(f, acm_fs_cur_function, acm_hs_cur_function,
 				acm_ss_cur_function);
+#endif
 	if (status)
 		goto fail;
 
@@ -1062,7 +1087,7 @@ acm_bind(struct usb_configuration *c, struct usb_function *f)
 fail:
 	if (acm->notify_req)
 		gs_acm_cdev_free_req(acm->notify, acm->notify_req);
-
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,4,0)
 	/* we might as well release our claims on endpoints */
 	if (acm->notify)
 		acm->notify->driver_data = NULL;
@@ -1070,7 +1095,7 @@ fail:
 		acm->port.out->driver_data = NULL;
 	if (acm->port.in)
 		acm->port.in->driver_data = NULL;
-
+#endif
 	ERROR(cdev, "%s/%pK: can't bind, err %d\n", f->name, f, status);
 
 	D("-\n");
@@ -1148,6 +1173,8 @@ to_balong_acm_instance(struct config_item *item)
 			func_inst.group);
 }
 
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,4,0)
 CONFIGFS_ATTR_STRUCT(balong_acm_instance);
 static ssize_t f_balong_acm_attr_show(struct config_item *item,
 				 struct configfs_attribute *attr,
@@ -1162,6 +1189,7 @@ static ssize_t f_balong_acm_attr_show(struct config_item *item,
 		ret = balong_acm_instance_attr->show(inst, page);
 	return ret;
 }
+#endif
 
 static void balong_acm_attr_release(struct config_item *item)
 {
@@ -1172,7 +1200,9 @@ static void balong_acm_attr_release(struct config_item *item)
 
 static struct configfs_item_operations balong_acm_item_ops = {
 	.release                = balong_acm_attr_release,
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,4,0)
 	.show_attribute		= f_balong_acm_attr_show,
+#endif
 };
 
 static ssize_t f_balong_acm_port_num_show(struct balong_acm_instance *inst,
@@ -1181,6 +1211,14 @@ static ssize_t f_balong_acm_port_num_show(struct balong_acm_instance *inst,
 	return snprintf(page, PAGE_SIZE, "%u\n", inst->port_num);
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,4,0)
+
+CONFIGFS_ATTR_RO(f_balong_acm_port_, num);
+static struct configfs_attribute *balong_acm_attrs[] = {
+	&f_balong_acm_port_attr_num,
+	NULL,
+};
+#else
 static struct balong_acm_instance_attribute f_balong_acm_port_num =
 	__CONFIGFS_ATTR_RO(port_num, f_balong_acm_port_num_show);
 
@@ -1189,6 +1227,7 @@ static struct configfs_attribute *balong_acm_attrs[] = {
 	&f_balong_acm_port_num.attr,
 	NULL,
 };
+#endif
 
 static struct config_item_type balong_acm_func_type = {
 	.ct_item_ops    = &balong_acm_item_ops,

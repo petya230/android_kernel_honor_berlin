@@ -26,7 +26,7 @@
 #define FAULT_MAX 16
 #define TIMEOUT_REQUEST -1
 #define TIMEOUT_RESPONESE -2
-#define MSEC(time) (time*HZ/1000)
+#define MSEC(time) div_u64(time*HZ,1000)
 
 #define log_err(fmt) "[ScsiError]:" fmt
 #define tool_err(fmt, ...) do {\

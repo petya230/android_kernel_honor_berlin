@@ -19,7 +19,8 @@
 #include <linux/hisi-spmi.h>
 #include <linux/module.h>
 #include <linux/pm_runtime.h>
-
+#define CREATE_TRACE_POINTS
+#include <trace/events/spmi.h>
 #include <linux/of_hisi_spmi.h>
 #include "hisi-spmi-dbgfs.h"
 
@@ -69,7 +70,7 @@ int spmi_add_controller(struct spmi_controller *ctrl)
 	if (!ctrl)
 		return -EINVAL;
 
-	pr_err("adding controller for bus %d (0x%p)\n", ctrl->nr, ctrl);
+	pr_err("adding controller for bus %d (0x%pK)\n", ctrl->nr, ctrl);
 
 	mutex_lock(&board_lock);
 	id = idr_alloc(&ctrl_idr, ctrl, ctrl->nr, ctrl->nr + 1, GFP_KERNEL);
@@ -104,7 +105,6 @@ static int spmi_ctrl_remove_device(struct device *dev, void *data)
 int spmi_del_controller(struct spmi_controller *ctrl)
 {
 	struct spmi_controller *found;
-	int ret;
 
 	if (!ctrl)
 		return -EINVAL;
@@ -122,7 +122,7 @@ int spmi_del_controller(struct spmi_controller *ctrl)
 	mutex_unlock(&board_lock);
 
 #ifdef CONFIG_HISI_SPMI_DEBUG_FS
-	ret = spmi_dfs_del_controller(ctrl);
+	(void)spmi_dfs_del_controller(ctrl);
 #endif
 	mutex_lock(&board_lock);
 	idr_remove(&ctrl_idr, ctrl->nr);
@@ -238,7 +238,7 @@ int spmi_add_device(struct spmi_device *spmidev)
 	}
 
 	/* Set the device name */
-	dev_set_name(dev, "%s-%p", spmidev->name, spmidev);
+	dev_set_name(dev, "%s-%s", spmidev->name, dev->of_node->name);
 
 	/* Device may be bound to an active driver when this returns */
 	rc = device_add(dev);
@@ -246,7 +246,7 @@ int spmi_add_device(struct spmi_device *spmidev)
 	if (rc < 0)
 		dev_err(dev, "Can't add %s, status %d\n", dev_name(dev), rc);
 	else
-		dev_err(dev, "device %s registered\n", dev_name(dev));
+		dev_info(dev, "device %s registered\n", dev_name(dev));
 
 	return rc;
 }
@@ -302,19 +302,27 @@ EXPORT_SYMBOL_GPL(spmi_remove_device);
 static inline int spmi_read_cmd(struct spmi_controller *ctrl,
 				u8 opcode, u8 sid, u16 addr, u8 bc, u8 *buf)
 {
+	int ret;
 	if (!ctrl || !ctrl->read_cmd || ctrl->dev.type != &spmi_ctrl_type)
 		return -EINVAL;
 
-	return ctrl->read_cmd(ctrl, opcode, sid, addr, bc, buf);
+	trace_spmi_read_begin(opcode, sid, addr);
+	ret = ctrl->read_cmd(ctrl, opcode, sid, addr, bc, buf);
+	trace_spmi_read_end(opcode, sid, addr, ret, bc, buf);
+	return ret;
 }
 
 static inline int spmi_write_cmd(struct spmi_controller *ctrl,
 				u8 opcode, u8 sid, u16 addr, u8 bc, u8 *buf)
 {
+	int ret;
 	if (!ctrl || !ctrl->write_cmd || ctrl->dev.type != &spmi_ctrl_type)
 		return -EINVAL;
 
-	return ctrl->write_cmd(ctrl, opcode, sid, addr, bc, buf);
+	trace_spmi_write_begin(opcode, sid, addr, bc, buf);
+	ret =  ctrl->write_cmd(ctrl, opcode, sid, addr, bc, buf);
+	trace_spmi_write_end(opcode, sid, addr, ret);
+	return ret;
 }
 
 /*
@@ -627,13 +635,13 @@ static int spmi_register_controller(struct spmi_controller *ctrl)
 	if (ret)
 		goto exit;
 
-	dev_err(&ctrl->dev, "Bus spmi-%d registered: dev:0x%p\n",
+	dev_err(&ctrl->dev, "Bus spmi-%d registered: dev:0x%pK\n",
 					ctrl->nr, &ctrl->dev);
 
 #ifdef CONFIG_HISI_SPMI_DEBUG_FS
 	ret = spmi_dfs_add_controller(ctrl);
 	if (ret) {
-		dev_err(&ctrl->dev, "Bus spmi-%d registered: dev:0x%p add debug fs controller failed!\n",
+		dev_err(&ctrl->dev, "Bus spmi-%d registered: dev:0x%pK add debug fs controller failed!\n",
 						ctrl->nr, &ctrl->dev);
 		goto exit;
 	}

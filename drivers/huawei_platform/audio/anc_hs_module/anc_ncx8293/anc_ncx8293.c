@@ -7,6 +7,7 @@
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  */
+/*lint -e528 -e529 */
 #include <linux/i2c.h>
 #include <linux/init.h>
 #include <linux/module.h>
@@ -45,7 +46,7 @@
 
 #include <linux/hisi/hisi_adc.h>
 #ifdef CONFIG_HUAWEI_DSM
-#include <dsm/dsm_pub.h>
+#include <dsm_audio/dsm_audio.h>
 #endif
 #include "huawei_platform/audio/anc_ncx8293.h"
 
@@ -54,18 +55,6 @@
 HWLOG_REGIST();
 #ifdef CONFIG_HIFI_DSP_ONE_TRACK
 extern int hifi_send_msg(unsigned int mailcode, void *data, unsigned int length);
-#endif
-#ifdef CONFIG_HUAWEI_DSM
-/* dmd error report definition*/
-static struct dsm_dev dsm_anc_ncx8293 = {
-    .name = "dsm_anc_ncx8293",
-    .device_name = NULL,
-    .ic_name = NULL,
-    .module_name = NULL,
-    .fops = NULL,
-    .buff_size = 1024,
-};
-static struct dsm_client *anc_ncx8293_dclient;
 #endif
 
 enum anc_hs_mode {
@@ -97,6 +86,8 @@ enum anc_ncx8293_irq_type {
 #define NO_BUTTON_PRESS                    (-1)
 
 #define CODEC_GPIO_BASE                    (224)
+#define I2C_REG_FAIL_MAX_TIMES             (10)
+#define I2C_FAIL_REPORT_MAX_TIMES          (20)
 
 /*#define ANC_BTN_MASK (SND_JACK_BTN_0)*/
 #define ANC_BTN_MASK (SND_JACK_BTN_0 | SND_JACK_BTN_1 | SND_JACK_BTN_2)
@@ -141,7 +132,10 @@ struct anc_ncx8293_priv {
     struct mutex charge_lock; /* charge status protect lock */
     struct mutex invert_hs_lock;
     struct wake_lock wake_lock;
+
+    /*lint -save -e* */
     spinlock_t irq_lock;
+    /*lint -restore*/
 
     int registered; /* anc hs regester flag */
     struct anc_hs_dev *anc_dev; /* anc hs dev */
@@ -171,10 +165,13 @@ struct anc_ncx8293_priv {
 };
 
 struct anc_ncx8293_priv *g_anc_ncx8293_priv;
+static unsigned int i2c_reg_fail_times = 0;
+static unsigned int i2c_fail_report_times = I2C_FAIL_REPORT_MAX_TIMES;
 
+/*lint -save -e* */
 static struct reg_default anc_ncx8293_reg[] = {
     { 0x00, 0x17 }, /* Device ID */
-    { 0x01, 0x00 }, /* Device Setup */
+    { 0x01, 0x41 }, /* Device Setup */
     { 0x02, 0x00 }, /* Interrupt */
     { 0x03, 0x00 }, /* MIC Path Select */
     { 0x04, 0x00 }, /* DET Trigger */
@@ -188,20 +185,27 @@ static struct reg_default anc_ncx8293_reg[] = {
     { 0x0C, 0x2e }, /* Threshold 1 */
     { 0x0D, 0x55 }, /* Threshold 2 */
     { 0x0E, 0x89 }, /* Threshold 3 */
-    { 0x0F, 0xd2 }, /* Threshold 4 */
-    { 0x33, 0x00 }, /* ANC Det Threshold */
+    { 0x0F, 0x57 }, /* Threshold 4 */
+    { 0x10, 0x7c }, /* ANC Upper Threshold */
+    { 0x32, 0x11 }, /* ANC Key Debounce Threshold */
 };
+/*lint -restore*/
 
+/*lint -save -e* */
 static bool anc_ncx8293_volatile_register(struct device *dev, unsigned int reg)
 {
     return true;
 }
+/*lint -restore*/
 
+/*lint -save -e* */
 static bool anc_ncx8293_readable_register(struct device *dev, unsigned int reg)
 {
     return true;
 }
+/*lint -restore*/
 
+/*lint -save -e* */
 static inline int anc_ncx8293_get_value(int gpio)
 {
     if (gpio >= CODEC_GPIO_BASE)
@@ -209,6 +213,7 @@ static inline int anc_ncx8293_get_value(int gpio)
     else
         return gpio_get_value(gpio);
 }
+/*lint -restore*/
 
 static inline void anc_ncx8293_gpio_set_value(int gpio, int value)
 {
@@ -218,6 +223,7 @@ static inline void anc_ncx8293_gpio_set_value(int gpio, int value)
         gpio_set_value(gpio, value);
 }
 
+/*lint -save -e* */
 static inline void anc_hs_enable_irq(int irq)
 {
     if (!g_anc_ncx8293_priv->irq_flag) {
@@ -225,7 +231,9 @@ static inline void anc_hs_enable_irq(int irq)
         g_anc_ncx8293_priv->irq_flag = true;
     }
 }
+/*lint -restore*/
 
+/*lint -save -e* */
 static inline void anc_hs_disable_irq(int irq)
 {
     if (g_anc_ncx8293_priv->irq_flag) {
@@ -233,14 +241,33 @@ static inline void anc_hs_disable_irq(int irq)
         g_anc_ncx8293_priv->irq_flag = false;
     }
 }
+/*lint -restore*/
+
+static void anc_dsm_i2c_reg_fail_report(void)
+{
+    i2c_reg_fail_times ++;
+    if ((i2c_reg_fail_times > I2C_REG_FAIL_MAX_TIMES)
+        && (i2c_fail_report_times > 0)) {
+        i2c_reg_fail_times = 0;
+        i2c_fail_report_times --;
+#ifdef CONFIG_HUAWEI_DSM
+	audio_dsm_report_info(AUDIO_ANC_HS, ANC_HS_I2C_ERR, "anc regmap i2c error.\n");
+#endif
+    }
+    return;
+}
 
 static int anc_ncx8293_regmap_read(int reg, int *value)
 {
     int ret = 0;
 
+    /*lint -save -e* */
     ret = regmap_read(g_anc_ncx8293_priv->regmapL, reg, value);
-    if (ret < 0)
+    /*lint -restore*/
+    if (ret < 0) {
+        anc_dsm_i2c_reg_fail_report();
         hwlog_err("anc_ncx8293 regmap read error,%d\n", ret);
+    }
 
     return ret;
 }
@@ -250,8 +277,10 @@ static int anc_ncx8293_regmap_write(int reg, int value)
     int ret = 0;
 
     ret = regmap_write(g_anc_ncx8293_priv->regmapL, reg, value);
-    if (ret < 0)
+    if (ret < 0) {
+        anc_dsm_i2c_reg_fail_report();
         hwlog_err("anc_ncx8293 regmap write error,%d\n", ret);
+    }
 
     return ret;
 }
@@ -261,13 +290,15 @@ static int anc_ncx8293_regmap_update_bits(int reg, int mask, int value)
     int ret = 0;
 
     ret = regmap_update_bits(g_anc_ncx8293_priv->regmapL, reg, mask, value);
-    if (ret < 0)
+    if (ret < 0) {
+        anc_dsm_i2c_reg_fail_report();
         hwlog_err("anc_ncx8293 regmap update bits error,%d\n", ret);
+    }
 
     return ret;
 }
 
-static bool anc_ncx8293_check_headset_pluged_in(void);
+bool anc_ncx8293_check_headset_pluged_in(void);
 
 static int force_clear_irq(void)
 {
@@ -299,11 +330,6 @@ static void anc_ncx8293_unmask_btn_irq(void)
 
     anc_ncx8293_regmap_update_bits(ANC_NCX8293_R001_DEVICE_SETUP,
         ANC_NCX8293_KEY_PRESS_DET_DISABLE_BIT, 0x00);
-
-    anc_ncx8293_regmap_write(ANC_NCX8293_R008_MANUAL_SWITCH_CONTROL1, 0x06);
-    anc_ncx8293_regmap_write(ANC_NCX8293_R009_MANUAL_SWITCH_CONTROL2, 0x0a);
-    anc_ncx8293_regmap_write(ANC_NCX8293_R004_DET_TRIGGER, 0x02);
-    anc_ncx8293_regmap_write(ANC_NCX8293_R033_ANC_DET_THRESHOLD, 0x00);
 }
 
 static void anc_ncx8293_mask_btn_irq(void)
@@ -317,29 +343,58 @@ static void anc_ncx8293_mask_btn_irq(void)
 static void mic_bias_mode(void)
 {
     hwlog_info("anc_ncx8293 go into mic_bias_mode.\n");
-    if (NULL != g_anc_ncx8293_priv)
-        anc_ncx8293_regmap_write(ANC_NCX8293_R008_MANUAL_SWITCH_CONTROL1,
-                                 ANC_NCX8293_MIC_BIAS_MODE_BIT);
+    if (NULL != g_anc_ncx8293_priv) {
+        anc_ncx8293_regmap_write(ANC_NCX8293_R008_MANUAL_SWITCH_CONTROL1, ANC_NCX8293_MIC_BIAS_MODE_BIT);
+        /* disconnect the hs mic & gnd. */
+        anc_ncx8293_regmap_write(ANC_NCX8293_R001_DEVICE_SETUP, ANC_NCX8293_CTRL_OUTPUT_LOW_BIT);
+    }
 }
 
 static void power_mode(void)
 {
     hwlog_info("anc_ncx8293 go into power_mode.\n");
-    if (NULL != g_anc_ncx8293_priv)
-        anc_ncx8293_regmap_write(ANC_NCX8293_R008_MANUAL_SWITCH_CONTROL1,
-                                 ANC_NCX8293_POWER_MODE_BIT);
+    if (NULL != g_anc_ncx8293_priv) {
+        /* close the mic/pwr <--> mic_out path, to prevent high pulse on mbhc pin, it spend 1ms. */
+        anc_ncx8293_regmap_update_bits(ANC_NCX8293_R008_MANUAL_SWITCH_CONTROL1, ANC_NCX8293_MIC_BIAS_MODE_BIT, 0x00);
+        /*lint -save -e* */
+        mdelay(CLOSE_MIC_OUT_PATH_TIME);
+        /*lint -restore*/
+
+        anc_ncx8293_regmap_write(ANC_NCX8293_R008_MANUAL_SWITCH_CONTROL1, ANC_NCX8293_POWER_MODE_BIT);
+        /* disconnect the hs mic & gnd. */
+        anc_ncx8293_regmap_write(ANC_NCX8293_R001_DEVICE_SETUP, ANC_NCX8293_CTRL_OUTPUT_LOW_BIT);
+    }
 }
 
 static void idle_mode(void)
 {
     hwlog_info("anc_ncx8293 go into idle_mode.\n");
     if (NULL != g_anc_ncx8293_priv) {
-        anc_ncx8293_regmap_write(ANC_NCX8293_R001_DEVICE_SETUP, ANC_NCX8293_MANAUAL_SWITCH_ENABLE_BIT);
-        anc_ncx8293_regmap_write(ANC_NCX8293_R008_MANUAL_SWITCH_CONTROL1, ANC_NCX8293_MIC_BIAS_MODE_BIT);
+        /* close the mic/pwr <--> mic_out path,
+         * close the mic/pwr <--> 5VCharge path */
+        anc_ncx8293_regmap_update_bits(ANC_NCX8293_R008_MANUAL_SWITCH_CONTROL1, ANC_NCX8293_MIC_BIAS_MODE_BIT, 0x00);
+        anc_ncx8293_regmap_update_bits(ANC_NCX8293_R008_MANUAL_SWITCH_CONTROL1, ANC_NCX8293_POWER_MODE_BIT, 0x00);
+        /* connect the hs mic & gnd, to prevent pop when plug in. */
+        anc_ncx8293_regmap_write(ANC_NCX8293_R001_DEVICE_SETUP, ANC_NCX8293_CTRL_OUTPUT_HIGH_BIT);
     }
 }
 
-static void anc_ncx8293_refresh_headset_type(int headset_type)
+static void anc_ncx8293_discharge(void)
+{
+    hwlog_info("ncx8293 chip begin discharge.\n");
+    /* when change power_mode to mic_bias_mode,
+     * mic/pwr pin switch to GND, to release the residual charge,
+     * to prevent damage the Codec chip. */
+    anc_ncx8293_regmap_write(ANC_NCX8293_R008_MANUAL_SWITCH_CONTROL1, ANC_NCX8293_GND_SL_SWITCH_BIT);
+    /* when change power_mode to mic_bias_mode,
+     * ANC hs has 30ms to supply power outside.
+     * In this period of time, the hs mic is not work. */
+    /*lint -save -e* */
+    mdelay(ANC_HS_DISCHARGE_TIME);
+    /*lint -restore*/
+}
+
+void anc_ncx8293_refresh_headset_type(int headset_type)
 {
     if (NULL != g_anc_ncx8293_priv) {
         g_anc_ncx8293_priv->headset_type = headset_type;
@@ -353,10 +408,7 @@ static void anc_hs_invert_ctl_work(struct work_struct* work)
     mutex_lock(&g_anc_ncx8293_priv->invert_hs_lock);
 
     if (ANC_HS_REVERT_4POLE == g_anc_ncx8293_priv->headset_type) {
-        anc_ncx8293_regmap_update_bits(ANC_NCX8293_R001_DEVICE_SETUP,
-            ANC_NCX8293_CTRL_OUTPUT_ENABLE_BIT, ANC_NCX8293_CTRL_OUTPUT_ENABLE_BIT);
-        anc_ncx8293_regmap_update_bits(ANC_NCX8293_R001_DEVICE_SETUP,
-            ANC_NCX8293_CTRL_OUTPUT_VALUE_SET_BIT, ANC_NCX8293_CTRL_OUTPUT_VALUE_SET_BIT);
+        anc_ncx8293_regmap_write(ANC_NCX8293_R001_DEVICE_SETUP, ANC_NCX8293_CTRL_OUTPUT_HIGH_BIT);
         hwlog_info("anc_ncx8293: invert headset plugin, connect MIC and GND.");
     }
 
@@ -364,7 +416,7 @@ static void anc_hs_invert_ctl_work(struct work_struct* work)
     wake_unlock(&g_anc_ncx8293_priv->wake_lock);
 }
 
-static void anc_ncx8293_invert_headset_control(int connect)
+void anc_ncx8293_invert_headset_control(int connect)
 {
     switch(connect) {
         case ANC_HS_MIC_GND_DISCONNECT:
@@ -372,10 +424,7 @@ static void anc_ncx8293_invert_headset_control(int connect)
             flush_workqueue(g_anc_ncx8293_priv->anc_hs_invert_ctl_delay_wq);
 
             mutex_lock(&g_anc_ncx8293_priv->invert_hs_lock);
-            anc_ncx8293_regmap_update_bits(ANC_NCX8293_R001_DEVICE_SETUP,
-                ANC_NCX8293_CTRL_OUTPUT_ENABLE_BIT, ANC_NCX8293_CTRL_OUTPUT_ENABLE_BIT);
-            anc_ncx8293_regmap_update_bits(ANC_NCX8293_R001_DEVICE_SETUP,
-                ANC_NCX8293_CTRL_OUTPUT_VALUE_SET_BIT, 0x00);
+            anc_ncx8293_regmap_write(ANC_NCX8293_R001_DEVICE_SETUP, ANC_NCX8293_CTRL_OUTPUT_LOW_BIT);
             mutex_unlock(&g_anc_ncx8293_priv->invert_hs_lock);
 
             hwlog_info("anc_ncx8293: disconnect MIC and GND.\n");
@@ -400,6 +449,7 @@ static void anc_ncx8293_invert_headset_control(int connect)
  * get 3 times adc value with 1ms delay and use average value(delta) of it,
  * charge for it when delta is between anc_hs_limit_min and anc_hs_limit_max
  **/
+/*lint -save -e* */
 static int anc_ncx8293_get_adc_delta(void)
 {
     int ear_pwr_h = 0, ear_pwr_l = 0;
@@ -464,6 +514,7 @@ static int anc_ncx8293_get_adc_delta(void)
 
     return delta;
 }
+/*lint -restore*/
 
 /**
  * anc_hs_get_btn_value - judge which button is pressed
@@ -533,11 +584,15 @@ static void anc_ncx8293_btn_judge(void)
         && (0 == g_anc_ncx8293_priv->button_pressed)) {
         /*button down event*/
         hwlog_info("%s(%u) : button down event !\n", __func__, __LINE__);
+        /*lint -save -e* */
         mdelay(50);
+        /*lint -restore*/
         btn_report = anc_ncx8293_get_btn_value();
         if (NO_BUTTON_PRESS != btn_report) {
             g_anc_ncx8293_priv->button_pressed = 1;
+            /*lint -save -e* */
             fops->btn_report(btn_report, ANC_BTN_MASK);
+            /*lint -restore*/
         } else {
             hwlog_warn("%s: it is not a button press.\n", __func__);
         }
@@ -551,7 +606,9 @@ static void anc_ncx8293_btn_judge(void)
         /* we permit button up event report to userspace,
          * make sure down and up in pair
          */
+        /*lint -save -e* */
         fops->btn_report(btn_report, ANC_BTN_MASK);
+        /*lint -restore*/
     }
 
     mutex_unlock(&g_anc_ncx8293_priv->btn_mutex);
@@ -604,7 +661,9 @@ static int anc_hs_send_hifi_msg(int anc_status)
 static bool anc_ncx8293_need_charge(void)
 {
     int delta = 0;
+    /*lint -save -e* */
     mdelay(30);
+    /*lint -restore*/
     delta = anc_ncx8293_get_adc_delta();
     if ((delta >= g_anc_ncx8293_priv->anc_hs_limit_min) &&
         (delta <= g_anc_ncx8293_priv->anc_hs_limit_max)) {
@@ -721,7 +780,9 @@ static bool anc_ncx8293_charge_judge(void)
     /* waiting for anc chip start up*/
     hwlog_info("%s: delay %d ms to wait anc chip up!\n",
                __func__, g_anc_ncx8293_priv->sleep_time);
+    /*lint -save -e* */
     mdelay(g_anc_ncx8293_priv->sleep_time);
+    /*lint -restore*/
 
     mutex_lock(&g_anc_ncx8293_priv->charge_lock);
 
@@ -745,8 +806,11 @@ static bool anc_ncx8293_charge_judge(void)
         }
         /* stop charge and change status to CHARGE_OFF*/
         anc_ncx8293_mask_btn_irq();
+        anc_ncx8293_discharge();
         mic_bias_mode();
+        /*lint -save -e* */
         udelay(500);
+        /*lint -restore*/
         g_anc_ncx8293_priv->anc_hs_mode = ANC_HS_CHARGE_OFF;
         if (ERROR_RET == anc_hs_send_hifi_msg(ANC_HS_CHARGE_OFF)) {
             hwlog_err("%s(%u) : anc_hs_send_hifi_msg TURN OFF ANC_HS return ERROR !\n", __func__, __LINE__);
@@ -780,8 +844,11 @@ static void update_charge_status(void)
 
         if (ANC_HS_CHARGE_ON == g_anc_ncx8293_priv->anc_hs_mode) {
             anc_ncx8293_mask_btn_irq();
+            anc_ncx8293_discharge();
             mic_bias_mode();
+            /*lint -save -e* */
             udelay(500);
+            /*lint -restore*/
 
             hwlog_info("%s(%u) : stop charging for anc hs !\n",
                 __func__, __LINE__);
@@ -805,7 +872,9 @@ static void update_charge_status(void)
                 if (ANC_HS_CHARGE_OFF == g_anc_ncx8293_priv->anc_hs_mode) {
                     g_anc_ncx8293_priv->anc_hs_mode = ANC_HS_CHARGE_ON;
                     power_mode();
+                    /*lint -save -e* */
                     udelay(500);
+                    /*lint -restore*/
                     anc_ncx8293_unmask_btn_irq();
 
                     hwlog_info("%s(%u) : resume charging for anc hs!\n",
@@ -828,7 +897,7 @@ static void update_charge_status(void)
  * should consider here, now 50ms need at least which is dependent
  * on hardware feature.
  **/
-static void anc_ncx8293_start_charge(void)
+void anc_ncx8293_start_charge(void)
 {
     if ((NULL == g_anc_ncx8293_priv)
         || !g_anc_ncx8293_priv->registered)
@@ -852,7 +921,7 @@ static void anc_ncx8293_start_charge(void)
  * @disable: charge control value, only enable and disable
  *
  **/
-static void anc_ncx8293_force_charge(int disable)
+void anc_ncx8293_force_charge(int disable)
 {
     if ((NULL == g_anc_ncx8293_priv)
         || !g_anc_ncx8293_priv->registered)
@@ -882,7 +951,7 @@ static void anc_ncx8293_force_charge(int disable)
  * (attention): revert 4-pole headset still need
  * 5vboost on to support second recognition
  **/
-static bool anc_ncx8293_charge_detect(int saradc_value, int headset_type)
+bool anc_ncx8293_charge_detect(int saradc_value, int headset_type)
 {
     if ((g_anc_ncx8293_priv == NULL)
         || !g_anc_ncx8293_priv->registered)
@@ -916,7 +985,7 @@ static bool anc_ncx8293_charge_detect(int saradc_value, int headset_type)
  * anc_hs_stop_charge - call this function when headset plug out
  *
  **/
-static void anc_ncx8293_stop_charge(void)
+void anc_ncx8293_stop_charge(void)
 {
     if ((g_anc_ncx8293_priv == NULL)
         || !g_anc_ncx8293_priv->registered)
@@ -948,16 +1017,20 @@ static void anc_ncx8293_stop_charge(void)
  * only support one codec to be registered, and all the callback
  * functions must be realized.
  **/
-static int anc_ncx8293_dev_register(struct anc_hs_dev *dev, void *codec_data)
+int anc_ncx8293_dev_register(struct anc_hs_dev *dev, void *codec_data)
 {
     /* anc_hs driver not be probed, just return */
+    /*lint -save -e* */
     if (NULL == g_anc_ncx8293_priv)
         return -ENODEV;
+    /*lint -restore*/
 
     /* only support one codec to be registered */
     if (g_anc_ncx8293_priv->registered) {
         hwlog_err("one codec has registered, no more permit\n");
+        /*lint -save -e* */
         return -EEXIST;
+        /*lint -restore*/
     }
 
     if (!dev->ops.check_headset_in ||
@@ -966,7 +1039,9 @@ static int anc_ncx8293_dev_register(struct anc_hs_dev *dev, void *codec_data)
         !dev->ops.plug_in_detect ||
         !dev->ops.plug_out_detect) {
         hwlog_err("codec ops funtion must be all registed\n");
+        /*lint -save -e* */
         return -EINVAL;
+        /*lint -restore*/
     }
 
     g_anc_ncx8293_priv->anc_dev = dev;
@@ -979,7 +1054,7 @@ static int anc_ncx8293_dev_register(struct anc_hs_dev *dev, void *codec_data)
     return 0;
 }
 
-static bool check_anc_ncx8293_support(void)
+bool check_anc_ncx8293_support(void)
 {
     if ((NULL == g_anc_ncx8293_priv)
         || !g_anc_ncx8293_priv->registered)
@@ -988,7 +1063,7 @@ static bool check_anc_ncx8293_support(void)
         return true;
 }
 
-static bool anc_ncx8293_plug_enable(void)
+bool anc_ncx8293_plug_enable(void)
 {
     if ((NULL == g_anc_ncx8293_priv)
         || !g_anc_ncx8293_priv->registered)
@@ -997,7 +1072,7 @@ static bool anc_ncx8293_plug_enable(void)
         return true;
 }
 
-static bool anc_ncx8293_check_headset_pluged_in(void)
+bool anc_ncx8293_check_headset_pluged_in(void)
 {
     int value = 0;
     if (NULL == g_anc_ncx8293_priv)
@@ -1124,7 +1199,9 @@ static irqreturn_t anc_ncx8293_irq_handler(int irq, void *data)
     }
 
     if (loop <= 0) {
-        hwlog_err("anc_hs_ncx8293: there is irq unhandled in anc_ncx8293_irq_handler.\n");
+#ifdef CONFIG_HUAWEI_DSM
+	audio_dsm_report_info(AUDIO_ANC_HS, ANC_HS_UNHANDLED_IRQ, "there is irq unhandled in anc_max14744_irq_handler.\n");
+#endif
     }
 
     return IRQ_HANDLED;
@@ -1155,12 +1232,14 @@ static int compute_final_voltage(void)
  * userspeace can get charge status and force control
  * charge status.
  **/
+/*lint -save -e* */
 static long anc_ncx8293_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
     int ret = 0;
     int charge_mode = ANC_HS_CHARGE_OFF;
     int voltage = 0;
     unsigned int __user *p_user = (unsigned int __user *)arg;
+    int resistance_type = 0;
 
     if (!g_anc_ncx8293_priv->registered)
         return -EBUSY;
@@ -1218,7 +1297,9 @@ static long anc_ncx8293_ioctl(struct file *file, unsigned int cmd, unsigned long
             voltage = compute_final_voltage();
             ret = put_user((__u32)voltage, p_user);
             break;
-
+        case IOCTL_ANC_HS_GET_HEADSET_RESISTANCE_CMD:
+            ret = put_user((__u32)resistance_type, p_user);
+            break;
         default:
             hwlog_err("unsupport cmd\n");
             ret = -EINVAL;
@@ -1227,6 +1308,7 @@ static long anc_ncx8293_ioctl(struct file *file, unsigned int cmd, unsigned long
 
     return (long)ret;
 }
+/*lint -restore*/
 
 static ssize_t anc_ncx8293_reg_list_show(struct device *dev,
                                          struct device_attribute *attr,
@@ -1246,29 +1328,6 @@ static ssize_t anc_ncx8293_reg_list_show(struct device *dev,
     return strlen(buf);
 }
 
-static ssize_t anc_ncx8293_reg_single_show(struct device *dev,
-                                           struct device_attribute *attr,
-                                           char *buf)
-{
-    int value = 0;
-    int reg;
-    char val_str[20];
-    char *p_end = buf;
-
-    buf[0] = '\0';
-
-    reg = kstrtol(buf, &p_end, 16);
-    if (reg < 0 || reg > 0x0f) {
-        hwlog_info("reg address not correct!");
-        return 0;
-    }
-    anc_ncx8293_regmap_read(reg, &value);
-    snprintf(val_str, sizeof(val_str), "0x%02x = 0x%02x\n", reg, value);
-    strcat(buf, val_str);
-
-    return strlen(buf);
-}
-
 static ssize_t anc_ncx8293_adc_show(struct device *dev,
                                     struct device_attribute *attr,
                                     char *buf)
@@ -1279,22 +1338,26 @@ static ssize_t anc_ncx8293_adc_show(struct device *dev,
     buf[0] = '\0';
 
     ear_pwr_h = hisi_adc_get_value(g_anc_ncx8293_priv->channel_pwl_h);
+    /*lint -save -e* */
     mdelay(50);
+    /*lint -restore*/
     ear_pwr_l = hisi_adc_get_value(g_anc_ncx8293_priv->channel_pwl_l);
+    /*lint -save -e* */
     mdelay(50);
+    /*lint -restore*/
     snprintf(val_str, sizeof(val_str), "h = %d, l = %d\n", ear_pwr_h, ear_pwr_l);
     strcat(buf, val_str);
 
     return strlen(buf);
 }
 
+/*lint -save -e* */
 static DEVICE_ATTR(reg_list, 0664, anc_ncx8293_reg_list_show, NULL);
-static DEVICE_ATTR(reg_single, 0664, anc_ncx8293_reg_single_show, NULL);
 static DEVICE_ATTR(adc, 0664, anc_ncx8293_adc_show, NULL);
+/*lint -restore*/
 
 static struct attribute *anc_ncx8293_attributes[] = {
     &dev_attr_reg_list.attr,
-    &dev_attr_reg_single.attr,
     &dev_attr_adc.attr,
     NULL
 };
@@ -1303,17 +1366,20 @@ static const struct attribute_group anc_ncx8293_attr_group = {
     .attrs = anc_ncx8293_attributes,
 };
 
+/*lint -save -e* */
 static const struct regmap_config anc_ncx8293_regmap = {
     .reg_bits            = 8,
     .val_bits            = 8,
-    .max_register        = 0xff,
+    .max_register        = ANC_NCX8293_R032_ANC_KEY_DEBOUNCE_THRESHOLD,
     .reg_defaults        = anc_ncx8293_reg,
     .num_reg_defaults    = ARRAY_SIZE(anc_ncx8293_reg),
     .volatile_reg        = anc_ncx8293_volatile_register,
     .readable_reg        = anc_ncx8293_readable_register,
     .cache_type          = REGCACHE_RBTREE,
 };
+/*lint -restore*/
 
+/*lint -save -e* */
 static const struct file_operations anc_ncx8293_fops = {
     .owner            = THIS_MODULE,
     .open             = simple_open,
@@ -1322,14 +1388,18 @@ static const struct file_operations anc_ncx8293_fops = {
     .compat_ioctl     = anc_ncx8293_ioctl,
 #endif
 };
+/*lint -restore*/
 
+/*lint -save -e* */
 static struct miscdevice anc_ncx8293_device = {
     .minor  = MISC_DYNAMIC_MINOR,
     .name   = "anc_hs",
     .fops   = &anc_ncx8293_fops,
 };
+/*lint -restore*/
 
 /* load dts config for board difference */
+/*lint -save -e* */
 static void load_anc_hs_config(struct device_node *node)
 {
     int temp = 0;
@@ -1380,6 +1450,7 @@ static void load_anc_hs_config(struct device_node *node)
     else
         g_anc_ncx8293_priv->anc_hs_btn_volume_down_max_voltage = ANC_HS_VOLUME_DOWN_MAX;
 }
+/*lint -restore*/
 
 struct anc_hs_ops anc_ncx8293_ops = {
     .anc_hs_dev_register = anc_ncx8293_dev_register,
@@ -1395,11 +1466,28 @@ struct anc_hs_ops anc_ncx8293_ops = {
     .anc_hs_refresh_headset_type = anc_ncx8293_refresh_headset_type,
 };
 
-static void anc_ncx8293_ldo_supply(struct anc_ncx8293_priv *di, struct device_node *np)
+/*lint -save -e838*/
+static int work_voltage_supply(struct anc_ncx8293_priv *di, struct device_node *np)
 {
     int ret = 0;
     int val = 0;
+    const char *ldo_supply_used_name = "ldo_supply_used";
+    const char *anc_hs_vdd_name = "anc_hs_vdd";
     const char *cam_ldo_used_name = "cam_ldo_used";
+
+    ret = of_property_read_u32(np, ldo_supply_used_name, &val);
+    if (ret != 0) {
+        hwlog_info("%s: can't get ldo_supply_used from dts, set defaut false value!!!\n", __func__);
+        di->ldo_supply_used = false;
+    } else {
+        if (val) {
+            di->ldo_supply_used = true;
+            hwlog_info("%s: ldo_supply_used is true!\n", __func__);
+        } else {
+            di->ldo_supply_used = false;
+            hwlog_info("%s: ldo_supply_used is false!\n", __func__);
+        }
+    }
 
     ret = of_property_read_u32(np, cam_ldo_used_name, &val);
     if (ret != 0) {
@@ -1415,24 +1503,56 @@ static void anc_ncx8293_ldo_supply(struct anc_ncx8293_priv *di, struct device_no
         }
     }
 
-    if (di->cam_ldo_used) {
+    if (di->ldo_supply_used == true) {
+        di->anc_hs_vdd = devm_regulator_get(di->dev, anc_hs_vdd_name);
+        if (IS_ERR(di->anc_hs_vdd)) {
+            hwlog_err("%s: Couldn't get anc_hs_vdd regulator ip %p\n", __func__, di->anc_hs_vdd);
+            di->anc_hs_vdd = NULL;
+            goto err_out;
+        }
+
+        ret = regulator_set_voltage(di->anc_hs_vdd, 3300000, 3300000);
+        if (ret) {
+            hwlog_err("%s: Couldn't set anc_hs_vdd 3.3 voltage.\n", __func__);
+            goto err_out;
+        }
+
+        ret = regulator_enable(di->anc_hs_vdd);
+        if (ret) {
+            hwlog_err("%s: Couldn't enable anc_hs_vdd ldo.\n", __func__);
+            goto err_out;
+        }
+    } else if (di->cam_ldo_used == true) {
         ret = of_property_read_u32(np, "cam_ldo_num", &di->cam_ldo_num);
         if (ret) {
             di->cam_ldo_num = -EINVAL;
-            hwlog_info("%s failed to get cam_ldo_num from device tree, just go on\n", __func__);
+            hwlog_err("%s failed to get cam_ldo_num from device tree.\n", __func__);
+            goto err_out;
         }
 
         ret = of_property_read_u32(np, "cam_ldo_value", &di->cam_ldo_value);
         if (ret) {
             di->cam_ldo_value = -EINVAL;
-            hwlog_info("%s failed to get cam_ldo_value from device tree, just go on\n", __func__);
+
+            hwlog_err("%s failed to get cam_ldo_value from device tree.\n", __func__);
+            goto err_out;
         }
 
-        if ((di->cam_ldo_num != -EINVAL) && (di->cam_ldo_value != -EINVAL)) {
-            hw_extern_pmic_config(di->cam_ldo_num, di->cam_ldo_value, 1);
+        ret = hw_extern_pmic_config(di->cam_ldo_num, di->cam_ldo_value, 1);
+        if (ret) {
+            hwlog_err("%s camera pmic LDO_%d power on fail.\n", __func__, di->cam_ldo_num+1);
+            goto err_out;
         }
+    } else {
+        hwlog_info("%s: ldo_supply_used and cam_ldo_used are both false!\n", __func__);
     }
+
+    return 0;
+
+err_out:
+    return -1;
 }
+/*lint -save +e838*/
 
 static int create_irq_workqueue(struct i2c_client *client, struct anc_ncx8293_priv *di, struct device_node *np)
 {
@@ -1446,7 +1566,9 @@ static int create_irq_workqueue(struct i2c_client *client, struct anc_ncx8293_pr
         create_singlethread_workqueue("anc_hs_plugin_delay_wq");
     if (!(di->anc_hs_plugin_delay_wq)) {
         hwlog_err("%s : plugin wq create failed\n", __func__);
+        /*lint -save -e* */
         ret = -ENOMEM;
+        /*lint -restore*/
         goto err_out_sysfs;
     }
     INIT_DELAYED_WORK(&di->anc_hs_plugin_delay_work, anc_hs_plugin_work);
@@ -1455,7 +1577,9 @@ static int create_irq_workqueue(struct i2c_client *client, struct anc_ncx8293_pr
         create_singlethread_workqueue("anc_hs_plugout_delay_wq");
     if (!(di->anc_hs_plugout_delay_wq)) {
         hwlog_err("%s : plugout wq create failed\n", __func__);
+        /*lint -save -e* */
         ret = -ENOMEM;
+        /*lint -restore*/
         goto err_plugin_delay_wq;
     }
     INIT_DELAYED_WORK(&di->anc_hs_plugout_delay_work, anc_hs_plugout_work);
@@ -1464,7 +1588,9 @@ static int create_irq_workqueue(struct i2c_client *client, struct anc_ncx8293_pr
         create_singlethread_workqueue("anc_hs_btn_delay_wq");
     if (!(di->anc_hs_btn_delay_wq)) {
         hwlog_err("%s : btn wq create failed\n", __func__);
+        /*lint -save -e* */
         ret = -ENOMEM;
+        /*lint -restore*/
         goto err_plugout_delay_wq;
     }
     INIT_DELAYED_WORK(&di->anc_hs_btn_delay_work, anc_hs_btn_work);
@@ -1561,6 +1687,13 @@ static int chip_init(struct i2c_client *client, struct anc_ncx8293_priv *di, str
         goto err_out_irq;
     }
 
+    /* change the key debounce time from 60ms(default) to 30ms, to ensure the MMT-equipment test pass.
+     * The MMT-equipment test ANC key, from key release to next key press, has 55ms latency time. */
+    ret = anc_ncx8293_regmap_write(ANC_NCX8293_R032_ANC_KEY_DEBOUNCE_THRESHOLD, ANC_NCX8293_30ms_KEY_DEBOUNCE_TIME);
+    if (ret < 0) {
+        hwlog_err("%s: modify the key debounce time failed, the MMT-equipment may test fail.\n", __func__);
+    }
+
     idle_mode();
 
     /* register misc device for userspace */
@@ -1587,28 +1720,24 @@ err_invert_ctl_delay_wq:
         destroy_workqueue(di->anc_hs_invert_ctl_delay_wq);
     }
 
-err_btn_delay_wq:
     if (di->anc_hs_btn_delay_wq) {
         cancel_delayed_work(&di->anc_hs_btn_delay_work);
         flush_workqueue(di->anc_hs_btn_delay_wq);
         destroy_workqueue(di->anc_hs_btn_delay_wq);
     }
 
-err_plugout_delay_wq:
     if (di->anc_hs_plugout_delay_wq) {
         cancel_delayed_work(&di->anc_hs_plugout_delay_work);
         flush_workqueue(di->anc_hs_plugout_delay_wq);
         destroy_workqueue(di->anc_hs_plugout_delay_wq);
     }
 
-err_plugin_delay_wq:
     if (di->anc_hs_plugin_delay_wq) {
         cancel_delayed_work(&di->anc_hs_plugin_delay_work);
         flush_workqueue(di->anc_hs_plugin_delay_wq);
         destroy_workqueue(di->anc_hs_plugin_delay_wq);
     }
 
-err_out_sysfs:
     sysfs_remove_group(&client->dev.kobj, &anc_ncx8293_attr_group);
 
     return ret;
@@ -1622,9 +1751,12 @@ err_out_sysfs:
  *  id:              i2c_device_id
  *  return value:    0-sucess or others-fail
 **********************************************************/
+/*lint -save -e* */
 static int anc_ncx8293_probe(struct i2c_client *client, const struct i2c_device_id *id)
 {
     int ret = -1;
+    int val = 0;
+    const char *chip_powered_on_time = "chip_powered_on_time";
     struct anc_ncx8293_priv *di = NULL;
     struct device_node *np = NULL;
     struct pinctrl *p;
@@ -1642,8 +1774,32 @@ static int anc_ncx8293_probe(struct i2c_client *client, const struct i2c_device_
     np = di->dev->of_node;
     di->client = client;
 
-    anc_ncx8293_ldo_supply(di, np);
+    ret = work_voltage_supply(di, np);
+    if (ret < 0) {
+        goto err_out;
+    }
+
+    ret = of_property_read_u32(np, chip_powered_on_time, &val);
+    if (ret) {
+        hwlog_err("%s: fail to get chip_powered_on_time.\n", __func__);
+        val = CHIP_DEFUALT_POWERED_TIME;
+    }
+    mdelay(val);
+
     i2c_set_clientdata(client, di);
+    di->regmapL = regmap_init_i2c(client, &anc_ncx8293_regmap);
+    if (IS_ERR(di->regmapL)) {
+        ret = PTR_ERR(di->regmapL);
+        hwlog_err("Failed to allocate regmapL: %d\n", ret);
+        goto err_out;
+    }
+
+    ret = anc_ncx8293_regmap_read(ANC_NCX8293_R000_DEVICE_ID, &val);
+    if (ret < 0) {
+        hwlog_err("ncx8293 chip is not exist, stop the chip init.\n");
+        ret = -ENXIO;
+        goto err_out;
+    }
 
     mutex_init(&di->charge_lock);
     mutex_init(&di->btn_mutex);
@@ -1678,13 +1834,6 @@ static int anc_ncx8293_probe(struct i2c_client *client, const struct i2c_device_
     if (ret)
         hwlog_err("could not set pins to default state.\n");
 
-    di->regmapL = regmap_init_i2c(client, &anc_ncx8293_regmap);
-    if (IS_ERR(di->regmapL)) {
-        ret = PTR_ERR(di->regmapL);
-        hwlog_err("Failed to allocate regmapL: %d\n", ret);
-        goto err_out;
-    }
-
     ret = create_irq_workqueue(client, di, np);
     if (ret < 0)
         goto err_out;
@@ -1692,6 +1841,7 @@ static int anc_ncx8293_probe(struct i2c_client *client, const struct i2c_device_
     ret = chip_init(client, di, np);
     if(ret < 0)
         goto err_out;
+
 
 #ifdef CONFIG_HUAWEI_HW_DEV_DCT
     /* detect current device successful, set the flag as present */
@@ -1705,7 +1855,6 @@ err_out:
     if (ret < 0) {
         if (di->regmapL)
             regmap_exit(di->regmapL);
-        kfree(di);
     }
     g_anc_ncx8293_priv = NULL;
     np = NULL;
@@ -1713,6 +1862,7 @@ err_out:
     return ret;
 
 }
+/*lint -restore*/
 
 /**********************************************************
 *  Function:        anc_ncx8293_remove
@@ -1720,6 +1870,7 @@ err_out:
 *  Parameters:      client:i2c_client
 *  return value:    0-sucess or others-fail
 **********************************************************/
+/*lint -save -e* */
 static int anc_ncx8293_remove(struct i2c_client *client)
 {
     struct anc_ncx8293_priv *di = i2c_get_clientdata(client);
@@ -1761,14 +1912,15 @@ static int anc_ncx8293_remove(struct i2c_client *client)
             hwlog_err("%s: disable anc hs ldo failed.\n", __func__);
     }
 
-    kfree(di);
     di = NULL;
     misc_deregister(&anc_ncx8293_device);
     hwlog_info("%s: exit\n", __func__);
 
     return 0;
 }
+/*lint -restore*/
 
+/*lint -save -e* */
 static struct of_device_id anc_ncx8293_of_match[] = {
     {
         .compatible = "huawei,anc_ncx8293",
@@ -1777,13 +1929,19 @@ static struct of_device_id anc_ncx8293_of_match[] = {
     {
     },
 };
+/*lint -restore*/
+
+/*lint -save -e* */
 MODULE_DEVICE_TABLE(of, anc_ncx8293_of_match);
+/*lint -restore*/
 
 static const struct i2c_device_id anc_ncx8293_i2c_id[] = {
     {"anc_ncx8293", 0}, {},
 };
 
+/*lint -save -e* */
 MODULE_DEVICE_TABLE(i2c, anc_ncx8293_i2c_id);
+/*lint -restore*/
 
 static struct i2c_driver anc_ncx8293_driver = {
     .probe                = anc_ncx8293_probe,
@@ -1822,8 +1980,10 @@ static void __exit anc_ncx8293_exit(void)
 {
     i2c_del_driver(&anc_ncx8293_driver);
 }
+/*lint -save -e* */
 module_init(anc_ncx8293_init);
 module_exit(anc_ncx8293_exit);
+/*lint -restore*/
 
 MODULE_DESCRIPTION("anc ncx8293 headset driver");
 MODULE_LICENSE("GPL");

@@ -1372,9 +1372,13 @@ static ssize_t mipi_samsung_S6E3HA3X02_panel_model_show(struct platform_device *
 
 	HISI_FB_DEBUG("fb%d, +.\n", hisifd->index);
 
-	ret = snprintf(buf, PAGE_SIZE, "samsung_S6E3HA3X02 6.62' CMD TFT\n");
+	if(runmode_is_factory()) {
+		ret = snprintf(buf, PAGE_SIZE, "samsung_S6E3HA3X02 6.62' CMD TFT\n");
+	} else {
+		ret = snprintf(buf, PAGE_SIZE, "6.62' CMD TFT\n");
+	}
 
-	HISI_FB_DEBUG("fb%d, -.\n", hisifd->index);
+		HISI_FB_DEBUG("fb%d, -.\n", hisifd->index);
 
 	return ret;
 }

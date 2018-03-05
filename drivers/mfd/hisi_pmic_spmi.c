@@ -49,15 +49,11 @@
 #define HISI_BITS			8
 #define PMIC_FPGA_FLAG          1
 
-#define DEAD_DATA		(0xdead)
-
-static unsigned int g_pmic_uv_mntn;
-static struct bit_info g_pmic_uv_mntn_resered = {DEAD_DATA, DEAD_DATA};
-static struct bit_info g_pmic_uv_mntn_irq = {DEAD_DATA, DEAD_DATA};
-
+static struct bit_info g_pmic_vbus = {0};
 #ifndef BIT
 #define BIT(x)		(0x1U << (x))
 #endif
+
 static struct hisi_pmic *g_pmic;
 
 static struct of_device_id of_hisi_pmic_match_tbl[] = {
@@ -145,11 +141,13 @@ unsigned int hisi_pmic_reg_read(int addr)
 {
 	return (unsigned int)hisi_pmic_read(g_pmic, addr);
 }
+EXPORT_SYMBOL(hisi_pmic_reg_read);
 
 void hisi_pmic_reg_write(int addr, int val)
 {
 	hisi_pmic_write(g_pmic, addr, val);
 }
+EXPORT_SYMBOL(hisi_pmic_reg_write);
 
 int hisi_pmic_array_read(int addr, char *buff, unsigned int len)
 {
@@ -188,33 +186,6 @@ int hisi_pmic_array_write(int addr, char *buff, unsigned int len)
 	return 0;
 }
 
-unsigned int get_uv_mntn_status(void)
-{
-	return g_pmic_uv_mntn;
-}
-
-void clear_uv_mntn_resered_reg_bit(void)
-{
-	unsigned int reg_val = 0;
-	if (DEAD_DATA == g_pmic_uv_mntn_resered.addr)
-		return ;
-
-	reg_val = hisi_pmic_reg_read(g_pmic_uv_mntn_resered.addr);
-	reg_val &= (~BIT(g_pmic_uv_mntn_resered.bit));
-	hisi_pmic_reg_write(g_pmic_uv_mntn_resered.addr, reg_val);
-}
-
-void set_uv_mntn_resered_reg_bit(void)
-{
-	unsigned int reg_val = 0;
-	if (DEAD_DATA == g_pmic_uv_mntn_resered.addr)
-		return ;
-
-	reg_val = hisi_pmic_reg_read(g_pmic_uv_mntn_resered.addr);
-	reg_val |= BIT(g_pmic_uv_mntn_resered.bit);
-	hisi_pmic_reg_write(g_pmic_uv_mntn_resered.addr, reg_val);
-}
-
 static irqreturn_t hisi_irq_handler(int irq, void *data)
 {
 	struct hisi_pmic *pmic = (struct hisi_pmic *)data;
@@ -226,14 +197,6 @@ static irqreturn_t hisi_irq_handler(int irq, void *data)
 		pending &= HISI_MASK_FIELD;
 		if (pending != 0) {
 			pr_info("pending[%d]=0x%lx\n\r", i, pending);
-		}
-
-		if (g_pmic_uv_mntn) {
-			if ((g_pmic_uv_mntn_irq.addr != DEAD_DATA)
-				&& (g_pmic_uv_mntn_irq.addr == (i + pmic->irq_addr.start_addr))
-				&& (pending & BIT(g_pmic_uv_mntn_irq.bit))) {
-				set_uv_mntn_resered_reg_bit();
-			}
 		}
 
 		hisi_pmic_reg_write((i + pmic->irq_addr.start_addr), pending);
@@ -318,9 +281,10 @@ static struct irq_domain_ops hisi_domain_ops = {
 	.xlate	= irq_domain_xlate_twocell,
 };
 
+/*lint -e570 -e64*/
 static int get_pmic_device_tree_data(struct device_node *np, struct hisi_pmic *pmic)
 {
-	u32 ret = 0;
+	int ret = 0;
 
 	/*get pmic irq num*/
 	ret = of_property_read_u32_array(np, "hisilicon,hisi-pmic-irq-num",
@@ -358,8 +322,43 @@ static int get_pmic_device_tree_data(struct device_node *np, struct hisi_pmic *p
 		return ret;
 	}
 
+	ret = of_property_read_u32_array(np, "hisilicon,hisi-pmic-vbus",
+						(u32 *)&g_pmic_vbus, 2);
+	if (ret) {
+		pr_err("no hisilicon,hisi-pmic-vbus property\n");
+		ret = -ENODEV;
+		return ret;
+	}
 	return ret;
+}/*lint -restore*/
+
+int hisi_get_pmic_irq_byname(unsigned int pmic_irq_list)
+{
+	if ( NULL == g_pmic ) {
+		pr_err("[%s]g_pmic is NULL\n", __func__);
+		return -1;
+	}
+
+	if (pmic_irq_list > (unsigned int)g_pmic->irqnum) {
+		pr_err("[%s]input pmic irq number is error.\n", __func__);
+		return -1;
+	}
+	pr_info("%s:g_pmic->irqs[%d]=%d\n", __func__, pmic_irq_list, g_pmic->irqs[pmic_irq_list]);
+	return (int)g_pmic->irqs[pmic_irq_list];
 }
+EXPORT_SYMBOL(hisi_get_pmic_irq_byname);
+
+int hisi_pmic_get_vbus_status(void)
+{
+	if (0 == g_pmic_vbus.addr)
+		return -1;
+
+	if (hisi_pmic_reg_read(g_pmic_vbus.addr) & BIT(g_pmic_vbus.bit))
+		return 1;
+
+	return 0;
+}
+EXPORT_SYMBOL(hisi_pmic_get_vbus_status);
 
 static int hisi_pmic_probe(struct spmi_device *pdev)
 {
@@ -457,7 +456,6 @@ static int hisi_pmic_probe(struct spmi_device *pdev)
 	}
 
 after_irq_register:
-	/* populate sub nodes */
 	return 0;
 
 read_u32_array:
@@ -467,6 +465,7 @@ irq_create_mapping:
 irq_domain:
 irq_malloc:
 	gpio_free(pmic->gpio);
+	g_pmic = NULL;
 	return ret;
 }
 

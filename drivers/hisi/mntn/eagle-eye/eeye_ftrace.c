@@ -79,7 +79,7 @@ static unsigned long g_ftrace_buffer_size_tbl[HK_FTRACE_BUF_MAX] = {
 static const char g_ftrace_pattern[] =
 	"ftrace::tsk,pid,cpu,flg,p,ktime,ip,r_ip";
 
-static DEFINE_SEMAPHORE(save_fbin_sem);
+static DEFINE_SEMAPHORE(save_fbin_sem);/*lint !e651*/
 
 /*标记对应cpu的percpu buffer是否满，针对非循环buffer*/
 static DECLARE_BITMAP(is_percpu_buffer_full, NR_CPUS) __read_mostly;
@@ -260,7 +260,7 @@ static int ftrace_buffer_head_init(struct ftrace_buffer_head *buffer_info,
 	finfo = buffer_info;
 	INIT_LIST_HEAD(&finfo->list);
 	finfo->idx = idx;
-	finfo->reason = -1;
+	finfo->reason = (u32)-1;
 	finfo->is_inuse = false;
 	finfo->is_percpu = is_percpu;
 	finfo->is_loop = is_loop;
@@ -389,7 +389,7 @@ Author:		j00207786
 static int is_ftrace_buffer_full(struct ftrace_buffer_head *finfo, int cpu)
 {
 	if (IS_ERR_OR_NULL(finfo) || cpu < 0
-		|| cpu >= num_possible_cpus()
+		|| (unsigned int)cpu >= num_possible_cpus()
 	    || !finfo->buffer_len)
 		return -1;
 
@@ -495,21 +495,22 @@ static void ftrace_entry_update(struct function_trace_info *entry,
 	entry->parent_ip = parent_ip;
 
 	if (!entry->pid) {
-		strcpy(entry->comm, "<idle>");
+		/* cppcheck-suppress * */
+		strncpy(entry->comm, "<idle>", TASK_COMM_LEN - 1);
 		return;
 	}
 
 	if (WARN_ON_ONCE(entry->pid < 0)) {
-		strcpy(entry->comm, "<XXX>");
+		strncpy(entry->comm, "<XXX>", TASK_COMM_LEN - 1);
 		return;
 	}
 
 	if (entry->pid > PID_MAX_DEFAULT) {
-		strcpy(entry->comm, "<...>");
+		strncpy(entry->comm, "<...>", TASK_COMM_LEN - 1);
 		return;
 	}
 
-	strncpy(entry->comm, tsk->comm, TASK_COMM_LEN - 1);
+	strncpy(entry->comm, tsk->comm, TASK_COMM_LEN - 1);/*lint !e613*/
 	entry->comm[TASK_COMM_LEN - 1] = '\0';
 }
 
@@ -1136,7 +1137,7 @@ char *eeye_get_timestamp(void)
 	memset(&tv, 0, sizeof(struct timeval));
 	memset(&tm, 0, sizeof(struct rtc_time));
 	do_gettimeofday(&tv);
-	tv.tv_sec -= sys_tz.tz_minuteswest * 60;
+	tv.tv_sec -= (long)sys_tz.tz_minuteswest * 60;/*lint !e647*/
 	rtc_time_to_tm(tv.tv_sec, &tm);
 
 	snprintf(databuf, DATE_MAXLEN + 1, "%04d%02d%02d%02d%02d%02d",
@@ -1181,7 +1182,7 @@ int eeye_savebuf2fs(char *logpath, char *filename,
 		goto fail;
 	}
 	vfs_llseek(fp, 0L, SEEK_END);
-	ret = vfs_write(fp, buf, len, &(fp->f_pos));
+	ret = vfs_write(fp, buf, len, &(fp->f_pos));/*lint !e613 */
 	if (ret != len) {
 		pr_err("%s():write file %s exception with ret %d.\n",
 		       __func__, path, ret);
@@ -1190,7 +1191,7 @@ int eeye_savebuf2fs(char *logpath, char *filename,
 
 	vfs_fsync(fp, 0);
 write_fail:
-	filp_close(fp, NULL);
+	filp_close(fp, NULL);/*lint !e668 */
 
 	/*根据权限要求，目录及子目录群组调整为root-system */
 	ret = (int)sys_chown((const char __user *)path, ROOT_UID, SYSTEM_GID);
@@ -1335,7 +1336,7 @@ static int get_ksyms_num(void *data, const char *namebuf,
 			 struct module *module_info, unsigned long addr)
 {
 	if (addr >= (unsigned long)_stext && addr <= (unsigned long)_etext) {
-		if (strlen(namebuf) > max_ksym_len)
+		if (strlen(namebuf) > (unsigned int)max_ksym_len)
 			max_ksym_len = strlen(namebuf);
 
 		(*(unsigned long *)data)++;
@@ -1355,8 +1356,8 @@ int save_kallsyms(void)
 	struct ksym_info *ksyms = NULL;
 	struct kallsyms_info *kinfo = NULL;
 	char *buf = NULL, *ptr;
-	int ret, i;
-	unsigned long ksyms_num = 0;
+	int ret;
+	unsigned long i, ksyms_num = 0;
 	int fd;
 	char path[PATH_MAXLEN];
 
@@ -1621,7 +1622,7 @@ static int register_ftrace_to_mntn_dump(void)
 
 	g_ftrace_mdump_head = fhead;
 	fhead->magic = FTRACE_MDUMP_MAGIC;
-	fhead->paddr = __pa(g_ftrace_buffer_addr);
+	fhead->paddr = __pa(g_ftrace_buffer_addr);/*lint !e648*/
 	fhead->size = g_ftrace_buffer_size;
 
 	pr_err("%s, success!\n", __func__);

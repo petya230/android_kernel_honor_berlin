@@ -57,6 +57,9 @@
 #define TMC_FFCR		0x304
 #define TMC_PSCR		0x308
 
+#define MASK_L32 (0x00000000ffffffff)
+#define MASK_H32 (0xffffffff00000000)
+
 /* register description */
 /* TMC_CTL - 0x020 */
 #define TMC_CTL_CAPT_EN		BIT(0)
@@ -257,7 +260,10 @@ static void tmc_etb_enable_hw(struct tmc_drvdata *drvdata)
 static void tmc_etr_enable_hw(struct tmc_drvdata *drvdata)
 {
 	u32 axictl;
-	u32 rwp;
+	u32 rwp, lpaddr, hpaddr;
+
+	lpaddr = (u32)(drvdata->paddr & MASK_L32);
+	hpaddr = (u32)((drvdata->paddr & MASK_H32) >> 32);
 	/* Zero out the memory to help with debug */
 	memset(drvdata->vaddr, 0, drvdata->size);
 
@@ -276,8 +282,8 @@ static void tmc_etr_enable_hw(struct tmc_drvdata *drvdata)
 	    TMC_AXICTL_PROT_CTL_B1;
 	writel_relaxed(axictl, drvdata->base + TMC_AXICTL);
 
-	writel_relaxed(drvdata->paddr, drvdata->base + TMC_DBALO);
-	writel_relaxed(0x0, drvdata->base + TMC_DBAHI);
+	writel_relaxed(lpaddr, drvdata->base + TMC_DBALO);
+	writel_relaxed(hpaddr, drvdata->base + TMC_DBAHI);
 	writel_relaxed(TMC_FFCR_EN_FMT | TMC_FFCR_EN_TI |
 		       TMC_FFCR_FON_FLIN | TMC_FFCR_FON_TRIG_EVT |
 		       TMC_FFCR_TRIGON_TRIGIN, drvdata->base + TMC_FFCR);
@@ -370,7 +376,7 @@ static void tmc_etb_dump_hw(struct tmc_drvdata *drvdata)
 	u32 read_data;
 	int i;
 
-	memwidth = BMVAL(readl_relaxed(drvdata->base + CORESIGHT_DEVID), 8, 10);
+	memwidth = (enum tmc_mem_intf_width)BMVAL(readl_relaxed(drvdata->base + CORESIGHT_DEVID), 8, 10);/* lint !e648 */
 	if (memwidth == TMC_MEM_INTF_WIDTH_32BITS)
 		memwords = 1;
 	else if (memwidth == TMC_MEM_INTF_WIDTH_64BITS)
@@ -431,20 +437,20 @@ static void tmc_etb_disable_hw(struct tmc_drvdata *drvdata)
 
 static void tmc_etr_dump_hw(struct tmc_drvdata *drvdata)
 {
-	u32 rwp, val;
+	u32 rwp, val, lpaddr;
 
 	rwp = readl_relaxed(drvdata->base + TMC_RWP);
 	val = readl_relaxed(drvdata->base + TMC_STS);
-
+	lpaddr = readl_relaxed(drvdata->base + TMC_DBALO);
 	/* How much memory do we still have */
 	if (val & BIT(0))
-		drvdata->buf = drvdata->vaddr + rwp - drvdata->paddr;
+		drvdata->buf = drvdata->vaddr + rwp - lpaddr;
 	else
 		drvdata->buf = drvdata->vaddr;
 	info_print("etr: rwp=0x%x, offset=0x%x,val=0x%x\n", rwp,
-		   (u32) (rwp - drvdata->paddr), val);
+		   (u32) (rwp - lpaddr), val);
 	drvdata->rwp = rwp;
-	drvdata->wt_off = rwp - drvdata->paddr;
+	drvdata->wt_off = rwp - lpaddr;
 	drvdata->rd_off = drvdata->wt_off;
 	drvdata->buf_valid = true;
 	drvdata->ts_nsec = hisi_getcurtime();
@@ -470,7 +476,7 @@ static void tmc_etf_dump_hw(struct tmc_drvdata *drvdata)
 	u32 read_len = 0;
 	int i;
 
-	memwidth = BMVAL(readl_relaxed(drvdata->base + CORESIGHT_DEVID), 8, 10);
+	memwidth = (enum tmc_mem_intf_width)BMVAL(readl_relaxed(drvdata->base + CORESIGHT_DEVID), 8, 10);/* lint !e648 */
 	if (memwidth == TMC_MEM_INTF_WIDTH_32BITS) {
 		memwords = 1;
 	} else if (memwidth == TMC_MEM_INTF_WIDTH_64BITS) {
@@ -764,6 +770,7 @@ static ssize_t status_show(struct device *dev,
 	spin_unlock_irqrestore(&drvdata->spinlock, flags);
 	pm_runtime_put(drvdata->dev);
 
+	/* cppcheck-suppress * */
 	return sprintf(buf,
 		       "Depth:\t\t0x%x\n"
 		       "Status:\t\t0x%x\n"
@@ -777,9 +784,8 @@ static ssize_t status_show(struct device *dev,
 		       "PSRC:\t\t0x%x\n"
 		       "DEVID:\t\t0x%x\n",
 		       tmc_rsz, tmc_sts, tmc_rrp, tmc_rwp, tmc_trg,
-		       tmc_ctl, tmc_ffsr, tmc_ffcr, tmc_mode, tmc_pscr, devid);
+		       tmc_ctl, tmc_ffsr, tmc_ffcr, tmc_mode, tmc_pscr, devid);/* lint !e421*/
 
-	return -EINVAL;
 }
 
 static DEVICE_ATTR_RO(status);
@@ -880,7 +886,7 @@ static int tmc_probe(struct amba_device *adev, const struct amba_id *id)
 	/* Validity for the resource is already checked by the AMBA core */
 	base = devm_ioremap_resource(dev, res);
 	if (IS_ERR(base))
-		return PTR_ERR(base);
+		return PTR_ERR(base);/* lint !e429 */
 
 	drvdata->base = base;
 
@@ -890,7 +896,7 @@ static int tmc_probe(struct amba_device *adev, const struct amba_id *id)
 		ret = clk_prepare_enable(drvdata->atclk);
 		if (ret) {
 			dev_err(dev, "enable atclk fail \n");
-			return PTR_ERR(drvdata->atclk);
+			return PTR_ERR(drvdata->atclk);/* lint !e429 */
 		}
 	} else {
 		dev_err(dev, "get atclk fail \n");
@@ -912,7 +918,7 @@ static int tmc_probe(struct amba_device *adev, const struct amba_id *id)
 
 	cpuidle_pause();
 	devid = readl_relaxed(drvdata->base + CORESIGHT_DEVID);
-	drvdata->config_type = BMVAL(devid, 6, 7);
+	drvdata->config_type = (enum tmc_config_type)BMVAL(devid, 6, 7);/* lint !e648 */
 	dev_err(dev, "devid =%d\n", drvdata->config_type);
 
 	if (drvdata->config_type == TMC_CONFIG_TYPE_ETR) {
@@ -1012,7 +1018,7 @@ static int tmc_probe(struct amba_device *adev, const struct amba_id *id)
 	if (!IS_ERR_OR_NULL(drvdata->atclk)) {
 		clk_disable_unprepare(drvdata->atclk);
 	}
-	return 0;
+	return 0;/* lint !e429 !e593*/
 
 err_misc_register:
 	coresight_unregister(drvdata->csdev);
@@ -1030,7 +1036,7 @@ err_next:
 		clk_disable_unprepare(drvdata->atclk);
 	}
 	devm_kfree(dev, drvdata);
-	return ret;
+	return ret;/* lint !e429 */
 }
 
 static int tmc_remove(struct amba_device *adev)
@@ -1250,7 +1256,7 @@ int etbetf_restore(void *drv)
 
 	struct tmc_drvdata *drvdata;
 	u32 val;
-	u32 ret = 0;
+	int ret = 0;
 
 	drvdata = (struct tmc_drvdata *)drv;
 	if (!drvdata) {

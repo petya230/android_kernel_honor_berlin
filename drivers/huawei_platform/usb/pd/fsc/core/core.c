@@ -15,6 +15,7 @@ extern FSC_BOOL         PolicyHasContract;
 extern doDataObject_t   USBPDContract;
 extern SourceOrSink     sourceOrSink;
 extern USBTypeCCurrent  SinkCurrent;
+extern FSC_U8           loopCounter;
 extern TIMER CCDebounceTimer;
 extern TIMER PDDebounceTimer;
 extern TIMER StateTimer;
@@ -303,4 +304,8 @@ void core_set_expire(TIMER2 timer)
 		default:
 			break;
 	}
+}
+void core_clear_loop_counter(void)
+{
+   loopCounter = 0;
 }

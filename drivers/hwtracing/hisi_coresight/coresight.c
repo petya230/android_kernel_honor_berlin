@@ -269,6 +269,7 @@ static int coresight_build_paths(struct coresight_device *csdev,
 	} else {
 		for (i = 0; i < csdev->nr_outport; i++) {
 			conn = &csdev->conns[i];
+			/* cppcheck-suppress * */
 			if (coresight_build_paths(conn->child_dev,
 						  path, enable) == 0)
 				ret = 0;
@@ -473,7 +474,7 @@ static int coresight_orphan_match(struct device *dev, void *data)
 		/* We have found at least one orphan connection */
 		if (conn->child_dev == NULL) {
 			/* Does it match this newly added device? */
-			if (!strcmp(dev_name(&csdev->dev), conn->child_name)) {
+			if (!strcmp(dev_name(&csdev->dev), conn->child_name)) {/* lint !e421 */
 				conn->child_dev = csdev;
 			} else {
 				/* This component still has an orphan */
@@ -509,7 +510,7 @@ static int coresight_name_match(struct device *dev, void *data)
 	to_match = data;
 	i_csdev = to_coresight_device(dev);
 
-	if (!strcmp(to_match, dev_name(&i_csdev->dev)))
+	if (!strcmp(to_match, dev_name(&i_csdev->dev)))/* lint !e421 */
 		return 1;
 
 	return 0;
@@ -613,7 +614,7 @@ struct coresight_device *coresight_register(struct coresight_desc *desc)
 			nr_refcnts = desc->pdata->nr_outport;
 	}
 
-	refcnts = kcalloc(nr_refcnts, sizeof(*refcnts), GFP_KERNEL);
+	refcnts = kcalloc(nr_refcnts, sizeof(*refcnts), GFP_KERNEL);/* lint !e433 */
 	if (!refcnts) {
 		ret = -ENOMEM;
 		goto err_kzalloc_refcnts;
@@ -726,7 +727,7 @@ void coresight_refresh_path(struct coresight_device *csdev, int enable)
 			dev_err(&csdev->dev, "releasing path(s) failed\n");
 	}
 out:
-	mutex_unlock(&coresight_mutex);
+	mutex_unlock(&coresight_mutex);/* lint !e455 */
 }
 
 EXPORT_SYMBOL_GPL(coresight_refresh_path);

@@ -24,7 +24,7 @@
 #include <linux/kallsyms.h>
 #include <asm/smp_plat.h>
 #include <linux/sched.h>
-
+#include <linux/version.h>
 /*
  * Each cpu's sp register should be in a separeted cache line,
  */
@@ -71,8 +71,11 @@ void mntn_show_cpustack(int cpu)
 	for (i = 0; i < MAX_FUNC_CALL; i++) {
 		unsigned long where = frame.pc;
 		int ret;
-
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4,4,0))
 		ret = unwind_frame(&frame);
+#else
+		ret = unwind_frame(current, &frame);
+#endif
 		if (ret < 0)
 			break;
 		print_ip_sym(where);

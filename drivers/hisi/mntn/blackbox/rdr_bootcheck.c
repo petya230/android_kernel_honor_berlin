@@ -37,7 +37,7 @@ return
 */
 static int rdr_check_exceptionboot(struct bootcheck *info)
 {
-	u32 reboot_type;
+	u32 reboot_type;/*lint !e578 */
 	struct rdr_base_info_s *base;
 	struct rdr_struct_s *tmpbb;
 
@@ -103,6 +103,7 @@ int rdr_bootcheck_thread_body(void *arg)
 {
 	int cur_reboot_times;
 	int ret;
+	u64 result;
 	char path[PATH_MAXLEN];
 	struct bootcheck info;
 	struct rdr_syserr_param_s p;
@@ -163,17 +164,17 @@ int rdr_bootcheck_thread_body(void *arg)
 			msleep(1000);
 			continue;
 		}
-		ret = rdr_notify_onemodule_dump(info.modid, info.mask,
+		result = rdr_notify_onemodule_dump(info.modid, info.mask,
 						info.type, info.core, path);
-		BB_PRINT_ERR("info.mask is [%llx], ret = [%x]\n", info.mask,
-			     ret);
-		if (ret) {
-			info.mask &= !ret;
+		BB_PRINT_ERR("info.mask is [%llx], result = [0x%llx]\n", info.mask,
+			     result);
+		if (result) {
+			info.mask &= (~result);
 		} else {
 			break;
 		}
 		BB_PRINT_ERR("rdr: notify [%s] core dump data done.\n",
-			     rdr_get_exception_core(ret));
+			     rdr_get_exception_core(result));
 	}
 	if (check_himntn(HIMNTN_GOBAL_RESETLOG)) {
 		rdr_save_last_baseinfo(path);

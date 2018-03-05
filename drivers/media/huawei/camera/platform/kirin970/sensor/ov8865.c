@@ -42,56 +42,7 @@ static int ov8865_config(hwsensor_intf_t* si, void  *argp);
 
 static bool s_ov8865_power_on = false;
 
-/* ov8865 MHA/LON project */
-static struct sensor_power_setting ov8865_ml_power_setting[] = {
-    //SENSOR IO
-    {
-        .seq_type = SENSOR_PMIC,
-        .seq_val  = VOUT_LDO_1,
-        .config_val = LDO_VOLTAGE_1P8V,
-        .sensor_index = SENSOR_INDEX_INVALID,
-        .delay = 0,
-    },
-
-    //MCAM1 AVDD 2.8V
-    {
-        .seq_type = SENSOR_AVDD,
-        .data = (void*)"front-sensor-avdd",
-        .config_val = LDO_VOLTAGE_V2P8V,
-        .sensor_index = SENSOR_INDEX_INVALID,
-        .delay = 0,
-    },
-
-    //MCAM1 DVDD 1.2V
-    {
-        .seq_type = SENSOR_DVDD,
-        .config_val = LDO_VOLTAGE_V1P25V,
-        .sensor_index = SENSOR_INDEX_INVALID,
-        .delay = 0,
-    },
-
-    //VCM [2.85v]
-    {
-        .seq_type = SENSOR_VCM_AVDD,
-        .config_val = LDO_VOLTAGE_V2P85V,
-        .sensor_index = SENSOR_INDEX_INVALID,
-        .delay = 0,
-    },
-
-    {
-        .seq_type = SENSOR_MCLK,
-        .sensor_index = SENSOR_INDEX_INVALID,
-        .delay = 1,
-    },
-    {
-        .seq_type = SENSOR_RST,
-        .config_val = SENSOR_GPIO_LOW,
-        .sensor_index = SENSOR_INDEX_INVALID,
-        .delay = 1,
-    },
-};
-
-// UDP power up seq
+// ES UDP power up seq
 static struct sensor_power_setting ov8865_power_setting[] = {
     //disable main camera reset
     {
@@ -100,67 +51,41 @@ static struct sensor_power_setting ov8865_power_setting[] = {
         .sensor_index = SENSOR_INDEX_INVALID,
         .delay = 0,
     },
-
-    //enable gpio51 output iovdd 1.8v
+    //disable sub camera reset
     {
-        .seq_type = SENSOR_LDO_EN,
+        .seq_type = SENSOR_SUSPEND2,
         .config_val = SENSOR_GPIO_LOW,
         .sensor_index = SENSOR_INDEX_INVALID,
         .delay = 0,
     },
-
-    //MCAM1 OIS LDO25 2.85V
+    //MCAM IOVDD 1.80V
     {
-        .seq_type = SENSOR_VCM_AVDD,
-        .data = (void*)"cameravcm-vcc",
-        .config_val = LDO_VOLTAGE_V2P85V,
+        .seq_type = SENSOR_IOVDD,
+        .config_val = LDO_VOLTAGE_1P8V,
         .sensor_index = SENSOR_INDEX_INVALID,
-        .delay = 0,
+        .delay = 1,
     },
-
-    //MCAM AVDD LDO19 2.8V
+    //MCAM1 AVDD 2.8V
     {
-        .seq_type = SENSOR_AVDD2,
-        .data = (void*)"main-sensor-avdd",
+        .seq_type = SENSOR_AVDD,
         .config_val = LDO_VOLTAGE_V2P8V,
         .sensor_index = SENSOR_INDEX_INVALID,
         .delay = 0,
     },
-
-    //MCAM1 DVDD LDO20 1.2V
-    {
-        .seq_type = SENSOR_DVDD2,
-        .data = (void*)"main-sensor-dvdd",
-        .config_val = LDO_VOLTAGE_1P2V,
-        .sensor_index = SENSOR_INDEX_INVALID,
-        .delay = 0,
-    },
-
-    //enable gpio22 output vcmvdd 2.85v
-    {
-        .seq_type = SENSOR_VCM_PWDN,
-        .config_val = SENSOR_GPIO_LOW,
-        .sensor_index = SENSOR_INDEX_INVALID,
-        .delay = 0,
-    },
-
-    //SCAM AVDD LDO13 2.85V
-    {
-        .seq_type = SENSOR_AVDD,
-        .data = (void*)"slave-sensor-avdd",
-        .config_val = LDO_VOLTAGE_V2P85V,
-        .sensor_index = SENSOR_INDEX_INVALID,
-        .delay = 0,
-    },
-
-    //SCAM DVDD LDO32 1.2V
+    //MCAM1 DVDD 1.2V
     {
         .seq_type = SENSOR_DVDD,
         .config_val = LDO_VOLTAGE_1P2V,
         .sensor_index = SENSOR_INDEX_INVALID,
-        .delay = 1,
+        .delay = 0,
     },
-
+    //VCM [2.60v]
+    {
+        .seq_type = SENSOR_VCM_AVDD,
+        .config_val = LDO_VOLTAGE_V2P8V,
+        .sensor_index = SENSOR_INDEX_INVALID,
+        .delay = 0,
+    },
     {
         .seq_type = SENSOR_MCLK,
         .sensor_index = SENSOR_INDEX_INVALID,
@@ -221,12 +146,52 @@ static struct sensor_power_setting ov8865_fpga_power_setting[] = {
         .delay = 1,
     },
 };
-static sensor_t s_ov8865_ml =
-{
-    .intf = { .vtbl = &s_ov8865_vtbl, },
-    .power_setting_array = {
-		.size = ARRAY_SIZE(ov8865_ml_power_setting),
-		.power_setting = ov8865_ml_power_setting,
+
+static struct sensor_power_setting ov8865_ml_power_setting[] = {
+    //SENSOR IO
+    {
+        .seq_type = SENSOR_PMIC,
+        .seq_val  = VOUT_LDO_1,
+        .config_val = LDO_VOLTAGE_1P8V,
+        .sensor_index = SENSOR_INDEX_INVALID,
+        .delay = 0,
+    },
+
+    //MCAM1 AVDD 2.8V
+    {
+        .seq_type = SENSOR_AVDD,
+        .data = (void*)"front-sensor-avdd",
+        .config_val = LDO_VOLTAGE_V2P8V,
+        .sensor_index = SENSOR_INDEX_INVALID,
+        .delay = 0,
+    },
+
+    //MCAM1 DVDD 1.2V
+    {
+        .seq_type = SENSOR_DVDD,
+        .config_val = LDO_VOLTAGE_V1P25V,
+        .sensor_index = SENSOR_INDEX_INVALID,
+        .delay = 0,
+    },
+
+    //VCM [2.85v]
+    {
+        .seq_type = SENSOR_VCM_AVDD,
+        .config_val = LDO_VOLTAGE_V2P85V,
+        .sensor_index = SENSOR_INDEX_INVALID,
+        .delay = 0,
+    },
+
+    {
+        .seq_type = SENSOR_MCLK,
+        .sensor_index = SENSOR_INDEX_INVALID,
+        .delay = 1,
+    },
+    {
+        .seq_type = SENSOR_RST,
+        .config_val = SENSOR_GPIO_LOW,
+        .sensor_index = SENSOR_INDEX_INVALID,
+        .delay = 1,
     },
 };
 
@@ -245,6 +210,15 @@ static sensor_t ov8865_fpga =
     .power_setting_array = {
         .size = ARRAY_SIZE(ov8865_fpga_power_setting),
         .power_setting = ov8865_fpga_power_setting,
+    },
+};
+
+static sensor_t s_ov8865_ml =
+{
+    .intf = { .vtbl = &s_ov8865_vtbl, },
+    .power_setting_array = {
+            .size = ARRAY_SIZE(ov8865_ml_power_setting),
+            .power_setting = ov8865_ml_power_setting,
     },
 };
 

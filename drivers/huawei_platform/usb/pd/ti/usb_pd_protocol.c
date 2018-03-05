@@ -116,16 +116,19 @@ static void usb_pd_prl_receive_alert_handler(unsigned int port)
 
 	// Read Rx header and SOP type.
 	tcpm_get_msg_header_type(port, &sop, &hdr);
+	dev->rx_sop = sop;
 	dev->rx_msg_type = USB_PD_HDR_GET_MSG_TYPE(hdr);
 	dev->rx_msg_data_len = USB_PD_HDR_GET_DATA_LEN(hdr);
+	dev->rx_msg_spec_rev = USB_PD_HDR_GET_SPEC_REV(hdr);
 
 	if (sop == 0)
 	{
 		// Check port data role field for SOP pkts.
 		if (dev->data_role == USB_PD_HDR_GET_DATA_ROLE(hdr))
 		{
-			PRINT("Msg hdr data role %u invalid! msg_type = 0x%x, len = %u.\n",
-				  USB_PD_HDR_GET_DATA_ROLE(hdr), dev->rx_msg_type, dev->rx_msg_data_len);
+			PRINT("Rx hdr data role %sFP invalid! msg_type = 0x%x, len = %u.\n", 
+				  (USB_PD_HDR_GET_DATA_ROLE(hdr) == PD_DATA_ROLE_UFP) ? "U" : "D", 
+				  dev->rx_msg_type, dev->rx_msg_data_len);
 
 			// Perform Type-C Error Recovery.
 			tcpm_execute_error_recovery(port);
@@ -165,7 +168,7 @@ static void usb_pd_prl_receive_alert_handler(unsigned int port)
 		}
 		else
 		{
-			CRIT("MsgID: %u matches stored!\n", msg_id);
+			CRIT("MsgID: %u matches stored[%u]!\n", msg_id, sop);
 		}
 	}
 
@@ -219,8 +222,11 @@ void usb_pd_prl_tx_data_msg(unsigned int port, uint8_t *buf, msg_hdr_data_msg_ty
 
 	buf[0] = (ndo << 2) + 2; // Each data object is 4-bytes plus 2-byte header.
 	buf[1] = USB_PD_HDR_GEN_BYTE0((sop_type == TCPC_TX_SOP) ? pd[port].data_role : 0, msg_type);
-	buf[2] = USB_PD_HDR_GEN_BYTE1(0, ndo, pd[port].msg_id[sop_type], pd[port].power_role);
-
+#ifdef CABLE_PLUG
+	buf[2] = USB_PD_HDR_GEN_BYTE1(0, ndo, pd[port].msg_id[sop_type], 1);
+#else
+	buf[2] = USB_PD_HDR_GEN_BYTE1(0, ndo, pd[port].msg_id[sop_type], (sop_type == TCPC_TX_SOP) ? pd[port].power_role : 0);
+#endif
 	INFO("buf[0-2]: 0x%02x %02x %02x\n", buf[0], buf[1], buf[2]);
 
 	usb_pd_prl_tx_msg(port, buf, sop_type);

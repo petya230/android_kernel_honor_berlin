@@ -12,6 +12,7 @@
 #include "hw_csi.h"
 #include "../pmic/hw_pmic.h"
 
+//lint -save -e569 -e650 -e31 -e485
 #define I2S(i) container_of(i, sensor_t, intf)
 #define CAMERA_LOG_DEBUG
 static hwsensor_vtbl_t s_ov8865_vtbl;
@@ -452,3 +453,4 @@ module_exit(ov8865_exit_module);
 MODULE_DESCRIPTION("ov8865");
 MODULE_LICENSE("GPL v2");
 
+//lint -restore

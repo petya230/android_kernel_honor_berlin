@@ -320,7 +320,7 @@ s32 ipc_test_spinlock(void)
 void ipc_api_sem_create_test_case_001(void)
 {
     int          ret = 0;
-	unsigned int semaphore_id = IPC_SEM_BUTTOM + 1;
+	unsigned int semaphore_id = IPC_SEM_BUTTOM_ACORE + 1;
 
 	ret = mdrv_ipc_sem_create(semaphore_id);
 	if (MDRV_ERROR != ret)
@@ -343,7 +343,7 @@ void ipc_api_sem_create_test_case_002(void)
 	unsigned int fail_id[32] = {0};
 	unsigned int i = 0;
 
-	for (semaphore_id = IPC_SEM_MEM; semaphore_id < IPC_SEM_BUTTOM; semaphore_id++)
+	for (semaphore_id = IPC_SEM_MEM; semaphore_id < IPC_SEM_BUTTOM_ACORE; semaphore_id++)
 	{
 		ret = mdrv_ipc_sem_create(semaphore_id);
 		if (MDRV_OK != ret)
@@ -373,7 +373,7 @@ void ipc_api_sem_create_test_case_002(void)
 void ipc_api_sem_delete_test_case_001(void)
 {
     int          ret = 0;
-	unsigned int semaphore_id = IPC_SEM_BUTTOM + 1;
+	unsigned int semaphore_id = IPC_SEM_BUTTOM_ACORE + 1;
 
 	ret = mdrv_ipc_sem_delete(semaphore_id);
 	if (MDRV_ERROR != ret)
@@ -396,7 +396,7 @@ void ipc_api_sem_delete_test_case_002(void)
 	unsigned int fail_id[32] = {0};
 	unsigned int i = 0;
 
-	for (semaphore_id = IPC_SEM_MEM; semaphore_id < IPC_SEM_BUTTOM; semaphore_id++)
+	for (semaphore_id = IPC_SEM_MEM; semaphore_id < IPC_SEM_BUTTOM_ACORE; semaphore_id++)
 	{
 		ret = mdrv_ipc_sem_delete(semaphore_id);
 		if (MDRV_OK != ret)
@@ -426,7 +426,7 @@ void ipc_api_sem_delete_test_case_002(void)
 void ipc_api_sem_give_test_case_001(void)
 {
     int          ret = 0;
-	unsigned int semaphore_id = IPC_SEM_BUTTOM + 1;
+	unsigned int semaphore_id = IPC_SEM_BUTTOM_ACORE + 1;
 
 	ret = mdrv_ipc_sem_give(semaphore_id);
 	if (MDRV_ERROR != ret)
@@ -449,7 +449,7 @@ void ipc_api_sem_give_test_case_002(void)
 	unsigned int fail_id[32] = {0};
 	unsigned int i = 0;
 
-	for (semaphore_id = IPC_SEM_MEM; semaphore_id < IPC_SEM_BUTTOM; semaphore_id++)
+	for (semaphore_id = IPC_SEM_MEM; semaphore_id < IPC_SEM_BUTTOM_ACORE; semaphore_id++)
 	{
 		ret = mdrv_ipc_sem_give(semaphore_id);
 		if (MDRV_OK != ret)
@@ -479,7 +479,7 @@ void ipc_api_sem_give_test_case_002(void)
 void ipc_api_sem_take_test_case_001(void)
 {
     int          ret = 0;
-	unsigned int semaphore_id = IPC_SEM_BUTTOM + 1;
+	unsigned int semaphore_id = IPC_SEM_BUTTOM_ACORE + 1;
 
 	ret = mdrv_ipc_sem_take(semaphore_id, 0);
 	if (MDRV_ERROR != ret)
@@ -503,7 +503,7 @@ void ipc_api_sem_take_test_case_002(void)
 	unsigned int fail_id[32] = {0};
 	unsigned int i = 0;
 
-	for (semaphore_id = IPC_SEM_MEM; semaphore_id < IPC_SEM_BUTTOM; semaphore_id++)
+	for (semaphore_id = IPC_SEM_MEM; semaphore_id < IPC_SEM_BUTTOM_ACORE; semaphore_id++)
 	{
 		ret = mdrv_ipc_sem_take(semaphore_id, 0);
 		if (MDRV_OK != ret)
@@ -545,7 +545,7 @@ void ipc_api_test_show_int_cnt(void)
 
 	bsp_trace(BSP_LOG_LEVEL_ERROR,BSP_MODU_IPC,"IPC_CORE_BUTTOM = %d\n", IPC_CORE_BUTTOM);
 	bsp_trace(BSP_LOG_LEVEL_ERROR,BSP_MODU_IPC,"IPC_INT_BUTTOM = %d\n", IPC_INT_BUTTOM);
-	bsp_trace(BSP_LOG_LEVEL_ERROR,BSP_MODU_IPC,"IPC_SEM_BUTTOM = %d\n", IPC_SEM_BUTTOM);
+	bsp_trace(BSP_LOG_LEVEL_ERROR,BSP_MODU_IPC,"IPC_SEM_BUTTOM_ACORE = %d\n", IPC_SEM_BUTTOM_ACORE);
 	
 	for (i = 0; i < 32; i++)
 	{
@@ -845,7 +845,7 @@ void ipc_api_int_send_test_case_003(void)
 /* 获取锁，传入无效的信号量ID */
 void ipc_api_spin_lock_test_case_001(void)
 {
-	unsigned int semaphore_id = IPC_SEM_BUTTOM;
+	unsigned int semaphore_id = IPC_SEM_BUTTOM_ACORE;
 
 	mdrv_ipc_spin_lock(semaphore_id);
 	
@@ -865,7 +865,7 @@ void ipc_api_spin_lock_test_case_002(unsigned int semaphore_id)
 /* 尝试获取锁，传入无效的信号量ID */
 void ipc_api_spin_trylock_test_case_001(void)
 {
-	unsigned int semaphore_id = IPC_SEM_BUTTOM;
+	unsigned int semaphore_id = IPC_SEM_BUTTOM_ACORE;
 	int          ret = -1;
 
 	ret = mdrv_ipc_spin_trylock(semaphore_id);
@@ -901,7 +901,7 @@ void ipc_api_spin_trylock_test_case_002(unsigned int semaphore_id)
 /* 释放锁，传入无效的信号量ID */
 void ipc_api_spin_unlock_test_case_001(void)
 {
-	unsigned int semaphore_id = IPC_SEM_BUTTOM;
+	unsigned int semaphore_id = IPC_SEM_BUTTOM_ACORE;
 
 	mdrv_ipc_spin_unlock(semaphore_id);
 	

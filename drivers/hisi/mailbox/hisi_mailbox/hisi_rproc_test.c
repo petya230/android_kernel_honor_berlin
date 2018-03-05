@@ -13,6 +13,7 @@
 #include <linux/time.h>
 #include <linux/hisi/hisi_rproc.h>
 #include <linux/hisi/ipc_msg.h>
+#include <linux/io.h>
 /*total pressure times once*/
 #define PRESSURE_TIMES  500
 #define PERFORMANC_TIMES 100
@@ -28,6 +29,13 @@
 #define TEST_RPROC_NULL		((void*)0)
 #define test_rproc_slice_diff(s,e)	(((e) >= (s))?((e) - (s)) : (0xFFFFFFFF - (s) + (e)))
 
+#define AO_IPC_BASE			(0xFFF22000)
+#define PERI_IPC_BASE		(0xE896B000)
+#define IPC_SIZE				(0x1000)
+#define PERI_IPC_LPMCU_BIT	0x8
+#define PERI_IPC_GIC_BIT		0x1
+#define AO_IPC_IOMCU_BIT		0x1
+#define AO_IPC_GIC_BIT		0x2
 struct test_rproc_cb
 {
     void *           done_sema;
@@ -61,7 +69,9 @@ static char data_buf[] = "hello, the message looping back.";
 static struct semaphore send_mutex_sema;
 static struct semaphore task_mutex_sema;
 static struct notifier_block nb;
+
 int interval_v = 0;
+int obj_mailbox = 0;
 
 
 int test_rproc_msg_send(unsigned int sync_id, 
@@ -112,8 +122,8 @@ int test_rproc_msg_send(unsigned int sync_id,
 	{
 		case 0:/*同步发送同步消息*/
 			while(msg_num--){
-				ret = RPROC_SYNC_SEND(rp_id,tx_buffer, msg_len,ack_buffer,msg_len);
-				if (ret || (((OBJ_TEST << 16) | (CMD_TEST << 8)) != ack_buffer[0]) || (0x12345678 != ack_buffer[1])) {
+				ret = RPROC_SYNC_SEND(rp_id,tx_buffer, msg_len,ack_buffer,msg_len);/*lint !e64*/
+				if (ret || (((OBJ_TEST << 16) | (CMD_TEST << 8)) != ack_buffer[0]) || (0xFFFFFFFB != ack_buffer[1])) {
 					printk(KERN_ERR "rproc send error, ret %d, rp %d, sync %d, ack[0x%x][0x%x]!\r\n", 
 							ret, rp_id, sync_id, ack_buffer[0], ack_buffer[1]);
 					return -1;
@@ -125,7 +135,7 @@ int test_rproc_msg_send(unsigned int sync_id,
 
 		case 1:/*同步发送异步消息*/
 			while(msg_num--){
-				ret = RPROC_SYNC_SEND(rp_id ,tx_buffer, msg_len,NULL,0);
+				ret = RPROC_SYNC_SEND(rp_id ,tx_buffer, msg_len,NULL,0);/*lint !e64*/
 				if (ret) {
 					printk(KERN_ERR "rproc send error, ret %d, rp %d, sync %d!\r\n", ret, rp_id, sync_id);
 					return -1;
@@ -143,8 +153,8 @@ int test_rproc_msg_send(unsigned int sync_id,
 					printk(KERN_ERR "error test_rproc_msg_send kmalloc complete_sema\n");
 					return -1;
 				}
-				sema_init(complete_sema, 0);
-				ret = RPROC_ASYNC_SEND(rp_id,tx_buffer,msg_len);
+				sema_init(complete_sema, 1);
+				ret = RPROC_ASYNC_SEND(rp_id,tx_buffer,msg_len);/*lint !e64*/
 				if (ret) {
 					printk(KERN_ERR "rproc send error, ret %d, rp %d, sync %d!\r\n", ret, rp_id, sync_id);
 					kfree(complete_sema);
@@ -159,7 +169,7 @@ int test_rproc_msg_send(unsigned int sync_id,
 				}
 				end_slice = test_rproc_get_slice();
 				printk(KERN_INFO "async send sync msg spend %d slice!\r\n",
-						test_rproc_slice_diff(start_slice, end_slice));
+						test_rproc_slice_diff(start_slice, end_slice));/*lint !e685*/
 				kfree(complete_sema);
 				if(rproc_cb)
 					rproc_cb->msg_count++;
@@ -168,7 +178,7 @@ int test_rproc_msg_send(unsigned int sync_id,
 
 		case 3:/*异步发送异步消息*/
 			while (msg_num--) {
-				ret = RPROC_ASYNC_SEND(rp_id,tx_buffer,msg_len);
+				ret = RPROC_ASYNC_SEND(rp_id,tx_buffer,msg_len);/*lint !e64*/
 				if (ret) {
 					printk(KERN_ERR "rproc send error, ret %d, rp %d, sync %d!\r\n", ret, rp_id, sync_id);
 					return ret;
@@ -254,7 +264,7 @@ void test_rproc_msg_create_task(test_rproc_send_func entryPtr,
 
 	snprintf(task_name, sizeof(task_name), "trproc_task%d", (int)task_num);
 
-	kthread_run((int (*)(void *))test_rproc_msg_send_entry, (void*)pEntryParam, task_name);
+	kthread_run((int (*)(void *))test_rproc_msg_send_entry, (void*)pEntryParam, task_name);/*lint !e429*/
 }
 
 int test_rproc_msg_multi_send(unsigned int sync_id,
@@ -314,7 +324,7 @@ int test_rproc_msg_multi_send(unsigned int sync_id,
 	rproc_cb->end_slice= test_rproc_get_slice();
 
 	time_diff = test_rproc_slice_diff(rproc_cb->start_slice, rproc_cb->end_slice);
-	printk(KERN_INFO "rp: %d, sync: %d, total:%d(4byte), latency: %d (slice)\n", rp_id, sync_id,
+	printk(KERN_ERR "rp: %d, sync: %d, total:%d(4byte), latency: %d (slice)\n", rp_id, sync_id,
 		(int)(msg_len * msg_num * task_num_t), (int)time_diff);
 
 	if(0 != rproc_cb->check_ret) {
@@ -414,11 +424,11 @@ void test_rproc_multi_task_async(unsigned int msg_type,
 }
 
 static int mbox_recv_from_lpmcu(struct notifier_block *nb, unsigned long len, void *msg)
-{
+{/*lint !e578*/
 	int i;
 
- 	pr_err("$$$$$$$$$$$$$$$$$$$$$----%s--->\n",__func__);
-	for (i = 0; i < len; ++i) 
+ 	pr_err("$$$$$$$$$$$$$$$$$$$$$----%s---$$$$$$$$$$$$$$$$$$$$$\n",__func__);
+	for (i = 0; i < len; ++i) /*lint !e574*/
 	{
 	        pr_err("-------->msg[%d] = %#.8x\n",  i, ((int *)msg)[i]);
 	}
@@ -440,7 +450,7 @@ static void test_all_sync_ipc_init(void)
 	nb.notifier_call = mbox_recv_from_lpmcu;
 
 	/* register the rx notify callback */
-	ret = RPROC_MONITOR_REGISTER(rproc_id, &nb);
+	ret = RPROC_MONITOR_REGISTER(rproc_id, &nb);/*lint !e64*/
 	if (ret)
 	{
 		pr_err("%s:RPROC_MONITOR_REGISTER failed", __func__);
@@ -491,17 +501,17 @@ static int test_all_send_to_lpmcu(void *arg)
 		lpm3Msg->data[5] = idata+0x1000;
 		lpm3Msg->data[6] = idata+0x10000;
 		lpm3Msg->data[7] = idata+0x100000;
-		for(index =HISI_RPROC_LPM3_MBX13; index<HISI_RPROC_ISP_MBX0; index++)
+		for(index =HISI_RPROC_LPM3_MBX13; index<=HISI_RPROC_LPM3_MBX28; index++)
 		{
-			if(HISI_RPROC_LPM3_MBX17 <  index && HISI_RPROC_LPM3_MBX27 >index)
+			if(HISI_RPROC_LPM3_MBX16 <  index && HISI_RPROC_LPM3_MBX27 >index)
 			{
 				continue; /*just only lpmcu's channel*/
 			}
 
-			if(syntypye%2)
-				err = RPROC_ASYNC_SEND(index, (rproc_msg_t *)lpm3Msg, 8);
+			if(syntypye % 2)
+				err = RPROC_ASYNC_SEND(index, (rproc_msg_t *)lpm3Msg, 8);/*lint !e64*/
 			else
-				err = RPROC_SYNC_SEND(index,(rproc_msg_t *) lpm3Msg,8, ack_buffer, 2);
+				err = RPROC_SYNC_SEND(index,(rproc_msg_t *) lpm3Msg,8, ack_buffer, 2);/*lint !e64*/
 			if (err ) 
 			{
 				kfree(lpm3Msg);
@@ -512,7 +522,7 @@ static int test_all_send_to_lpmcu(void *arg)
 			msleep(*(int *)arg);
 		}
 	}
-	if (lpm3Msg){
+	if (lpm3Msg){/*lint !e527*/
 		kfree(lpm3Msg);
 		lpm3Msg = NULL;
 	}
@@ -539,17 +549,17 @@ static int rproc_performance_cnt(struct timespec *ptimespec, unsigned char rproc
 
 		if(SYNC_SEND == synctpye)
 		{
-			ret |= RPROC_SYNC_SEND(rproc_id,(rproc_msg_t *) msg, len, ack_buffer, 2);
+			ret |= RPROC_SYNC_SEND(rproc_id,(rproc_msg_t *) msg, len, ack_buffer, 2);/*lint !e64*/
 		}
 		else if(ASYNC_SEND == synctpye)
 		{
-			ret |= RPROC_ASYNC_SEND(rproc_id,(rproc_msg_t *) msg,len);
+			ret |= RPROC_ASYNC_SEND(rproc_id,(rproc_msg_t *) msg,len);/*lint !e64*/
 		}
 				
 		if(index < PERFORMANC_TIMES)
 		{
 			getnstimeofday(&time_end);
-			ptimespec[index].tv_sec = time_end.tv_sec - time_begin.tv_sec;
+			ptimespec[index].tv_sec = time_end.tv_sec - time_begin.tv_sec;/*lint !e644*/
 			if(time_end.tv_nsec < time_begin.tv_nsec && ptimespec[index].tv_sec)
 			{
 				ptimespec[index].tv_sec -=1;
@@ -615,7 +625,7 @@ void show_rproc_performance(struct timespec *ptimespec, unsigned char rproc_id, 
  *	unsigned char rproc_table[] = {HISI_RPROC_LPM3_MBX13, HISI_RPROC_HIFI_MBX18, HISI_RPROC_IOM3_MBX10 ,  HISI_RPROC_ISP_MBX2};
  *	at dallas and austin
  */
-	unsigned char rproc_table[] = {HISI_RPROC_LPM3_MBX13, HISI_RPROC_HIFI_MBX18, HISI_RPROC_IOM3_MBX10 ,  HISI_RPROC_ISP_MBX23};
+	unsigned char rproc_table[] = {HISI_RPROC_LPM3_MBX13, HISI_RPROC_HIFI_MBX18, HISI_RPROC_IOM3_MBX10 ,  HISI_RPROC_ISP_MBX23, HISI_RPROC_AO_MBX0, HISI_RPROC_IVP_MBX25};
 	msg = (union ipc_data * )kmalloc(sizeof(union ipc_data), GFP_KERNEL);
 	ptimespec =(struct timespec *)kmalloc(sizeof(struct timespec) * PERFORMANC_TIMES, GFP_KERNEL);
 	if(NULL == msg || NULL == ptimespec)
@@ -623,7 +633,7 @@ void show_rproc_performance(struct timespec *ptimespec, unsigned char rproc_id, 
 		ret = -1;
 		goto out;
 	}
-	if(objmax  < 1 || objmax > 4) {
+	if(objmax  < 1 || objmax > 6) {
 		kfree(msg);
 		kfree(ptimespec);
 		pr_err("test_rproc_performance array  bound\n");
@@ -695,10 +705,10 @@ static int test_async_send_to_lpmcu(void *arg)
 	lpm3Msg->data[6] = 0x66666666;
 	lpm3Msg->data[7] = 0x77777777;
 	
-	rproc_lpm3 = HISI_RPROC_LPM3_MBX13;
+	rproc_lpm3 = *(int *)arg;
 	while(1)
 	{
-		err = RPROC_ASYNC_SEND(rproc_lpm3, (rproc_msg_t *)lpm3Msg, 8);
+		err = RPROC_ASYNC_SEND(rproc_lpm3, (rproc_msg_t *)lpm3Msg, 8);/*lint !e64*/
 
 		if (err ) 
 		{
@@ -707,9 +717,102 @@ static int test_async_send_to_lpmcu(void *arg)
 			lpm3Msg = NULL;
 			return  -1;
 		}
-		msleep(*(int *)arg);
+		msleep(interval_v);
+	}
+	return 0;/*lint !e527*/
+}
+
+static int mbox_recv_test(struct notifier_block *nb, unsigned long len, void *msg)
+{/*lint !e578*/
+	int i;
+
+	pr_err("$$$$$$$$$$$$$$$$$$$$$----%s---$$$$$$$$$$$$$$$$$$$$$\n",__func__);
+	for (i = 0; i < len; ++i) /*lint !e574*/
+	{
+	        pr_err("-------->msg[%d] = %#.8x\n",  i, ((int *)msg)[i]);
+		if(((int *)msg)[i] != 0x76543210)
+			 pr_err("$$$$$$$$$$$$$$$$$$$$$----%s  receive error!\n",  __func__);
 	}
 	return 0;
+}
+
+static int test_ao_receive_mailbox(int mailbox)
+{
+	void __iomem * soc_ao_ipc_vir = 0x0;
+	int rproc_id = 0;
+	static struct notifier_block ao_ipc_nb;
+	unsigned int index;
+	int ret = 0;
+	soc_ao_ipc_vir = ioremap(AO_IPC_BASE, IPC_SIZE);
+	if(!soc_ao_ipc_vir) {
+		pr_err("%s ao ipc base addr remap error\n", __func__);
+		return -1;
+	}
+	rproc_id = mailbox + 200;
+	ao_ipc_nb.next = NULL;
+	ao_ipc_nb.notifier_call = mbox_recv_test;
+	/* register the rx notify callback */
+	ret = RPROC_MONITOR_REGISTER(rproc_id, &ao_ipc_nb);/*lint !e64*/
+	if (ret)
+	{
+		iounmap(soc_ao_ipc_vir);
+		pr_err("%s:RPROC_MONITOR_REGISTER failed", __func__);
+		return -1;
+	}
+
+	writel(readl(soc_ao_ipc_vir + 0x000 + mailbox * 64), soc_ao_ipc_vir + 0x000 + mailbox * 64);
+	/* set LPMCU as MBX_SOURCE */
+	writel(AO_IPC_IOMCU_BIT, soc_ao_ipc_vir + 0x000 + mailbox * 64);
+	writel(AO_IPC_GIC_BIT, soc_ao_ipc_vir + 0x004 + mailbox * 64);
+	for(index = 0; index < 8; index++){
+		writel(0x76543210, soc_ao_ipc_vir + 0x020 + mailbox * 64 + index * 4);
+	}
+	writel(AO_IPC_IOMCU_BIT, soc_ao_ipc_vir + 0x01C + mailbox * 64);
+	iounmap(soc_ao_ipc_vir);
+	msleep(100);
+	RPROC_MONITOR_UNREGISTER(rproc_id, &ao_ipc_nb);/*lint !e64*/
+	return ret;/*lint !e527*/
+}
+
+static int test_peri_receive_mailbox(int mailbox)
+{
+	void __iomem * soc_peri_ipc_vir;
+	int rproc_id = 0;
+	static struct notifier_block peri_ipc_nb;
+	unsigned int index;
+	int ret = 0;
+	soc_peri_ipc_vir = (unsigned long *)ioremap(PERI_IPC_BASE, IPC_SIZE);
+	if(!soc_peri_ipc_vir) {
+		pr_err("%s peri ipc base addr remap error\n", __func__);
+		return -1;
+	}
+
+	rproc_id = mailbox;
+	peri_ipc_nb.next = NULL;
+	peri_ipc_nb.notifier_call = mbox_recv_test;
+	/* register the rx notify callback */
+	ret = RPROC_MONITOR_REGISTER(rproc_id, &peri_ipc_nb);/*lint !e64*/
+	if (ret)
+	{
+		iounmap(soc_peri_ipc_vir);
+		pr_err("%s:RPROC_MONITOR_REGISTER failed", __func__);
+		return -1;
+	}
+
+	writel(readl(soc_peri_ipc_vir + 0x000 + mailbox * 64), soc_peri_ipc_vir + 0x000 + mailbox * 64);
+	/* set LPMCU as MBX_SOURCE */
+	writel(PERI_IPC_LPMCU_BIT, soc_peri_ipc_vir + 0x000 + mailbox * 64);
+	writel(PERI_IPC_GIC_BIT, soc_peri_ipc_vir + 0x004 + mailbox * 64);
+	for(index = 0; index < 8; index++){
+		writel(0x76543210, soc_peri_ipc_vir + 0x020 + mailbox * 64 + index * 4);
+	}
+	writel(PERI_IPC_LPMCU_BIT, soc_peri_ipc_vir + 0x01C + mailbox * 64);
+	pr_err("this is mailbox-%d receive func\n",mailbox);
+	msleep(100);
+	RPROC_MONITOR_UNREGISTER(rproc_id, &peri_ipc_nb);/*lint !e64*/
+
+	iounmap(soc_peri_ipc_vir);
+	return ret;/*lint !e527*/
 }
 
 
@@ -717,10 +820,18 @@ static int test_async_send_to_lpmcu(void *arg)
  * Function name:test_all_kind_ipc.
  * Discription:test all the ipc channel .
  * Parameters:
- *      @ type: 1, send sync msg, 2, send async msg , 3, pressure test with lpmcu through all channels, 4,pressure test with lpmcu async
+ *      @ type: 
+ *            	1, send all peri ipc sync msg,
+ *			2, send all peri ipc async msg,
+ *			3, send all ao ipc sync msg,
+ *			4, send all ao ipc async msg,
+ *			5, single mailbox sync test,
+ *			6, single mailbox async test,
+ *			3, pressure test with lpmcu through all channels, 
+ *			4, pressure test with lpmcu async
  *      @ objmax:the remote proccessor number to send ipc msg.  Sometimes like HIFI,ISP,etc. are in sleepmode and not suitable for pressure test.
  *      @ interval: to delay, ms
- *      @ threads:  thread num to create 
+ *      @ threads:  thread num to create \ times to send
  * return value:
  *      @ 0:success, others failed.
  */
@@ -728,31 +839,45 @@ static int test_async_send_to_lpmcu(void *arg)
 {
 	rproc_msg_t ack_buffer[2] = {0};
 	int err = 0;
-	int index = 0, max_id = 0;
+	int index = 0;
 	int ret = 0;
-	union ipc_data * lpm3Msg = NULL;
+	union ipc_data * ipcMsg = NULL;
+	int ao_ipc_max_id, ao_ipc_min_id, peri_ipc_max_id, peri_ipc_min_id;
+	obj_mailbox = obj;
 
 	interval_v = interval;
-	max_id = HISI_RPROC_LPM3_MBX30;
-	lpm3Msg = (union ipc_data * )kmalloc(sizeof(union ipc_data), GFP_KERNEL);
-	if (lpm3Msg == NULL)
+	peri_ipc_min_id = HISI_RPROC_LPM3_MBX0;
+	peri_ipc_max_id = HISI_RPROC_LPM3_MBX30;
+	ao_ipc_min_id = HISI_RPROC_AO_MBX0;
+	ao_ipc_max_id = HISI_RPROC_AO_MBX5;
+
+	ipcMsg = (union ipc_data * )kmalloc(sizeof(union ipc_data), GFP_KERNEL);
+	if (ipcMsg == NULL)
    		return -1;
-	lpm3Msg->data[0] = 0x00000000;
-	lpm3Msg->data[1] = 0x11111111;
-	lpm3Msg->data[2] = 0x22222222;
-	lpm3Msg->data[3] = 0x33333333;
-	lpm3Msg->data[4] = 0x44444444;
-	lpm3Msg->data[5] = 0x55555555;
-	lpm3Msg->data[6] = 0x66666666;
-	lpm3Msg->data[7] = 0x77777777;
+	ipcMsg->data[0] = 0x77777777;
+	ipcMsg->data[1] = 0x66666666;
+	ipcMsg->data[2] = 0x55555555;
+	ipcMsg->data[3] = 0x44444444;
+	ipcMsg->data[4] = 0x33333333;
+	ipcMsg->data[5] = 0x22222222;
+	ipcMsg->data[6] = 0x11111111;
+	ipcMsg->data[7] = 0x00000000;
 	/*register the rx callback*/
-	test_all_sync_ipc_init();
+	if(type != 9 && type != 10)
+		test_all_sync_ipc_init();
 
-	if(1 ==  type)/*traverse all the ipc channel in sync mode*/
+	if(1 ==  type)/*traverse all peri ipc channel in sync mode*/
 	{
-		for(index =0; index<=max_id; index++)
+		pr_err("xxxxxxxxx  peri ipc SYNC_SEND start!  xxxxxxxxx\n");
+		pr_err("xxxxxxxxx  mailbox channel 0 ~ 9 is RX-mailbox, has no ability to send  xxxxxxxxx\n");
+		pr_err("xxxxxxxxx  mailbox channel 17 is a special mailbox, timeout is OK  xxxxxxxxx\n");
+		pr_err("xxxxxxxxx  mailbox channel 18,29 is to hifi mailbox, if hifi is power down, timeout is OK  xxxxxxxxx\n");
+		pr_err("xxxxxxxxx  mailbox channel 23 is to isp mailbox, if isp is power down, timeout is OK  xxxxxxxxx\n");
+		pr_err("xxxxxxxxx  mailbox channel 25,26 is to ivp mailbox, if ivp is power down, timeout is OK  xxxxxxxxx\n");
+		pr_err("xxxxxxxxx  mailbox channel 20,21,22,24,30 is unused mailbox  xxxxxxxxx\n");
+		for(index =peri_ipc_min_id; index<=peri_ipc_max_id; index++)
 		{
-			err = RPROC_SYNC_SEND(index,(rproc_msg_t *) lpm3Msg,8, ack_buffer, 2);
+			err = RPROC_SYNC_SEND(index,(rproc_msg_t *) ipcMsg,8, ack_buffer, 2);/*lint !e64*/
 			if (err ) 
 				pr_err("xxxxxxxxx mailbox channel %d:   send err!\n",index);
 			else
@@ -760,13 +885,19 @@ static int test_async_send_to_lpmcu(void *arg)
 
 			msleep(interval);
 		}
+		err = 0;
+		pr_err("xxxxxxxxx  peri ipc SYNC_SEND end!  xxxxxxxxx\n");
 	}
-	else if(2 ==  type)/*traverse all the ipc channel in async mode*/
+	else if(2 ==  type)/*traverse all peri ipc channel in async mode*/
 	{
-
-		for(index =0; index<=max_id; index++)
+		pr_err("xxxxxxxxx  peri ipc ASYNC_SEND start!  xxxxxxxxx\n");
+		pr_err("xxxxxxxxx  mailbox channel 0 ~ 9 is RX-mailbox, has no ability to send  xxxxxxxxx\n");
+		pr_err("xxxxxxxxx  mailbox channel 23 is to isp mailbox, if isp is power down, the second time will timeout  xxxxxxxxx\n");
+		pr_err("xxxxxxxxx  mailbox channel 25,26 is to ivp mailbox, if ivp is power down, the second time will timeout  xxxxxxxxx\n");
+		pr_err("xxxxxxxxx  mailbox channel 20,21,22,24,30 is unused mailbox  xxxxxxxxx\n");
+		for(index =peri_ipc_min_id; index<=peri_ipc_max_id; index++)
 		{
-			err = RPROC_ASYNC_SEND(index, (rproc_msg_t *)lpm3Msg, 8);
+			err = RPROC_ASYNC_SEND(index, (rproc_msg_t *)ipcMsg, 8);/*lint !e64*/
 			if (err ) 
 				pr_err("xxxxxxxxx mailbox channel %d:   send err!\n",index);
 			else
@@ -774,51 +905,115 @@ static int test_async_send_to_lpmcu(void *arg)
 
 			msleep(interval);
 		}
+		err = 0;
+		pr_err("xxxxxxxxx  peri ipc ASYNC_SEND end!  xxxxxxxxx\n");
 	}
-	else if(3 ==  type) /*send to lpmcu and will receive msg from lpmcu, use for pressure test*/
+	else if(3 == type)/*traverse all ao ipc channel in sync mode*/
+	{
+		pr_err("xxxxxxxxx  ao ipc SYNC_SEND start!  xxxxxxxxx\n");
+		pr_err("xxxxxxxxx  mailbox channel 1 is RX-mailbox, has no ability to send  xxxxxxxxx\n");
+		pr_err("xxxxxxxxx  mailbox channel 2,3,4,5 is unused mailbox  xxxxxxxxx\n");
+		for(index = ao_ipc_min_id; index <= ao_ipc_max_id; index++)
+		{
+			err = RPROC_SYNC_SEND(index,(rproc_msg_t *) ipcMsg,8, ack_buffer, 2);/*lint !e64*/
+			if (err )
+				pr_err("xxxxxxxxx mailbox channel %d:   send err!\n",index);
+			else
+				pr_err("xxxxxxxxx mailbox channel %d:   send ok, ack is 0x%x, 0x%x!\n",index, ack_buffer[0], ack_buffer[1]);
+
+			msleep(interval);
+		}
+		err = 0;
+		pr_err("xxxxxxxxx  ao ipc SYNC_SEND end!  xxxxxxxxx\n");
+	}
+	else if(4 ==  type)/*traverse all ao ipc channel in async mode*/
+	{
+		pr_err("xxxxxxxxx  ao ipc ASYNC_SEND start!  xxxxxxxxx\n");
+		pr_err("xxxxxxxxx  mailbox channel 1 is RX-mailbox, has no ability to send  xxxxxxxxx\n");
+		pr_err("xxxxxxxxx  mailbox channel 2,3,4,5 is unused mailbox  xxxxxxxxx\n");
+		for(index =ao_ipc_min_id; index<=ao_ipc_max_id; index++)
+		{
+			err = RPROC_ASYNC_SEND(index, (rproc_msg_t *)ipcMsg, 8);/*lint !e64*/
+			if (err )
+				pr_err("xxxxxxxxx mailbox channel %d:   send err!\n",index);
+			else
+				pr_err("xxxxxxxxx mailbox channel %d:   send ok, ack is 0x%x, 0x%x!\n",index, ack_buffer[0], ack_buffer[1]);
+
+			msleep(interval);
+		}
+		err = 0;
+		pr_err("xxxxxxxxx  ao ipc ASYNC_SEND end!  xxxxxxxxx\n");
+	}
+	else if(5 ==  type) /* single mailbox sync send */
+	{
+		for(index = 0; index < threads; index++)
+		{
+			ret = RPROC_SYNC_SEND((rproc_id_t)obj,(rproc_msg_t *) ipcMsg,8, ack_buffer, 2);
+			if(ret)
+				err++;
+			msleep(interval);/*lint !e732 */
+		}
+		if(0 < err)
+			pr_err("xxxxxxxxx mailbox channel %d: async send err count: %d!\n", obj, err);
+		else
+			pr_err("xxxxxxxxx mailbox channel %d sync send succeed\n", obj);
+	}
+	else if(6 == type)/* single mailbox sync send */
+	{
+		for(index = 0; index < threads; index++)
+		{
+			ret = RPROC_ASYNC_SEND((rproc_id_t)obj, (rproc_msg_t *)ipcMsg, 8);
+			if(ret)
+				err++;
+			msleep(interval);/*lint !e732 */
+		}
+		if(0 < err)
+			pr_err("xxxxxxxxx mailbox channel %d: sync send err count: %d!\n", obj, err);
+		else
+			pr_err("xxxxxxxxx mailbox channel %d async send succeed\n", obj);
+	}
+	else if(7 ==  type) /*often used to lpmcu with mailbox-13 for async pressure test, obj can change to other mailbox */
+	{
+	      for(index =0; index<threads; index++)
+	      {
+                    kthread_run(test_async_send_to_lpmcu, (void *)&obj_mailbox, "async_to_lpmcu");
+	      }
+	}
+	else if(8 ==  type) /*send to lpmcu and will receive msg from lpmcu, use for pressure test*/
 	{
 	      for(index =0; index<threads; index++)
 	      {
                     kthread_run(test_all_send_to_lpmcu, (void *)&interval_v, "all_to_lpmcu");
 	      }
 	}
-	else if(4 ==  type) /*send to lpmcu and will receive msg from lpmcu, use for pressure test*/
+	else if(9 ==  type) /*test peri ipc reveive test*/
 	{
-	      for(index =0; index<threads; index++)
-	      {
-                    kthread_run(test_async_send_to_lpmcu, (void *)&interval_v, "async_to_lpmcu");
-	      }	
-	}
-	else if(5 ==  type) /* single mailbox sync send */
-	{
-		for(index = 0; index < threads; index++)
-		{
-			pr_err("mailbox-%d  sync send start!\n",obj);
-			ret = RPROC_SYNC_SEND((rproc_id_t)obj,(rproc_msg_t *) lpm3Msg,8, ack_buffer, 2);
-			if(ret)
-				err++;
-			pr_err("mailbox-%d  async send end!\n",obj);
-			msleep(interval);/*lint !e732 */
+		if(1 == threads){
+			test_peri_receive_mailbox(obj);
 		}
-		if(0 < err)
-			pr_err("xxxxxxxxx mailbox channel %d: async send err count: %d!\n", obj, err);
-	}
-	else if(6 == type)/* single mailbox sync send */
-	{
-		for(index = 0; index < threads; index++)
-		{
-			pr_err("mailbox-%d  async send start!\n",obj);
-			ret = RPROC_ASYNC_SEND((rproc_id_t)obj, (rproc_msg_t *)lpm3Msg, 8);
-			if(ret)
-				err++;
-			pr_err("mailbox-%d  async send end!\n",obj);
-			msleep(interval);/*lint !e732 */
+		else if(10 == threads){
+			for(index = 0; index < threads; index++) {
+				test_peri_receive_mailbox(index);
+				msleep(interval);/*lint !e732 */
+			}
 		}
-		if(0 < err)
-			pr_err("xxxxxxxxx mailbox channel %d: sync send err count: %d!\n", obj, err);
+		else
+			pr_err("threads is error\n");
 	}
-	kfree(lpm3Msg);
-	lpm3Msg = NULL;
+	else if(10 ==  type) /*test ao ipc reveive test*/
+	{
+		if(1 == threads)
+			test_ao_receive_mailbox(obj);
+		else
+			pr_err("threads is error\n");
+	}
+	else
+	{
+		pr_err("just register the rx callback\n");
+	}
+
+	kfree(ipcMsg);
+	ipcMsg = NULL;
 	
 	return err;
 }
@@ -838,5 +1033,4 @@ module_init(test_rproc_init);
 module_exit(test_rproc_exit);
 MODULE_DESCRIPTION("hisi_rproc_test");
 MODULE_LICENSE("GPL v2");
-
 

@@ -1610,7 +1610,7 @@ static ssize_t mipi_samsung_D53G6EA8064T_panel_test_config_store(struct platform
 		HISI_FB_INFO("current test cmd:%s\n", lcd_cmd_now);
 	} else {
 		memcpy(lcd_cmd_now, "INVALID", strlen("INVALID") + 1);
-		HISI_FB_INFO("invalid test cmd:%s\n");
+		HISI_FB_INFO("invalid test cmd:\n");
 	}
 
 	return count;
@@ -1834,7 +1834,7 @@ static ssize_t mipi_samsung_panel_lp2hs_mipi_check_store(struct platform_device 
 static ssize_t mipi_samsung_D53G6EA8064T_lcd_amoled_vr_mode_show(struct platform_device *pdev,
 	char *buf)
 {
-	return snprintf(buf, PAGE_SIZE, "vr mode\n");
+	return snprintf(buf, PAGE_SIZE, "vr_mode=%d\n",g_vr_mode_local);
 }
 
 #define SAMSUNG_VR_CYCLE_AID1_AOR70	1
@@ -1848,7 +1848,6 @@ static ssize_t mipi_samsung_D53G6EA8064T_lcd_amoled_vr_mode_store(struct platfor
 	unsigned long val = 0;
 	int flag = -1;
 
-	HISI_FB_DEBUG("fb%d, +.\n", hisifd->index);
 	if (NULL == pdev) {
 		HISI_FB_ERR("NULL Pointer!\n");
 		return 0;
@@ -1859,6 +1858,9 @@ static ssize_t mipi_samsung_D53G6EA8064T_lcd_amoled_vr_mode_store(struct platfor
 		return 0;
 	}
 	hisifd = platform_get_drvdata(pdev);
+	DISPLAY_DEBUG_ON(hisifd);
+
+	HISI_FB_DEBUG("fb%d, +.\n", hisifd->index);
 	mipi_dsi0_base = hisifd->mipi_dsi0_base;
 
 	ret = strict_strtoul(buf, 0, &val);
@@ -1956,6 +1958,8 @@ static ssize_t mipi_samsung_D53G6EA8064T_lcd_acl_ctrl_store(struct platform_devi
 		return 0;
 	}
 	hisifd = platform_get_drvdata(pdev);
+	DISPLAY_DEBUG_ON(hisifd);
+
 	mipi_dsi0_base = hisifd->mipi_dsi0_base;
 	HISI_FB_DEBUG("fb%d, +.\n", hisifd->index);
 
@@ -2010,6 +2014,11 @@ static ssize_t mipi_samsung_D53G6EA8064T_lcd_acl_ctrl_store(struct platform_devi
 static void mipi_samsung_display_set_normal_mode(struct hisi_fb_data_type *hisifd){
 
 	HISI_FB_INFO("+\n");
+	if (hisifd == NULL) {
+		HISI_FB_ERR("NULL Pointer!\n");
+		return;
+	}
+
 	hisifb_set_vsync_activate_state(hisifd, true);
 	hisifb_activate_vsync(hisifd);
 
@@ -2026,6 +2035,11 @@ static void mipi_samsung_display_set_normal_mode(struct hisi_fb_data_type *hisif
 static void mipi_samsung_display_set_fresh_mode(struct hisi_fb_data_type *hisifd){
 
 	HISI_FB_INFO("+\n");
+	if (hisifd == NULL) {
+		HISI_FB_ERR("NULL Pointer!\n");
+		return;
+	}
+
 	hisifb_set_vsync_activate_state(hisifd, true);
 	hisifb_activate_vsync(hisifd);
 

@@ -19,6 +19,7 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/init.h>
+#include <linux/semaphore.h>
 #include <chipset_common/bfmr/common/bfmr_common.h>
 #include <chipset_common/bfmr/bfm/core/bfm_core.h>
 #include <chipset_common/bfmr/bfr/core/bfr_core.h>
@@ -34,6 +35,7 @@
 
 static char s_boot_lock_info[32] = {0};
 static int s_is_bfmr_enabled = 0;
+static DEFINE_SEMAPHORE(s_bfmr_enable_ctl_sem);
 
 
 /*----global variables-----------------------------------------------------------------*/
@@ -81,7 +83,17 @@ early_param(BFMR_ENABLE_FIELD_NAME, early_parse_bfmr_enable_flag);
 
 bool bfmr_has_been_enabled(void)
 {
-    return (0 == s_is_bfmr_enabled) ? (false) : (true);
+    int bfmr_enable_flag = 0;
+    down(&s_bfmr_enable_ctl_sem);
+    bfmr_enable_flag = s_is_bfmr_enabled;
+    up(&s_bfmr_enable_ctl_sem);
+    return (0 == bfmr_enable_flag) ? (false) : (true);
+}
+void bfmr_enable_ctl(int enable_flag)
+{
+    down(&s_bfmr_enable_ctl_sem);
+    s_is_bfmr_enabled = enable_flag;
+    up(&s_bfmr_enable_ctl_sem);
 }
 
 

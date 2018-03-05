@@ -3,21 +3,10 @@
 #include <linux/device.h>
 #include <linux/usb.h>
 #include <linux/debugfs.h>
+#include <linux/seq_file.h>
+#include <linux/uaccess.h>
 
 #include "xhci.h"
-
-struct dentry *g_xhci_debug_file;
-
-static ssize_t xhci_compliance_store(struct device *dev, const char *buf, size_t size)
-{
-	struct usb_hcd *hcd = dev_get_drvdata(dev);
-	struct xhci_hcd *xhci = hcd_to_xhci(hcd);
-
-	xhci_set_link_state(xhci, xhci->usb3_ports, 0, USB_SS_PORT_LS_COMP_MOD);
-	dev_info(dev, "set link state compliance mode\n");
-
-	return size;
-}
 
 static int xhci_compliance_show(struct seq_file *s, void *d)
 {
@@ -31,20 +20,23 @@ static int xhci_compliance_open(struct inode *inode, struct file *file)
 	return single_open(file, xhci_compliance_show, inode->i_private);
 }
 
-static ssize_t xhci_compliance_write(struct file *file, const char __user *buf,
+static ssize_t xhci_compliance_write(struct file *file, const char __user *ubuf,
 		size_t size, loff_t *ppos)
 {
-	struct device *dev = ((struct seq_file *)file->private_data)->private;
+	struct seq_file	*s = file->private_data;
+	struct xhci_hcd *xhci = s->private;
 
 	if (size > PAGE_SIZE) {
-		printk(KERN_ERR "set charger type cmd too long!\n");
+		printk(KERN_ERR "xhci_compliance_write too long!\n");
 		return -ENOMEM;
 	}
 
-	xhci_compliance_store(dev, NULL, size);
+	pr_info("set link state compliance mode\n");
+	xhci_set_link_state(xhci, xhci->usb3_ports, 0, USB_SS_PORT_LS_COMP_MOD);
 
 	return size;
 }
+
 static const struct file_operations xhci_compliance_debug_fops = {
 	.open = xhci_compliance_open,
 	.read = seq_read,
@@ -52,34 +44,40 @@ static const struct file_operations xhci_compliance_debug_fops = {
 	.release = single_release,
 };
 
-int xhci_create_debug_file(struct device *dev)
+int xhci_create_debug_file(struct xhci_hcd *xhci)
 {
-#ifdef CONFIG_HISI_DEBUG_FS
+	struct dentry *root;
 	struct dentry *file;
+	int ret;
 
-	if (g_xhci_debug_file)
-		return 0;
-
-	file = debugfs_create_file("xhci_compliance", S_IWUSR | S_IRUSR,
-			usb_debug_root, dev, &xhci_compliance_debug_fops);
-	if (!file) {
-		dev_err(dev, "create debugfs file error!\n");
-		return -ENOMEM;
+	root = debugfs_create_dir("xhci", usb_debug_root);
+	if (!root) {
+		ret = -ENOMEM;
+		goto err0;
 	}
 
-	g_xhci_debug_file = file;
-#endif
+	file = debugfs_create_file("xhci_compliance", S_IWUSR | S_IRUSR,
+			root, xhci, &xhci_compliance_debug_fops);
+	if (!file) {
+		pr_err("create xhci_compliance debugfs file error!\n");
+		ret = -ENOMEM;
+		goto err1;
+	}
+
+	xhci->debugfs_root = root;
 
 	return 0;
+
+err1:
+	debugfs_remove_recursive(root);
+
+err0:
+	return ret;
 }
 
-void xhci_remove_debug_file(void)
+void xhci_remove_debug_file(struct xhci_hcd *xhci)
 {
-#ifdef CONFIG_HISI_DEBUG_FS
-	if (!g_xhci_debug_file)
-		return;
-
-	debugfs_remove(g_xhci_debug_file);
-	g_xhci_debug_file = NULL;
-#endif
+	if (xhci->debugfs_root)
+		debugfs_remove_recursive(xhci->debugfs_root);
+	xhci->debugfs_root = NULL;
 }

@@ -8,11 +8,19 @@
 #endif
 
 //lint -save -e838 -e732 -e747 -e713 -e826 -e715 -e785  -e774 -esym(753,*)
-//lint -save -e578 -e438 -e30 -e142 -e64 -esym(528,*)
+//lint -save -e578 -e438 -e30 -e142 -e64 -esym(528,*)  -e845
 static hw_vl53l0_t *s_laser = NULL;
 
 #define SD2Laser(sd) container_of((sd), hw_vl53l0_t, subdev)
 #define VAL_IOVDD             1800000
+#define POWER_SETTINGS_LENGTH (3)
+#define DT_LDO_NAME           "huawei,ldo-names"
+static const laser_power_settings_t laser_power_supply_checklist[POWER_SETTINGS_LENGTH] =
+{
+	{LDO_AVDD,	 "avdd",	LDO_AVDD_2P85V },
+	{LDO_IOVDD,	"iovdd",	LDO_IOVDD_1P8V},
+	{LDO_XSHUT,	"xshut",	LDO_XSHUT_1P8V},
+};
 
 extern struct hisi_pmic_ctrl_t ncp6925_ctrl;
 extern void hw_camdrv_msleep(unsigned int ms);
@@ -22,8 +30,8 @@ int vl53l0_stf_get_dt_data(struct platform_device *pdev, hw_vl53l0_t *laser)
 	struct device_node *of_node = NULL;
 	struct hw_laser_info *laser_info = NULL;
 	int rc = 0;
-	char *gpio_tag = NULL;
-	const char *gpio_ctrl_types[2] = {"xshut","iovdd"};
+	const char *gpio_tag = NULL;
+	const char *gpio_ctrl_types[IO_MAX] = {"xshut","iovdd"};
 	int index = 0;
 	int i = 0;
 
@@ -32,7 +40,7 @@ int vl53l0_stf_get_dt_data(struct platform_device *pdev, hw_vl53l0_t *laser)
 		return -EINVAL;
 	}
 	of_node = pdev->dev.of_node;
-	laser_info = kzalloc(sizeof(struct hw_laser_info), GFP_KERNEL);
+	laser_info = (struct hw_laser_info*)kzalloc(sizeof(struct hw_laser_info), GFP_KERNEL);
 	if (!laser_info) {
 		cam_err("%s failed %d", __func__, __LINE__);
 		return -ENOMEM;
@@ -40,24 +48,73 @@ int vl53l0_stf_get_dt_data(struct platform_device *pdev, hw_vl53l0_t *laser)
 	laser->laser_info = laser_info;
 
 	rc = of_property_read_string(of_node, "product_name", &laser_info->product_name);
-	cam_info("%s product-name %s, rc %d", __func__, laser_info->product_name, rc);
+
 	if (rc < 0) {
 		cam_err("%s failed %d", __func__, __LINE__);
 		goto fail;
 	}
 
+	if (NULL == laser_info->product_name) {
+		cam_err("%s product name is NULL %d", __func__, __LINE__);
+		rc = -ENOMEM;
+		goto fail;
+	}
+
+	cam_info("%s product-name %s, rc %d", __func__, laser_info->product_name, rc);
+
 	rc = of_property_read_string(of_node, "huawei,laser_name", &laser_info->laser_name);
-	cam_info("%s laser-name %s, rc %d", __func__, laser_info->laser_name, rc);
+
 	if (rc < 0) {
 		cam_err("%s failed %d", __func__, __LINE__);
 		goto fail;
 	}
+
+	if (NULL == laser_info->laser_name) {
+		cam_err("%s laser name is NULL %d", __func__, __LINE__);
+		rc = -ENOMEM;
+		goto fail;
+	}
+
+	cam_info("%s laser-name %s, rc %d", __func__, laser_info->laser_name, rc);
 
 	rc = of_property_read_u32(of_node, "huawei,i2c_idx", &laser_info->i2c_index);
 	cam_info("%s huawei,i2c_idx 0x%x, rc %d", __func__, laser_info->i2c_index, rc);
 	if (rc < 0) {
 		cam_err("%s failed %d", __func__, __LINE__);
 		goto fail;
+	}
+
+	//check ldo supply
+	laser_info->ldo_num = of_property_count_strings(of_node, DT_LDO_NAME);
+	if(LASER_SUPPLY_LDO_NO_USE < laser_info->ldo_num) {
+		cam_info("%s use ldo to supply laser ldo num %d", __func__, laser_info->ldo_num);
+		if(LDO_MAX < laser_info->ldo_num) {
+			cam_err("%s failed %d, LDO_MAX(%d) < ldo_num(%d)", __func__, __LINE__,
+				LDO_MAX, laser_info->ldo_num);
+			laser_info->ldo_num = LASER_SUPPLY_LDO_NO_USE; //set default ldo num 0, before error handling
+			rc = -EINVAL;
+			goto fail;
+		}
+
+		for (i = 0; i < laser_info->ldo_num; i++) {
+			rc = of_property_read_string_index(of_node, DT_LDO_NAME,
+						i, &laser_info->ldo[i].supply);
+			cam_info("%s huawei,ldo-names index:%d, ldo_name:%s, rc:%d", __func__,
+						i, laser_info->ldo[i].supply, rc);
+			if(rc < 0) {
+				cam_err("%s failed %d index %d", __func__, __LINE__, i);
+				goto fail;
+			}
+		}
+
+		rc = devm_regulator_bulk_get(&(pdev->dev), laser_info->ldo_num, laser_info->ldo);
+		if (rc < 0) {
+			cam_err("%s failed %d\n", __func__, __LINE__);
+			goto fail;
+		}
+	} else {
+		laser_info->ldo_num = LASER_SUPPLY_LDO_NO_USE;
+		cam_info("%s not use ldo to supply laser",__func__);
 	}
 
 	laser_info->gpio_num = of_gpio_count(of_node);
@@ -69,44 +126,31 @@ int vl53l0_stf_get_dt_data(struct platform_device *pdev, hw_vl53l0_t *laser)
 
 	for (index = 0;index < laser_info->gpio_num;index++)
 	{
-		rc = of_property_read_string_index(of_node, "huawei,gpio-ctrl-types", index, (const char **)&gpio_tag);
+		rc = of_property_read_string_index(of_node, "huawei,gpio-ctrl-types", index, &gpio_tag);
 		if(rc < 0) {
 			cam_err("%s failed %d", __func__, __LINE__);
+			goto fail;
+		}
+		if (NULL == gpio_tag) {
+			cam_err("%s gpio tag is NULL %d", __func__, __LINE__);
+			rc = -ENOMEM;
 			goto fail;
 		}
 		for (i = 0; i < IO_MAX; i++)
 		{
 			if (!strcmp(gpio_ctrl_types[i], gpio_tag)) {
 				laser_info->laser_gpio[i].gpio = of_get_gpio(of_node, index);
+				break;
 			}
 		}
 		cam_info("gpio ctrl types: %s gpio = %d", gpio_tag, laser_info->laser_gpio[index].gpio);
 	}
-
-	laser_info->pinctrl = devm_pinctrl_get(&pdev->dev);
-	if (IS_ERR(laser_info->pinctrl)) {
-		cam_err("could not get pinctrl");
-		goto end;
-	}
-
-	laser_info->pins_default = pinctrl_lookup_state(laser_info->pinctrl, PINCTRL_STATE_DEFAULT);
-	if (IS_ERR(laser_info->pins_default)) {
-		cam_err("could not get default pinstate");
-	}
-
-
-	laser_info->pins_idle = pinctrl_lookup_state(laser_info->pinctrl, PINCTRL_STATE_IDLE);
-	if (IS_ERR(laser_info->pins_idle)) {
-		cam_err("could not get idle pinstate");
-	}
-
-end:
 	return rc;
-
 fail:
 	cam_err("%s can not read laser info exit.", __func__);
 	kfree(laser_info);
 	laser_info = NULL;
+	laser->laser_info = NULL;
 	return rc;
 }
 
@@ -115,10 +159,10 @@ hwlaser_subdev_config(
 	hw_vl53l0_t* s,
 	hwlaser_config_data_t* data)
 {
-	long rc = -EINVAL;
+	int rc = 0;
 
-	if ((NULL == s) || (NULL == data)) {
-		cam_err("%s s or data is NULL", __func__);
+	if ((NULL == s) || (NULL == data) ||(NULL == s->laser_info)) {
+		cam_err("%s s or data or laser_info is NULL", __func__);
 		return -EINVAL;
 	}
 	switch (data->cfgtype)
@@ -128,54 +172,72 @@ hwlaser_subdev_config(
 			break;
 
 		case HWCAM_LASER_POWERON:
-			if (!IS_ERR(s->laser_info->pins_default)) {
-				rc = pinctrl_select_state(s->laser_info->pinctrl, s->laser_info->pins_default);
-				if (rc < 0) {
-					cam_err("could not set default pins");
-				}
-			}
 
 			mutex_lock(&s->lock);
 			HWCAM_CFG_INFO("laser xshut power up");
+			rc = gpio_request(s->laser_info->laser_gpio[XSHUT].gpio, "vl53l0");
+			if (rc < 0) {
+				cam_err("%s failed to request xshut pin. gpio = %x", __func__,
+					s->laser_info->laser_gpio[XSHUT].gpio);
+				mutex_unlock(&s->lock);
+				return -EIO;
+			}
 			rc = gpio_direction_output(s->laser_info->laser_gpio[XSHUT].gpio, HIGH);
+			hw_camdrv_msleep(1);//sleep 1ms according to laser spec
+			gpio_free(s->laser_info->laser_gpio[XSHUT].gpio);
 			mutex_unlock(&s->lock);
 			if (rc < 0) {
 				cam_err("%s failed output pin. gpio = %x", __func__,
 						s->laser_info->laser_gpio[XSHUT].gpio);
 				return rc;
 			}
-			hw_camdrv_msleep(1);
+			HWCAM_CFG_INFO("laser vl53l0 power up sucess");
 			break;
 
 		case HWCAM_LASER_POWEROFF:
 			mutex_lock(&s->lock);
 			HWCAM_CFG_INFO("laser xshut power down");
+			rc = gpio_request(s->laser_info->laser_gpio[XSHUT].gpio, "vl53l0");
+			if (rc < 0) {
+				cam_err("%s failed to request xshut pin. gpio = %x", __func__,
+					s->laser_info->laser_gpio[XSHUT].gpio);
+				mutex_unlock(&s->lock);
+				return -EIO;
+			}
 			rc = gpio_direction_output(s->laser_info->laser_gpio[XSHUT].gpio, LOW);
+			gpio_free(s->laser_info->laser_gpio[XSHUT].gpio);
 			mutex_unlock(&s->lock);
 			if (rc < 0) {
 				cam_err("%s failed output pin. gpio = %x", __func__,
 						s->laser_info->laser_gpio[XSHUT].gpio);
 				return rc;
 			}
-
-			if (!IS_ERR(s->laser_info->pins_idle)) {
-				rc = pinctrl_select_state(s->laser_info->pinctrl, s->laser_info->pins_idle);
-				if (rc < 0) {
-					cam_err("could not set idle pins");
-				}
-			}
 			break;
 
 		case HWCAM_LASER_POWERON_EXT:
+			HWCAM_CFG_INFO("laser avdd power up");
+			rc = laser_ldo_config(s, LDO_AVDD, LDO_POWER_ON,
+					laser_power_supply_checklist,
+					POWER_SETTINGS_LENGTH);
+			if(rc < 0)
+			{
+				cam_info("laser ldo config fail");
+			}
+
 			HWCAM_CFG_INFO("laser iovdd power up");
 			if (0 == s->laser_info->laser_gpio[IOVDD].gpio) {
 				//use pmic
+				if (NULL == ncp6925_ctrl.func_tbl) {
+					cam_err("%s ncp6925_ctrl func_tbl is NULL", __func__);
+					return -EINVAL;
+				}
 				if (ncp6925_ctrl.func_tbl->pmic_seq_config) {
 					HWCAM_CFG_INFO("laser power on ext");
 					rc = ncp6925_ctrl.func_tbl->pmic_seq_config(&ncp6925_ctrl,
 								VOUT_LDO_1, VAL_IOVDD, 1);
 					if (rc < 0) {
 						cam_err("%s pmic_seq_config failed ", __func__);
+						return rc;
 					}
 				}
 			} else { //use gpio
@@ -187,25 +249,40 @@ hwlaser_subdev_config(
 				}
 
 				rc = gpio_direction_output(s->laser_info->laser_gpio[IOVDD].gpio, HIGH);
-				hw_camdrv_msleep(1);
+				hw_camdrv_msleep(1);//sleep 1ms according to laser spec
+				gpio_free(s->laser_info->laser_gpio[IOVDD].gpio);
 				if (rc < 0) {
 					cam_err("%s failed output pin. gpio = %x", __func__,
 							s->laser_info->laser_gpio[IOVDD].gpio);
+					return rc;
 				}
-				gpio_free(s->laser_info->laser_gpio[IOVDD].gpio);
 			}
 			break;
 
 		case HWCAM_LASER_POWEROFF_EXT:
+			HWCAM_CFG_INFO("laser avdd power down");
+			rc = laser_ldo_config(s, LDO_AVDD, LDO_POWER_OFF,
+					laser_power_supply_checklist,
+					POWER_SETTINGS_LENGTH);
+			if(rc < 0)
+			{
+				cam_info("laser ldo config fail");
+			}
+
 			HWCAM_CFG_INFO("laser iovdd power down");
 			if (0 == s->laser_info->laser_gpio[IOVDD].gpio) {
 				//use pmic
+				if (NULL == ncp6925_ctrl.func_tbl) {
+					cam_err("%s ncp6925_ctrl func_tbl is NULL", __func__);
+					return -EINVAL;
+				}
 				if (ncp6925_ctrl.func_tbl->pmic_seq_config) {
 					HWCAM_CFG_INFO("laser power off ext");
 					rc = ncp6925_ctrl.func_tbl->pmic_seq_config(&ncp6925_ctrl,
 								VOUT_LDO_1, VAL_IOVDD, 0);
 					if (rc < 0) {
 						cam_err("%s pmic_seq_config failed ", __func__);
+						return rc;
 					}
 				}
 			} else {
@@ -216,18 +293,19 @@ hwlaser_subdev_config(
 					return -EIO;
 				}
 				rc = gpio_direction_output(s->laser_info->laser_gpio[IOVDD].gpio, LOW);
+				gpio_free(s->laser_info->laser_gpio[IOVDD].gpio);
 				if (rc < 0) {
 					cam_err("%s failed output pin. gpio = %x", __func__,
 							s->laser_info->laser_gpio[IOVDD].gpio);
+					return rc;
 				}
-				gpio_free(s->laser_info->laser_gpio[IOVDD].gpio);
 			}
 
 			break;
 
 		case HWCAM_LASER_SET_FLAG:
 #ifdef CONFIG_HUAWEI_HW_DEV_DCT
-			if(data->data == 1) {
+			if(data->data) {
 				set_hw_dev_flag(DEV_I2C_LASER);
 			}
 #endif
@@ -245,8 +323,12 @@ hwlaser_subdev_get_info(
 	hw_vl53l0_t* s,
 	hwlaser_info_t* info)
 {
-    if ((NULL == s) || (NULL == s->laser_info) || (NULL == s->laser_info->product_name) || (NULL == s->laser_info->laser_name) || (NULL == info) ) {
-        cam_err("%s s or info is NULL", __func__);
+    if ((NULL == s) || (NULL == s->laser_info) || (NULL == s->laser_info->product_name) || (NULL == s->laser_info->laser_name)) {
+        cam_err("%s s is NULL", __func__);
+        return -EINVAL;
+    }
+    if (NULL == info) {
+        cam_err("%s info is NULL", __func__);
         return -EINVAL;
     }
     strncpy(info->product_name, s->laser_info->product_name, HWLASER_NAME_SIZE - 1);
@@ -343,7 +425,7 @@ static int32_t vl53l0_platform_probe(struct platform_device *pdev)
 		cam_err("%s pdev is NULL", __func__);
 		return -EINVAL;
 	}
-	laser = kzalloc(sizeof(*laser), GFP_KERNEL);
+	laser = (hw_vl53l0_t*)kzalloc(sizeof(*laser), GFP_KERNEL);
 	if (!laser) {
 		cam_err("probe - can not alloc driver data");
 		return -ENOMEM;
@@ -363,6 +445,11 @@ static int32_t vl53l0_platform_probe(struct platform_device *pdev)
 	}
 
 	//init gpio
+	if (NULL == laser->laser_info) {
+		cam_err("%s laser_info is NULL", __func__);
+		rc = -ENOMEM;
+		goto vl53l0_probe_fail;
+	}
 	rc = gpio_request(laser->laser_info->laser_gpio[XSHUT].gpio, "vl53l0");
 	if (rc < 0) {
 		cam_err("%s failed to request reset pin. gpio = %x", __func__,laser->laser_info->laser_gpio[XSHUT].gpio);
@@ -370,6 +457,7 @@ static int32_t vl53l0_platform_probe(struct platform_device *pdev)
 		goto vl53l0_probe_fail;
 	}
 	gpio_direction_output(laser->laser_info->laser_gpio[XSHUT].gpio, LOW);
+	gpio_free(laser->laser_info->laser_gpio[XSHUT].gpio);
 
 	//register subdev
 	subdev = &laser->subdev;
@@ -437,7 +525,6 @@ static void __exit vl53l0_stf_mod_exit(void)
 	platform_driver_unregister(&vl53l0_stf_platform_driver);
 	if (s_laser) {
 		if (s_laser->laser_info) {
-			gpio_free(s_laser->laser_info->laser_gpio[XSHUT].gpio);
 			kfree(s_laser->laser_info);
 			s_laser->laser_info = NULL;
 		}

@@ -740,7 +740,7 @@ struct charge_device_ops dual_charger_ops = {
 	.stop_charge_config = dual_charger_stop_charge_config,
 };
 
-#if CONFIG_SYSFS
+#ifdef CONFIG_SYSFS
 #define DUAL_CHARGER_SYSFS_FIELD(_name, n, m, store)                \
 {                                                   \
     .attr = __ATTR(_name, m, dual_charger_sysfs_show, store),    \
@@ -878,6 +878,8 @@ static inline void dual_charger_sysfs_remove_group(void)
 	sysfs_remove_group(&dci->dev->kobj, &dual_charger_sysfs_attr_group);
 }
 #else
+
+/*lint -save -e* */
 static int charge_sysfs_create_group(void)
 {
 	return 0;
@@ -887,12 +889,16 @@ static inline void charge_sysfs_remove_group(void)
 {
 }
 #endif
+/*lint -restore*/
+
 /**********************************************************
 *  Function:       dual_charger_parse_dts
 *  Discription:    parse the module dts config value
 *  Parameters:   null
 *  return value:  0-sucess or others-fail
 **********************************************************/
+
+/*lint -save -e* */
 static int dual_charger_parse_dts(void)
 {
 	int ret;
@@ -920,6 +926,7 @@ static int dual_charger_parse_dts(void)
 
 	return ret;
 }
+/*lint -restore*/
 
 /**********************************************************
 *  Function:       dual_charger_probe
@@ -1063,6 +1070,7 @@ static struct of_device_id dual_charger_match_table[] = {
 	 },
 };
 
+/*lint -save -e* */
 static struct platform_driver dual_charger_driver = {
 	.probe = dual_charger_probe,
 	.remove = dual_charger_remove,
@@ -1097,6 +1105,8 @@ void __exit dual_charger_exit(void)
 
 module_init(dual_charger_init);
 module_exit(dual_charger_exit);
+/*lint -restore*/
+
 MODULE_AUTHOR("HUAWEI");
 MODULE_DESCRIPTION("dual_charger module driver");
 MODULE_LICENSE("GPL");

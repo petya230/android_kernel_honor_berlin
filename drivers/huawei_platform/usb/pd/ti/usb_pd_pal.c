@@ -26,6 +26,11 @@
 
 // TODO: add port number to device tree and use that for port.
 
+void usb_pd_pal_source_vconn(unsigned int port, bool enable)
+{
+	pd_dpm_handle_pe_event(PD_DPM_PE_EVT_SOURCE_VCONN, (int *)(&enable));
+	return;
+}
 void usb_pd_pal_source_vbus(unsigned int port, bool usb_pd, uint16_t mv, uint16_t ma)
 {
 	struct pd_dpm_vbus_state vbus_state;
@@ -123,7 +128,7 @@ void usb_pd_pal_notify_connect_state(unsigned int port, tcpc_state_t state, bool
 	{
 		case TCPC_STATE_UNATTACHED_SRC:
 		case TCPC_STATE_UNATTACHED_SNK:
-			PRINT("%s: TYPEC_UNATTACHED, polarity = 0x%x\n", __func__, polarity);
+			PRINT("%s: TYPEC_UNATTACHED\n", __func__);
 			tc_state.new_state = PD_DPM_TYPEC_UNATTACHED;
 			pd_dpm_handle_pe_event(PD_DPM_PE_EVT_TYPEC_STATE, (void*)&tc_state);
 			break;
@@ -138,6 +143,7 @@ void usb_pd_pal_notify_connect_state(unsigned int port, tcpc_state_t state, bool
 			PRINT("%s: TYPEC_ATTACHED_SNK, polarity = 0x%x\n", __func__, polarity);
 			tc_state.new_state = PD_DPM_TYPEC_ATTACHED_SNK;
 			pd_dpm_handle_pe_event(PD_DPM_PE_EVT_TYPEC_STATE, (void*)&tc_state);
+			tcpm_msleep(50);
 			break;
 
 		default:
@@ -155,7 +161,7 @@ void usb_pd_pal_data_role_swap(unsigned int port, uint8_t new_role)
 
 	swap_state.new_role = new_role;
 
-	pd_dpm_handle_pe_event(PD_DPM_PE_EVT_DR_SWAP, (void *)&swap_state);
+	//pd_dpm_handle_pe_event(PD_DPM_PE_EVT_DR_SWAP, (void *)&swap_state);
 
 	return;
 }

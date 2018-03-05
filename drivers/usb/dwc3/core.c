@@ -613,11 +613,17 @@ int dwc3_core_init(struct dwc3 *dwc)
 	reg = dwc3_readl(dwc->regs, DWC3_GUSB2PHYCFG(0));
 	reg &= ~DWC3_GUSB2PHYCFG_USBTRDTIM_MASK;
 	reg |= DWC3_GUSB2PHYCFG_USBTRDTIM(9);
+	if (dwc->is_ulpi_selected) {
+		reg |= (1 << 4);
+		dev_info(dwc->dev, "select ulpi\n");
+	}
 	dwc3_writel(dwc->regs, DWC3_GUSB2PHYCFG(0), reg);
 
 	reg = dwc3_readl(dwc->regs, DWC3_GUSB3PIPECTL(0));
 	reg &= ~DWC3_GUSB3PIPECTL_DEPOCHANGE;
-	reg |= DWC3_GUSB3PIPECTL_LFPSFILT | DWC3_GUSB3PIPECTL_TX_DEEPH(1);
+	if (dwc->snps_phy_quirk) {
+		reg |= DWC3_GUSB3PIPECTL_LFPSFILT | DWC3_GUSB3PIPECTL_TX_DEEPH(1);
+	}
 	dwc3_writel(dwc->regs, DWC3_GUSB3PIPECTL(0), reg);
 
 	ret = dwc3_alloc_scratch_buffers(dwc);
@@ -724,12 +730,19 @@ static int dwc3_core_init_mode(struct dwc3 *dwc)
 	struct device *dev = dwc->dev;
 	int ret;
 
+	ret = dwc3_otg_init(dwc);
+	if (ret) {
+		dev_err(dev, "failed to initialize otg\n");
+		return ret;
+	}
+
 	switch (dwc->dr_mode) {
 	case USB_DR_MODE_PERIPHERAL:
 		dwc3_set_mode(dwc, DWC3_GCTL_PRTCAP_DEVICE);
 		ret = dwc3_gadget_init(dwc);
 		if (ret) {
 			dev_err(dev, "failed to initialize gadget\n");
+			dwc3_otg_exit(dwc);
 			return ret;
 		}
 		break;
@@ -738,17 +751,12 @@ static int dwc3_core_init_mode(struct dwc3 *dwc)
 		ret = dwc3_host_init(dwc);
 		if (ret) {
 			dev_err(dev, "failed to initialize host\n");
+			dwc3_otg_exit(dwc);
 			return ret;
 		}
 		break;
 	case USB_DR_MODE_OTG:
 		dwc3_set_mode(dwc, DWC3_GCTL_PRTCAP_OTG);
-
-		ret = dwc3_otg_init(dwc);
-		if (ret) {
-			dev_err(dev, "failed to initialize otg\n");
-			return ret;
-		}
 
 		ret = dwc3_host_init(dwc);
 		if (ret) {
@@ -767,6 +775,7 @@ static int dwc3_core_init_mode(struct dwc3 *dwc)
 		break;
 	default:
 		dev_err(dev, "Unsupported mode of operation %d\n", dwc->dr_mode);
+		dwc3_otg_exit(dwc);
 		return -EINVAL;
 	}
 
@@ -785,12 +794,12 @@ static void dwc3_core_exit_mode(struct dwc3 *dwc)
 	case USB_DR_MODE_OTG:
 		dwc3_host_exit(dwc);
 		dwc3_gadget_exit(dwc);
-		dwc3_otg_exit(dwc);
 		break;
 	default:
 		/* do nothing */
 		break;
 	}
+	dwc3_otg_exit(dwc);
 }
 
 #define DWC3_ALIGN_MASK		(16 - 1)
@@ -807,6 +816,7 @@ static int dwc3_probe(struct platform_device *pdev)
 	u8			hird_threshold;
 
 	int			ret;
+	unsigned int            irq;
 
 	void __iomem		*regs;
 	void			*mem;
@@ -826,6 +836,18 @@ static int dwc3_probe(struct platform_device *pdev)
 		dev_err(dev, "missing IRQ\n");
 		return -ENODEV;
 	}
+
+	ret = platform_get_irq(to_platform_device(dwc->dev), 0);
+	if (ret < 0) {
+		dev_err(dwc->dev, "failed to get irq, ret:%d\n", ret);
+		return -ENODEV;
+	}
+	irq = (unsigned int)ret;
+	dwc->irq = irq;
+#ifdef CONFIG_HISI_USB_DWC3_MASK_IRQ_WORKAROUND
+	dwc->irq_state = 0;
+#endif
+
 	dwc->xhci_resources[1].start = res->start;
 	dwc->xhci_resources[1].end = res->end;
 	dwc->xhci_resources[1].flags = res->flags;
@@ -882,6 +904,8 @@ static int dwc3_probe(struct platform_device *pdev)
 				&hird_threshold);
 		dwc->usb3_lpm_capable = of_property_read_bool(node,
 				"snps,usb3_lpm_capable");
+		dwc->is_ulpi_selected = of_property_read_bool(node,
+				"snps,is_ulpi_selected");
 
 		dwc->needs_fifo_resize = of_property_read_bool(node,
 				"tx-fifo-resize");
@@ -912,6 +936,10 @@ static int dwc3_probe(struct platform_device *pdev)
 				"snps,tx_de_emphasis_quirk");
 		of_property_read_u8(node, "snps,tx_de_emphasis",
 				&tx_de_emphasis);
+		of_property_read_u32(node, "quirk_dplus_gpio",
+				&dwc->quirk_dplus_gpio);
+		dwc->snps_phy_quirk = of_property_read_bool(node,
+				"snps,phy_quirk");
 	} else if (pdata) {
 		dwc->maximum_speed = pdata->maximum_speed;
 		dwc->has_lpm_erratum = pdata->has_lpm_erratum;

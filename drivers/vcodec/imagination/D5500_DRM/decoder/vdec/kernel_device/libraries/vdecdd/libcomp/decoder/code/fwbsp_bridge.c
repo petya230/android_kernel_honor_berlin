@@ -649,6 +649,7 @@ fwbsp_bridge_StreamResourceCreate(
             }
 
 #if 0
+              // xxx-todo: move memset to fw side as this is secure mem and can't be accessed from ROS
               /* Clear the context data in preparation for first time use by the F/W */
               /*IMG_MEMSET(psPictResInt->sFwCtxBuf.pvCpuVirt, 0,
                 psPictResInt->sFwCtxBuf.ui32BufSize);
@@ -3694,7 +3695,7 @@ FWBSP_BRIDGE_PictureRemove(
     IMG_ASSERT(psPicture);
     if(psPicture->psPictResInt == IMG_NULL)
     {
-        /* No references, the picture can be safety removed */
+        /* No references, the picture can be safetly removed */
         ui32Result = fwbsp_bridge_PictureRemove(psStrCtx, ui32Id, bTransId);
     }
     else
@@ -3816,7 +3817,7 @@ FWBSP_BRIDGE_ProcessFwMsg(
             IMG_ASSERT(ui16MsgSize < (sizeof(psFwMsgItem->aui32MsgBuf)/
                                       sizeof(psFwMsgItem->aui32MsgBuf[0])));
 
-            DEBUG_REPORT(REPORT_MODULE_FWBSP_BRIDGE,
+            REPORT(REPORT_MODULE_FWBSP_BRIDGE, REPORT_INFO,
                    "[SID=0x%08x][PID=0x%08x] received FW message %d (%s)",
                    psStrCtx->ui32StrId, ui32ParseId, ui8MsgType,
                    fwbsp_bridge_GetMsgName(ui8MsgType));
@@ -4053,7 +4054,7 @@ FWBSP_BRIDGE_DiscardBitstreamUnit(
     psStrUnit = (VDECDD_sStrUnit *)LST_first(&psStrCtx->sEncBitstreamStrUnitList);
     while (psStrUnit)
     {
-        if (psStrUnit->ui32ParseId == ui32PID)
+        if (psStrUnit->ui32ParseId == ui32PID || !ui32PID)
         {
             break;
         }
@@ -4061,35 +4062,28 @@ FWBSP_BRIDGE_DiscardBitstreamUnit(
         psStrUnit = LST_next(psStrUnit);
     }
 
-    IMG_ASSERT(psStrUnit != IMG_NULL);
     if (psStrUnit == IMG_NULL)
     {
         return IMG_ERROR_INVALID_PARAMETERS;
     }
 
     LST_remove(&psStrCtx->sEncBitstreamStrUnitList, psStrUnit);
-
+    /* Trigger sending BSTRBUF_EMPTY event */
+    ui32Result = psStrCtx->psCtx->pfnCompCallback(
+        FWBSP_BRIDGE_CB_UNIT_PROCESSED,
+        psStrCtx->psCtx->pvCompInitUserData,
+        IMG_NULL,
+        psStrCtx->pvUserData,
+        psStrUnit);
+    IMG_ASSERT(ui32Result == IMG_SUCCESS);
     /* Check if unit have already a picture associated with it */
     if (!fwbsp_bridge_PictureIsValid(psStrCtx, psStrUnit->ui32ParseId))
     {
-        /* Trigger sending BSTRBUF_EMPTY event */
-        ui32Result = psStrCtx->psCtx->pfnCompCallback(
-            FWBSP_BRIDGE_CB_UNIT_PROCESSED,
-            psStrCtx->psCtx->pvCompInitUserData,
-            IMG_NULL,
-            psStrCtx->pvUserData,
-            psStrUnit);
-        IMG_ASSERT(ui32Result == IMG_SUCCESS);
-
         /* Return the picture */
         ui32Result = fwbsp_bridge_PictureReturn(psStrCtx, psStrUnit->ui32ParseId, IMG_FALSE);
         IMG_ASSERT(ui32Result == IMG_SUCCESS);
 
         ui32Result = fwbsp_bridge_PictureRemove(psStrCtx, psStrUnit->ui32ParseId, IMG_FALSE);
-        IMG_ASSERT(ui32Result == IMG_SUCCESS);
-
-        psDdDevContext = (VDECDD_sDdDevContext *)psStrCtx->psCtx->pvCompInitUserData;
-        ui32Result = CORE_DevSchedule(psDdDevContext);
         IMG_ASSERT(ui32Result == IMG_SUCCESS);
     }
     else
@@ -4097,6 +4091,9 @@ FWBSP_BRIDGE_DiscardBitstreamUnit(
         ui32Result = VDECDDUTILS_FreeStrUnit(psStrUnit);
         IMG_ASSERT(ui32Result == IMG_SUCCESS);
     }
+    psDdDevContext = (VDECDD_sDdDevContext *)psStrCtx->psCtx->pvCompInitUserData;
+    ui32Result = CORE_DevSchedule(psDdDevContext);
+    IMG_ASSERT(ui32Result == IMG_SUCCESS);
 
     /* Inform hardware api that bitstream has been handled by the fw side.
      * Actually it caused the lockup, so we need to skip it. */

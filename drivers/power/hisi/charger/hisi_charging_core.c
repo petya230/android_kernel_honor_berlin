@@ -348,7 +348,7 @@ static void charge_core_safe_policy_handler(struct charge_core_data *data)
 struct charge_core_data *charge_core_get_params(void)
 {
     struct charge_core_info *di = g_core_info;
-    int tbatt = hisi_battery_temperature();
+	int tbatt = hisi_battery_temperature_for_charger();
     int vbatt = hisi_battery_voltage();
     int cbatt = hisi_battery_capacity();
     if (NULL == di)

@@ -64,9 +64,9 @@ uint8_t tusb422_get_revision(unsigned int port)
 {
 	uint8_t rev;
 
-	tcpc_write8(port, 0xFF, 1);	 /* Page 1 */
+	tcpc_write8(port, TUSB422_REG_PAGE_SEL, 1);	 /* Page 1 */
 	tcpc_read8(port, 0xC0, &rev);
-	tcpc_write8(port, 0xFF, 0);	 /* Page 0 */
+	tcpc_write8(port, TUSB422_REG_PAGE_SEL, 0);	 /* Page 0 */
 
 	return rev;
 }
@@ -77,10 +77,11 @@ bool tusb422_is_present(unsigned int port)
 	uint16_t pid;
 
 	// Read VID/PID/DID.
+	tcpc_write8(port, TUSB422_REG_PAGE_SEL, 0);	 /* Page 0 */
 	tcpc_read16(port, TCPC_REG_VENDOR_ID, &vid);
-	PRINT("VID: 0x%04x\n", vid);
+	INFO("VID: 0x%04x\n", vid); 
 	tcpc_read16(port, TCPC_REG_PRODUCT_ID, &pid);
-	PRINT("PID: 0x%04x\n", pid);
+	INFO("PID: 0x%04x\n", pid); 
 
 	return ((vid != TI_VID) || (pid != TI_PID)) ? false : true;
 }
@@ -91,9 +92,9 @@ bool tusb422_is_trimmed(unsigned int port)
 {
 	uint8_t efuse;
 
-	tcpc_write8(port, 0xFF, 1);	  /* Page 1 */
+	tcpc_write8(port, TUSB422_REG_PAGE_SEL, 1);	  /* Page 1 */
 	tcpc_read8(port, 0xE7, &efuse);
-	tcpc_write8(port, 0xFF, 0);	 /* Page 0 */
+	tcpc_write8(port, TUSB422_REG_PAGE_SEL, 0);	 /* Page 0 */
 
 	return(efuse & EFUSE_REG_E7_TRIM_BIT) ? true : false;
 }
@@ -106,7 +107,7 @@ void tusb422_init(unsigned int port)
 	if (!tusb422_is_trimmed(port))
 	{
 		// Write nominal soft trim values for pre-production samples.
-		tcpc_write8(port, 0xFF, 1);	  /* Page 1 */
+		tcpc_write8(port, TUSB422_REG_PAGE_SEL, 1);	  /* Page 1 */
 		tcpc_write8(port, 0xE0, 0xC0);
 		tcpc_write8(port, 0xE1, 0x8);
 		tcpc_write8(port, 0xE2, 0x20);
@@ -115,7 +116,7 @@ void tusb422_init(unsigned int port)
 		tcpc_write8(port, 0xE5, 0x1A);
 		tcpc_write8(port, 0xE6, 0x80);
 		tcpc_write8(port, 0xE7, 0x70);
-		tcpc_write8(port, 0xFF, 0);	 /* Page 0 */
+		tcpc_write8(port, TUSB422_REG_PAGE_SEL, 0);	 /* Page 0 */
 	}
 
 	// Enable OTSD1.
@@ -222,6 +223,7 @@ void tusb422_sw_reset(unsigned int port)
 {
 	uint8_t data;
 
+	tcpc_write8(port, TUSB422_REG_PAGE_SEL, 0);	 /* Page 0 */
 	// Perform global reset (write 0, then 1).
 	tcpc_read8(port, TUSB422_REG_CC_GEN_CTRL, &data);
 	data &= ~TUSB422_GLOBAL_SW_RESET;
@@ -230,15 +232,28 @@ void tusb422_sw_reset(unsigned int port)
 	tcpc_write8(port, TUSB422_REG_CC_GEN_CTRL, data);
 
 	// Wait for reset to complete.
-	tcpm_msleep(2);
+	tcpm_msleep(1);
 
 	return;
 }
 
 #define INT_VBUSDIS_DISABLE  1
+#define INT_VCONNDIS_DISABLE (1 << 1)
 void tusb422_stop_vbus_discharge(unsigned int port)
 {
 	// Stop VBUS discharge.
 	tcpc_write8(port, TUSB422_REG_VBUS_VCONN_CTRL, INT_VBUSDIS_DISABLE);
+	return;
+}
+void tusb422_set_vconn_discharge_enable(unsigned int port, bool enable)
+{
+	if (enable)
+	{
+		tcpc_write8(port, TUSB422_REG_VBUS_VCONN_CTRL, 0);
+	}
+	else
+	{
+		tcpc_write8(port, TUSB422_REG_VBUS_VCONN_CTRL, INT_VCONNDIS_DISABLE);
+	}
 	return;
 }

@@ -25,6 +25,7 @@
 #include <linux/hisi/hisi_ion.h>
 #include <asm/uaccess.h>
 #include <linux/rpmsg.h>
+#include <linux/platform_data/remoteproc-hisi.h>
 
 #include "hjpgenc150.h"
 #include "hjpeg_intf.h"
@@ -32,13 +33,16 @@
 #include "hjpg150_reg_offset_field.h"
 #include "hjpg150_table.h"
 #include "cam_log.h"
-//lint -save -e740
+//lint -save -e740 -e647
 /*TODO:use kernel dump mem space do JPEG IP system verify*/
+#define SMMU 1
+
+#ifndef SMMU
 #define JPEG_INPUT_PHYADDR 0x40000000
 #define JPEG_OUTPUT_PHYADDR 0x50000000
-#define IRQ_MANAGER_BASE 0xE842C000
+#define PREFETCH_BY_PASS (1 << 31)
+#endif
 
-#define SMMU 1
 //#define SAMPLEBACK 1
 //#define DUMP_REGS 1
 //#define DUMP_FILE 1
@@ -223,7 +227,7 @@ void hjpeg150_dump_file(char *filename, unsigned long addr, u32 size)
 
 static int hjpeg150_res_init(struct device *pdev )
 {
-    struct device_node *of_node = pdev->of_node;
+    struct device_node *dev_node = pdev->of_node;
     uint32_t base_array[2] = {0};
     uint32_t count = 0;
     int ret = -1;
@@ -231,8 +235,8 @@ static int hjpeg150_res_init(struct device *pdev )
 
     /* property(hisi,isp-base) = <address, size>, so count is 2 */
     count = 2;
-    if (of_node) {
-        ret = of_property_read_u32_array(of_node, "huawei,hjpeg150-base",
+    if (dev_node) {
+        ret = of_property_read_u32_array(dev_node, "huawei,hjpeg150-base",
                 base_array, count);
         if (ret < 0) {
             cam_err("%s failed line %d", __func__, __LINE__);
@@ -253,15 +257,11 @@ static int hjpeg150_res_init(struct device *pdev )
         return -ENXIO;
     }
 
-    s_hjpeg150.irq_no = irq_of_parse_and_map(of_node, 0);
+    s_hjpeg150.irq_no = irq_of_parse_and_map(dev_node, 0);
     if (s_hjpeg150.irq_no  <= 0) {
         cam_err("%s failed line %d\n", __func__, __LINE__);
         goto fail;
     }
-
-    cam_info("%s hjpeg150 base address = %pK. hjpeg150-base size = 0x%x. hjpeg150-irq = %d viraddr = %pK",
-            __func__,(void *)(s_hjpeg150.phyaddr), s_hjpeg150.mem_size, s_hjpeg150.irq_no, s_hjpeg150.viraddr);
-
 
     /*request irq*/
     ret = request_irq(s_hjpeg150.irq_no, hjpeg150_irq_handler, 0, "hjpeg150_irq", 0);
@@ -844,8 +844,70 @@ static int check_rst(jpgenc_config_t *config)
             ret = -1;
             break;
     }
-
     return ret;
+}
+
+static int __check_buffer_vaild(int share_fd, unsigned int vaild_addr, unsigned int vaild_size)
+{
+	struct ion_handle *ionhnd = NULL;
+	struct iommu_map_format iommu_format;
+	int ret = 0;
+
+	if (share_fd < 0) {
+		cam_err("invalid ion: fd=%d", share_fd);
+		return -1;
+	}
+
+	ionhnd = ion_import_dma_buf(s_hjpeg150.ion_client, share_fd);//lint !e838
+	if (IS_ERR(ionhnd)) {
+		ionhnd = NULL;
+		return -1;//lint !e438
+	} else {
+		memset(&iommu_format, 0, sizeof(struct iommu_map_format));
+		if (ion_map_iommu(s_hjpeg150.ion_client, ionhnd, &iommu_format)) {
+			ret = -1;
+			goto ion_free;
+		}
+		if (vaild_addr != iommu_format.iova_start) {
+			ret = -1;
+		}
+		if (vaild_size > iommu_format.iova_size){
+			ret = -1;
+		}
+	}
+
+	ion_unmap_iommu(s_hjpeg150.ion_client, ionhnd);
+ion_free:
+	ion_free(s_hjpeg150.ion_client, ionhnd);
+	return ret;
+}
+
+static int check_buffer_vaild(jpgenc_config_t* config)
+{
+	unsigned int vaild_input_size;
+
+	if (IS_ERR_OR_NULL(s_hjpeg150.ion_client)) {
+		cam_err("invalid ion_client: s_hjpeg150.ion_client is error");
+		return -1;
+	}
+
+	if (__check_buffer_vaild(config->buffer.ion_fd, config->buffer.output_buffer, config->buffer.output_size)) {
+		return -1;
+	}
+
+	if(JPGENC_FORMAT_YUV422 == (config->buffer.format & JPGENC_FORMAT_BIT)) {
+		vaild_input_size = config->buffer.width * config->buffer.height * 2;
+	}
+	else {
+		vaild_input_size = config->buffer.width * config->buffer.height * 3 / 2;
+	}
+
+	// uv addr has been checked
+	if (__check_buffer_vaild(config->buffer.input_ion_fd, config->buffer.input_buffer_y, vaild_input_size)) {
+		return -1;
+	}
+
+	return 0;
 }
 
 static int check_config(jpgenc_config_t* config)
@@ -856,7 +918,17 @@ static int check_config(jpgenc_config_t* config)
         return -EINVAL;
     }
 
-    if(!CHECK_ALIGN(config->buffer.width,2) || (config->buffer.width > 8192)){
+    if (JPGENC_FORMAT_UYVY != config->buffer.format
+            && JPGENC_FORMAT_VYUY != config->buffer.format
+            && JPGENC_FORMAT_YVYU != config->buffer.format
+            && JPGENC_FORMAT_YUYV != config->buffer.format
+            && JPGENC_FORMAT_NV12 != config->buffer.format
+            && JPGENC_FORMAT_NV21 != config->buffer.format) {
+        cam_err("%s: check buffer format fail! (%d)",__func__, __LINE__);
+        return -1;
+    }
+
+    if(!CHECK_ALIGN(config->buffer.width, 2) || 0 == config->buffer.width || (config->buffer.width > 8192)){
         cam_err(" width[%d] is invalid! ",config->buffer.width);
         return -1;
     }
@@ -878,6 +950,7 @@ static int check_config(jpgenc_config_t* config)
         cam_err(" input buffer y[0x%x] is invalid! ",config->buffer.input_buffer_y);
         return -1;
     }
+
     if((JPGENC_FORMAT_YUV420 == (config->buffer.format & JPGENC_FORMAT_BIT))
             && ((0== config->buffer.input_buffer_uv )|| !CHECK_ALIGN(config->buffer.input_buffer_uv, 16))){
         cam_err(" input buffer uv[0x%x] is invalid! ",config->buffer.input_buffer_uv);
@@ -895,7 +968,13 @@ static int check_config(jpgenc_config_t* config)
         config->buffer.quality = 100;
     }
 
-    return 0;
+    if(config->buffer.output_size <= JPGENC_HEAD_SIZE ||
+       config->buffer.output_size > MAX_JPEG_BUFFER_SIZE){
+        cam_err(" output size[%u] is invalid!",config->buffer.output_size);
+        return -1;
+    }
+
+    return check_buffer_vaild(config);
 }
 
 static int hjpeg150_cvdr_fmt_desc_vp_wr(uint32_t width, uint32_t height,
@@ -927,7 +1006,6 @@ static int hjpeg150_cvdr_fmt_desc_vp_wr(uint32_t width, uint32_t height,
     return 0;
 }
 
-#define PREFETCH_BY_PASS (1 << 31)
 static int hjpeg150_set_vp_wr_ready(cvdr_wr_fmt_desc_t *desc, uint32_t buf_addr)
 {
     void __iomem *cvdr_srt_base = s_hjpeg150.hw_ctl.cvdr_viraddr;//ioremap_nocache();
@@ -1177,8 +1255,7 @@ static int hjpeg150_prepare_buf(jpgenc_config_t *cfg)
 
     /* check arg */
     if ((cfg->buffer.ion_fd < 0) || IS_ERR_OR_NULL(s_hjpeg150.ion_client)) {
-        cam_err("invalid ion: fd=%d, client=%pK",
-                cfg->buffer.ion_fd, s_hjpeg150.ion_client);
+        cam_err("invalid ion: fd=%d", cfg->buffer.ion_fd);
         return -EINVAL;
     }
     cam_info("%s: cfg->buffer.ion_fd is %d",__func__, cfg->buffer.ion_fd);
@@ -1200,7 +1277,7 @@ static int hjpeg150_prepare_buf(jpgenc_config_t *cfg)
         ion_free(s_hjpeg150.ion_client, hdl);
         return PTR_ERR(vaddr);
     }
-    cam_info("%s(%d) vaddr is %pK hdl = %pK",__func__, __LINE__, vaddr, hdl);
+
     cfg->buffer.ion_vaddr = vaddr;
 
     return 0;
@@ -1307,7 +1384,7 @@ static void hjpeg150_calculate_encoding_time(void)
 static int hjpeg150_encode_process(hjpeg_intf_t *i, void *cfg)
 {
     jpgenc_config_t* pcfg = NULL;
-    long   jiffies = 0;
+    long   jiffies_time = 0;
     int    ret = 0;
     u32 byte_cnt = 0;
 
@@ -1319,14 +1396,15 @@ static int hjpeg150_encode_process(hjpeg_intf_t *i, void *cfg)
     }
     pcfg = (jpgenc_config_t *)cfg;
 
-    cam_info("width:%d, height:%d, stride:%d, format:%#x, quality:%d, rst:%d, ion_fd:%d",
+    cam_info("width:%d, height:%d, stride:%d, format:%#x, quality:%d, rst:%d, ion_fd:%d, input_ion_fd:%d",
             pcfg->buffer.width,
             pcfg->buffer.height,
             pcfg->buffer.stride,
             pcfg->buffer.format,
             pcfg->buffer.quality,
             pcfg->buffer.rst,
-            pcfg->buffer.ion_fd);
+            pcfg->buffer.ion_fd,
+            pcfg->buffer.input_ion_fd);
     cam_info("input_buffer_y:%#x, input_buffer_uv:%#x, output_buffer:%#x, output_size:%u",
             pcfg->buffer.input_buffer_y,
             pcfg->buffer.input_buffer_uv,
@@ -1340,6 +1418,7 @@ static int hjpeg150_encode_process(hjpeg_intf_t *i, void *cfg)
 
     if (0 != check_rst(pcfg)) {
         cam_err("%s(%d)checking rst failed, adjust to 0.",__func__, __LINE__);
+        return -1;
     }
 
 #ifndef SAMPLEBACK
@@ -1377,8 +1456,8 @@ static int hjpeg150_encode_process(hjpeg_intf_t *i, void *cfg)
 
     hjpeg150_do_config(pcfg);
 
-    jiffies = msecs_to_jiffies(WAIT_ENCODE_TIMEOUT);
-    if (down_timeout(&s_hjpeg150.buff_done, jiffies)) {
+    jiffies_time = msecs_to_jiffies(WAIT_ENCODE_TIMEOUT);
+    if (down_timeout(&s_hjpeg150.buff_done, jiffies_time)) {
         cam_err("time out wait for jpeg encode");
         ret = -1;
     }
@@ -1442,17 +1521,6 @@ void hjpeg150_init_hw_param(void)
     hjpeg150_rstmarker_init();
 
     hjpeg150_synccfg_init();
-}
-
-static inline void hjpeg150_set_power_reg(unsigned long reg,unsigned int  value)
-{
-    void __iomem* regaddr;
-
-    regaddr = ioremap_nocache(reg, 0x4);
-
-    REG_SET(regaddr, value);
-
-    iounmap(regaddr);
 }
 
 static int hjpeg150_clk_ctrl(bool flag)

@@ -11,6 +11,7 @@
 #include "hwsensor.h"
 #include "sensor_commom.h"
 #include "hw_csi.h"
+//lint -save -e31
 
 #define I2S(i) container_of(i, sensor_t, intf)
 
@@ -401,3 +402,5 @@ module_init(imx230_init_module);
 module_exit(imx230_exit_module);
 MODULE_DESCRIPTION("imx230");
 MODULE_LICENSE("GPL v2");
+//lint -restore
+

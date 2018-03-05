@@ -46,7 +46,6 @@ static struct of_device_id hisi_usb_vbus_of_match_table[] = {
 	{ .compatible = "hisilicon-usbvbus", },
 	{ },
 };
-/*lint +e785*/
 
 static const struct spmi_device_id hisi_usb_vbus_of_match[] = {
 	{"hisilicon-usbvbus", 0},
@@ -63,6 +62,7 @@ static struct spmi_driver hisi_usb_vbus_drv = {
 	},
 	.id_table = hisi_usb_vbus_of_match,
 };
+/*lint +e785*/
 module_driver(hisi_usb_vbus_drv, spmi_driver_register, spmi_driver_unregister);
 
 MODULE_AUTHOR("hisilicon");

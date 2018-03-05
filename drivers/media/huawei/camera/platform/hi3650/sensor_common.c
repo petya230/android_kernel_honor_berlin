@@ -121,22 +121,6 @@ int mclk_config(sensor_t *s_ctrl, unsigned int id, unsigned int clk, int on)
     return 0;
 }
 
-void hwcam_mclk_enable(int index, int enable)
-{
-	cam_info("%s index = %d, enable=%d", __func__,index, enable);
-
-	if (POWER_ON == enable) {
-		if (CAMERA_SENSOR_PRIMARY == index) {
-			ISP_SETREG8(REG_ISP_CLK_DIVIDER, 0x44);
-		} else {
-			ISP_SETREG8(REG_ISP_CLK_DIVIDER, 0x44);
-		}
-	} else {
-		ISP_SETREG8(REG_ISP_CLK_DIVIDER, 0);
-	}
-}
-
-
 int hw_mclk_config(sensor_t *s_ctrl,
 	struct sensor_power_setting *power_setting, int state)
 {
@@ -154,9 +138,8 @@ int hw_mclk_config(sensor_t *s_ctrl,
 		sensor_index = s_ctrl->board_info->sensor_index;
 	}
 
-	//hwcam_mclk_enable(sensor_index, state);
-       mclk_config(s_ctrl,sensor_index,
-            s_ctrl->board_info->mclk, state);
+	mclk_config(s_ctrl,sensor_index,
+		s_ctrl->board_info->mclk, state);
 
 	if (0 != power_setting->delay) {
 		hw_camdrv_msleep(power_setting->delay);
@@ -929,7 +912,7 @@ int hw_sensor_get_dt_data(struct platform_device *pdev,
 	u32 i, index = 0;
 	char *gpio_tag = NULL;
 	const char *gpio_ctrl_types[IO_MAX] =
-		{"reset", "fsin", "pwdn", "vcm_pwdn", "suspend", "reset2", "ldo_en", "ois", "ois2", "dvdd0-en", "dvdd1-en", "iovdd-en", "mispdcdc-en"};
+		{"reset", "fsin", "pwdn", "vcm_pwdn", "suspend", "suspend2", "reset2", "ldo_en", "ois", "ois2", "dvdd0-en", "dvdd1-en", "iovdd-en", "mispdcdc-en"};
 
 	cam_debug("enter %s", __func__);
 	sensor_info = kzalloc(sizeof(hwsensor_board_info_t),

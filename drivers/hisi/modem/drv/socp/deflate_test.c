@@ -74,43 +74,43 @@ static BSP_BOOL g_bInit = BSP_FALSE;
 #define DEFLATE_VIRT_TO_PHYS(virt) virt_to_phys((void*)virt)
 #define DEFLATE_PHYS_TO_VIRT(phy)  (void *)(phys_to_virt((unsigned long)phy))
 
-#define DEV_SOCP_INIT()\
-do{\
-    if(!g_bInit)\
-    {\
-        if(BSP_OK != socp_init())\
-        {\
-            deflate_printf("init fail...\n");\
-            return BSP_ERROR;\
-        }\
-        g_bInit = BSP_TRUE;\
-    }\
-}while(0)
+BSP_S32 DEV_SOCP_INIT()
+{
+    if(!g_bInit)
+    {
+        if(BSP_OK != socp_init())
+        {
+            deflate_printf("init fail...\n");
+            return BSP_ERROR;
+        }
+        g_bInit = BSP_TRUE;
+    }
+}
 
-#define DEV_DEFLATE_INIT()\
-do{\
-    if(!g_bInit)\
-    {\
-        if(DEFLATE_OK != deflate_init())\
-        {\
-            deflate_printf("init fail...\n");\
-            return BSP_ERROR;\
-        }\
-        g_bInit = BSP_TRUE;\
-    }\
-}while(0)
+BSP_S32 DEV_DEFLATE_INIT()
+{
+    if(!g_bInit)
+    {
+        if(DEFLATE_OK != deflate_init())
+        {
+            deflate_printf("init fail...\n");
+            return BSP_ERROR;
+        }
+        g_bInit = BSP_TRUE;
+    }
+}
 
 
-#define CHECK_DEFLATE_RET(a, b)\
-do{\
-    BSP_S32 x;\
-    x = a;\
-    if(x != b)\
-    {\
-        deflate_printf("%s(%d): ret(0x%x) error...\n", __FUNCTION__, __LINE__, x);\
-        return x;\
-    }\
-}while(0)
+BSP_S32 CHECK_DEFLATE_RET(a, b)
+{
+    BSP_S32 x;
+    x = a;
+    if(x != b)
+    {
+        deflate_printf("%s(%d): ret(0x%x) error...\n", __FUNCTION__, __LINE__, x);
+        return x;
+    }
+}
 
 unsigned long long g_deflate_dma_test_mask=0xffffffffULL;
 #define DEFLATE_TEST_FLUSH_CACHE(ptr, size)                      \

@@ -11,8 +11,11 @@
 #include <linux/uaccess.h>
 #include <linux/platform_device.h>
 #include <linux/task_io_accounting_ops.h>
+#include <linux/trace_clock.h>
 
 #include <trace/iotrace.h>
+
+#define DEBUG (0)
 
 typedef u32 block_t;
 typedef u32 nid_t;
@@ -61,6 +64,7 @@ enum IO_TRACE_ACTION
     EXT4_SYNC_EXIT_TAG,
     F2FS_SYNC_EXIT_TAG,
 
+    /*lint -save -e849 -e488*/
     IO_TRACE_JANK_TAG = F2FS_SYNC_EXIT_TAG,
     EXT4_MAP_SUBMIT_TAG,
 
@@ -71,6 +75,14 @@ enum IO_TRACE_ACTION
     F2FS_SYNC_FS_TAG,
     F2FS_WRITE_CP_TAG,
 
+    BLK_THRO_WEIGHT_TAG,
+    BLK_THRO_DISP_TAG,
+    BLK_THRO_IOCOST_TAG,
+    BLK_THRO_LIMIT_START_TAG,
+    BLK_THRO_LIMIT_END_TAG,
+    BLK_THRO_BIO_IN_TAG,
+    BLK_THRO_BIO_OUT_TAG,
+
     BLOCK_BIO_DM_TAG,
     BLOCK_BIO_CRYPT_MAP,
     BLOCK_DM_CRYPT_TAG,
@@ -80,11 +92,15 @@ enum IO_TRACE_ACTION
     BLOCK_BIO_QUEUE_TAG,
     BLOCK_BIO_BACKMERGE_TAG,
     BLOCK_BIO_FRONTMERGE_TAG,
+    BLOCK_BIO_WBT_TAG,
     BLOCK_GETRQ_TAG,
     BLOCK_SLEEPRQ_TAG,
     BLOCK_RQ_INSERT_TAG,
     BLOCK_RQ_ISSUE_TAG,
     BLOCK_RQ_COMPLETE_TAG,
+    BLOCK_RQ_ABORT_TAG,
+    BLOCK_RQ_REQUEUE_TAG,
+    BLOCK_RQ_SLEEP_TAG,
     BLOCK_EXT4_END_BIO_TAG,
     MMC_BLK_ISSUE_RQ_TAG,
     MMC_BLK_RW_START_TAG,
@@ -98,6 +114,7 @@ enum IO_TRACE_ACTION
     
     F2FS_QUASI_DETECTED_TAG,
 
+    /*lint -restore*/
     IO_TRACE_TAG_END,
 };
 
@@ -107,7 +124,8 @@ struct io_trace_action
     unsigned char *name;
 };
 
-static struct io_trace_action all_trace_action[] = { 
+/*lint -save -e64*/
+static struct io_trace_action all_trace_action[] = {
     {0, "0"},
     {READ_BEGIN_TAG,"r_begin"},
     {WRITE_BEGIN_TAG, "w_begin"},
@@ -133,6 +151,14 @@ static struct io_trace_action all_trace_action[] = {
     {F2FS_SYNC_FS_TAG, "f2fs_sync_fs"},
     {F2FS_WRITE_CP_TAG, "f2fs_w_cp"},
 
+    {BLK_THRO_WEIGHT_TAG, "b_t_wgt"},
+    {BLK_THRO_DISP_TAG, "b_t_disp"},
+    {BLK_THRO_IOCOST_TAG, "b_t_cost"},
+    {BLK_THRO_LIMIT_START_TAG, "b_t_lim_s"},
+    {BLK_THRO_LIMIT_END_TAG, "b_t_lim_e"},
+    {BLK_THRO_BIO_IN_TAG, "b_t_bio_i"},
+    {BLK_THRO_BIO_OUT_TAG, "b_t_bio_o"},
+
     {BLOCK_BIO_DM_TAG, "b_b_dm"},
     {BLOCK_BIO_CRYPT_MAP, "b_crypt_map"},
     {BLOCK_DM_CRYPT_TAG, "b_crypt_s"},
@@ -142,11 +168,15 @@ static struct io_trace_action all_trace_action[] = {
     {BLOCK_BIO_QUEUE_TAG, "b_b_queue"},
     {BLOCK_BIO_BACKMERGE_TAG, "b_b_back"},
     {BLOCK_BIO_FRONTMERGE_TAG, "b_b_front"},
+    {BLOCK_BIO_WBT_TAG, "b_b_wbt"},
     {BLOCK_GETRQ_TAG, "b_getq"},
     {BLOCK_SLEEPRQ_TAG, "b_slq"},
     {BLOCK_RQ_INSERT_TAG, "b_q_insert"},
     {BLOCK_RQ_ISSUE_TAG, "b_q_issue"},
     {BLOCK_RQ_COMPLETE_TAG, "b_q_comp"},
+    {BLOCK_RQ_ABORT_TAG, "b_q_abort"},
+    {BLOCK_RQ_REQUEUE_TAG, "b_q_requeue"},
+    {BLOCK_RQ_SLEEP_TAG, "b_q_sleep"},
     {BLOCK_EXT4_END_BIO_TAG, "b_i_comp"},
     {MMC_BLK_ISSUE_RQ_TAG, "mmc_issue"},
     {MMC_BLK_RW_START_TAG, "mmc_start"},
@@ -160,11 +190,12 @@ static struct io_trace_action all_trace_action[] = {
 
     {F2FS_QUASI_DETECTED_TAG, "f2fs_d_qu"},
 };
+/*lint -restore*/
 
 static inline int action_is_read(unsigned char action)
 {
     if(action == READ_END_TAG ||
-            action == READ_BEGIN_TAG)    
+            action == READ_BEGIN_TAG)
     {
         return 1;
     }
@@ -184,7 +215,7 @@ static inline int action_is_write(unsigned char action)
 
     return 0;
 }
-
+/*lint -save -e64*/
 enum IO_TRACE_TYPE
 {
     __IO_TRACE_WRITE,
@@ -194,14 +225,16 @@ enum IO_TRACE_TYPE
 	__IO_TRACE_PRIO,		/* boost priority in cfq */
 	__IO_TRACE_DISCARD,		/* request to discard sectors */
 };
+/*lint -restore*/
 
 #define IO_TRACE_READ   (0)
 #define IO_TRACE_WRITE  (1 << __IO_TRACE_WRITE)
 #define IO_TRACE_SYNC   (1 << __IO_TRACE_SYNC)
 #define IO_TRACE_META   (1 << __IO_TRACE_META)
 #define IO_TRACE_DISCARD (1 << __IO_TRACE_DISCARD)
+/*lint -save -e64*/
 static unsigned char *rw_name[] = {"R", "W", "N", "N", "S", "M", "P", "D"};
-
+/*lint -restore*/
 #define IO_F_NAME_LEN  (32)
 #define IO_P_NAME_LEN  (16)
 struct io_trace_log_entry
@@ -216,10 +249,56 @@ struct io_trace_log_entry
     unsigned long inode;
     unsigned long time;
     unsigned long delay;
+    unsigned long f_time;
     char comm[IO_P_NAME_LEN];
     char f_name[IO_F_NAME_LEN];
 };
 
+struct vfs_uid_count
+{
+    unsigned long uid;
+    unsigned long long uid_read_bytes;
+    unsigned long long uid_write_bytes;
+    unsigned long long uid_fg_read_bytes;
+    unsigned long long uid_fg_write_bytes;
+    unsigned long long uid_bg_read_bytes;
+    unsigned long long uid_bg_write_bytes;
+};
+
+struct delay_io_count
+{
+    unsigned long stage_one[2];
+    unsigned long stage_two[2];
+    unsigned long stage_thr[2];
+    unsigned long stage_fou[2];
+    unsigned long stage_fiv[2];
+    unsigned long max_delay[2];
+    unsigned long cnt[2];
+    unsigned long total_delay[2];
+};
+
+#define MAX_MODEL_NAME_LEN (36)
+
+struct io_mon_log_entry
+{
+    /* vfs */
+    struct vfs_uid_count uid_count[10];
+    /* report */
+    unsigned long total_sector[2];
+    unsigned long ios[2];
+    unsigned long sector[2];
+    unsigned long ticks[2];
+    unsigned int flight;
+    /* blk */
+    /*lint -save -e570 -e64 -e785*/
+    struct delay_io_count blk_count[2];
+    /*lint -restore*/
+    /* device */
+    unsigned int manufacturer_id;
+    unsigned int manufacturer_date;
+    char product_name[MAX_MODEL_NAME_LEN];
+};
+/*lint save -e750 -e749 -e753*/
 #define IO_MAX_PROCESS  (32768)
 #define IO_RUNNING_MAX_PROCESS  (32)
 
@@ -244,11 +323,14 @@ struct io_trace_pid
     struct io_trace_log_entry pid_entry[IO_TRACE_PARENT_END + 1];
 };
 
-struct io_trace_mem_mngt 
+struct io_trace_mem_mngt
 {
-    int index;    
+    int index;
     unsigned char *buff[IO_RUNNING_MAX_PROCESS];
     unsigned char *all_trace_buff;
+#if DEBUG
+    unsigned char *all_trace_buff_add;
+#endif
 };
 
 struct io_trace_ctrl
@@ -279,7 +361,6 @@ static struct mutex output_mutex;
 static int trace_mm_init(struct io_trace_ctrl *trace_ctrl);
 static void io_trace_setup(struct io_trace_ctrl *trace_ctrl);
 
-static void io_trace_offline(struct io_trace_ctrl *trace_ctrl);
 static unsigned char *io_mem_mngt_alloc(struct io_trace_mem_mngt *mem_mngt);
 static void io_mem_mngt_free(struct io_trace_mem_mngt *mem_mngt, unsigned char *buf);
 
@@ -291,12 +372,20 @@ static ssize_t sysfs_io_trace_attr_store(struct device *dev, struct device_attri
 static ssize_t io_log_data_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf);
 static ssize_t io_log_data_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count);
 
-static ssize_t io_log_stat_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf);
-static ssize_t io_log_stat_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count);
-
+#ifdef CONFIG_HUAWEI_IO_MONITOR
+static int io_monitor_log_get(struct file *filp);
+#endif
 static struct file * open_log_file(char *name);
 static int write_log_kernel(struct file *filp, struct io_trace_log_entry *entry);
+static int write_io_monlog_kernel(struct file *filp, unsigned char *buf, int len);
 static int write_head_kernel(struct file *filp);
+
+#if DEBUG
+static struct io_trace_log_entry *entry_a = NULL;
+static struct io_trace_log_entry *entry_b = NULL;
+
+static struct io_trace_log_entry *curr_entry = NULL ;
+#endif
 
 #define IO_TRACE_DEVICE_ATTR(_name) \
     DEVICE_ATTR(_name, S_IRUGO | S_IWUSR, \
@@ -312,19 +401,13 @@ static struct kobj_attribute io_log_data_attr = {
     .store = io_log_data_store
 };
 
-static struct kobj_attribute io_log_stat_attr = {
-    .attr = {.name = "io_stat", .mode= 0660},
-    .show = io_log_stat_show,
-    .store = io_log_stat_store
-};
-
 static struct attribute *io_trace_attrs[] = {
     &dev_attr_enable.attr,
     //&dev_attr_pid.attr,
     &io_log_data_attr.attr,
     NULL,
 };
-struct attribute_group io_trace_attr_group = { 
+struct attribute_group io_trace_attr_group = {
     .name  = "iotrace",
     .attrs = io_trace_attrs,
 };
@@ -394,9 +477,9 @@ enum
 };
 
 static struct io_trace_interface *my_itface;
-static struct io_trace_interface *all_itface[SYS_IO_NUM] = {NULL, NULL};
-
-static int io_copy_interface_data(struct io_trace_interface *in_itface, 
+//static struct io_trace_interface *all_itface[SYS_IO_NUM] = {NULL, NULL};
+/*lint restore*/
+static int io_copy_interface_data(struct io_trace_interface *in_itface,
         struct io_trace_interface *out_itface)
 {
     int i;
@@ -439,7 +522,7 @@ static int io_copy_interface_data(struct io_trace_interface *in_itface,
 
     return len;
 }
-
+/*
 static int do_io_accounting(struct task_struct *task, struct io_stat_output_entry *buffer, int whole)
 {
 	struct task_io_accounting acct = task->ioac;
@@ -453,12 +536,12 @@ static int do_io_accounting(struct task_struct *task, struct io_stat_output_entr
         io_trace_print("mutex lock killable failed!\n");
 		return result;
     }
-/*
-	if (!ptrace_may_access(task, PTRACE_MODE_READ)) {
-		result = -EACCES;
-		goto out_unlock;
-	}
-*/
+
+//	if (!ptrace_may_access(task, PTRACE_MODE_READ)) {
+//		result = -EACCES;
+//		goto out_unlock;
+//	}
+
 	task_io_accounting_add(&acct, &task->signal->ioac);
 	if (whole && lock_task_sighand(task, &flags))
     {
@@ -481,126 +564,7 @@ static int do_io_accounting(struct task_struct *task, struct io_stat_output_entr
 
 	return result;
 }
-
-static ssize_t io_log_stat_show(struct kobject *kobj, struct kobj_attribute *attr, char *buffer)
-{
-    int ret = 0;
-    int i, pid_index = 0;
-    struct io_trace_interface *itface = all_itface[SYS_IO_STAT];
-    int out_count;
-    struct io_stat_output_entry *entry = NULL;
-
-    mutex_lock(&output_mutex);
-
-    if(!itface)
-    {
-        io_trace_print("itface is NULL\n");
-        goto end;
-    }
-
-    if(buffer == NULL)
-    {
-        io_trace_print("itface buff NULL\n");
-        goto end;
-    }
-
-    if(itface->buff_len > 4096 || itface->pid_num == 0)
-    {
-        io_trace_print("itface buff_len[%d] or pid_num[%d] failed\n", itface->buff_len,
-                itface->pid_num);
-        goto end;
-    }
-
-    out_count = itface->buff_len / sizeof(struct io_stat_output_entry);
-    pid_index = 0;
-
-    for(i = 0; i < out_count; i++)
-    {
-        struct pid *pid = NULL;
-        struct task_struct *task = NULL;
-        pid_t stat_pid = itface->pid[pid_index];
-        io_trace_print("Find Pid: %d\n", stat_pid);
-        pid = find_get_pid(stat_pid);
-        entry = ((struct io_stat_output_entry*)buffer) + i;
-        entry->pid = stat_pid;
-        entry->stat_ret = 0;
-        if(pid)
-        {
-            task = get_pid_task(pid, PIDTYPE_PID);
-            if(task)
-            {
-                int whole = thread_group_leader(task) ? 1 : 0;
-                if(do_io_accounting(task, entry, whole) < 0)
-                {
-                    entry->stat_ret = -1;
-                    io_trace_print("do io accounting failed!\n");
-                }
-                put_task_struct(task);
-            }
-	    put_pid(pid);
-        }
-        else
-        {
-            entry->stat_ret = -1;
-            io_trace_print("Not Found Pid: %d\n", stat_pid);
-        }
-        pid_index ++;
-        if(pid_index >= itface->pid_num)
-        {
-            break;
-        }
-        ret += sizeof(struct io_stat_output_entry);
-    }
-
-    io_trace_print("ret length: %d\n", ret);
-
-end:
-    if(itface)
-    {
-        io_mem_mngt_free(io_trace_this->mem_mngt, (unsigned char *)itface);
-        all_itface[SYS_IO_STAT] = NULL;
-    }
-    mutex_unlock(&output_mutex);
-
-    return ret;
-}
-
-static ssize_t io_log_stat_store(struct kobject *kobj, struct kobj_attribute *attr, 
-        const char *buf, size_t count)
-{
-    struct io_trace_interface *out_itface = (struct io_trace_interface *)buf;
-    struct io_trace_interface *io_stat_itface = all_itface[SYS_IO_STAT];
-
-    mutex_lock(&output_mutex);
-
-    if(out_itface->magic == 0x5D)
-    {
-        unsigned char *mem= io_mem_mngt_alloc(io_trace_this->mem_mngt);
-        if(mem == NULL)
-        {
-            io_trace_print("mem alloc failed!\n");
-            goto end;
-        }
-        io_stat_itface = (struct io_trace_interface *)mem;
-        if(!io_copy_interface_data(io_stat_itface, out_itface))
-        {
-            io_trace_print("out pid_num:%d, buff_len:%d, time: %ld\n",
-                    io_stat_itface->pid_num, io_stat_itface->buff_len, io_stat_itface->time_stamp);
-        }
-
-        all_itface[SYS_IO_STAT] = io_stat_itface;
-    }
-    else 
-    {
-        io_trace_print("io trace magic error: 0x%x\n", out_itface->magic);
-    }
-
-end:
-    mutex_unlock(&output_mutex);
-
-    return count;
-}
-
+*/
 static inline int io_log_allow_pid(unsigned int pid_num, pid_t *o_pid, pid_t pid)
 {
     unsigned int i;
@@ -636,8 +600,8 @@ static inline int io_log_allow_time(unsigned long time, unsigned long o_time, un
         }
         else
         {
-            io_trace_print("time[%lu]ms o_time[%lu]ms, time_span[%lu]ms\n", 
-                    io_ns_to_ms(time), o_time, time_span);
+            //io_trace_print("time[%lu]ms o_time[%lu]ms, time_span[%lu]ms\n",
+            //        io_ns_to_ms(time), o_time, time_span);
             return 0;
         }
     }
@@ -663,25 +627,42 @@ static struct io_trace_log_entry *io_trace_find_log(struct io_trace_interface *i
         struct io_trace_ctrl *trace_ctrl)
 {
     unsigned int index = trace_ctrl->out_log_index;
-    struct io_trace_log_entry *entry = NULL;
     unsigned int find_flag = 0;
     unsigned int total_count = io_trace_this->all_log_count;
     int ret = 0;
+#if DEBUG
+	struct io_trace_log_entry *entry = NULL, *entry_tmp = curr_entry;
+	unsigned int count_sin = (total_count > IO_MAX_LOG_PER_GLOBAL) ? IO_MAX_LOG_PER_GLOBAL : total_count;
 
+    while(trace_ctrl->out_log_count < ((total_count / 2) - 1))
+    {
+        trace_ctrl->out_log_count ++;
+
+        entry = entry_tmp + index;
+        if(index == 0 && entry_tmp == entry_a){
+           entry_tmp = entry_b;
+        }
+        else if (index == 0 && entry_tmp == entry_b){
+            entry_tmp = entry_a;
+        }
+        index = (index == 0) ? (count_sin - 1) : (index - 1);
+#else
+    struct io_trace_log_entry *entry = NULL;
     while(trace_ctrl->out_log_count < total_count)
     {
         trace_ctrl->out_log_count ++;
-        entry = (((struct io_trace_log_entry *)(trace_ctrl->mem_mngt->all_trace_buff)) + 
+        entry = (((struct io_trace_log_entry *)(trace_ctrl->mem_mngt->all_trace_buff)) +
                 index);
         /*next find log index*/
         index = (index == 0) ? (total_count - 1) : (index - 1);
+#endif
         ret = io_log_allow_time(entry->time, itface->time_stamp, itface->time_span);
         if(!ret)
         {
-            io_trace_print("time stamp not allow, first index: %u, now index: %u\n",
-                    io_trace_this->all_log_index, index);   
-            io_trace_print("entry time: %ld, time_stamp:%ld, time_span: %ld\n",
-                    io_ns_to_ms(entry->time), itface->time_stamp, itface->time_span);   
+            //io_trace_print("time stamp not allow, first index: %u, now index: %u\n",
+            //       io_trace_this->all_log_index, index);
+            //io_trace_print("entry time: %ld, time_stamp:%ld, time_span: %ld\n",
+            //io_ns_to_ms(entry->time), itface->time_stamp, itface->time_span);
             return NULL;
         }
 
@@ -691,23 +672,29 @@ static struct io_trace_log_entry *io_trace_find_log(struct io_trace_interface *i
         }
         /*
         io_trace_print("find entry time: %ld, time_stamp:%ld, time_span: %ld\n",
-                    io_ns_to_ms(entry->time), itface->time_stamp, itface->time_span);   
+                    io_ns_to_ms(entry->time), itface->time_stamp, itface->time_span);
 
         */
         if(io_log_allow_pid(itface->pid_num, itface->pid, entry->tgid) &&
                 io_log_allow_action(entry->action))
         {
             trace_ctrl->out_log_index = index;
-            find_flag = 1;
+            //find_flag = 1;
             break;
         }
     }
+    return entry;
     /*write file*/
+    /*lint -save -e438 -e527 -e578 -e774 -e838*/
     if(find_flag)
     {
         int ret;
+#if DEBUG
+        struct io_trace_log_entry *blk_entry = NULL, *entry_tmp1 = curr_entry;
+#else
         struct io_trace_log_entry *blk_entry = NULL;
-        unsigned int file_log_count = trace_ctrl->out_log_count;
+#endif
+		unsigned int file_log_count = trace_ctrl->out_log_count;
         unsigned int file_log_index = trace_ctrl->out_log_index;
         unsigned int happen = 0;
 
@@ -717,15 +704,30 @@ static struct io_trace_log_entry *io_trace_find_log(struct io_trace_interface *i
             io_trace_print("write log kernel failed![%d]\n", ret);
             return NULL;
         }
+#if DEBUG
+        while(file_log_count < ((total_count / 2) - 1))
+        {
+            /*scan the request*/
+            file_log_count ++;
 
+            blk_entry = entry_tmp1 + file_log_index;
+            if(file_log_index == 0 && entry_tmp1 == entry_a){
+                entry_tmp1 = entry_b;
+            }
+            else if (file_log_index == 0 && entry_tmp1 == entry_b){
+            entry_tmp1 = entry_a;
+            }
+            file_log_index = (file_log_index == 0) ? (count_sin - 1) : (file_log_index - 1);
+#else
         while(file_log_count < total_count)
         {
             /*scan the request*/
             file_log_count ++;
-            blk_entry = (((struct io_trace_log_entry *)(trace_ctrl->mem_mngt->all_trace_buff)) + 
+            blk_entry = (((struct io_trace_log_entry *)(trace_ctrl->mem_mngt->all_trace_buff)) +
                 file_log_index);
             file_log_index = (file_log_index == 0) ? (total_count - 1) : (file_log_index - 1);
-            /*happen the jank log index*/
+#endif
+			/*happen the jank log index*/
             if(!happen)
             {
                 trace_ctrl->out_log_index = file_log_index;
@@ -750,10 +752,8 @@ static struct io_trace_log_entry *io_trace_find_log(struct io_trace_interface *i
                 return NULL;
             }
         }
-
-        return entry;
     }
-
+    /*lint restore*/
     io_trace_print("loop all the log: %d\n", trace_ctrl->out_log_count);
 
     return NULL;
@@ -761,7 +761,7 @@ static struct io_trace_log_entry *io_trace_find_log(struct io_trace_interface *i
 
 static ssize_t io_log_data_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
 {
-    int i = 0, ret = -1;
+    int i = 0, ret = -1, j = 0, ret_e = 0;
     unsigned int out_count = 0;
     struct io_trace_interface *itface = my_itface;
     char file_name[48];
@@ -770,7 +770,11 @@ static ssize_t io_log_data_show(struct kobject *kobj, struct kobj_attribute *att
     unsigned int r_max_delay = 0, r_total_delay = 0;
     unsigned int w_max_delay = 0, w_total_delay = 0;
     unsigned int r_cnt = 0, w_cnt = 0;
-    
+#if DEBUG
+    struct io_trace_log_entry *blk_entry = NULL, *entry_tmp = NULL;
+#else
+	struct io_trace_log_entry *blk_entry = NULL;
+#endif
     mutex_lock(&output_mutex);
     if(!io_trace_this->enable)
     {
@@ -812,17 +816,13 @@ static ssize_t io_log_data_show(struct kobject *kobj, struct kobj_attribute *att
         goto end;
     }
 
-    if(write_head_kernel(io_trace_this->filp) < 0)
-    {
-        io_trace_print("write head kernel filed!\n");
-        goto end;
-    }
     /*end*/
+    /*
     io_trace_print("itface pid_num: %u\n", itface->pid_num);
     io_trace_print("itface time_stamp: %ld\n", itface->time_stamp);
     io_trace_print("itface time span: %ld\n", itface->time_span);
     io_trace_print("itface buff len: %u\n", itface->buff_len);
-
+    */
     data_len = itface->buff_len;
     head_len = sizeof(struct io_trace_output_head); /*reserved how many bytes*/
     /*skip the head buffer*/
@@ -833,8 +833,13 @@ static ssize_t io_log_data_show(struct kobject *kobj, struct kobj_attribute *att
     ret = head_len;
 
     out_count = data_len / (sizeof(struct io_trace_output_entry));
+#if DEBUG
+    io_trace_this->out_log_index = (io_trace_this->all_log_index == 0) ? (IO_MAX_LOG_PER_GLOBAL - 1) :
+        (io_trace_this->all_log_index - 1);
+#else
     io_trace_this->out_log_index = (io_trace_this->all_log_index == 0) ? (io_trace_this->all_log_count - 1) :
         (io_trace_this->all_log_index - 1);
+#endif
     io_trace_this->out_log_count = 0;
 
     for(i = 0; i < out_count; i++)
@@ -878,13 +883,69 @@ static ssize_t io_log_data_show(struct kobject *kobj, struct kobj_attribute *att
     }
 
 log_end:
+    /* store all 4mb buff log entry */
+    /*lint -save -e713 -e574 -e737 -e747*/
+    if(io_trace_this->all_log_count > 0 && ((r_cnt + w_cnt) > 0))
+    {
+
+#ifdef CONFIG_HUAWEI_IO_MONITOR
+        ret_e = io_monitor_log_get(io_trace_this->filp);
+        if (ret_e < 0){
+            io_trace_print("write log kernel failed:[%d]\n", ret_e);
+            return -1;
+        }
+#endif
+#if DEBUG
+        unsigned int count = io_trace_this->all_log_count;
+        unsigned int count_sin = (count > IO_MAX_LOG_PER_GLOBAL) ? IO_MAX_LOG_PER_GLOBAL : count;
+        entry_tmp = curr_entry;
+
+        for(i = io_trace_this->all_log_index, j = 0; j < ((count / 2) - 1); j++)
+        {
+            i = (i == 0) ? ( count_sin - 1) : (i - 1);
+            io_trace_assert(i >= 0);
+
+            blk_entry = entry_tmp + i;
+            if(i == 0 && entry_tmp == entry_a){
+                entry_tmp = entry_b;
+            }
+            else if (i == 0 && entry_tmp == entry_b){
+                entry_tmp = entry_a;
+            }
+            //write_log_kernel(io_trace_this->filp, blk_entry);
+            ret_e = write_io_monlog_kernel(io_trace_this->filp, (unsigned char *)blk_entry, sizeof(struct io_trace_log_entry));
+            if (ret_e < 0){
+                io_trace_print("[DEBUG]write log kernel failed:[%d]\n", ret_e);
+                return -1;
+            }
+        }
+#else
+            unsigned int count = io_trace_this->all_log_count;
+
+            for(i = io_trace_this->all_log_index, j = 0; j < count; j++)
+            {
+                i = (i == 0) ? (count - 1) : (i - 1);
+                io_trace_assert(i >= 0);
+                blk_entry = (((struct io_trace_log_entry *)
+                        (io_trace_this->mem_mngt->all_trace_buff)) + i);
+                //write_log_kernel(io_trace_this->filp, blk_entry);
+				ret_e = write_io_monlog_kernel(io_trace_this->filp, (unsigned char *)blk_entry, sizeof(struct io_trace_log_entry));
+                if (ret_e < 0){
+                    io_trace_print("write log kernel failed:[%d]\n", ret_e);
+                    return -1;
+                }
+            }
+#endif
+    }
+
+    /*lint restore*/
     if(head_buf)
     {
         struct io_trace_output_head *head = (struct io_trace_output_head *)head_buf;
         memset(head_buf, 0, sizeof(struct io_trace_output_head));
         io_trace_version(head->version);
-        io_trace_print("r_cnt:%d, r_max_delay: %u, r_total_delay: %u\n", r_cnt, r_max_delay, r_total_delay);
-        io_trace_print("w_cnt:%d, w_max_delay: %u, w_total_delay: %u\n", w_cnt, w_max_delay, w_total_delay);
+        //io_trace_print("r_cnt:%d, r_max_delay: %u, r_total_delay: %u\n", r_cnt, r_max_delay, r_total_delay);
+        //io_trace_print("w_cnt:%d, w_max_delay: %u, w_total_delay: %u\n", w_cnt, w_max_delay, w_total_delay);
         if(r_cnt > 0)
         {
             head->r_max_delay = io_ns_to_ms(r_max_delay);
@@ -950,13 +1011,13 @@ static ssize_t io_log_data_store(struct kobject *kobj,
             io_mem_mngt_free(io_trace_this->mem_mngt, mem);
             goto end;
         }
-        io_trace_print("out pid_num:%d, buff_len:%d, time: %ld, time_span: %ld\n",
-                my_itface->pid_num, my_itface->buff_len, my_itface->time_stamp,
-                my_itface->time_span);
+        //io_trace_print("out pid_num:%d, buff_len:%d, time: %ld, time_span: %ld\n",
+        //        my_itface->pid_num, my_itface->buff_len, my_itface->time_stamp,
+        //        my_itface->time_span);
 
         io_trace_this->out_valid = 1;
     }
-    else 
+    else
     {
         io_trace_print("io trace magic error: 0x%x\n", out_itface->magic);
     }
@@ -970,10 +1031,11 @@ end:
 static ssize_t sysfs_io_trace_attr_show(struct device *dev,
         struct device_attribute *attr, char *buf)
 {
+    int ret_e = 0;
     ssize_t ret = 0;
     unsigned long log_time, log_time_end;
 
-    if(attr == &dev_attr_enable)    
+    if(attr == &dev_attr_enable)
     {
         ret = sprintf(buf, "%d\n", io_trace_this->enable);
     }
@@ -981,8 +1043,12 @@ static ssize_t sysfs_io_trace_attr_show(struct device *dev,
     if(attr == &dev_attr_pid)
     {
         int i,j;
-        struct io_trace_log_entry *entry;
-        char file_name[128];
+#if DEBUG
+        struct io_trace_log_entry *entry = NULL, *entry_tmp = NULL;
+#else
+        struct io_trace_log_entry *entry = NULL;
+#endif
+		char file_name[128];
         struct timespec realts;
 
         do_posix_clock_monotonic_gettime(&realts);
@@ -998,6 +1064,42 @@ static ssize_t sysfs_io_trace_attr_show(struct device *dev,
             io_trace_this->enable = 1;
             return ret;
         }
+#ifdef CONFIG_HUAWEI_IO_MONITOR
+        ret_e = io_monitor_log_get(io_trace_this->filp);
+        if (ret_e < 0){
+            io_trace_print("write log kernel failed:[%d]\n", ret_e);
+            return -1;
+        }
+#endif
+#if DEBUG
+        if(io_trace_this->all_log_count > 0)
+        {
+            unsigned int count = io_trace_this->all_log_count;
+            unsigned int count_sin = (count > IO_MAX_LOG_PER_GLOBAL) ? IO_MAX_LOG_PER_GLOBAL : count;
+            entry_tmp = curr_entry;
+
+            for(i = io_trace_this->all_log_index, j = 0; j < ((count / 2) - 1); j++)
+            {
+                i = (i == 0) ? ( count_sin - 1) : (i - 1);
+                io_trace_assert(i >= 0);
+
+                entry = entry_tmp + i;
+                if(i == 0 && entry_tmp == entry_a){
+                    entry_tmp = entry_b;
+                }
+                else if (i == 0 && entry_tmp == entry_b){
+                    entry_tmp = entry_a;
+                }
+                write_log_kernel(io_trace_this->filp, entry);
+                //ret_e = write_io_monlog_kernel(io_trace_this->filp, (unsigned char *)entry, sizeof(struct io_trace_log_entry));
+
+                if(ret_e < 0){
+                    io_trace_print("write log kernel failed:[%d]\n", ret_e);
+                    return -1;
+                }
+            }
+        }
+#else
         write_head_kernel(io_trace_this->filp);
         if(io_trace_this->all_log_count > 0)
         {
@@ -1009,14 +1111,15 @@ static ssize_t sysfs_io_trace_attr_show(struct device *dev,
                 io_trace_assert(i >= 0);
                 entry = (((struct io_trace_log_entry *)
                         (io_trace_this->mem_mngt->all_trace_buff)) + i);
+
                 write_log_kernel(io_trace_this->filp, entry);
             }
         }
-
+#endif
         do_posix_clock_monotonic_gettime(&realts);
-        //monotonic_to_bootbased(&realts);
+        /*lint -save -e747*/
         log_time_end = (unsigned long )realts.tv_sec*1000000000 + realts.tv_nsec;
-
+        /*lint restore*/
         ret = sprintf(buf, "%ld\n", log_time_end - log_time);
 
         io_trace_this->enable = 1;
@@ -1025,7 +1128,7 @@ static ssize_t sysfs_io_trace_attr_show(struct device *dev,
     return ret;
 }
 
-static ssize_t sysfs_io_trace_attr_store(struct device *dev, 
+static ssize_t sysfs_io_trace_attr_store(struct device *dev,
         struct device_attribute *attr, const char *buf, size_t count)
 {
     unsigned int value;
@@ -1086,6 +1189,33 @@ static ssize_t sysfs_io_trace_attr_store(struct device *dev,
     return count;
 }
 
+#ifdef CONFIG_HUAWEI_IO_MONITOR
+extern int io_monitor_report_to_iotrace(unsigned char *buff, int len);
+static int io_monitor_log_get(struct file *filp)
+{
+    int ret = 0;
+    unsigned char *mem = io_mem_mngt_alloc(io_trace_this->mem_mngt);
+    unsigned int log_size = 0;
+    if(mem == NULL){
+        io_trace_print("io_monitor mem alloc failed !\n");
+    }
+
+    log_size = io_monitor_report_to_iotrace(mem, 2 * IO_MAX_BUF_ENTRY);
+    ret = write_io_monlog_kernel(filp, mem, sizeof(struct io_mon_log_entry));
+    if(ret < 0){
+        io_trace_print("write log kernel failed:[%d]\n", ret);
+        goto end;
+    }
+
+end:
+    if(mem){
+        io_mem_mngt_free(io_trace_this->mem_mngt, (unsigned char *)mem);
+        mem = NULL;
+    }
+    return ret;
+}
+#endif
+
 static struct file *open_log_file(char *name)
 {
     mm_segment_t oldfs;
@@ -1105,6 +1235,7 @@ static struct file *open_log_file(char *name)
 
     return filp;
 }
+
 static int write_file(struct file *filp, struct iovec *vec)
 {
     int ret;
@@ -1122,6 +1253,39 @@ static int write_file(struct file *filp, struct iovec *vec)
 
     return ret;
 }
+/*lint -save -e732 -e501 -e747 -e712 -e838 -e730*/
+static int write_io_monlog_kernel(struct file *filp, unsigned char *buf, int len)
+{
+    int ret = 0;
+    struct iovec vec[1];
+    mm_segment_t oldfs;
+
+    if (IS_ERR(filp)) {
+        io_trace_print("file descriptor to is invalid: %ld\n", PTR_ERR(filp));
+        return -1;
+    }
+
+    vec[0].iov_base = buf;
+    vec[0].iov_len  = len;
+
+    oldfs = get_fs();
+    set_fs(get_ds());
+
+    ret = vfs_writev(filp, vec, 1, &filp->f_pos);
+    set_fs(oldfs);
+
+    if (unlikely(ret < 0)){
+        io_trace_print("failed to write!\n");
+    }
+    //ret = write_file(filp, &vec[0]);
+
+    if (ret != len){
+        io_trace_print("want write %d, real write %d\n", len, ret);
+        return -1;
+    }
+
+    return ret;
+}
 
 static int write_head_kernel(struct file *filp)
 {
@@ -1131,8 +1295,8 @@ static int write_head_kernel(struct file *filp)
 
     unsigned len;
 
-    len = sprintf(buf, "%-5s%-10s%-10s%-20s%-20s%-15s%-10s%-15s%-15s%-8s%-15s\n", "CPU","TGID",
-            "PID", "PName","Time", "Inode/Sector", "Nr_Types","Action", "Delay", "RW", "F_NAME");
+    len = sprintf(buf, "\n%-5s%-11s%-11s%-21s%-20s%-14s%-10s%-15s%-15s%-8s%-15s%-15s\n", "CPU","TGID",
+            "PID", "PName","Time", "Inode/Sector", "Nr_Types","Action", "Delay", "RW", "F_NAME", "F_TIME");
     vec[0].iov_base = buf;
     vec[0].iov_len  = len;
 
@@ -1141,6 +1305,8 @@ static int write_head_kernel(struct file *filp)
     return ret;
 }
 
+
+/*lint restore*/
 static void io_entry_rw(unsigned char rw, char *buf)
 {
     unsigned int len = 0;
@@ -1164,15 +1330,13 @@ static void io_entry_rw(unsigned char rw, char *buf)
 
 }
 
-
 static int write_log_kernel(struct file *filp, struct io_trace_log_entry *entry)
 {
     struct iovec vec[1];
     int ret;
     char rw_type[32];
-    unsigned char buf[180];
+    unsigned char buf[200];
     unsigned len;
-    
 
     if (IS_ERR(filp)) {
         io_trace_print("file descriptor to is invalid: %ld\n", PTR_ERR(filp));
@@ -1180,11 +1344,12 @@ static int write_log_kernel(struct file *filp, struct io_trace_log_entry *entry)
     }
     // format: <priority:1><message:N>\0
     io_entry_rw(entry->rw, rw_type);
-    len = sprintf(buf, "%-5d&%-10d&%-10d&%-20s&%-20ld&%-12ld&%-10d&%-10s&%-5d&%-15ld&%-5s&%-32s\n", entry->cpu,
+    /*lint -save -e705*/
+    len = sprintf(buf, "%-5d&%-10d&%-10d&%-20s&%-20ld&%-12ld&%-10d&%-12s&%-15ld&%-5s&%-10s&%-10ld\n", entry->cpu,
             entry->tgid, entry->pid, entry->comm, entry->time, entry->inode, entry->nr_bytes,
-            all_trace_action[entry->action].name, entry->action, entry->delay,
-            rw_type, entry->f_name);
-
+            all_trace_action[entry->action].name, entry->delay,
+            rw_type, entry->f_name, entry->f_time);
+    /*lint restore*/
     vec[0].iov_base = buf;
     vec[0].iov_len  = len;
 
@@ -1241,21 +1406,43 @@ static struct io_trace_log_entry *io_get_all_buf(struct io_trace_ctrl *trace_ctr
 {
     struct io_trace_log_entry *ret_trace = NULL;
     unsigned long flags;
-
+#if DEBUG
+	/*lint -save -e705*/
+    entry_a = (struct io_trace_log_entry *)(trace_ctrl->mem_mngt->all_trace_buff);
+    entry_b = (struct io_trace_log_entry *)(trace_ctrl->mem_mngt->all_trace_buff_add);
+    /*lint store*/
+	spin_lock_irqsave(&global_spinlock, flags);
+    ret_trace = curr_entry + trace_ctrl->all_log_index;
+    if((trace_ctrl->all_log_index >= IO_MAX_LOG_PER_GLOBAL) && curr_entry == entry_a ) {
+        trace_ctrl->all_log_index = 0;
+        curr_entry = entry_b;
+    }
+    else if((trace_ctrl->all_log_index >= IO_MAX_LOG_PER_GLOBAL) && curr_entry == entry_b ) {
+        trace_ctrl->all_log_index = 0;
+        curr_entry = entry_a;
+    }
+#else
     /*must be irq save lock, because mmc end is done in irq context!*/
     //spin_lock(&global_spinlock);
     spin_lock_irqsave(&global_spinlock, flags);
 
-    ret_trace = ((struct io_trace_log_entry *)(trace_ctrl->mem_mngt->all_trace_buff) + 
+    ret_trace = ((struct io_trace_log_entry *)(trace_ctrl->mem_mngt->all_trace_buff) +
             trace_ctrl->all_log_index);
+#endif
+
     trace_ctrl->all_log_index ++;
-    /*point to next valid entry*/
-    if(trace_ctrl->all_log_index >= IO_MAX_LOG_PER_GLOBAL)    
+
+    if(trace_ctrl->all_log_index >= IO_MAX_LOG_PER_GLOBAL)
     {
         trace_ctrl->all_log_index = 0;
     }
 
+    /*point to next valid entry*/
+#if DEBUG
+    if(trace_ctrl->all_log_count < (IO_MAX_LOG_PER_GLOBAL * 2 - 1) )
+#else
     if(trace_ctrl->all_log_count < IO_MAX_LOG_PER_GLOBAL)
+#endif
     {
         trace_ctrl->all_log_count ++;
     }
@@ -1279,7 +1466,7 @@ struct io_trace_tag_attr
     void (*handler)(struct io_trace_pid *trace_pid, unsigned int action,
             unsigned int parent, unsigned long inode);
 };
-
+/*
 static unsigned int io_trace_find_index(struct io_trace_log_entry *begin_entry,
         unsigned int log_index, unsigned int log_count, unsigned int action,
         unsigned int parent, unsigned long inode)
@@ -1308,14 +1495,14 @@ static unsigned int io_trace_find_index(struct io_trace_log_entry *begin_entry,
         return (unsigned int)-1;
     }
 
-    return index; 
+    return index;
 }
-
+*/
 static unsigned long io_trace_direct_delay(struct io_trace_pid *trace_pid,
         unsigned int action, unsigned int parent, unsigned long log_time,
         unsigned long inode)
 {
-    unsigned long ret_delay;    
+    unsigned long ret_delay;
     struct io_trace_log_entry *ret_trace = NULL;
 
     io_trace_assert(action > parent);
@@ -1336,17 +1523,18 @@ static unsigned long io_trace_direct_delay(struct io_trace_pid *trace_pid,
     return ret_delay;
 }
 
-static void io_trace_global_log(unsigned int action, unsigned long sector, 
-        unsigned int nr_bytes, unsigned int parent, unsigned long own_time, 
-        unsigned long delay, unsigned int rw_flags, char *f_name)
+static void io_trace_global_log(unsigned int action, unsigned long sector,
+        unsigned int nr_bytes, unsigned int parent, unsigned long own_time,
+        unsigned long delay, unsigned int rw_flags, char *f_name, unsigned long ftrace_time )
 {
     struct io_trace_ctrl *trace_ctrl = io_trace_this;
     struct io_trace_log_entry *all_log_entry = NULL;
-    struct task_struct *tsk = current; 
+    struct task_struct *tsk = current;
     pid_t pid;
     pid_t tgid;
     struct timespec realts;
     unsigned long log_time;
+    unsigned long ft_time;
 
     pid = tsk->pid;
     tgid = tsk->tgid;
@@ -1363,6 +1551,11 @@ static void io_trace_global_log(unsigned int action, unsigned long sector,
         do_posix_clock_monotonic_gettime(&realts);
         //monotonic_to_bootbased(&realts);
         log_time = (unsigned long )realts.tv_sec*1000000000 + realts.tv_nsec;
+    }
+    ft_time = ftrace_time;
+    if(!ft_time){
+        ft_time = trace_clock_local();
+        ft_time = (ft_time / 1000) + 1 + (((ft_time % 1000) / 100) >= 5 ? 1 : 0);
     }
 
     if(sector == ((unsigned long)-1))
@@ -1403,6 +1596,7 @@ static void io_trace_global_log(unsigned int action, unsigned long sector,
     all_log_entry->nr_bytes = nr_bytes;
     all_log_entry->inode = sector;
     all_log_entry->time = log_time;
+    all_log_entry->f_time = ft_time;
     all_log_entry->delay = delay;
     memcpy(all_log_entry->comm, tsk->comm, IO_P_NAME_LEN);
     memset(all_log_entry->f_name, '\0', IO_F_NAME_LEN);
@@ -1418,25 +1612,25 @@ static void io_trace_global_log(unsigned int action, unsigned long sector,
 static int io_trace_need_action(unsigned int action)
 {
     /*only parent action*/
-    if((action >= READ_BEGIN_TAG) && 
-            (action <= IO_TRACE_PARENT_END))    
+    if((action >= READ_BEGIN_TAG) &&
+            (action <= IO_TRACE_PARENT_END))
     {
         return 1;
     }
 
     return 0;
 }
-static void io_trace_add_log(unsigned int action, unsigned long i_ino, 
+static void io_trace_add_log(unsigned int action, unsigned long i_ino,
         struct io_trace_tag_attr *tag_attr)
 {
     struct io_trace_ctrl *trace_ctrl = io_trace_this;
-    struct task_struct *tsk = current; 
+    struct task_struct *tsk = current;
     pid_t pid;
     pid_t tgid;
     struct io_trace_pid *trace_pid = NULL;
     struct io_trace_log_entry *log_entry = NULL;
     struct timespec realts;
-    unsigned long log_time;
+    unsigned long log_time, ft_time;
     unsigned long delay = 0;
     int skip = 0;
     unsigned int rw = tag_attr->rw_flags;
@@ -1467,6 +1661,10 @@ static void io_trace_add_log(unsigned int action, unsigned long i_ino,
     do_posix_clock_monotonic_gettime(&realts);
     //monotonic_to_bootbased(&realts);
     log_time = (unsigned long )realts.tv_sec*1000000000 + realts.tv_nsec;
+
+    ft_time = trace_clock_local();
+    ft_time = (ft_time / 1000) + 1 + (((ft_time % 1000) / 100) >= 5 ? 1 : 0);
+
     if(tag_attr->parent)
     {
         char *f_name = NULL;
@@ -1490,7 +1688,7 @@ static void io_trace_add_log(unsigned int action, unsigned long i_ino,
             }
             /*don't need log the parent*/
             //io_trace_global_log(tag_attr->parent, i_ino, 0, log_time - delay, 0, rw, f_name);
-            io_trace_global_log(action, i_ino, nr_bytes, 0, log_time, delay, rw, f_name);
+            io_trace_global_log(action, i_ino, nr_bytes, 0, log_time, delay, rw, f_name, ft_time);
             skip = 1;
         }
     }
@@ -1511,7 +1709,7 @@ static void io_trace_add_log(unsigned int action, unsigned long i_ino,
         log_entry->inode = i_ino;
         log_entry->time = log_time;
         log_entry->delay = delay;
-
+        log_entry->f_time = ft_time;
         {
             memcpy(log_entry->comm, tsk->comm, IO_P_NAME_LEN);
         }
@@ -1553,14 +1751,14 @@ static void io_tag_attr_init(struct io_trace_tag_attr *attr)
 
     return;
 }
-
+/*lint save -e747 -e712 -e715 -e732 -epn -eps -epu -epp*/
 static void io_generic_file_read_begin(void *ignore, struct file *filp, size_t count)
 {
 	struct inode *inode = filp->f_mapping->host;
     struct io_trace_tag_attr tag_attr;
 
     io_tag_attr_init(&tag_attr);
-    tag_attr.rw_flags = IO_TRACE_READ; 
+    tag_attr.rw_flags = IO_TRACE_READ;
 
     if(io_trace_this->enable)
     {
@@ -1717,7 +1915,7 @@ static void io_ext4_sync_file_end(void *ignore, struct file *file, int ret)
 
     return;
 }
-
+#if 0
 static void io_ext4_sync_file_exit(void *ignore, struct inode *inode, int ret)
 {
     struct io_trace_tag_attr tag_attr;
@@ -1725,7 +1923,7 @@ static void io_ext4_sync_file_exit(void *ignore, struct inode *inode, int ret)
     io_tag_attr_init(&tag_attr);
     tag_attr.parent = EXT4_SYNC_ENTER_TAG;
     tag_attr.func = io_trace_direct_delay;
-    tag_attr.rw_flags = IO_TRACE_WRITE; 
+    tag_attr.rw_flags = IO_TRACE_WRITE;
 
     if(io_trace_this->enable)
     {
@@ -1734,14 +1932,14 @@ static void io_ext4_sync_file_exit(void *ignore, struct inode *inode, int ret)
 
     return;
 }
-
+#endif
 static void io_block_write_begin_enter(void *ignore, struct inode *inode,
         struct page *page, loff_t pos, unsigned size)
 {
     struct io_trace_tag_attr tag_attr;
 
     io_tag_attr_init(&tag_attr);
-    tag_attr.rw_flags = IO_TRACE_WRITE; 
+    tag_attr.rw_flags = IO_TRACE_WRITE;
 
     if(io_trace_this->enable)
         io_trace_add_log(BLOCK_WRITE_BEGIN_TAG, inode->i_ino, &tag_attr);
@@ -1755,7 +1953,7 @@ static void io_block_write_begin_end(void *ignore, struct inode *inode,
     struct io_trace_tag_attr tag_attr;
 
     io_tag_attr_init(&tag_attr);
-    tag_attr.rw_flags = IO_TRACE_WRITE; 
+    tag_attr.rw_flags = IO_TRACE_WRITE;
 
     if(io_trace_this->enable)
         io_trace_add_log(BLOCK_WRITE_END_TAG, inode->i_ino, &tag_attr);
@@ -1785,7 +1983,7 @@ static void io_ext4_da_write_pages(void *ignore, struct inode *inode,
     struct io_trace_tag_attr tag_attr;
     tag_attr.curr_attr = 0;
     tag_attr.parent = 0;
-    tag_attr.rw_flags = IO_TRACE_WRITE; 
+    tag_attr.rw_flags = IO_TRACE_WRITE;
     tag_attr.fname_flag = 0;
 
     if(io_trace_this->enable)
@@ -1794,14 +1992,13 @@ static void io_ext4_da_write_pages(void *ignore, struct inode *inode,
     return;
 }
 
-static void io_ext4_da_writepages_result(void *ignore, struct inode *inode, 
+static void io_ext4_da_writepages_result(void *ignore, struct inode *inode,
         struct writeback_control *wbc, int ret, int pages_written)
 {
-    
     struct io_trace_tag_attr tag_attr;
     tag_attr.curr_attr = 0;
     tag_attr.parent = 0;
-    tag_attr.rw_flags = IO_TRACE_WRITE; 
+    tag_attr.rw_flags = IO_TRACE_WRITE;
     tag_attr.fname_flag = 0;
 
     if(io_trace_this->enable)
@@ -1811,36 +2008,35 @@ static void io_ext4_da_writepages_result(void *ignore, struct inode *inode,
 }
 #endif
 
-static void io_mpage_da_map_and_submit(void *ignore, struct inode *inode, 
+static void io_mpage_da_map_and_submit(void *ignore, struct inode *inode,
         ext4_fsblk_t fblk, unsigned int len)
 {
     if(io_trace_this->enable)
     {
-        io_trace_global_log(EXT4_MAP_SUBMIT_TAG, inode->i_ino, len << inode->i_blkbits, 
-                0, 0, fblk << 3, 1, NULL);
+        io_trace_global_log(EXT4_MAP_SUBMIT_TAG, inode->i_ino, len << inode->i_blkbits,
+                0, 0, fblk << 3, 1, NULL, 0);
     }
 
     return;
 }
-
-
+#if 0
 static void blk_dm_request(void *ignore, struct request_queue *q, struct bio *bio)
 {
     if(io_trace_this->enable)
     {
-        io_trace_global_log(BLOCK_BIO_DM_TAG, bio->bi_iter.bi_sector, bio->bi_iter.bi_size,  
-                0, 0, 0, bio->bi_rw, NULL);
+        io_trace_global_log(BLOCK_BIO_DM_TAG, bio->bi_iter.bi_sector, bio->bi_iter.bi_size,
+                0, 0, 0, bio->bi_rw, NULL, 0);
     }
 
     return;
 }
-
+#endif
 static void blk_crypt_map(void *ignore, struct bio *bio, sector_t sector)
 {
     if(io_trace_this->enable)
     {
 		io_trace_global_log(BLOCK_BIO_CRYPT_MAP, bio->bi_iter.bi_sector, bio->bi_iter.bi_size,
-                0, 0, sector, bio->bi_rw, NULL);
+                0, 0, sector, bio->bi_rw, NULL, 0);
     }
 
     return;
@@ -1850,7 +2046,7 @@ static void blk_kcryptd_crypt(void *ignore, struct bio *bio)
     if(io_trace_this->enable)
     {
         io_trace_global_log(BLOCK_DM_CRYPT_TAG, bio->bi_iter.bi_sector, bio->bi_iter.bi_size,
-                0, 0, 0, bio->bi_rw, NULL);
+                0, 0, 0, bio->bi_rw, NULL, 0);
     }
 
     return;
@@ -1860,7 +2056,17 @@ static void blk_crypt_dec_pending(void *ignore, struct bio *bio)
     if(io_trace_this->enable)
     {
         io_trace_global_log(BLOCK_DM_CRYPT_DEC_TAG, bio->bi_iter.bi_sector, bio->bi_iter.bi_size,
-                0, 0, 0, bio->bi_rw, NULL);
+                0, 0, 0, bio->bi_rw, NULL, 0);
+    }
+
+    return;
+}
+static void blk_add_trace_bio_wbt_done(void *ignore, struct bio *bio)
+{
+    if(io_trace_this->enable)
+    {
+        io_trace_global_log(BLOCK_BIO_WBT_TAG, bio->bi_iter.bi_sector, bio->bi_iter.bi_size,
+                0, 0, 0, bio->bi_rw, NULL, 0);
     }
 
     return;
@@ -1871,7 +2077,7 @@ static void io_f2fs_detected_quasi(void *ignore, struct bio *bio)
     if(io_trace_this->enable)
     {
         io_trace_global_log(F2FS_QUASI_DETECTED_TAG, bio->bi_iter.bi_sector, bio->bi_iter.bi_size,
-                0, 0, 0, bio->bi_rw, NULL); 
+                0, 0, 0, bio->bi_rw, NULL, 0);
     }
 }
 
@@ -1879,8 +2085,8 @@ static void blk_add_trace_rq_insert(void *ignore, struct request_queue *q, struc
 {
     if(io_trace_this->enable)
     {
-        io_trace_global_log(BLOCK_RQ_INSERT_TAG, blk_rq_pos(rq), blk_rq_bytes(rq), 
-                0, 0, 0, rq->cmd_flags, NULL);
+        io_trace_global_log(BLOCK_RQ_INSERT_TAG, blk_rq_pos(rq), blk_rq_bytes(rq),
+                0, 0, 0, rq->cmd_flags, NULL, 0);
     }
 
     return;
@@ -1891,7 +2097,7 @@ static void blk_add_trace_rq_issue(void *ignore, struct request_queue *q, struct
     if(io_trace_this->enable)
     {
         io_trace_global_log(BLOCK_RQ_ISSUE_TAG, blk_rq_pos(rq), blk_rq_bytes(rq),
-                BLOCK_BIO_QUEUE_TAG, 0, 0, rq->cmd_flags, NULL);
+                BLOCK_BIO_QUEUE_TAG, 0, 0, rq->cmd_flags, NULL, 0);
     }
 
     return;
@@ -1903,38 +2109,78 @@ static void blk_add_trace_rq_complete(void *ignore, struct request_queue *q,
 
     if(io_trace_this->enable)
     {
-        io_trace_global_log(BLOCK_RQ_COMPLETE_TAG, blk_rq_pos(rq), blk_rq_bytes(rq), 
-                BLOCK_RQ_ISSUE_TAG, 0, 0, rq->cmd_flags, NULL);
+        io_trace_global_log(BLOCK_RQ_COMPLETE_TAG, blk_rq_pos(rq), blk_rq_bytes(rq),
+                BLOCK_RQ_ISSUE_TAG, 0, 0, rq->cmd_flags, NULL, 0);
     }
 
     return;
 }
 
-static void blk_add_trace_bio_remap(void *ignore, struct request_queue *q, 
+static void blk_add_trace_rq_abort(void *ignore, struct request_queue *q,
+        struct request *rq)
+{
+
+    if(io_trace_this->enable)
+    {
+        io_trace_global_log(BLOCK_RQ_ABORT_TAG, blk_rq_pos(rq), blk_rq_bytes(rq),
+                0, 0, 0, rq->cmd_flags, NULL, 0);
+    }
+
+    return;
+}
+
+/*
+static void blk_add_trace_rq_requeue(void *ignore, struct request_queue *q,
+        struct request *rq)
+{
+
+    if(io_trace_this->enable)
+    {
+        io_trace_global_log(BLOCK_RQ_REQUEUE_TAG, blk_rq_pos(rq), blk_rq_bytes(rq),
+                0, 0, 0, rq->cmd_flags, NULL, 0);
+    }
+
+    return;
+}
+*/
+
+static void blk_add_trace_sleeprq(void *ignore, struct request_queue *q,
+        struct bio *bio, int rw)
+{
+
+    if(io_trace_this->enable)
+    {
+        io_trace_global_log(BLOCK_RQ_SLEEP_TAG,  bio->bi_iter.bi_sector, bio->bi_iter.bi_size,
+               0, 0, 0, bio->bi_rw, NULL, 0);
+    }
+
+    return;
+}
+
+static void blk_add_trace_bio_remap(void *ignore, struct request_queue *q,
         struct bio *bio, dev_t dev, sector_t from)
 {
     if(io_trace_this->enable)
     {
         io_trace_global_log(BLOCK_BIO_REMAP_TAG, bio->bi_iter.bi_sector, bio->bi_iter.bi_size,
-                0, 0, from, bio->bi_rw, NULL);
+                0, 0, from, bio->bi_rw, NULL, 0);
     }
 
     return;
 }
-
+#if 0
 static void blk_add_trace_bio_queue(void *ignore, struct request_queue *q, struct bio *bio)
 {
     if(io_trace_this->enable)
     {
         io_trace_global_log(BLOCK_BIO_QUEUE_TAG, bio->bi_iter.bi_sector, bio->bi_iter.bi_size,
-                0, 0, 0, bio->bi_rw, NULL);
+                0, 0, 0, bio->bi_rw, NULL, 0);
     }
 
     return;
 }
-
-
-static void mmc_blk_rw_start(void *ignore, unsigned int cmd, 
+#endif
+static void mmc_blk_rw_start(void *ignore, unsigned int cmd,
         unsigned int addr, struct mmc_data *data)
 {
     unsigned int rw_flags = 0;
@@ -1944,12 +2190,12 @@ static void mmc_blk_rw_start(void *ignore, unsigned int cmd,
         rw_flags |= IO_TRACE_WRITE;
     }
     if(io_trace_this->enable)
-        io_trace_global_log(MMC_BLK_RW_START_TAG, addr, 0, 0, 0, 0, rw_flags, NULL);
+        io_trace_global_log(MMC_BLK_RW_START_TAG, addr, 0, 0, 0, 0, rw_flags, NULL, 0);
 
     return;
 }
 
-static void mmc_blk_rw_end(void *ignore, unsigned int cmd, 
+static void mmc_blk_rw_end(void *ignore, unsigned int cmd,
         unsigned int addr, struct mmc_data *data)
 {
     unsigned int rw_flags = 0;
@@ -1959,11 +2205,11 @@ static void mmc_blk_rw_end(void *ignore, unsigned int cmd,
         rw_flags |= IO_TRACE_WRITE;
     }
     if(io_trace_this->enable)
-        io_trace_global_log(MMC_BLK_RW_END_TAG, addr, 0, MMC_BLK_RW_START_TAG, 0, 0, rw_flags, NULL);
+        io_trace_global_log(MMC_BLK_RW_END_TAG, addr, 0, MMC_BLK_RW_START_TAG, 0, 0, rw_flags, NULL, 0);
     return;
 }
-
-static void mmc_blk_cmdq_rw_start(void *ignore, unsigned int cmd, unsigned int tag, 
+#if 0
+static void mmc_blk_cmdq_rw_start(void *ignore, unsigned int cmd, unsigned int tag,
         unsigned int addr, unsigned int size)
 {
     unsigned int rw_flags = 0;
@@ -1974,13 +2220,13 @@ static void mmc_blk_cmdq_rw_start(void *ignore, unsigned int cmd, unsigned int t
 
     if(io_trace_this->enable)
     {
-        io_trace_global_log(MMC_BLK_CMDQ_RW_START_TAG, addr, size, 0, 0, 0, rw_flags, NULL);
+        io_trace_global_log(MMC_BLK_CMDQ_RW_START_TAG, addr, size, 0, 0, 0, rw_flags, NULL, 0);
     }
 
     return;
 }
 
-static void mmc_blk_cmdq_rw_end(void *ignore, unsigned int cmd, unsigned int tag, 
+static void mmc_blk_cmdq_rw_end(void *ignore, unsigned int cmd, unsigned int tag,
         unsigned int addr, unsigned int size)
 {
     unsigned int rw_flags = 0;
@@ -1991,17 +2237,19 @@ static void mmc_blk_cmdq_rw_end(void *ignore, unsigned int cmd, unsigned int tag
 
     if(io_trace_this->enable)
     {
-        io_trace_global_log(MMC_BLK_CMDQ_RW_END_TAG, addr, size, 0, 0, 0, rw_flags, NULL);
+        io_trace_global_log(MMC_BLK_CMDQ_RW_END_TAG, addr, size, 0, 0, 0, rw_flags, NULL, 0);
     }
     return;
 }
-
+#endif
 static void scsi_dispatch_cmd_start(void *ignore, struct scsi_cmnd *cmd)
 {
     unsigned int rw_flags = 0;
     unsigned char c[4];
     unsigned char len[2];
-    
+    unsigned int *addr;
+    unsigned short *size;
+
     c[0] = cmd->cmnd[5];
     c[1] = cmd->cmnd[4];
     c[2] = cmd->cmnd[3];
@@ -2010,20 +2258,18 @@ static void scsi_dispatch_cmd_start(void *ignore, struct scsi_cmnd *cmd)
     len[0] = cmd->cmnd[7];
     len[1] = cmd->cmnd[8];
 
-    unsigned int *addr = (int*)c;
-    unsigned short *size = (short*)len;
+    addr = (int*)c;
+    size = (short*)len;
 
-    if (0x2A == cmd->cmnd[0])
-    {
+    if (0x2A == cmd->cmnd[0]){
         rw_flags |= IO_TRACE_WRITE;
     }
-    else if (0x35 == cmd->cmnd[0])
-    {
+    else if (0x35 == cmd->cmnd[0]){
         rw_flags |= (IO_TRACE_SYNC | IO_TRACE_WRITE);
     }
 
     if (io_trace_this->enable){
-        io_trace_global_log(SCSI_BLK_CMD_RW_START_TAG, (*addr) * 8 , (*size) * 16, 0, 0, 0, rw_flags, NULL);
+        io_trace_global_log(SCSI_BLK_CMD_RW_START_TAG, (*addr) * 8 , (*size) * 16, 0, 0, 0, rw_flags, NULL, 0);
     }
     return;
 }
@@ -2033,6 +2279,8 @@ static void scsi_dispatch_cmd_done(void *ignore, struct scsi_cmnd *cmd)
     unsigned int rw_flags = 0;
     unsigned char c[4];
     unsigned char len[2];
+    unsigned int *addr;
+    unsigned short *size;
 
     c[0] = cmd->cmnd[5];
     c[1] = cmd->cmnd[4];
@@ -2042,21 +2290,18 @@ static void scsi_dispatch_cmd_done(void *ignore, struct scsi_cmnd *cmd)
     len[0] = cmd->cmnd[7];
     len[1] = cmd->cmnd[8];
 
-    unsigned int *addr = (int*)c;
-    unsigned short *size = (short*)len;
-   
-    if (0x2A == cmd->cmnd[0])
-    {
+    addr = (int*)c;
+    size = (short*)len;
+
+    if (0x2A == cmd->cmnd[0]){
         rw_flags |= IO_TRACE_WRITE;
     }
-    else if (0x35 == cmd->cmnd[0])
-    {
+    else if (0x35 == cmd->cmnd[0]){
         rw_flags |= (IO_TRACE_SYNC | IO_TRACE_WRITE);
     }
 
-    if (io_trace_this->enable)
-    {
-        io_trace_global_log(SCSI_BLK_CMD_RW_END_TAG, (*addr) * 8, (*size) * 16, SCSI_BLK_CMD_RW_START_TAG, 0, 0, rw_flags, NULL);
+    if (io_trace_this->enable){
+        io_trace_global_log(SCSI_BLK_CMD_RW_END_TAG, (*addr) * 8, (*size) * 16, SCSI_BLK_CMD_RW_START_TAG, 0, 0, rw_flags, NULL, 0);
     }
     return;
 }
@@ -2065,7 +2310,7 @@ static void io_f2fs_sync_file_enter(void *ignore, struct inode *inode)
 {
     struct io_trace_tag_attr tag_attr;
     io_tag_attr_init(&tag_attr);
-    tag_attr.rw_flags = IO_TRACE_WRITE; 
+    tag_attr.rw_flags = IO_TRACE_WRITE;
 
     if(io_trace_this->enable)
     {
@@ -2074,7 +2319,7 @@ static void io_f2fs_sync_file_enter(void *ignore, struct inode *inode)
     return;
 }
 
-static void io_f2fs_sync_file_exit(void *ignore, struct inode *inode, bool need_cp, 
+static void io_f2fs_sync_file_exit(void *ignore, struct inode *inode, int need_cp,
         int datasync, int ret)
 {
     struct io_trace_tag_attr tag_attr;
@@ -2082,7 +2327,7 @@ static void io_f2fs_sync_file_exit(void *ignore, struct inode *inode, bool need_
     io_tag_attr_init(&tag_attr);
     tag_attr.parent = F2FS_SYNC_ENTER_TAG;
     tag_attr.func = io_trace_direct_delay;
-    tag_attr.rw_flags = IO_TRACE_WRITE; 
+    tag_attr.rw_flags = IO_TRACE_WRITE;
 
     if(io_trace_this->enable)
     {
@@ -2095,16 +2340,15 @@ static void io_f2fs_sync_fs(void *ignore, struct super_block *sb, int sync)
 {
     if(io_trace_this->enable)
     {
-        io_trace_global_log(F2FS_SYNC_FS_TAG, sync, 0, 0, 0, 0, IO_TRACE_WRITE, NULL);
+        io_trace_global_log(F2FS_SYNC_FS_TAG, sync, 0, 0, 0, 0, IO_TRACE_WRITE, NULL, 0);
     }
 
     return;
 }
 
-static void io_f2fs_write_checkpoint(void *ignore, struct super_block *sb, bool reason, 
+static void io_f2fs_write_checkpoint(void *ignore, struct super_block *sb, int reason,
         char *str_phase)
 {
-    
     if(io_trace_this->enable)
     {
         unsigned int handle = 1;
@@ -2117,11 +2361,86 @@ static void io_f2fs_write_checkpoint(void *ignore, struct super_block *sb, bool 
             handle = 3;
         }
         io_trace_global_log(F2FS_WRITE_CP_TAG, reason, handle,
-                0, 0, 0, IO_TRACE_WRITE, NULL);
+                0, 0, 0, IO_TRACE_WRITE, NULL, 0);
     }
     return;
 }
 
+static void blk_throttle_weight(void *ignore, struct bio *bio,
+	unsigned int weight, unsigned int nr_queued)
+{
+    if(io_trace_this->enable)
+    {
+        io_trace_global_log(BLK_THRO_WEIGHT_TAG,bio->bi_iter.bi_sector,nr_queued,
+                0,0,weight,bio->bi_flags,NULL, 0);
+    }
+    return;
+}
+
+static void blk_throttle_dispatch(void *ignore, struct bio *bio, unsigned int weight)
+{
+    if(io_trace_this->enable)
+    {
+        io_trace_global_log(BLK_THRO_DISP_TAG,bio->bi_iter.bi_sector,
+                bio->bi_iter.bi_size,0,0,weight,bio->bi_flags,NULL, 0);
+    }
+    return;
+}
+
+static void blk_throttle_iocost(void *ignore, uint64_t bps, unsigned int iops, uint64_t bytes_disp,
+	unsigned int io_disp)
+{
+    if(io_trace_this->enable)
+    {
+        //io_trace_global_log(BLK_THRO_IOCOST_TAG,bps,iops,0,0,0,0,NULL,0);
+        io_trace_global_log(BLK_THRO_IOCOST_TAG,bytes_disp,io_disp,0,0,bps,0,NULL,iops);
+    }
+    return;
+}
+
+static void blk_throttle_limit_start(void *ignore, struct bio *bio, int max_inflights, atomic_t inflights)
+{
+    int inflights_t;
+    if(io_trace_this->enable)
+    {
+        inflights_t = atomic_dec_return(&inflights);
+        io_trace_global_log(BLK_THRO_LIMIT_START_TAG,bio->bi_iter.bi_sector,
+                max_inflights,0,0,inflights_t,bio->bi_flags,NULL, 0);
+    }
+    return;
+}
+
+static void blk_throttle_limit_end(void *ignore, struct bio *bio)
+{
+    if(io_trace_this->enable)
+    {
+        io_trace_global_log(BLK_THRO_LIMIT_END_TAG,bio->bi_iter.bi_sector,bio->bi_iter.bi_size,
+                0,0,0,bio->bi_flags,NULL, 0);
+    }
+    return;
+}
+
+static void blk_throttle_bio_in(void *ignore, struct bio *bio)
+{
+    if(io_trace_this->enable)
+    {
+        io_trace_global_log(BLK_THRO_BIO_IN_TAG, bio->bi_iter.bi_sector,
+                bio->bi_iter.bi_size, 0, 0, 0, bio->bi_flags, NULL, 0);
+    }
+    return;
+}
+
+static void blk_throttle_bio_out(void *ignore, struct bio *bio, long delay)
+{
+    if(io_trace_this->enable)
+    {
+        io_trace_global_log(BLK_THRO_BIO_OUT_TAG, bio->bi_iter.bi_sector,
+                bio->bi_iter.bi_size, 0, 0, delay, bio->bi_flags, NULL, 0);
+    }
+    return;
+}
+/*lint -restore*/
+/*lint save -e730*/
 static void iotrace_register_tracepoints(void)
 {
 	int ret;
@@ -2166,10 +2485,11 @@ static void iotrace_register_tracepoints(void)
     WARN_ON(ret);
     ret = register_trace_f2fs_write_checkpoint(io_f2fs_write_checkpoint, NULL);
     WARN_ON(ret);
+#if 0
     /* to detect quasi */
     ret = register_trace_f2fs_detected_quasi(io_f2fs_detected_quasi, NULL);
     WARN_ON(ret);
-
+#endif
     /*page cache*/
 	ret = register_trace_block_write_begin_enter(io_block_write_begin_enter, NULL);
 	WARN_ON(ret);
@@ -2185,25 +2505,36 @@ static void iotrace_register_tracepoints(void)
     */
     ret = register_trace_block_crypt_map(blk_crypt_map, NULL);
 	WARN_ON(ret);
-    ret = register_trace_block_kcryptd_crypt(blk_kcryptd_crypt, NULL); 
+    ret = register_trace_block_kcryptd_crypt(blk_kcryptd_crypt, NULL);
 	WARN_ON(ret);
     ret = register_trace_block_crypt_dec_pending(blk_crypt_dec_pending, NULL);
 	WARN_ON(ret);
 
     ret = register_trace_block_rq_insert(blk_add_trace_rq_insert, NULL);
 	WARN_ON(ret);
-    ret = register_trace_block_rq_issue(blk_add_trace_rq_issue, NULL); 
+    ret = register_trace_block_rq_issue(blk_add_trace_rq_issue, NULL);
 	WARN_ON(ret);
     ret = register_trace_block_rq_complete(blk_add_trace_rq_complete, NULL);
 	WARN_ON(ret);
     ret = register_trace_block_bio_remap(blk_add_trace_bio_remap, NULL);
 	WARN_ON(ret);
+#if 0
+    ret = register_trace_block_bio_wbt_done(blk_add_trace_bio_wbt_done, NULL);
+	WARN_ON(ret);
+#endif
+    ret = register_trace_block_rq_abort(blk_add_trace_rq_abort, NULL);
+	WARN_ON(ret);
+    //ret = register_trace_block_rq_requeue(blk_add_trace_rq_requeue, NULL);
+	//WARN_ON(ret);
+    ret = register_trace_block_sleeprq(blk_add_trace_sleeprq, NULL);
+	WARN_ON(ret);
+
     /*
     ret = register_trace_block_bio_queue(blk_add_trace_bio_queue, NULL);
 	WARN_ON(ret);
     */
     /*
-    ret = register_trace_block_getrq(blk_add_trace_getrq, NULL); 
+    ret = register_trace_block_getrq(blk_add_trace_getrq, NULL);
 	WARN_ON(ret);
     */
     ret = register_trace_mmc_blk_rw_start(mmc_blk_rw_start, NULL);
@@ -2220,9 +2551,28 @@ static void iotrace_register_tracepoints(void)
     WARN_ON(ret);
     ret = register_trace_scsi_dispatch_cmd_done(scsi_dispatch_cmd_done, NULL);
     WARN_ON(ret);
+
+#ifdef CONFIG_BLK_DEV_THROTTLING
+    /*block throttle*/
+    ret = register_trace_block_throttle_weight(blk_throttle_weight, NULL);
+	WARN_ON(ret);
+    ret = register_trace_block_throttle_dispatch(blk_throttle_dispatch, NULL);
+	WARN_ON(ret);
+    ret = register_trace_block_throttle_iocost(blk_throttle_iocost, NULL);
+	WARN_ON(ret);
+    ret = register_trace_block_throttle_limit_start(blk_throttle_limit_start, NULL);
+	WARN_ON(ret);
+    ret = register_trace_block_throttle_limit_end(blk_throttle_limit_end, NULL);
+	WARN_ON(ret);
+    ret = register_trace_block_throttle_bio_in(blk_throttle_bio_in, NULL);
+	WARN_ON(ret);
+    ret = register_trace_block_throttle_bio_out(blk_throttle_bio_out, NULL);
+	WARN_ON(ret);
+
+#endif
     return;
 }
-
+#if 0
 static void iotrace_unregister_tracepoints(void)
 {
     /*vfs*/
@@ -2242,21 +2592,25 @@ static void iotrace_unregister_tracepoints(void)
 	unregister_trace_block_write_begin_end(io_block_write_begin_end, NULL);
     /*block layer*/
     unregister_trace_block_dm_request(blk_dm_request, NULL);
-    unregister_trace_block_kcryptd_crypt(blk_kcryptd_crypt, NULL); 
+    unregister_trace_block_kcryptd_crypt(blk_kcryptd_crypt, NULL);
     unregister_trace_block_crypt_dec_pending(blk_crypt_dec_pending, NULL);
 
     /* to detect quasi */
     unregister_trace_f2fs_detected_quasi(io_f2fs_detected_quasi, NULL);
 
     unregister_trace_block_rq_insert(blk_add_trace_rq_insert, NULL);
-    unregister_trace_block_rq_issue(blk_add_trace_rq_issue, NULL); 
+    unregister_trace_block_rq_issue(blk_add_trace_rq_issue, NULL);
     unregister_trace_block_rq_complete(blk_add_trace_rq_complete, NULL);
     unregister_trace_block_bio_queue(blk_add_trace_bio_queue, NULL);
+    unregister_trace_block_bio_wbt_done(blk_add_trace_bio_wbt_done, NULL);
+    unregister_trace_block_rq_abort(blk_add_trace_rq_abort, NULL);
+    //unregister_trace_block_rq_requeue(blk_add_trace_rq_requeue, NULL);
+    unregister_trace_block_sleeprq(blk_add_trace_sleeprq, NULL);
 
     unregister_trace_mmc_blk_rw_start(mmc_blk_rw_start, NULL);
     unregister_trace_mmc_blk_rw_end(mmc_blk_rw_end, NULL);
     /*
-    ret = register_trace_block_getrq(blk_add_trace_getrq, NULL); 
+    ret = register_trace_block_getrq(blk_add_trace_getrq, NULL);
 	WARN_ON(ret);
     */
 #if 0
@@ -2265,17 +2619,20 @@ static void iotrace_unregister_tracepoints(void)
 #endif
     unregister_trace_scsi_dispatch_cmd_start(scsi_dispatch_cmd_start, NULL);
     unregister_trace_scsi_dispatch_cmd_done(scsi_dispatch_cmd_done, NULL);
+
+    /*block throttle*/
+    unregister_trace_block_throttle_weight(blk_throttle_weight, NULL);
+    unregister_trace_block_throttle_dispatch(blk_throttle_dispatch, NULL);
+    unregister_trace_block_throttle_iocost(blk_throttle_iocost, NULL);
+    unregister_trace_block_throttle_limit_start(blk_throttle_limit_start, NULL);
+    unregister_trace_block_throttle_limit_end(blk_throttle_limit_end, NULL);
+    unregister_trace_block_throttle_bio_in(blk_throttle_bio_in, NULL);
+    unregister_trace_block_throttle_bio_out(blk_throttle_bio_out, NULL);
+
     return;
 }
-
-static void io_trace_offline(struct io_trace_ctrl *trace_ctrl)
-{
-    io_trace_print("io_trace_offline!\n");
-    iotrace_unregister_tracepoints();
-
-    return;
-}
-
+#endif
+/*lint -restore*/
 static void io_trace_setup(struct io_trace_ctrl *trace_ctrl)
 {
     io_trace_print("io_trace_setup!\n");
@@ -2336,14 +2693,25 @@ static int io_mem_mngt_init(struct io_trace_mem_mngt *mem_mngt)
             goto failed;
         }
     }
-
+    /*lint save -e747 -e826*/
     mem_mngt->all_trace_buff = kmalloc(IO_MAX_GLOBAL_ENTRY, GFP_KERNEL);
     if(mem_mngt->all_trace_buff == NULL)
     {
         io_trace_print("io_mem_mngt_free all trace buff failed!\n");
         goto failed;
     }
+#if DEBUG
+    curr_entry = (struct io_trace_log_entry *)(mem_mngt->all_trace_buff);
 
+    mem_mngt->all_trace_buff_add = kmalloc(IO_MAX_GLOBAL_ENTRY, GFP_KERNEL);
+    if(mem_mngt->all_trace_buff_add == NULL)
+    {
+        io_trace_print("io_mem_mngt_free_add all trace buff failed!\n");
+        kfree(mem_mngt->all_trace_buff);
+        goto failed;
+    }
+#endif
+    /*lint restore*/
     return 0;
 
 failed:

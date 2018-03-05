@@ -1,50 +1,10 @@
-﻿/*!
- *****************************************************************************
- *
- * @File       pvdec_int.c
- * @Title      Low-level PVDEC interface component
- * @Description    This file contains functions to interface with an PVDEC core.
- * ---------------------------------------------------------------------------
- *
- * Copyright (c) Imagination Technologies Ltd.
- * 
- * The contents of this file are subject to the MIT license as set out below.
- * 
- * Permission is hereby granted, free of charge, to any person obtaining a 
- * copy of this software and associated documentation files (the "Software"), 
- * to deal in the Software without restriction, including without limitation 
- * the rights to use, copy, modify, merge, publish, distribute, sublicense, 
- * and/or sell copies of the Software, and to permit persons to whom the 
- * Software is furnished to do so, subject to the following conditions:
- * 
- * The above copyright notice and this permission notice shall be included in 
- * all copies or substantial portions of the Software.
- * 
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR 
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE 
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER 
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, 
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN 
- * THE SOFTWARE.
- * 
- * Alternatively, the contents of this file may be used under the terms of the 
- * GNU General Public License Version 2 ("GPL")in which case the provisions of
- * GPL are applicable instead of those above. 
- * 
- * If you wish to allow use of your version of this file only under the terms 
- * of GPL, and not to allow others to use your version of this file under the 
- * terms of the MIT license, indicate your decision by deleting the provisions 
- * above and replace them with the notice and other provisions required by GPL 
- * as set out in the file called "GPLHEADER" included in this distribution. If 
- * you do not delete the provisions above, a recipient may use your version of 
- * this file under the terms of either the MIT license or GPL.
- * 
- * This License is also included in this distribution in the file called 
- * "MIT_COPYING".
- *
- *****************************************************************************/
-
+/*************************************************************************/ /*!
+@File           pvdec_int.c
+@Title          Low-level PVDEC interface component
+@Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
+@Description    This file contains functions to interface with an PVDEC core.
+@License        Strictly Confidential.
+*/ /**************************************************************************/
 #include "img_include.h"
 #include "img_defs.h"
 #include "lst.h"
@@ -458,6 +418,60 @@ pvdec_confMMUTiling(
 /*!
 ******************************************************************************
 
+ @Function              pvdec_CheckMMUOutstandingRequests
+
+******************************************************************************/
+static IMG_RESULT pvdec_CheckMMUOutstandingRequests (
+    PVDEC_sContext * psPvdecContext,
+    IMG_UINT32 ui32Count,
+    IMG_UINT32 ui32MaxChecks
+)
+{
+    IMG_UINT32 ui32Reg, ui32I, ui32CheckCounter = 0;
+
+    for (ui32I = 0; ui32I < ui32MaxChecks; ui32I++)
+    {
+        /* Read TAG_OUTSTANDING */
+        ui32Reg = REGIO_READ_REGISTER(psPvdecContext, IMG_VIDEO_BUS4_MMU, MMU_MEM_REQ);
+        ui32Reg = REGIO_READ_FIELD(ui32Reg, IMG_VIDEO_BUS4_MMU, MMU_MEM_REQ,
+                                   TAG_OUTSTANDING);
+        if (ui32Reg != 0)
+        {
+            continue;
+        }
+
+        /* Read READ_WORDS_OUTSTANDING */
+        ui32Reg = REGIO_READ_REGISTER(psPvdecContext, IMG_VIDEO_BUS4_MMU,
+                                      MMU_MEM_EXT_OUTSTANDING);
+        ui32Reg = REGIO_READ_FIELD(ui32Reg, IMG_VIDEO_BUS4_MMU,
+                                   MMU_MEM_EXT_OUTSTANDING, READ_WORDS_OUTSTANDING);
+        if (ui32Reg == 0)
+        {
+            ui32CheckCounter++;
+            if (ui32CheckCounter == ui32Count)
+            {
+                break;
+            }
+        }
+        else /* reset the counter and continue */
+        {
+            ui32CheckCounter = 0;
+        }
+    }
+
+    if (ui32CheckCounter != ui32Count)
+    {
+        REPORT(REPORT_MODULE_VXDIO, REPORT_WARNING,
+               "Check MMU outstanding requests error!");
+        return IMG_ERROR_FATAL;
+    }
+
+    return IMG_SUCCESS;
+}
+
+/*!
+******************************************************************************
+
  @Function              pvdec_PvdecReset
 
 ******************************************************************************/
@@ -468,79 +482,111 @@ static IMG_RESULT pvdec_PvdecReset(
     IMG_UINT32  ui32Reg;
     IMG_RESULT  ui32Result = IMG_SUCCESS;
     IMG_UINT8   ui8Pipe = 1;
-    IMG_UINT32  ui32RegCoreClock = 0;
-    IMG_UINT32  ui32I = 0;
-
-    IMG_ASSERT(psPvdecContext);
 
     DEBUG_REPORT(REPORT_MODULE_VXDIO, "Doing PVDEC Reset");
 
-    for (ui32I = 0; ui32I < 2; ui32I++)
+    /* Turn all clocks on */
+    REGIO_WRITE_REGISTER(psPvdecContext, PVDEC_CORE,
+                         CR_PVDEC_MAN_CLK_ENABLE, 0xffffffff);
+
+    for(ui8Pipe = 1; ui8Pipe <= psPvdecContext->ui32NumPixelPipes; ui8Pipe++)
     {
-        /* Turn off all the clocks except core */
-        REGIO_WRITE_FIELD(ui32RegCoreClock, PVDEC_CORE, CR_PVDEC_MAN_CLK_ENABLE, CR_PVDEC_REG_MAN_CLK_ENABLE, 1);
-        REGIO_WRITE_FIELD(ui32RegCoreClock, PVDEC_CORE, CR_PVDEC_MAN_CLK_ENABLE, CR_CORE_MAN_CLK_ENABLE, 1);
-        REGIO_WRITE_REGISTER(psPvdecContext, PVDEC_CORE, CR_PVDEC_MAN_CLK_ENABLE, ui32RegCoreClock);
-        /* Make sure all the clocks are off except core */
-        ui32Reg = REGIO_READ_REGISTER(psPvdecContext, PVDEC_CORE, CR_PVDEC_MAN_CLK_ENABLE);
-        IMG_ASSERT(ui32Reg == ui32RegCoreClock);
+        REGIO_WRITE_PIPE_REGISTER(psPvdecContext, ui8Pipe, PVDEC_PIXEL,
+                                  CR_PIXEL_MAN_CLK_ENABLE, 0xffffffff);
+    }
 
-        /* Turn all clocks on */
-        REGIO_WRITE_REGISTER(psPvdecContext, PVDEC_CORE, CR_PVDEC_MAN_CLK_ENABLE, 0xffffffff);
+    for(ui8Pipe = 1; ui8Pipe <= psPvdecContext->ui32NumEntropyPipes; ui8Pipe++)
+    {
+        REGIO_WRITE_PIPE_REGISTER(psPvdecContext, ui8Pipe, PVDEC_ENTROPY,
+                                  CR_ENTROPY_MAN_CLK_ENABLE , 0xffffffff);
+    }
 
-        for(ui8Pipe = 1; ui8Pipe <= psPvdecContext->ui32NumPixelPipes; ui8Pipe++)
-        {
-            REGIO_WRITE_PIPE_REGISTER(psPvdecContext, ui8Pipe, PVDEC_PIXEL, CR_PIXEL_MAN_CLK_ENABLE, 0xffffffff);
-        }
+    /* 1st MMU outstanding requests check */
+    (IMG_VOID)pvdec_CheckMMUOutstandingRequests(psPvdecContext, 1000, 2000);
 
-        for(ui8Pipe = 1; ui8Pipe <= psPvdecContext->ui32NumEntropyPipes; ui8Pipe++)
-        {
-            REGIO_WRITE_PIPE_REGISTER(psPvdecContext, ui8Pipe, PVDEC_ENTROPY, CR_ENTROPY_MAN_CLK_ENABLE , 0xffffffff);
-        }
+    /* Wait until MMU_SOFT_RESET -> 0 */
+    ui32Result = pvdec_Poll(psPvdecContext,
+                            REGION_IMG_VIDEO_BUS4_MMU_REGSPACE,
+                            IMG_VIDEO_BUS4_MMU_MMU_CONTROL1_OFFSET,
+                            0,
+                            IMG_VIDEO_BUS4_MMU_MMU_CONTROL1_MMU_SOFT_RESET_MASK);
+    IMG_ASSERT((ui32Result == IMG_SUCCESS) || (ui32Result == IMG_ERROR_TIMEOUT));
+    if ((ui32Result != IMG_SUCCESS) && (ui32Result != IMG_ERROR_TIMEOUT))
+    {
+        REPORT(REPORT_MODULE_VXDIO, REPORT_ERR, "Failed poll for MMU soft reset.");
+        return ui32Result;
+    }
 
-        /* Issue software reset for all but core */
-        ui32Reg = 0;
-        REGIO_WRITE_FIELD(ui32Reg, PVDEC_CORE, CR_PVDEC_SOFT_RESET, CR_PVDEC_PIXEL_PROCESSING_SOFT_RESET, 0xFF);
-        REGIO_WRITE_FIELD(ui32Reg, PVDEC_CORE, CR_PVDEC_SOFT_RESET, CR_PVDEC_ENTROPY_SOFT_RESET, 0xFF);
-        REGIO_WRITE_REGISTER(psPvdecContext, PVDEC_CORE, CR_PVDEC_SOFT_RESET, ui32Reg);
+    /* Write 1 to MMU_PAUSE_SET */
+    ui32Reg = 0;
+    REGIO_WRITE_FIELD(ui32Reg, IMG_VIDEO_BUS4_MMU, MMU_CONTROL1, MMU_PAUSE_SET, 1);
+    REGIO_WRITE_REGISTER(psPvdecContext, IMG_VIDEO_BUS4_MMU, MMU_CONTROL1, ui32Reg);
 
-        REGIO_READ_REGISTER(psPvdecContext, PVDEC_CORE, CR_PVDEC_SOFT_RESET);
-        REGIO_WRITE_REGISTER(psPvdecContext, PVDEC_CORE, CR_PVDEC_SOFT_RESET, 0);
+    /* 2nd MMU outstanding requests check */
+    (IMG_VOID)pvdec_CheckMMUOutstandingRequests(psPvdecContext, 100, 1000);
 
-        ui32Reg = 0;
-        REGIO_WRITE_FIELD(ui32Reg, PVDEC_CORE, CR_PVDEC_SOFT_RESET, CR_PVDEC_SOFT_RESET, 0x1);
-        REGIO_WRITE_REGISTER(psPvdecContext, PVDEC_CORE, CR_PVDEC_SOFT_RESET, ui32Reg);
+    /* Issue software reset for all but core */
+    ui32Reg = 0;
+    REGIO_WRITE_FIELD(ui32Reg, PVDEC_CORE, CR_PVDEC_SOFT_RESET,
+                      CR_PVDEC_PIXEL_PROCESSING_SOFT_RESET, 0xFF);
+    REGIO_WRITE_FIELD(ui32Reg, PVDEC_CORE, CR_PVDEC_SOFT_RESET,
+                      CR_PVDEC_ENTROPY_SOFT_RESET, 0xFF);
+    REGIO_WRITE_REGISTER(psPvdecContext, PVDEC_CORE, CR_PVDEC_SOFT_RESET, ui32Reg);
 
-        ui32Result = pvdec_Poll(psPvdecContext,
-                                REGION_PVDEC_CORE_REGSPACE,
-                                PVDEC_CORE_CR_PVDEC_SOFT_RESET_OFFSET,
-                                0,
-                                PVDEC_CORE_CR_PVDEC_SOFT_RESET_CR_PVDEC_SOFT_RESET_MASK);
-        IMG_ASSERT((ui32Result == IMG_SUCCESS) || (ui32Result == IMG_ERROR_TIMEOUT));
-        if ((ui32Result != IMG_SUCCESS) && (ui32Result != IMG_ERROR_TIMEOUT))
-        {
-            REPORT(REPORT_MODULE_VXDIO, REPORT_ERR, "Failed poll waiting for reset bits to be set.");
-            return ui32Result;
-        }
+    REGIO_READ_REGISTER(psPvdecContext, PVDEC_CORE, CR_PVDEC_SOFT_RESET);
+    REGIO_WRITE_REGISTER(psPvdecContext, PVDEC_CORE, CR_PVDEC_SOFT_RESET, 0);
 
-        if (ui32I == 0)
-        {
-            /* Issue software reset for MMU */
-            ui32Reg = 0x10000000; //REGIO_WRITE_FIELD(ui32Reg, IMG_VIDEO_BUS4_MMU, MMU_CONTROL1, CR_MMU_SOFT_RESET, 1);
-            REGIO_WRITE_REGISTER(psPvdecContext, IMG_VIDEO_BUS4_MMU, MMU_CONTROL1 , ui32Reg);
+    /* Write 1 to MMU_PAUSE_CLEAR in MMU_CONTROL1 reg */
+    ui32Reg = 0;
+    REGIO_WRITE_FIELD(ui32Reg, IMG_VIDEO_BUS4_MMU, MMU_CONTROL1, MMU_PAUSE_CLEAR, 1);
+    REGIO_WRITE_REGISTER(psPvdecContext, IMG_VIDEO_BUS4_MMU, MMU_CONTROL1, ui32Reg);
+    /* Confirm MMU_PAUSE_SET is cleared */
+    ui32Result = pvdec_Poll(psPvdecContext,
+                            REGION_IMG_VIDEO_BUS4_MMU_REGSPACE,
+                            IMG_VIDEO_BUS4_MMU_MMU_CONTROL1_OFFSET,
+                            0,
+                            IMG_VIDEO_BUS4_MMU_MMU_CONTROL1_MMU_PAUSE_SET_MASK);
+    IMG_ASSERT((ui32Result == IMG_SUCCESS) || (ui32Result == IMG_ERROR_TIMEOUT));
+    if ((ui32Result != IMG_SUCCESS) && (ui32Result != IMG_ERROR_TIMEOUT))
+    {
+        REPORT(REPORT_MODULE_VXDIO, REPORT_ERR,
+            "Failed poll waiting for MMU_PAUSE_SET bit to be cleared.");
+        return ui32Result;
+    }
 
-            ui32Result = pvdec_Poll(psPvdecContext,
-                                    REGION_IMG_VIDEO_BUS4_MMU_REGSPACE,
-                                    IMG_VIDEO_BUS4_MMU_MMU_CONTROL1_OFFSET,
-                                    0,
-                                    0x10000000);
-            IMG_ASSERT((ui32Result == IMG_SUCCESS) || (ui32Result == IMG_ERROR_TIMEOUT));
-            if ((ui32Result != IMG_SUCCESS) && (ui32Result != IMG_ERROR_TIMEOUT))
-            {
-                REPORT(REPORT_MODULE_VXDIO, REPORT_ERR, "Failed poll for MMU soft reset.");
-                return ui32Result;
-            }
-        }
+    /* Issue software reset for MMU */
+    ui32Reg = 0;
+    REGIO_WRITE_FIELD(ui32Reg, IMG_VIDEO_BUS4_MMU, MMU_CONTROL1, MMU_SOFT_RESET, 1);
+    REGIO_WRITE_REGISTER(psPvdecContext, IMG_VIDEO_BUS4_MMU, MMU_CONTROL1 , ui32Reg);
+    /* Wait until MMU_SOFT_RESET -> 0 */
+    ui32Result = pvdec_Poll(psPvdecContext,
+                            REGION_IMG_VIDEO_BUS4_MMU_REGSPACE,
+                            IMG_VIDEO_BUS4_MMU_MMU_CONTROL1_OFFSET,
+                            0,
+                            IMG_VIDEO_BUS4_MMU_MMU_CONTROL1_MMU_SOFT_RESET_MASK);
+    IMG_ASSERT((ui32Result == IMG_SUCCESS) || (ui32Result == IMG_ERROR_TIMEOUT));
+    if ((ui32Result != IMG_SUCCESS) && (ui32Result != IMG_ERROR_TIMEOUT))
+    {
+        REPORT(REPORT_MODULE_VXDIO, REPORT_ERR, "Failed poll for MMU soft reset.");
+        return ui32Result;
+    }
+
+    /* Issue software reset for entire PVDEC */
+    ui32Reg = 0;
+    REGIO_WRITE_FIELD(ui32Reg, PVDEC_CORE, CR_PVDEC_SOFT_RESET, CR_PVDEC_SOFT_RESET, 0x1);
+    REGIO_WRITE_REGISTER(psPvdecContext, PVDEC_CORE, CR_PVDEC_SOFT_RESET, ui32Reg);
+    /* Wait until PVDEC_SOFT_RESET -> 0 */
+    ui32Result = pvdec_Poll(psPvdecContext,
+                            REGION_PVDEC_CORE_REGSPACE,
+                            PVDEC_CORE_CR_PVDEC_SOFT_RESET_OFFSET,
+                            0,
+                            PVDEC_CORE_CR_PVDEC_SOFT_RESET_CR_PVDEC_SOFT_RESET_MASK);
+    IMG_ASSERT((ui32Result == IMG_SUCCESS) || (ui32Result == IMG_ERROR_TIMEOUT));
+    if ((ui32Result != IMG_SUCCESS) && (ui32Result != IMG_ERROR_TIMEOUT))
+    {
+        REPORT(REPORT_MODULE_VXDIO, REPORT_ERR,
+            "Failed poll waiting for reset bits to be set.");
+        return ui32Result;
     }
 
     /* Clear interrupt enabled flag */
@@ -1630,9 +1676,9 @@ IMG_RESULT PVDEC_PrepareFirmware(
         VXD_SECURE_sVerifyFirmwareArgs sVerifFirmwareArgs;
 
 #ifdef PVDEC_SEC_TEE_PHYADDR
-        sVerifFirmwareArgs.ui64SecFwBuf = (IMG_UINT32)psPvdecContext->psFwBufInfo->ppaPhysAddr[0];
+        sVerifFirmwareArgs.ui64SecFwBuf = (IMG_UINT64)psPvdecContext->psFwBufInfo->ppaPhysAddr[0];
 #else
-        sVerifFirmwareArgs.ui64SecFwBuf = (IMG_UINT32)psPvdecContext->psFwBufInfo->pvCpuVirt;
+        sVerifFirmwareArgs.ui64SecFwBuf = (IMG_UINT64)psPvdecContext->psFwBufInfo->pvCpuVirt;
 #endif
 
         ui32Result = SECURE_REE_SendMessageWithBuf(psPvdecContext->ui32SecureId,

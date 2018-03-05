@@ -658,7 +658,9 @@ FSC_BOOL fusb_I2C_WriteData(FSC_U8 address, FSC_U8 length, FSC_U8* data)
     }
 
     mutex_lock(&chip->lock);
+#ifdef CONFIG_DIRECT_CHARGER
     ls_i2c_mutex_lock();
+#endif
 
     // Retry on failure up to the retry limit
     for (i = 0; i <= chip->numRetriesI2C; i++)
@@ -743,7 +745,9 @@ FSC_BOOL fusb_I2C_WriteData(FSC_U8 address, FSC_U8 length, FSC_U8* data)
         }
     }
 
+#ifdef CONFIG_DIRECT_CHARGER
     ls_i2c_mutex_unlock();
+#endif
 
     mutex_unlock(&chip->lock);
     return (ret >= 0);
@@ -762,7 +766,10 @@ FSC_BOOL fusb_I2C_ReadData(FSC_U8 address, FSC_U8* data)
         return false;
     }
     mutex_lock(&chip->lock);
+
+#ifdef CONFIG_DIRECT_CHARGER
     ls_i2c_mutex_lock();
+#endif
 
     // Retry on failure up to the retry limit
     for (i = 0; i <= chip->numRetriesI2C; i++)
@@ -845,7 +852,10 @@ FSC_BOOL fusb_I2C_ReadData(FSC_U8 address, FSC_U8* data)
         }
     }
 
+#ifdef CONFIG_DIRECT_CHARGER
     ls_i2c_mutex_unlock();
+#endif
+
     mutex_unlock(&chip->lock);
     return (ret >= 0);
 }
@@ -864,7 +874,10 @@ FSC_BOOL fusb_I2C_ReadBlockData(FSC_U8 address, FSC_U8 length, FSC_U8* data)
     }
 
     mutex_lock(&chip->lock);
+
+#ifdef CONFIG_DIRECT_CHARGER
     ls_i2c_mutex_lock();
+#endif
 
     // Retry on failure up to the retry limit
     for (i = 0; i <= chip->numRetriesI2C; i++)
@@ -949,7 +962,10 @@ FSC_BOOL fusb_I2C_ReadBlockData(FSC_U8 address, FSC_U8 length, FSC_U8* data)
         }
     }
 
+#ifdef CONFIG_DIRECT_CHARGER
     ls_i2c_mutex_unlock();
+#endif
+
     mutex_unlock(&chip->lock);
     return (ret == length);
 }
@@ -1193,6 +1209,23 @@ enum hrtimer_restart _fusb_noresponsetimer_timeout(struct hrtimer* timer)
     return HRTIMER_NORESTART;
 }
 
+enum hrtimer_restart _fusb_loopresettimer_timeout(struct hrtimer* timer)
+{
+        struct fusb30x_chip* chip = fusb30x_GetChip();
+        if (!chip)
+        {
+                pr_err("FUSB %s - Error: Chip structure is NULL!\n", __func__);
+                return HRTIMER_NORESTART;
+        }
+        if (!timer)
+        {
+                pr_err("FUSB %s - Error: High resolution timer is NULL!\n", __func__);
+                return HRTIMER_NORESTART;
+        }
+        pr_info("FUSB %s - Timer Timeout\n", __func__);
+        core_clear_loop_counter();
+        return HRTIMER_NORESTART;
+}
 void fusb_InitializeTimer(void)
 {
     struct fusb30x_chip* chip = fusb30x_GetChip();
@@ -1231,6 +1264,8 @@ void fusb_InitializeTimer(void)
     hrtimer_init(&chip->timer_vbus_timeout, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
     chip->timer_vbus_timeout.function = _fusb_vbus_timeout;
 
+    hrtimer_init(&chip->timer_loopresettimer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+    chip->timer_loopresettimer.function = _fusb_loopresettimer_timeout;
 
     pr_debug("FUSB  %s - Timer initialized!\n", __func__);
 }
@@ -1238,7 +1273,9 @@ void fusb_InitializeTimer(void)
 void fusb_StartTimers(struct hrtimer *timer, FSC_U32 timeout)
 {
     ktime_t ktime;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,4,0)	
     int ret;
+#endif	
     struct fusb30x_chip *chip;
 
     chip = fusb30x_GetChip();
@@ -1249,8 +1286,12 @@ void fusb_StartTimers(struct hrtimer *timer, FSC_U32 timeout)
 	}
 	FSC_PRINT("FUSB %s - Platform Starting Timer\n", __func__);
 	ktime = ktime_set(0, timeout * g_fusb_timer_tick_period_ns);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,4,0)
 	ret = hrtimer_start(timer, ktime, HRTIMER_MODE_REL);
 	FSC_PRINT("FUSB %s - Platform Starting Timer Ret:%d\n", __func__, ret);
+#else
+	hrtimer_start(timer, ktime, HRTIMER_MODE_REL);
+#endif
 }
 
 void fusb_StopTimers(struct hrtimer *timer)

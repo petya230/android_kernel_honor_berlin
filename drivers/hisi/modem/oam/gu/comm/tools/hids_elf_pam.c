@@ -1,4 +1,50 @@
-
+/*
+ * Copyright (C) Huawei Technologies Co., Ltd. 2012-2015. All rights reserved.
+ * foss@huawei.com
+ *
+ * If distributed as part of the Linux kernel, the following license terms
+ * apply:
+ *
+ * * This program is free software; you can redistribute it and/or modify
+ * * it under the terms of the GNU General Public License version 2 and
+ * * only version 2 as published by the Free Software Foundation.
+ * *
+ * * This program is distributed in the hope that it will be useful,
+ * * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * * GNU General Public License for more details.
+ * *
+ * * You should have received a copy of the GNU General Public License
+ * * along with this program; if not, write to the Free Software
+ * * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA
+ *
+ * Otherwise, the following license terms apply:
+ *
+ * * Redistribution and use in source and binary forms, with or without
+ * * modification, are permitted provided that the following conditions
+ * * are met:
+ * * 1) Redistributions of source code must retain the above copyright
+ * *    notice, this list of conditions and the following disclaimer.
+ * * 2) Redistributions in binary form must reproduce the above copyright
+ * *    notice, this list of conditions and the following disclaimer in the
+ * *    documentation and/or other materials provided with the distribution.
+ * * 3) Neither the name of Huawei nor the names of its contributors may
+ * *    be used to endorse or promote products derived from this software
+ * *    without specific prior written permission.
+ *
+ * * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
+ *
+ */
 #include "product_config.h"
 
 #if (VOS_WIN32 != VOS_OS_VER)
@@ -46,6 +92,7 @@
 #include "CbpaPsInterface.h"
 #include "TafAppMma.h"
 #include "AtMtaInterface.h"
+#include "sleepflow.h"
 
 
 #if (FEATURE_ON == FEATURE_UE_MODE_CDMA)
@@ -132,6 +179,28 @@ typedef struct
 
 
 
+/*****************************************************************************
+ 结构名    : TAF_XSMS_ELF_INT_1X_SIG_ENCRYPTION_INFO_STRU
+ 结构说明  : 1x信令加解密勾包的消息结构
+*****************************************************************************/
+typedef struct
+{
+    VOS_MSG_HEADER
+    TAF_XSMS_HOOK_MSG_TYPE_ENUM_UINT32  enMsgId;
+    TAF_SDC_1X_SIG_ENCRYPTION_INFO_STRU st1xSigEncrypInfo;
+}TAF_XSMS_ELF_INT_1X_SIG_ENCRYPTION_INFO_STRU;
+
+/*****************************************************************************
+ 结构名    : TAF_XSMS_ELF_INT_SND_DATA_BURST_MSG_STRU
+ 结构说明  : 发送DBM消息勾包的消息结构
+*****************************************************************************/
+typedef struct
+{
+    VOS_MSG_HEADER
+    TAF_XSMS_HOOK_MSG_TYPE_ENUM_UINT32  enMsgId;
+    TAF_XSMS_DATA_BURST_MSG_STRU        stDataBurMsg;
+}TAF_XSMS_ELF_INT_SND_DATA_BURST_MSG_STRU;
+
 #endif
 
 
@@ -151,6 +220,9 @@ int pam_main()
     enum USIMM_VSIM_STATE_ENUM                          enUSIMM_VSIM_STATE_ENUM;
     enum USIMM_REALISIM_STATE_ENUM                      enUSIMM_REALISIM_STATE_ENUM;
     enum USIMM_CARDSTATUS_IND_ENUM                      enUSIMM_CARDSTATUS_IND_ENUM;
+    enum USIMM_CHANGE_MODE_ERROR_ENUM                   enUSIMM_CHANGE_MODE_ERROR_ENUM;
+    enum USIMM_SWCHECK_ENUM                             enUSIMM_SWCHECK_ENUM;
+
     enum SI_PIH_DSP_LIMIT_ENUM                          enSI_PIH_DSP_LIMIT_ENUM;
     enum SI_PIH_CHANGEPOLLTIMER_ENUM                    enSI_PIH_CHANGEPOLLTIMER_ENUM;
     enum SI_PIH_EVENT_ENUM                              enSI_PIH_EVENT_ENUM;
@@ -163,7 +235,10 @@ int pam_main()
     enum SI_PB_ACTIVE_STATE_ENUM                        enSI_PB_ACTIVE_STATE_ENUM;
     enum SI_PB_INIT_STATE_ENUM                          enSI_PB_INIT_STATE_ENUM;
     enum SI_PB_STORAGE_ENUM                             enSI_PB_STORAGE_ENUM;
+    enum SI_PIH_CMD_REQ_TYPE_ENUM                       enSI_PIH_CMD_REQ_TYPE_ENUM;
+    enum SI_PIH_CMD_CNF_TYPE_ENUM                       enSI_PIH_CMD_CNF_TYPE_ENUM;
     enum CSIMA_CBP_UICC_MSGID_ENUM                      enCSIMA_CBP_UICC_MSGID_ENUM;
+
 #if (FEATURE_ON == FEATURE_UE_MODE_CDMA)
     /* xsms */
     enum TAF_XSMS_SEND_OPTION_ENUM                      enTAF_XSMS_SEND_OPTION_ENUM;
@@ -298,6 +373,8 @@ int pam_main()
     /* mta at */
     enum MTA_AT_RESULT_ENUM                             enMTA_AT_RESULT_ENUM;
 
+    enum SLEEP_MSG_ENUM                                 enSLEEP_MSG_ENUM;
+
     /* USIMM */
 
     USIMM_ACTIVECARD_REQ_STRU usimm_activecard_req_stru;
@@ -360,6 +437,14 @@ int pam_main()
     USIMM_VSIM_RDH_IND_STRU usimm_vsim_rdh_ind_stru;
     USIMM_ECCNUMBER_IND_STRU usimm_eccnumber_ind_stru;
     USIMM_XECCNUMBER_IND_STRU usimm_xeccnumber_ind_stru;
+    USIMM_FDNSTATUS_IND_STRU usimm_fdnstatus_ind_stru;
+    USIMM_FDNQUERY_CNF_STRU usimm_fdnquery_cnf_stru;
+    USIMM_FDNQUERY_REQ_STRU usimm_fdnquery_req_stru;
+    USIMM_CHANGE_CARDMODE_CNF_STRU usimm_change_cardmode_cnf_stru;
+    USIMM_CHANGE_CARDMODE_REQ_STRU usimm_change_cardmode_req_stru;
+    USIMM_CARDERROR_IND_STRU usimm_carderror_ind_stru;
+    USIMM_ICCIDCONTENT_IND_STRU usimm_iccidcontent_ind_stru;
+    USIMM_SWCHECK_IND_STRU     usimm_swcheck_ind_stru;
 
     SI_PIH_FDN_ENABLE_REQ_STRU si_pih_fdn_enable_req_stru;
     SI_PIH_FDN_DISABLE_REQ_STRU si_pih_fdn_disable_req_stru;
@@ -382,6 +467,13 @@ int pam_main()
     SI_PIH_HVS_QRY_REQ_STRU si_pih_hvs_qry_req_stru;
     SI_PIH_FILE_WRITE_REQ_STRU si_pih_file_write_req_stru;
     SI_PIH_HVTEE_SET_REQ_STRU si_pih_hvtee_set_req_stru;
+    SI_PIH_START_CHECK_KEYFILE_NTF_STRU si_pih_start_check_keyfile_ntf_stru;
+    SI_PIH_STOP_CHECK_KEYFILE_NTF_STRU si_pih_stop_check_keyfile_ntf_stru;
+    SI_PIH_CHECK_KEYFILE_RLST_IND_STRU si_pih_check_keyfile_rlst_ind_stru;
+
+#if (FEATURE_ON == FEATURE_VSIM)
+    SI_PIH_VSIMAPN_IND_STRU si_pih_vsimapn_ind_stru;
+#endif
 
     SI_STK_REQ_STRU si_stk_req_stru;
     STK_AS_TA_INFO_REQ_STRU stk_as_ta_info_req_stru;
@@ -461,6 +553,8 @@ int pam_main()
     TAF_XSMS_ELF_INT_CUR_MT_FSM_STRU taf_xsms_int_cur_mt_fsm_stru;
     TAF_XSMS_ELF_INT_SMS_CONTENT_STRU taf_xsms_int_sms_content_stru;
     TAF_XSMS_ELF_INT_TL_ACK_STRU taf_xsms_int_tl_ack_stru;
+    TAF_XSMS_ELF_INT_1X_SIG_ENCRYPTION_INFO_STRU taf_xsms_int_1x_sig_encryption_info_stru;
+    TAF_XSMS_ELF_INT_SND_DATA_BURST_MSG_STRU taf_xsms_int_snd_data_burst_msg_stru;
 
     /*XPDS AT*/
     AT_XPDS_GPS_START_REQ_STRU at_xpds_gps_start_req_stru;
@@ -552,6 +646,8 @@ int pam_main()
     TAF_XPDS_MNTN_REVERSE_MPC_START_POS_REQ_IND_STRU_STRU taf_xpds_mntn_reverse_mpc_start_pos_req_ind_stru_stru;
     TAF_XPDS_MNTN_REVERSE_MPC_POS_REPORT_REQ_IND_STRU_STRU taf_xpds_mntn_reverse_mpc_pos_report_req_ind_stru_stru;
     TAF_XPDS_MNTN_REVERSE_PDE_REJ_RSP_IND_STRU_STRU taf_xpds_mntn_reverse_pde_rej_rsp_ind_stru_stru;
+    TAF_XPDS_MNTN_1X_SIG_ENCRYPTION_INFO_IND_STRU taf_xpds_mntn_1x_sig_encryption_info_ind_stru;
+    TAF_XPDS_MNTN_DATA_BURST_MSG_IND_STRU  taf_xpds_mntn_data_burst_msg_ind_stru;
 
     /* OM XPDS */
     OM_NAS_CDMA_START_GPS_FIX_REQ_STRU om_nas_cdma_start_gps_fix_req_stru;
@@ -621,6 +717,9 @@ int pam_main()
     /* at mta */
     AT_MTA_MEID_SET_REQ_STRU            stAT_MTA_MEID_SET_REQ_STRU;
     MTA_AT_MEID_QRY_CNF_STRU            stMTA_AT_MEID_QRY_CNF_STRU;
+
+    /* sleep */
+    SLEEP_ISR_MSG_STRU                  stSLEEP_ISR_MSG_STRU;
 
     return 0;
 }

@@ -92,8 +92,8 @@ static int hisi_fb_probe(struct platform_device *pdev)
 	fix->mmio_len = 0;
 	fix->accel = FB_ACCEL_NONE;
 
-	var->xoffset = 0;
 	var->yoffset = 0;
+	var->xoffset = 0;
 	var->grayscale = 0;
 	var->nonstd = 0;
 	var->activate = FB_ACTIVATE_VBL;
@@ -108,9 +108,9 @@ static int hisi_fb_probe(struct platform_device *pdev)
 	fix->ypanstep = 1;
 
 	var->vmode = FB_VMODE_NONINTERLACED;
-	var->blue.offset = 0;
-	var->green.offset = 8;
 	var->red.offset = 16;
+	var->green.offset = 8;
+	var->blue.offset = 0;
 	var->transp.offset = 24;
 	var->blue.length = 8;
 	var->green.length = 8;

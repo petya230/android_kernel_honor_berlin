@@ -461,11 +461,13 @@ VOS_INT32 NV_Xcopy(VOS_CHAR *pcSrcDir, VOS_CHAR *pcDestDir)
     VOS_CHAR                            acCurDir[MAX_PATH];
 
     GetCurrentDirectory(MAX_PATH, acCurDir);
-
+    // cppcheck-suppress *
     strcpy(acSrcDir,  acCurDir);
+    // cppcheck-suppress *
     strcpy(acDestDir, acCurDir);
-
+    // cppcheck-suppress *
     strcat(acSrcDir,  pcSrcDir + 1);
+    // cppcheck-suppress *
     strcat(acDestDir, pcDestDir + 1);
 
     sfo.hwnd  = NULL;

@@ -74,7 +74,6 @@ static int print_out_thread_fn(void *arg)
 				pd_dbg_buffer[index].
 						buf[OUT_BUF_MAX + i] = '\0';
 				/* while (atomic_read(&busy)); */
-				printk(pd_dbg_buffer[index].buf + i);
 				pd_dbg_buffer[index].
 						buf[OUT_BUF_MAX + i] = temp;
 				/* msleep(2); */

@@ -2159,6 +2159,16 @@ IMG_RESULT PVDECIO_PrepareFirmware(
         UPDATE_DEVICE(psFwBufInfo);
     }
 
+    {
+    IMG_UINT32          ui32i;
+    /* Clear comms header in VLR */
+    for (ui32i=0; ui32i<COMMS_HEADER_SIZE; ui32i++)
+    {
+        PVDECIO_WriteRegister(psContext, REGION_PVDEC_VLR_REGSPACE,
+                            ui32i*sizeof(IMG_UINT32), 0, -1, PVDEC_DEF_PIPE);
+    }
+    }
+
     // todo:xxx: called twice ?
     /* Need to initialise MTX comms area  */
     ui32Result = DEVAIO_InitMTXComms((IMG_HANDLE)psContext,

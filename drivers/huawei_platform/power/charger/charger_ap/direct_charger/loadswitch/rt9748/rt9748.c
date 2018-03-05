@@ -162,6 +162,8 @@ static int rt9748_read_byte(u8 reg, u8 *value)
 	struct rt9748_device_info *di = g_rt9748_dev;
 	return rt9748_read_block(di, value, reg, 1);
 }
+
+/*lint -save -e* */
 static ssize_t rt9748_sysfs_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
 	return 0;
@@ -182,6 +184,7 @@ static ssize_t rt9748_sysfs_store(struct device *dev,
 {
 	return count;
 }
+/*lint -restore*/
 
 /**********************************************************
 *  Function:       fan54151_sysfs_create_group
@@ -238,6 +241,8 @@ static int rt9748_write_mask(u8 reg, u8 MASK, u8 SHIFT, u8 value)
 *                      value:register value
 *  return value:  0-sucess or others-fail
 **********************************************************/
+
+/*lint -save -e* */
 static int rt9748_read_mask(u8 reg, u8 MASK, u8 SHIFT, u8 *value)
 {
 	int ret = 0;
@@ -252,7 +257,33 @@ static int rt9748_read_mask(u8 reg, u8 MASK, u8 SHIFT, u8 *value)
 
 	return 0;
 }
+static int rt9748_watchdog_config(int time)
+{
+	u8 val;
+	u8 reg;
+	int ret;
 
+	hwlog_info("%s:vbat_ovp!\n",__func__);
+	if (time > RT9748_WATCH_DOG_1500MS)
+	{
+		time = RT9748_WATCH_DOG_1500MS;
+	}
+	val = time / RT9748_WATCH_DOG_STEP;
+	ret = rt9748_write_mask(RT9748_CONTROL,RT9748_WATCH_DOG_CONFIG_MASK,RT9748_WATCH_DOG_CONFIG_SHIFT,val);
+	if (ret)
+	{
+		hwlog_err("%s: rt9748 watchdog config fail\n", __func__);
+		return -1;
+	}
+	ret = rt9748_read_byte(RT9748_CONTROL, &reg);
+	if (ret)
+	{
+		hwlog_err("%s: read fail\n", __func__);
+		return -1;
+	}
+	hwlog_info("%s:control reg = 0x%x\n", __func__, reg);
+	return 0;
+}
 
 /**********************************************************
 *  Function:       rt9748_reg_init
@@ -1406,26 +1437,25 @@ static int rt9748_get_ls_ibus(int * ibus)
 	}
 	return 0;
 }
-
 static int loadswitch_get_device_id(void)
 {
 	u8 reg = 0;
 	int ret = 0;
 	int bit3;
-	int dev_id = -1;
+	int dev_id = DEVICE_ID_GET_FAIL;
 	struct rt9748_device_info *di = g_rt9748_dev;
-	if (0 == g_get_id_time)
+	if (NOT_USED == g_get_id_time)
 	{
-		g_get_id_time = 1;
+		g_get_id_time = USED;
 		ret = rt9748_read_byte(RT9748_ADC_CTRL, &reg);
 		if (ret)
 		{
 			hwlog_err("%s: dev_id reg07 read fail\n", __func__);
-			return -1;
+			return DEVICE_ID_GET_FAIL;
 		}
 		hwlog_info("%s: reg07 = %x\n", __func__,reg);
-		bit3 = (reg >> LS_GET_DEV_ID_SHIFT) & 1;
-		if (1 == bit3)
+		bit3 = (reg >> LS_GET_DEV_ID_SHIFT) & GET_BIT_3_MASK;
+		if (IS_RICHTEK == bit3)
 		{
 			dev_id = loadswitch_rt9748;
 			hwlog_info("%s: dev_id = %d\n", __func__,dev_id);
@@ -1435,25 +1465,27 @@ static int loadswitch_get_device_id(void)
 		if (ret)
 		{
 			hwlog_err("%s: dev_id reg00 read fail\n", __func__);
-			return -1;
+			return DEVICE_ID_GET_FAIL;
 		}
+		reg = reg & REG0_DEV_ID;
 		hwlog_info("%s: reg00 = %x\n", __func__,reg);
 		switch(reg)
 		{
-			case 0:
+			case DEVICE_ID_RICHTEK:
 				dev_id = loadswitch_rt9748;
 				break;
-			case 1:
+			case DEVICE_ID_TI:
 				dev_id = loadswitch_bq25870;
 				break;
-			case 2:
+			case DEVICE_ID_FSA:
 				dev_id = loadswitch_fair_child;
 				break;
-			case 3:
+			case DEVICE_ID1_NXP:
+			case DEVICE_ID2_NXP:
 				dev_id = loadswitch_nxp;
 				break;
 			default:
-				dev_id = -1;
+				dev_id = DEVICE_ID_GET_FAIL;
 				hwlog_err("%s: ls get id ERR!\n", __func__,reg);
 				break;
 		}
@@ -1463,6 +1495,8 @@ static int loadswitch_get_device_id(void)
 	hwlog_info("%s: dev_id = %d\n", __func__,di->device_id);
 	return di->device_id;
 }
+
+/*lint -save -e* */
 static int chip_init(void)
 {
 	int ret = 0;
@@ -1484,6 +1518,8 @@ static int chip_init(void)
 	di->chip_already_init = 1;
 	return 0;
 }
+/*lint -restore*/
+
 static int rt9748_charge_init(void )
 {
 	int ret = 0;
@@ -1584,6 +1620,7 @@ static struct loadswitch_ops  rt9748_sysinfo_ops ={
 	.ls_discharge = rt9748_discharge,
 	.is_ls_close = rt9748_is_ls_close,
 	.get_ls_id = loadswitch_get_device_id,
+	.watchdog_config_ms = rt9748_watchdog_config,
 };
 static struct batinfo_ops rt9748_batinfo_ops = {
 	.init = batinfo_init,
@@ -1602,6 +1639,8 @@ static struct batinfo_ops rt9748_batinfo_ops = {
 *  Parameters:   work:loadswitch fault interrupt workqueue
 *  return value:  NULL
 **********************************************************/
+
+/*lint -save -e* */
 static void rt9748_irq_work(struct work_struct *work)
 {
 	struct rt9748_device_info *di = container_of(work, struct rt9748_device_info, irq_work);
@@ -1653,6 +1692,7 @@ static void rt9748_irq_work(struct work_struct *work)
 	//*clear irq*/
 	enable_irq(di->irq_int);
 }
+/*lint -restore*/
 
 /**********************************************************
 *  Function:       rt9748_interrupt
@@ -1661,6 +1701,8 @@ static void rt9748_irq_work(struct work_struct *work)
 *                      _di:rt9748_device_info
 *  return value:  IRQ_HANDLED-sucess or others
 **********************************************************/
+
+/*lint -save -e* */
 static irqreturn_t rt9748_interrupt(int irq, void *_di)
 {
 	struct rt9748_device_info *di = _di;
@@ -1673,6 +1715,7 @@ static void parse_dts(struct device_node *np, struct rt9748_device_info *di)
 {
 	return;
 }
+/*lint -restore*/
 
 /**********************************************************
 *  Function:       rt9748_probe
@@ -1681,6 +1724,8 @@ static void parse_dts(struct device_node *np, struct rt9748_device_info *di)
 *                      id:i2c_device_id
 *  return value:  0-sucess or others-fail
 **********************************************************/
+
+/*lint -save -e* */
 static int rt9748_probe(struct i2c_client *client, const struct i2c_device_id *id)
 {
 	int ret = 0;
@@ -1779,6 +1824,7 @@ rt9748_fail_0:
 
 	return ret;
 }
+/*lint -restore*/
 
 /**********************************************************
 *  Function:       rt9748_remove
@@ -1840,6 +1886,8 @@ static struct i2c_driver rt9748_driver = {
 *  Parameters:   NULL
 *  return value:  0-sucess or others-fail
 **********************************************************/
+
+/*lint -save -e* */
 static int __init rt9748_init(void)
 {
 	int ret = 0;
@@ -1875,6 +1923,8 @@ static void __exit rt9748_mutex_lock_exit(void)
 
 fs_initcall(rt9748_mutex_lock_init);
 module_exit(rt9748_mutex_lock_exit);
+/*lint -restore*/
+
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("rt9748 module driver");
 MODULE_AUTHOR("HW Inc");

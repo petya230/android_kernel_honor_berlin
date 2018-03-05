@@ -58,7 +58,7 @@ static FSC_U8                   USBPDBufStart;                                  
 static FSC_U8                   USBPDBufEnd;                                    // Pointer to the last byte of the last message
 static FSC_BOOL                 USBPDBufOverflow;                               // Flag to indicate that there was a buffer overflow since last read
 #endif // FSC_DEBUG
-FSC_U8                          manualRetriesEnabled = 1;                              // Set to 1 to enable manual retries (instead of automatic)
+FSC_U8                          manualRetriesEnabled = 0;                              // Set to 1 to enable manual retries (instead of automatic)
 
 FSC_U8                          nRetries = 3;                                   // Number of tries (1 + 3 retries)
 

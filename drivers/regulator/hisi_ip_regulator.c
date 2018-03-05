@@ -52,10 +52,6 @@
 #include <linux/seq_file.h>
 #include <linux/uaccess.h>
 
-#ifdef CONFIG_KIRIN970_IP_PLATFORM
-#include <soc_media_crg_interface.h>
-#endif
-
 #if CONFIG_DEBUG_FS
 #define IP_REGULATOR_DEBUG(args...) pr_debug(args);
 #else
@@ -70,7 +66,21 @@ extern void enable_err_probe_by_name(const char *name);
 extern int hisi_freq_autodown_clk_set(char *freq_name, u32 control_flag);
 #endif
 
-#ifdef CONFIG_KIRIN970_IP_PLATFORM
+#if defined CONFIG_KIRIN660_IP_PLATFORM
+enum ip_regulator_id {
+	MEDIA_SUBSYS_ID = 0,
+	MEDIA2_SUBSYS_ID,
+	VIVOBUS_ID,
+	IVP_ID,
+	VCODECSUBSYS_ID,
+	DSSSUBSYS_ID,
+	ISPSUBSYS_ID,
+	VDEC_ID,
+	VENC_ID,
+	G3D_ID,
+	ASP_ID,
+};
+#elif defined CONFIG_KIRIN970_IP_PLATFORM
 enum ip_regulator_id {
 	MEDIA_SUBSYS_ID = 0,
 	VIVOBUS_ID,
@@ -123,16 +133,18 @@ struct hisi_regulator_ip {
 	unsigned int *clock_rate_value;
 	unsigned int *clock_org_rate;
 	int enable_autofreqdump;
+	unsigned int ppll0_clock_set_rate_flag;
+	unsigned int ppll0_clock_rate_value;
 #ifdef CONFIG_HISI_NOC_HI3650_PLATFORM
 	const char *noc_node_name;
 #endif
-#ifdef CONFIG_KIRIN970_IP_PLATFORM
+#if defined (CONFIG_KIRIN970_IP_PLATFORM) || defined(CONFIG_KIRIN660_IP_PLATFORM)
 	u32 dss_boot_check[2];
 #endif
 };
 
-#ifdef CONFIG_KIRIN970_IP_PLATFORM
-#define DSS_SOFTRESET_STATE_CHECK_BIT			(SOC_MEDIA_CRG_PERRSTSTAT0_ip_rst_dss_START)
+#if defined (CONFIG_KIRIN970_IP_PLATFORM) || defined(CONFIG_KIRIN660_IP_PLATFORM)
+#define DSS_SOFTRESET_STATE_CHECK_BIT			0
 #else
 #define DSS_SOFTRESET_STATE_CHECK_BIT			SOC_CRGPERIPH_PERRSTEN3_ip_rst_dss_START
 #endif
@@ -221,17 +233,17 @@ static int  hisi_clock_state_check(struct hisi_regulator_ip *sreg)
 	IP_REGULATOR_DEBUG("<[%s]: end regulator_id=%d>\n", __func__, sreg->regulator_id);
 	return 0;
 }
-#ifdef CONFIG_KIRIN970_IP_PLATFORM
+#if defined (CONFIG_KIRIN970_IP_PLATFORM) || defined(CONFIG_KIRIN660_IP_PLATFORM)
 static int get_softreset_state(struct hisi_regulator_ip_core *pmic, struct hisi_regulator_ip *sreg, unsigned int value)
 {
-	IP_REGULATOR_DEBUG("<[%s]: sreg->dss_boot_check[0]=0x%x pmic->regs = 0x%x>\n", __func__, sreg->dss_boot_check[0], pmic->regs);
+	IP_REGULATOR_DEBUG("<[%s]: sreg->dss_boot_check[0]=0x%x>\n", __func__, sreg->dss_boot_check[0]);
 	IP_REGULATOR_DEBUG("<[%s]: regulator_id[%d] softreset_value=0x%x softreset_state3 = 0x%x>\n", __func__,
 					sreg->regulator_id, sreg->dss_boot_check[1], readl((sreg->dss_boot_check[0]+ pmic->regs)));
 	if (((sreg->dss_boot_check[1]) & (readl(sreg->dss_boot_check[0]+ pmic->regs))))
 		return 0;/*softreset*/
 	else
 		return 1;/*unreset*/
-}
+}/*lint !e715*/
 #else
 static int get_softreset_state(struct hisi_regulator_ip_core *pmic, struct hisi_regulator_ip *sreg, unsigned int value)
 {
@@ -243,6 +255,29 @@ static int get_softreset_state(struct hisi_regulator_ip_core *pmic, struct hisi_
 		return 1;/*unreset*/
 }
 #endif
+static int hisi_ppll0_clock_rate_set(struct hisi_regulator_ip *sreg)
+{
+	struct clk *temp_clock;
+	int ret;
+
+	IP_REGULATOR_DEBUG("<[%s]: begin regulator_id=%d clock_num=%d>\n", __func__, sreg->regulator_id, sreg->clock_num);
+	/*0:get current clock*/
+	temp_clock = of_regulator_clk_get(sreg->np, 0);
+	if (IS_ERR(temp_clock)) {
+		temp_clock = NULL;
+		return -EINVAL;
+	}
+	IP_REGULATOR_DEBUG("<[%s]: clock_name=%s, clock_rate=0x%x>\n", __func__, __clk_get_name(temp_clock), sreg->ppll0_clock_rate_value);
+	/*1:set freq rate to clock*/
+	ret = clk_set_rate(temp_clock, sreg->ppll0_clock_rate_value);
+	if (ret < 0) {
+		pr_err("file:%s line:%d temp clock[%s] set rate fail!\n", __func__, __LINE__, __clk_get_name(temp_clock));
+		return -EINVAL;
+	}
+	IP_REGULATOR_DEBUG("<[%s]: end regulator_id=%d>\n", __func__, sreg->regulator_id);
+	return 0;
+}
+
 static int hisi_clock_rate_set(struct hisi_regulator_ip *sreg, int flag)
 {
 	struct clk *temp_clock;
@@ -386,7 +421,7 @@ static int hisi_ip_to_atf_enabled(struct regulator_dev *dev)
 		softreset_value = get_softreset_state(pmic, sreg, DSS_SOFTRESET_STATE_CHECK_BIT);
 		IP_REGULATOR_DEBUG("<[%s]: regulator_id[%d] softreset_bit=%d>\n", __func__, sreg->regulator_id, softreset_value);
 		if (softreset_value) {
-			IP_REGULATOR_DEBUG("<[%s]:  regulator_id[%d] was poweron in fastboot pahse>\n", __func__, sreg->regulator_id);
+			IP_REGULATOR_DEBUG("<[%s]:  regulator_id[%d] was poweron in fastboot phase>\n", __func__, sreg->regulator_id);
 			dss_poweron_flag = 1;
 			sreg->regulator_enalbe_flag = 1;
 			return 0;
@@ -433,7 +468,7 @@ static int hisi_ip_to_atf_enabled(struct regulator_dev *dev)
 #endif
 		sreg->regulator_enalbe_flag = 1;
 	} else {
-		pr_err("%s:hisi ip send enable ldo[%s] to lpm failled!\n\r", __func__, sreg->name);
+		pr_err("%s:hisi ip send enable ldo[%s] to atf failled!\n\r", __func__, sreg->name);
 	}
 
 #ifdef CONFIG_HISI_NOC_HI3650_PLATFORM
@@ -488,7 +523,7 @@ static int hisi_ip_to_atf_disabled(struct regulator_dev *dev)
 		sreg->regulator_enalbe_flag = 0;
 		ret = 0;
 	} else {
-		pr_err("%s:hisi ip send disable ldo[%s] to lpm failled!\n\r", __func__, sreg->name);
+		pr_err("%s:hisi ip send disable ldo[%s] to atf failled!\n\r", __func__, sreg->name);
 	}
 
 	if (1 == sreg->enable_clock) {
@@ -498,6 +533,12 @@ static int hisi_ip_to_atf_disabled(struct regulator_dev *dev)
 		}
 	}
 
+	if (1 == sreg->ppll0_clock_set_rate_flag) {
+		ret = hisi_ppll0_clock_rate_set(sreg);
+		if (ret) {
+			pr_err("[%s]hisi ppll0_clock_set_rate_flag set failed. ret[%d]!\n", __func__, ret);
+		}
+	}
 	IP_REGULATOR_DEBUG("<[%s]: end regulator_id=%d>\n", __func__, sreg->regulator_id);
 	return ret;
 }
@@ -637,7 +678,7 @@ static int hisi_dt_parse_ip_atf(struct hisi_regulator_ip *sreg,
 	struct device_node *np = NULL;
 	int id = 0, fake = 0, type = 0;
 	int ret = 0;
-#ifdef CONFIG_KIRIN970_IP_PLATFORM
+#if defined (CONFIG_KIRIN970_IP_PLATFORM) || defined(CONFIG_KIRIN660_IP_PLATFORM)
 	unsigned int register_info[2] = {0};
 #endif
 	if (sreg == NULL || pdev == NULL) {
@@ -650,7 +691,7 @@ static int hisi_dt_parse_ip_atf(struct hisi_regulator_ip *sreg,
 
 	/* regulator-id */
 	ret = of_property_read_u32_array(np, "hisilicon,hisi-regulator-id",
-						&id, 1);
+						&id, 1);/*lint !e64*/
 	if (ret) {
 		dev_err(dev, "no hisilicon,hisi-regulator-id property set\n");
 		goto dt_parse_common_end;
@@ -659,7 +700,7 @@ static int hisi_dt_parse_ip_atf(struct hisi_regulator_ip *sreg,
 
 	/* regulator-type */
 	ret = of_property_read_u32_array(np, "hisilicon,hisi-regulator-type",
-						&type, 1);
+						&type, 1);/*lint !e64*/
 	if (ret) {
 		dev_err(dev, "no hisilicon,hisi-regulator-type property set\n");
 		goto dt_parse_common_end;
@@ -668,7 +709,7 @@ static int hisi_dt_parse_ip_atf(struct hisi_regulator_ip *sreg,
 
 	/* regulator-fake */
 	ret = of_property_read_u32_array(np, "hisilicon,hisi-regulator-is-fake",
-						&fake, 1);
+						&fake, 1);/*lint !e64*/
 	if (ret) {
 		dev_err(dev, "no hisilicon,hisi-regulator-is-fake property set\n");
 		goto dt_parse_common_end;
@@ -677,7 +718,7 @@ static int hisi_dt_parse_ip_atf(struct hisi_regulator_ip *sreg,
 
 	/* clock_check_flag */
 	ret = of_property_read_u32_array(np, "hisilicon,hisi-regulator-clk-check-flag",
-						&sreg->clock_check_flag, 1);
+						&sreg->clock_check_flag, 1);/*lint !e64*/
 	if (ret) {
 		dev_err(dev, "no hisilicon,hisi-regulator-clk-check-flag property set\n");
 		goto dt_parse_common_end;
@@ -685,7 +726,7 @@ static int hisi_dt_parse_ip_atf(struct hisi_regulator_ip *sreg,
 
 	/* clock_num*/
 	ret = of_property_read_u32_array(np, "hisilicon,hisi-regulator-clk-num",
-						&sreg->clock_num, 1);
+						&sreg->clock_num, 1);/*lint !e64*/
 	if (ret) {
 		dev_err(dev, "no hisilicon,hisi-regulator-clk-num property set\n");
 		goto dt_parse_common_end;
@@ -693,7 +734,7 @@ static int hisi_dt_parse_ip_atf(struct hisi_regulator_ip *sreg,
 
 	/* enable clock flag*/
 	ret = of_property_read_u32_array(np, "hisilicon,hisi-need-to-enable-clock",
-						&sreg->enable_clock, 1);
+						&sreg->enable_clock, 1);/*lint !e64*/
 	if (ret) {
 		dev_err(dev, "no hisilicon,hisi-need-to-enable-clock property set\n");
 		goto dt_parse_common_end;
@@ -701,7 +742,7 @@ static int hisi_dt_parse_ip_atf(struct hisi_regulator_ip *sreg,
 
 	/* enable autofreqdump flag*/
 	ret = of_property_read_u32_array(np, "hisilicon,hisi-need-to-autofreqdump",
-						&sreg->enable_autofreqdump, 1);
+						&sreg->enable_autofreqdump, 1);/*lint !e64*/
 	if (ret) {
 		dev_err(dev, "no hisilicon,hisi-need-to-autofreqdump property set\n");
 		goto dt_parse_common_end;
@@ -709,7 +750,7 @@ static int hisi_dt_parse_ip_atf(struct hisi_regulator_ip *sreg,
 
 	/* clock set rate flag*/
 	ret = of_property_read_u32_array(np, "hisilicon,hisi-clock-rate-set-flag",
-						&sreg->clock_set_rate_flag, 1);
+						&sreg->clock_set_rate_flag, 1);/*lint !e64*/
 	if (ret) {
 		dev_err(dev, "no hisilicon,hisi-clock-rate-set-flag property set\n");
 		goto dt_parse_common_end;
@@ -736,8 +777,27 @@ static int hisi_dt_parse_ip_atf(struct hisi_regulator_ip *sreg,
 		    return -ENODEV;
 		}
 	}
+	/*ppll0 clock set rate flag*/
+	ret = of_property_read_u32_array(np, "hisilicon,hisi-ppll0-clock-rate-set-flag",
+						&sreg->ppll0_clock_set_rate_flag, 1);
+	if (ret) {
+		sreg->ppll0_clock_set_rate_flag = 0;
+		ret = 0;
+	}
 
-#ifdef CONFIG_KIRIN970_IP_PLATFORM
+	IP_REGULATOR_DEBUG("<[%s]: regulator_id=%d, ppll0_clock_set_rate_flag=%d>\n",
+							__func__, sreg->regulator_id, sreg->ppll0_clock_set_rate_flag);
+	if (1 == sreg->ppll0_clock_set_rate_flag) {
+		/* clock rate*/
+		ret = of_property_read_u32_array(np, "hisilicon,hisi-ppll0-clock-rate-set",
+							&sreg->ppll0_clock_rate_value, 1);
+		if (ret) {
+		    dev_err(dev, "[%s]get hisilicon,hisi-ppll0-clock-rate-set-flag attribute failed.\n", __func__);
+		    return -ENODEV;
+		}
+	}
+
+#if defined (CONFIG_KIRIN970_IP_PLATFORM) || defined(CONFIG_KIRIN660_IP_PLATFORM)
 	if ((DSSSUBSYS_ID == sreg->regulator_id)) {
 		of_property_read_u32_array(np, "hisilicon,hisi-regulator-dss-boot-check",
 							register_info, 2);
@@ -790,7 +850,7 @@ static int hisi_dt_parse_ip_lpm(struct hisi_regulator_ip *sreg,
 	sreg->lpm_disable_value[1] = register_info[1];
 
 	ret = of_property_read_u32_array(np, "hisilicon,hisi-regulator-id",
-						&id, 1);
+						&id, 1);/*lint !e64*/
 	if (ret) {
 		dev_err(dev, "no hisilicon,hisi-regulator-id property set\n");
 		goto dt_parse_common_end;
@@ -799,7 +859,7 @@ static int hisi_dt_parse_ip_lpm(struct hisi_regulator_ip *sreg,
 
 	/* regulator-type */
 	ret = of_property_read_u32_array(np, "hisilicon,hisi-regulator-type",
-						&type, 1);
+						&type, 1);/*lint !e64*/
 	if (ret) {
 		dev_err(dev, "no hisilicon,hisi-regulator-type property set\n");
 		goto dt_parse_common_end;
@@ -808,7 +868,7 @@ static int hisi_dt_parse_ip_lpm(struct hisi_regulator_ip *sreg,
 
 	/* regulator-fake */
 	ret = of_property_read_u32_array(np, "hisilicon,hisi-regulator-is-fake",
-						&fake, 1);
+						&fake, 1);/*lint !e64*/
 	if (ret) {
 		dev_err(dev, "no hisilicon,hisi-regulator-is-fake property set\n");
 		goto dt_parse_common_end;

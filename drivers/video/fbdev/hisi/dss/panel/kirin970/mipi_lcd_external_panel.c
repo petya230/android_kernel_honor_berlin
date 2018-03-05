@@ -1017,12 +1017,12 @@ static int mipi_jdi_probe(struct platform_device *pdev)
 		pinfo->pxl_clk_rate = 20* 1000000UL;
 	} else {
 		//63fps
-		pinfo->ldi.h_back_porch = 23;
-		pinfo->ldi.h_front_porch = 50;
-		pinfo->ldi.h_pulse_width = 20;
-		pinfo->ldi.v_back_porch = 28;
-		pinfo->ldi.v_front_porch = 14;
-		pinfo->ldi.v_pulse_width = 8;
+		pinfo->ldi.h_back_porch = 10;//23;
+		pinfo->ldi.h_front_porch = 220;//107;
+		pinfo->ldi.h_pulse_width = 8;//20;
+		pinfo->ldi.v_back_porch = 30;//12
+		pinfo->ldi.v_front_porch = 10;//14;
+		pinfo->ldi.v_pulse_width = 10;//4;
 
 		pinfo->pxl_clk_rate = 146 * 1000000UL;
 		//mipi

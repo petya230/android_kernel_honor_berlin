@@ -50,6 +50,8 @@ static int lm36923_chip_init(struct lm36923_chip_data *pchip)
 	int protect_disable_flag = 0;
 	int disable_ovp = 0;
 	int lm36923_boost_ctrl_value = 0;
+	int lm36923_boost_ctrl_dbc = 0;
+	int fault_ctrl = 0;
 
 	LM36923_INFO("in!\n");
 
@@ -108,6 +110,14 @@ static int lm36923_chip_init(struct lm36923_chip_data *pchip)
 	if (ret < 0) {
 		LM36923_INFO("can not get lm36923 REG_BOOST_CTR1, use default value\n");
 	}else{
+		if (g_fake_lcd_flag){
+			ret = of_property_read_u32(np, "lm36923-boost-ctrl-dbc", &lm36923_boost_ctrl_dbc);
+			if (ret) {
+				LM36923_INFO("can not get lm36923-boost-ctrl-dbc!\n");
+			}else {
+				lm36923_boost_ctrl_value = lm36923_boost_ctrl_dbc;
+			}
+		}
 		LM36923_INFO("get lm36923 REG_BOOST_CTR1 = 0x%x\n", lm36923_boost_ctrl_value);
 		ret = regmap_write(pchip->regmap, REG_BOOST_CTR1, lm36923_boost_ctrl_value);
 		if (ret < 0)
@@ -143,6 +153,18 @@ static int lm36923_chip_init(struct lm36923_chip_data *pchip)
 		if (ret < 0) {
 			goto out;
 		}
+	}
+
+	ret = of_property_read_u32(np, TI_LM36923_FAULT_CTRL, &fault_ctrl);
+	LM36923_INFO("lm36923 fault ctrl = 0x%x, ret = %d.\n", fault_ctrl, ret);
+	if (ret == 0) {
+		ret = regmap_write(pchip->regmap, REG_FAULT_CTR, fault_ctrl);
+		if (ret < 0) {
+			goto out;
+		}
+	} else {
+		LM36923_INFO("lm36923 use default fault config\n");
+		ret = 0;
 	}
 
 	LM36923_INFO("ok!\n");
@@ -512,7 +534,7 @@ static ssize_t lm36923_reg_show(struct device *dev,
 	struct lm36923_chip_data *pchip = NULL;
 	struct i2c_client *client = NULL;
 	ssize_t ret = -1;
-	unsigned char val[14] = {0};
+	unsigned int val[14] = {0};
 
 	if (!dev)
 		return snprintf(buf, PAGE_SIZE, "dev is null\n");
@@ -619,7 +641,7 @@ static int lm36923_test_led_open(struct lm36923_chip_data *pchip, int led)
 {
 	int ret;
 	int result = TEST_OK;
-	unsigned char val = 0;
+	unsigned int val = 0;
 	int enable_reg = 0xF;
 
 	switch(lm36923_led_num){
@@ -686,7 +708,7 @@ static int lm36923_test_led_open(struct lm36923_chip_data *pchip, int led)
 
 static int lm36923_test_led_short(struct lm36923_chip_data *pchip, int led)
 {
-	unsigned char val = 0;
+	unsigned int val = 0;
 	int ret;
 	int result = TEST_OK;
 	int enable_reg = 0xF;
@@ -753,7 +775,7 @@ static int lm36923_test_led_short(struct lm36923_chip_data *pchip, int led)
 	return result;
 }
 
-static int lm36923_test_regs_store(struct lm36923_chip_data *pchip, unsigned char reg_val[])
+static int lm36923_test_regs_store(struct lm36923_chip_data *pchip, unsigned int reg_val[])
 {
 	int ret;
 
@@ -797,7 +819,7 @@ static int lm36923_test_regs_store(struct lm36923_chip_data *pchip, unsigned cha
 	return TEST_OK;
 }
 
-static int lm36923_test_regs_restore(struct lm36923_chip_data *pchip, unsigned char reg_val[])
+static int lm36923_test_regs_restore(struct lm36923_chip_data *pchip, unsigned int reg_val[])
 {
 	int ret;
 #if 0
@@ -848,7 +870,7 @@ static ssize_t lm36923_self_test_show(struct device *dev,
 	struct i2c_client *client = NULL;
 	int result = TEST_OK;
 	int i;
-	unsigned char reg_val[14] = {0};
+	unsigned int reg_val[14] = {0};
 	int ret;
 	int led_num = 3;
 

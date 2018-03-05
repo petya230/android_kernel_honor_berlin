@@ -45,6 +45,7 @@ int dwc3_otg_resume(struct dwc3 *dwc)
 {
 #ifndef DWC3_OTG_FORCE_MODE
 	u32 reg;
+	DBG("+\n");
 
 	reg = dwc3_readl(dwc->regs, DWC3_OSTS);
 	if (reg & DWC3_OSTS_CONIDSTS) {
@@ -59,23 +60,50 @@ int dwc3_otg_resume(struct dwc3 *dwc)
 		dwc3_writel(dwc->regs, DWC3_OCTL, reg);
 	}
 #endif
-
-#ifdef CONFIG_HISI_USB_DWC3_MASK_IRQ_WORKAROUND
-	if (dwc->irq_state == 0) {
-		enable_irq(dwc->irq);
-		dwc->irq_state = 1;
-		pr_info("[%s]enable irq\n", __func__);
-	}
-#endif
+	DBG("-\n");
 
 	return 0;
 }
 
 int dwc3_otg_suspend(struct dwc3 *dwc)
 {
+	DBG("+\n");
+	DBG("-\n");
 	return 0;
 }
 
+#ifdef DWC3_OTG_FORCE_RESET_GCTL
+static void dwc3_otg_force_reset_core(struct dwc3_otg *dwc_otg)
+{
+	struct dwc3 *dwc = dwc_otg->dwc;
+	u32 reg;
+
+	/* step 1: reset usb controller */
+	reg = dwc3_readl(dwc->regs, DWC3_GCTL);
+	reg |= (DWC3_GCTL_CORESOFTRESET);
+	dwc3_writel(dwc->regs, DWC3_GCTL, reg);
+
+	reg = dwc3_readl(dwc->regs, DWC3_GCTL);
+	reg &= ~(DWC3_GCTL_CORESOFTRESET);
+	dwc3_writel(dwc->regs, DWC3_GCTL, reg);
+}
+
+static void dwc3_otg_split_disable(struct dwc3_otg *dwc_otg)
+{
+	struct dwc3 *dwc = dwc_otg->dwc;
+	u32 reg;
+
+	/* step 2: set SPLIT boundary disable */
+	reg = dwc3_readl(dwc->regs, DWC3_GUCTL3);
+	printk(KERN_ERR "dwc3_otg_force_reset_core: FIRST [%x = 0x%x]\n", DWC3_GUCTL3, reg);
+	reg |= (DWC3_GUCTL3_SPLITDISABLE);
+	dwc3_writel(dwc->regs, DWC3_GUCTL3, reg);
+
+	printk(KERN_ERR "SECOND [%x = 0x%x]\n", DWC3_GUCTL3, reg);
+}
+#endif
+
+#if IS_ENABLED(CONFIG_USB_DWC3_HOST) || IS_ENABLED(CONFIG_USB_DWC3_DUAL_ROLE)
 static int dwc3_otg_start_host(struct dwc3_otg *dwc_otg)
 {
 	struct dwc3 *dwc = dwc_otg->dwc;
@@ -91,11 +119,16 @@ static int dwc3_otg_start_host(struct dwc3_otg *dwc_otg)
 	reg = dwc3_readl(dwc->regs, DWC3_GCTL);
 	pr_debug("%s: GCTL value 0x%x\n", __func__, reg);
 	dwc3_set_mode(dwc, DWC3_GCTL_PRTCAP_HOST);
+
+#ifdef DWC3_OTG_FORCE_RESET_GCTL
+	dwc3_otg_force_reset_core(dwc_otg);
+#endif /* DWC3_OTG_FORCE_RESET_GCTL */
+
 #else
 	/* check ID ststus */
 	reg = dwc3_readl(dwc->regs, DWC3_OSTS);
 	if (reg & DWC3_OSTS_CONIDSTS) {
-		pr_warning("%s: CONIDSTS wrong!\n");
+		pr_warning("%s: CONIDSTS wrong!\n", __func__);
 		dump_otg_regs(dwc);
 	}
 
@@ -117,11 +150,23 @@ static int dwc3_otg_start_host(struct dwc3_otg *dwc_otg)
 
 	spin_unlock_irqrestore(&dwc->lock, flags);
 
+#ifdef CONFIG_HISI_USB_DWC3_MASK_IRQ_WORKAROUND
+	if (dwc->irq_state == 0) {
+		enable_irq(dwc->irq);
+		dwc->irq_state = 1;
+		pr_info("[%s]enable irq\n", __func__);
+	}
+#endif
+
 	ret = platform_device_add(dwc->xhci);
 	if (ret) {
 		pr_err("%s: failed to register xHCI device\n", __func__);
 		return ret;
 	}
+
+#ifdef DWC3_OTG_FORCE_RESET_GCTL
+	dwc3_otg_split_disable(dwc_otg);
+#endif /* DWC3_OTG_FORCE_RESET_GCTL */
 
 	DBG("-\n");
 
@@ -134,6 +179,12 @@ static void dwc3_otg_stop_host(struct dwc3_otg *dwc_otg)
 	platform_device_del(dwc_otg->dwc->xhci);
 	DBG("-\n");
 }
+#else
+static inline int dwc3_otg_start_host(struct dwc3_otg *dwc_otg)
+{ return 0; }
+static inline void dwc3_otg_stop_host(struct dwc3_otg *dwc_otg)
+{ }
+#endif
 
 static int dwc3_otg_start_peripheral(struct dwc3_otg *dwc_otg)
 {
@@ -153,7 +204,7 @@ static int dwc3_otg_start_peripheral(struct dwc3_otg *dwc_otg)
 #else
 	reg = dwc3_readl(dwc->regs, DWC3_OSTS);
 	if (!(reg & DWC3_OSTS_CONIDSTS) || !(reg & DWC3_OSTS_BSESVLD)) {
-		pr_warning("%s: CONIDSTS or BSESVLD wrong!\n");
+		pr_warning("%s: CONIDSTS or BSESVLD wrong!\n", __func__);
 		dump_otg_regs(dwc);
 	}
 
@@ -190,15 +241,6 @@ static int dwc3_otg_stop_peripheral(struct dwc3_otg *dwc_otg)
 	DBG("-\n");
 
 	return ret;
-}
-
-int dwc3_otg_id_value(struct dwc3_otg *dwc_otg)
-{
-	if (dwc_otg)
-		return !!(dwc3_readl(dwc_otg->dwc->regs, DWC3_OSTS)
-				& DWC3_OSTS_CONIDSTS);
-	else
-		return 1;
 }
 
 int dwc3_otg_work(struct dwc3_otg *dwc_otg, int evt)

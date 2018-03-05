@@ -71,7 +71,10 @@ void *wlan_static_scan_buf1 = NULL;
 void *wlan_static_dhd_info_buf = NULL;
 void *wlan_static_if_flow_lkup = NULL;
 void *wlan_static_osl_buf = NULL;
-
+void *wlan_static_dhd_prealloc_pktid_map = NULL;
+#ifdef BCM_ALLOC_STATIC_10K
+void *wlan_static_if_flow_tbl = NULL;
+#endif
 static struct sk_buff *wlan_static_skb[WLAN_SKB_BUF_NUM];
 unsigned char g_wifimac[WLAN_MAC_LEN] = {0x00,0x00,0x00,0x00,0x00,0x00};
 static wifi_mem_prealloc_t wifi_mem_array[PREALLOC_WLAN_SEC_NUM] = {
@@ -129,6 +132,31 @@ void *wifi_mem_prealloc(int section, unsigned long size) {
 
         return wlan_static_if_flow_lkup;
     }
+#ifdef CONFIG_BCMDHD_PCIE
+	if (section == DHD_PREALLOC_PKTID_MAP) {
+		if (size > WLAN_DHD_PREALLOC_PKTID_MAP) {
+			hwlog_err("request DHD_PREALLOC_PKTID_MAP size(%lu) is bigger"
+				" than static size(%d).\n",
+				size, WLAN_DHD_PREALLOC_PKTID_MAP);
+			return NULL;
+		}
+		hwlog_err("request DHD_PREALLOC_PKTID_MAP size(%lu) ok, static size(%d).\n",
+			size, WLAN_DHD_PREALLOC_PKTID_MAP);
+		return wlan_static_dhd_prealloc_pktid_map;
+	}
+#ifdef BCM_ALLOC_STATIC_10K
+	if (section == DHD_PREALLOC_IF_FLOW_TBL)  {
+		if (size > DHD_PREALLOC_IF_FLOW_TBL_SIZE) {
+			hwlog_err("request DHD_IF_FLOW_TBL size(%lu) > static size(%d).\n",
+				size, DHD_PREALLOC_IF_FLOW_TBL_SIZE);
+			return NULL;
+		}
+		hwlog_err("request DHD_IF_FLOW_TBL size(%lu) ok, static size(%d).\n",
+			size, DHD_PREALLOC_IF_FLOW_TBL_SIZE);
+		return wlan_static_if_flow_tbl;
+	}
+#endif
+#endif
     if (section > DHD_PREALLOC_PROT && section <= (DHD_PREALLOC_PROT + PREALLOC_WLAN_SEC_NUM)) {
         mem_idx = section - DHD_PREALLOC_PROT - 1;
         if (wifi_mem_array[mem_idx].size < size) {
@@ -201,6 +229,19 @@ static int init_wifi_mem(void) {
         hwlog_err("Failed to alloc wlan_static_if_flow_lkup\n");
         goto err_mem_alloc;
     }
+
+    wlan_static_dhd_prealloc_pktid_map = kmalloc(WLAN_DHD_PREALLOC_PKTID_MAP, GFP_KERNEL);
+    if (!wlan_static_dhd_prealloc_pktid_map) {
+        hwlog_err("[WLAN] Failed to alloc wlan_static_dhd_prealloc_pktid_map\n");
+            goto err_mem_alloc;
+    }
+#ifdef BCM_ALLOC_STATIC_10K
+    wlan_static_if_flow_tbl = kmalloc(DHD_PREALLOC_IF_FLOW_TBL_SIZE, GFP_KERNEL);
+    if (!wlan_static_if_flow_tbl) {
+	hwlog_err("Failed to alloc wlan_static_if_flow_tbl\n");
+	goto err_mem_alloc;
+    }
+#endif
 #endif /* CONFIG_BCMDHD_PCIE */
 
 #if !defined(CONFIG_BCMDHD_PCIE)
@@ -245,6 +286,12 @@ err_mem_alloc:
 #ifdef CONFIG_BCMDHD_PCIE
     if (wlan_static_if_flow_lkup)
         kfree(wlan_static_if_flow_lkup);
+    if (wlan_static_dhd_prealloc_pktid_map)
+        kfree(wlan_static_dhd_prealloc_pktid_map);
+#ifdef BCM_ALLOC_STATIC_10K
+	if (wlan_static_if_flow_tbl)
+		kfree(wlan_static_if_flow_tbl);
+#endif
 #endif
     hwlog_err("Failed to mem_alloc for WLAN\n");
 
@@ -298,6 +345,12 @@ int deinit_wifi_mem(void) {
 #ifdef CONFIG_BCMDHD_PCIE
     if (wlan_static_if_flow_lkup)
         kfree(wlan_static_if_flow_lkup);
+    if (wlan_static_dhd_prealloc_pktid_map)
+        kfree(wlan_static_dhd_prealloc_pktid_map);
+#ifdef BCM_ALLOC_STATIC_10K
+    if (wlan_static_if_flow_tbl)
+		kfree(wlan_static_if_flow_tbl);
+#endif
 #endif
 
     for (i = 0; i < PREALLOC_WLAN_SEC_NUM; i++) {
@@ -888,10 +941,12 @@ int enable_wifi_supply (struct platform_device *pdev) {
 		hwlog_err("%s: udp board doesn't have vio, do nothing.\n", __func__);
 		return 0;
 	}
-
 	ret = of_property_read_u32(pdev->dev.of_node, "wifi_supply_type", &supplytype);
 	if (ret < 0) {
 		return do_wifi_vio(pdev);
+	} else if (supplytype == 0) {
+		hwlog_err("%s: IO power no need to set\n", __func__);
+		return 0;
 	} else if (supplytype == 1) {
 		return do_wifi_vcc_enable(pdev);
 	} else {
@@ -899,6 +954,9 @@ int enable_wifi_supply (struct platform_device *pdev) {
 	}
 }
 
+#ifdef CONFIG_HW_ABS
+extern bool g_abs_enabled;
+#endif
 int  wifi_power_probe(struct platform_device *pdev)
 {
 	int ret = 0;
@@ -1088,7 +1146,10 @@ int  wifi_power_probe(struct platform_device *pdev)
 	if (ret) {
 		hwlog_err("wifi_power_probe sysfs_create_group error ret =%d", ret);
 	}
-
+#ifdef CONFIG_HW_ABS
+	g_abs_enabled = of_property_read_bool(pdev->dev.of_node,"abs_enabled");
+	hwlog_err("%s: abs_enabled: %d\n", __func__, g_abs_enabled);
+#endif
 	return 0;
 err_platform_device_register:
 	gpio_free(wifi_host->wifi_wakeup_irq);

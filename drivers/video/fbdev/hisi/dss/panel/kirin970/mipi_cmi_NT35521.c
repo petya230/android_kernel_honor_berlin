@@ -1978,7 +1978,13 @@ static int mipi_cmi_probe(struct platform_device *pdev)
 	pinfo->mipi.max_tx_esc_clk = 10 * 1000000;//old version not have
 	pinfo->mipi.burst_mode = DSI_BURST_SYNC_PULSES_1;
 
+	pinfo->mipi.non_continue_en = 1;
 	pinfo->mipi.dsi_bit_clk = 120;
+	pinfo->mipi.dsi_bit_clk_val1 = 110;
+	pinfo->mipi.dsi_bit_clk_val2 = 130;
+	pinfo->mipi.dsi_bit_clk_val3 = 140;
+	pinfo->mipi.dsi_bit_clk_val4 = 150;
+	pinfo->dsi_bit_clk_upt_support = 0;
 	pinfo->mipi.dsi_bit_clk_upt = pinfo->mipi.dsi_bit_clk;
 
 	pinfo->pxl_clk_rate = 20 * 1000000UL;

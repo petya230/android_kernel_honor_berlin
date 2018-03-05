@@ -59,7 +59,7 @@ static LIST_HEAD(alarm_process_list);
 static DEFINE_SPINLOCK(g_alarm_process_list_lock);
 
 /*记录各cpu的预警检测时间*/
-static DEFINE_PER_CPU(unsigned long, alarm_detecting_timestamp);
+static DEFINE_PER_CPU(unsigned long, alarm_detecting_timestamp);/*lint !e129*/
 
 /************************************************************************
 Function:	eeye_comm_init
@@ -186,7 +186,7 @@ int eeye_early_alarm(u32 reason, u32 cpu)
 
 	up(&early_alarm_sem);
 	pr_err("%s, exit!\n", __func__);
-	return 0;
+	return 0;/*lint !e429*/
 }
 
 /*************************************************************************
@@ -211,7 +211,7 @@ int eeye_is_alarm_detecting(int cpu)
 	}
 
 	if (is_alarm_detecting < 0 ||
-		is_alarm_detecting >= num_possible_cpus()) {
+		(unsigned int)is_alarm_detecting >= num_possible_cpus()) {
 		pr_err("%s, is_alarm_detecting is invalid!\n", __func__);
 		is_alarm_detecting = -1;
 		ret = -1;
@@ -223,7 +223,7 @@ int eeye_is_alarm_detecting(int cpu)
 		goto out;
 	}
 
-	timestamp = per_cpu(alarm_detecting_timestamp, is_alarm_detecting);
+	timestamp = per_cpu(alarm_detecting_timestamp, is_alarm_detecting);/*lint !e64 !e507*/
 	curtime = sched_clock();
 	if ((curtime - timestamp) < ALARM_DETECT_TIMEOUT) {
 		ret = 1;
@@ -267,7 +267,7 @@ int eeye_alarm_detect(void)
 	spin_lock_irqsave(&g_is_alarm_detecting_lock, flags);
 	is_alarm_detecting = cpu;
 	__this_cpu_write(alarm_detecting_timestamp,/*lint !e666 */
-					sched_clock());
+					sched_clock());/*lint !e64 !e507*/
 	spin_unlock_irqrestore(&g_is_alarm_detecting_lock, flags);
 
 	spin_lock_irqsave(&g_alarm_detect_funcs_list_lock, flags);
@@ -325,11 +325,11 @@ static int eeye_early_alarm_main_process(void *data)
 {
 	struct list_head *cur, *next;
 	struct alarm_detect_info *aptr;
-	unsigned long jiffies, flags;
+	unsigned long jiffies_tmp, flags;
 
 	while (!kthread_should_stop()) {
-		jiffies = msecs_to_jiffies(ALARM_DETECT_TIMEOUT / USEC_PER_SEC);
-		if (down_timeout(&early_alarm_sem, jiffies)) {
+		jiffies_tmp = msecs_to_jiffies(ALARM_DETECT_TIMEOUT / USEC_PER_SEC);
+		if (down_timeout(&early_alarm_sem, jiffies_tmp)) {
 			if (eeye_alarm_process_list_empty())
 				continue;
 		}
@@ -459,7 +459,7 @@ int eeye_register_alarm_detect_function(struct alarm_detect_info *info)
 	spin_unlock_irqrestore(&g_alarm_detect_funcs_list_lock, flags);
 
 	pr_err("%s, success!\n", __func__);
-	return 0;
+	return 0;/*lint !e429*/
 }
 
 /*************************************************************************

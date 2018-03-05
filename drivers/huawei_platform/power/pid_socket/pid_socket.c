@@ -34,6 +34,7 @@
 #include "pid_socket.h"
 
 
+/*20150114 add,get pid and process name of the app who used connect function.*/
 int get_proc_name(int pid, char *buf, int len)
 {
 	char filename[32];
@@ -71,3 +72,4 @@ void print_process_pid_name(struct inet_sock *inet)
 	pr_crit("%s: pid:(%d),name:(%s),port:(%d)\n", __func__, pid, process_name, source_port);
 }
 
+/*20150114 add,get pid and process name of the app who used connect function.*/

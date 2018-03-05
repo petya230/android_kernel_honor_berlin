@@ -388,7 +388,7 @@ int bfm_init_boot_timer(void)
     return 0;
 
 err:
-    kzfree(boot_timer_info);
+    bfmr_free(boot_timer_info);
 
     return ret;
 }

@@ -667,9 +667,9 @@ static int  hi6421v600_coul_get_ate_a(void)
     unsigned short regval = 0;
     unsigned char  a_low  = 0;
     unsigned char  a_high = 0;
-   // a_low  = HI6421V600_REG_READ(HI6421V600_VOL_OFFSET_A_ADDR_1);
-   // a_high = HI6421V600_REG_READ(HI6421V600_VOL_OFFSET_A_ADDR_0);
-    regval = (a_low | ((a_high & VOL_OFFSET_A_HIGH_VALID_MASK) << 1)) & VOL_OFFSET_A_VALID_MASK;
+    a_low  = HI6421V600_REG_READ(HI6421V600_VOL_OFFSET_A_ADDR_0);
+    a_high = HI6421V600_REG_READ(HI6421V600_VOL_OFFSET_A_ADDR_1);
+    regval = (((a_low >> 6) & VOL_OFFSET_A_LOW_VALID_MASK) | ((a_high << 2) & VOL_OFFSET_A_HIGH_VALID_MASK)) & VOL_OFFSET_A_VALID_MASK;
     return (VOL_OFFSET_A_BASE + regval*VOL_OFFSET_A_STEP);
 }
 /*******************************************************
@@ -682,8 +682,8 @@ static int  hi6421v600_coul_get_ate_a(void)
 static int hi6421v600_coul_get_ate_b(void)
 {
     unsigned char regval = 0;
-  //  regval = HI6421V600_REG_READ(HI6421V600_VOL_OFFSET_B_ADDR);
-    regval &= VOL_OFFSET_B_VALID_MASK;/*bit[2-6]*/
+    regval = HI6421V600_REG_READ(HI6421V600_VOL_OFFSET_B_ADDR);
+    regval &= VOL_OFFSET_B_VALID_MASK;/*bit[0-5]*/
     return (VOL_OFFSET_B_BASE + regval*VOL_OFFSET_B_STEP);
 }
 
@@ -1034,16 +1034,7 @@ static void hi6421v600_coul_enter_eco(void)
 
     HI6421V600_REGS_READ(HI6421V600_ECO_OUT_CLIN_REG_BASE, &last_eco_in, 4);
     HI6421V600_REGS_READ(HI6421V600_ECO_OUT_CLOUT_REG_BASE, &last_eco_out, 4);
-
-    reg_val = HI6421V600_REG_READ(HI6421V600_COUL_STATE_REG);
-    if (COUL_CALI_ING == reg_val) {
-    	HI6421V600_COUL_INF("cali ing, don't do it again!\n");
-
-        reg_val= ECO_COUL_CTRL_VAL;
-    } else {
-        HI6421V600_COUL_INF("calibrate!\n");
-        reg_val= (ECO_COUL_CTRL_VAL | COUL_CALI_ENABLE);
-    }
+    reg_val= ECO_COUL_CTRL_VAL;
     udelay(110);
 	HI6421V600_REG_WRITE(HI6421V600_COUL_CTRL_REG,reg_val);
 	hi6421v600_coul_clear_fifo();

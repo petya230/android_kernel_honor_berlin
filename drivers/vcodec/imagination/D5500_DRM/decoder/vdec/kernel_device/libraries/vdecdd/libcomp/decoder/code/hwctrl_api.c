@@ -220,6 +220,7 @@ hwctrl_DumpState(
     IMG_UINT8         ui8PipeMinus1
 )
 {
+    // XXX: TODO[ML]: This has to be updated for multi-pipe cases.
     REPORT(REPORT_MODULE_HWCTRL, REPORT_NOTICE, "Back-End MbX                          [% 10d]", psPrevState->sFwState.asPipeState[ui8PipeMinus1].sBeMb.ui32X);
     REPORT(REPORT_MODULE_HWCTRL, REPORT_NOTICE, "Back-End MbY                          [% 10d]", psPrevState->sFwState.asPipeState[ui8PipeMinus1].sBeMb.ui32Y);
     REPORT(REPORT_MODULE_HWCTRL, REPORT_NOTICE, "Front-End MbX                         [% 10d]", psPrevState->sFwState.asPipeState[ui8PipeMinus1].sFeMb.ui32X);
@@ -264,6 +265,10 @@ hwctrl_HwStateIsLockUp(
         /* Check for firmware PANIC. */
         if (psHwCtx->sState.sCoreState.sFwState.bPanic)
         {
+#ifdef VDEC_USE_PVDEC_SEC
+            psHwCtx->bFwBspLockUp = IMG_TRUE;
+            psHwCtx->ui32FwBspLockUpPID = 0;
+#endif
             bReturnVal = IMG_TRUE;
         }
         // Make sure we actually have set the Previous State once at least before checking if it has been remained unmodified
@@ -310,6 +315,12 @@ hwctrl_HwStateIsLockUp(
                             psHwCtx->bFwBspLockUp = IMG_TRUE;
                             psHwCtx->ui32FwBspLockUpPID = psCurState->sFwState.asPipeState[uiPipeMinus1].aui32CheckPoint[VDECFW_CHECKPOINT_PICTURE_STARTED];
                             bReturnVal = IMG_TRUE;
+                    }
+                    else if (LST_empty(&psHwCtx->sPendPictList) &&
+                             psHwCtx->bSecureStream)
+                    {
+                        /* No need to check FE/BE when pic list empty for secure case */
+                        break;
                     }
 #endif
                     // Now test for backend macroblock number
@@ -496,6 +507,7 @@ hwctrl_CalcMbLoad(
 {
     IMG_UINT32 ui32Load = 0;
 
+    // XXX: improve load to take picture type into account.
     ui32Load = ui32NumMbs;
     if (bIntraCoded)
     {
@@ -1181,6 +1193,8 @@ HWCTRL_HandleInterrupt(
                 }
             }
 
+            // xxx-lukasz: int status in psIntStatus->ui32Pending should be saved with some VDEC internally defined
+            // xxx-lukasz: bitfield instead of HW-defined values.
             bMtxIrq = psIntStatus->ui32Pending & PVDEC_CORE_CR_PVDEC_HOST_INTERRUPT_STATUS_CR_HOST_PROC_IRQ_MASK;
 
             if (bMtxIrq && (IMG_NULL != psIntStatus->psMsgQueue))
@@ -1195,6 +1209,7 @@ HWCTRL_HandleInterrupt(
                 if(psIntStatus->psMsgQueue->bQueued && !LST_empty(&psIntStatus->psMsgQueue->sNewMsgList))
                 {
 #else /* ndef IMG_KERNEL_MODULE */
+                // XXX-ftc: We may need to improve this for no-bridging
                 // In no-bridging if there are no messages just continue. We must have
                 // processed them
                 if(psIntStatus->psMsgQueue->bQueued)
@@ -1273,6 +1288,8 @@ HWCTRL_PowerOff(
             }
         }
 
+        // XXX: Danish Reset and Resume doesn't work with FAKE mtx. Stop and Start MTX needs to be fixed
+        // XXX: to get it to work.
         // Turn the power flag off. Any subsequent interrupts from the hardware will be ignored.
         // We need to disable interrupts. There is a Service Time Expiry task running, which when
         // check the status of the hardware in interrupt context, that might read from hardware while
@@ -1526,6 +1543,7 @@ HWCTRL_PostCoreReplay(
     if (psHwCtx->bInitialised)
     {
 #ifdef VDEC_MSVDX_HARDWARE
+        // XXX: add code to post a replay request to the core
         ui32Result = CORE_DevReplay(psHwCtx->pvCompInitUserData);
         IMG_ASSERT(ui32Result == IMG_SUCCESS);
         if (ui32Result != IMG_SUCCESS)
@@ -1869,13 +1887,16 @@ HWCTRL_Configure(
     IMG_UINT32  ui32Result = IMG_SUCCESS;
 
 #ifdef VDEC_MSVDX_HARDWARE
+    REPORT(REPORT_MODULE_HWCTRL, REPORT_ERR,"+~+hwctrl init FW check");
     if (psHwCtx->sDevConfig.eDecodeLevel > VDECDD_DECODELEVEL_DECODER)
     {
         IMG_ASSERT(psHwCtx->sVxdFuncs.pfnPrepareFirmware != IMG_NULL);
+        REPORT(REPORT_MODULE_HWCTRL, REPORT_ERR,"+~+pfnPrepareFirmware is not NULL");
         if (psHwCtx->sVxdFuncs.pfnPrepareFirmware)
         {
             ui32Result = psHwCtx->sVxdFuncs.pfnPrepareFirmware(psHwCtx->hVxd, psFirmware, psPtdInfo,
                                                                psHwCtx->bSecureStream);
+
             IMG_ASSERT(ui32Result == IMG_SUCCESS);
             if (ui32Result != IMG_SUCCESS)
             {
@@ -2439,6 +2460,7 @@ HWCTRL_BistreamSubmit(
                 return ui32Result;
             }
 
+            // xxx-todo: max pending encrypted bit streams ?
             psHwCtx->ui32PendingBitStreams++;
         }
         else
@@ -2628,8 +2650,8 @@ hwctrl_SendParseBitstreamMessage(
         }
         IMG_ASSERT(pui8Msg != IMG_NULL);
 
-        DEBUG_REPORT(REPORT_MODULE_HWCTRL, "[MID=0x%02X] [DECODE] [0x%02X]",
-            psHwCtx->sHostMsgStatus.aui8DecodeFenceID[VDECFW_MSGID_DECODE_PICTURE-VDECFW_MSGID_PSR_PADDING], VDECFW_MSGID_DECODE_PICTURE);
+        DEBUG_REPORT(REPORT_MODULE_HWCTRL, "[MID=0x%02X] [PARSE BITSTREAM] [0x%02X]",
+            psHwCtx->sHostMsgStatus.aui8DecodeFenceID[VDECFW_MSGID_BITSTREAM_BUFFER-VDECFW_MSGID_PSR_PADDING], VDECFW_MSGID_BITSTREAM_BUFFER);
 
         IMG_ASSERT(psHwCtx->sVxdFuncs.pfnSendFirmwareMessage != IMG_NULL);
         if (psHwCtx->sVxdFuncs.pfnSendFirmwareMessage)
@@ -2688,6 +2710,7 @@ hwctrl_SendFWDECDecodeMessage(
             return ui32Result;
         }
         IMG_ASSERT(pui8Msg != IMG_NULL);
+        DEBUG_REPORT(REPORT_MODULE_HWCTRL, "[MID=0x%02X] [DECODE] [0x%02X]", 0, VDECFW_MSGID_BATCH);
 
         IMG_ASSERT(psHwCtx->sVxdFuncs.pfnSendFirmwareMessage != IMG_NULL);
         if (psHwCtx->sVxdFuncs.pfnSendFirmwareMessage)

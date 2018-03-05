@@ -295,6 +295,91 @@ static struct sensor_power_setting imx386hybird_udp_power_setting[] = {
     },
 };
 
+static struct sensor_power_setting imx386hybird_power_setting_ab [] = {
+    //AFVDD GPIO 004 ENABLE
+    // Power up vcm first, then power up AVDD1
+    // XBUCK_AFVDD 2V55---| bucker |---> AVDD1 1V8
+    {
+        .seq_type = SENSOR_VCM_PWDN,
+        .config_val = SENSOR_GPIO_LOW,
+        .sensor_index = SENSOR_INDEX_INVALID,
+        .delay = 0,
+    },
+    //M0 OIS DRV 2.85 [ldo25]
+    {
+        .seq_type = SENSOR_OIS_DRV,
+        .config_val = LDO_VOLTAGE_V2P85V,
+        .sensor_index = SENSOR_INDEX_INVALID,
+        .delay = 0,
+    },
+    //M0+M1 IOVDD 1.8V [ld021]
+    {
+        .seq_type = SENSOR_IOVDD,
+        .config_val = LDO_VOLTAGE_1P8V,
+        .sensor_index = SENSOR_INDEX_INVALID,
+        .delay = 0,
+    },
+    //M0 AVDD0 2.8v [ldo33]
+    {
+        .seq_type = SENSOR_AVDD0,
+        .config_val = LDO_VOLTAGE_V2P8V,
+        .sensor_index = SENSOR_INDEX_INVALID,
+        .delay = 0,
+    },
+    //M1 AVDD 2.8v [ldo13]
+    {
+        .seq_type = SENSOR_AVDD,
+        .config_val = LDO_VOLTAGE_V2P8V,
+        .sensor_index = SENSOR_INDEX_INVALID,
+        .delay = 0,
+    },
+    //M1 AVDD1 gpio 008 VBUCK3(2v55) -> 1V8
+    {
+        .seq_type = SENSOR_AVDD1_EN,
+        .config_val = SENSOR_GPIO_LOW,
+        .sensor_index = SENSOR_INDEX_INVALID,
+        .delay = 0,
+    },
+    // M0 DVDD0 [ldo19] 1v2
+    {
+        .seq_type = SENSOR_DVDD,
+        .config_val = LDO_VOLTAGE_1P2V,
+        .sensor_index = SENSOR_INDEX_INVALID,
+        .delay = 0,
+    },
+    // M1 DVDD1 [ldo20] 1v1
+    {
+        .seq_type = SENSOR_DVDD,
+        .config_val = LDO_VOLTAGE_1P1V,
+        .sensor_index = SENSOR_INDEX_INVALID,
+        .delay = 0,
+    },
+    {
+        .seq_type = SENSOR_MCLK,
+        .sensor_index = 0,
+        .delay = 1,
+    },
+    {
+        .seq_type = SENSOR_MCLK,
+        .sensor_index = 2,
+        .delay = 1,
+    },
+    //M0 RESET  [GPIO_013]
+    {
+        .seq_type = SENSOR_RST,
+        .config_val = SENSOR_GPIO_LOW,
+        .sensor_index = SENSOR_INDEX_INVALID,
+        .delay = 1,
+    },
+    //M1 RESET  [GPIO_136]
+    {
+        .seq_type = SENSOR_RST2,
+        .config_val = SENSOR_GPIO_LOW,
+        .sensor_index = SENSOR_INDEX_INVALID,
+        .delay = 1,
+    },
+};
+
 static char const*
 imx386hybird_get_name(
         hwsensor_intf_t* si)
@@ -459,6 +544,15 @@ static sensor_t s_imx386hybird_udp =
     },
 };
 
+static sensor_t s_imx386hybird_ab =
+{
+    .intf = { .vtbl = &s_imx386hybird_vtbl, },
+    .power_setting_array = {
+        .size = ARRAY_SIZE(imx386hybird_power_setting_ab),
+        .power_setting = imx386hybird_power_setting_ab,
+    },
+};
+
 /* support both imx386hybird & imx386legacydual */
 static const struct of_device_id
 s_imx386hybird_dt_match[] =
@@ -474,6 +568,10 @@ s_imx386hybird_dt_match[] =
     {
         .compatible = "huawei,imx386hybird_udp",
         .data = &s_imx386hybird_udp.intf,
+    },
+    {
+        .compatible = "huawei,imx386hybird_ab",
+        .data = &s_imx386hybird_ab.intf,
     },
     { } /* terminate list */
 };

@@ -18,8 +18,8 @@
 #include "hw_pmic.h"
 //#include "isp_ops.h"
 #include "../../clt/hisi_clt_flag.h"
-//lint -save -e529 -e542
-static int is_fpga = 0; //default is no fpga
+//lint -save -e529 -e542 -e433 -e501 -e613 -e668 -e421
+static unsigned int is_fpga = 0; //default is no fpga
 static atomic_t volatile s_powered = ATOMIC_INIT(0);
 
 int mclk_config(sensor_t *s_ctrl, unsigned int id, unsigned int clk, int on)
@@ -122,22 +122,6 @@ int mclk_config(sensor_t *s_ctrl, unsigned int id, unsigned int clk, int on)
     return 0;
 }
 
-void hwcam_mclk_enable(int index, int enable)
-{
-	cam_info("%s index = %d, enable=%d", __func__,index, enable);
-
-	if (POWER_ON == enable) {
-		if (CAMERA_SENSOR_PRIMARY == index) {
-			ISP_SETREG8(REG_ISP_CLK_DIVIDER, 0x44);
-		} else {
-			ISP_SETREG8(REG_ISP_CLK_DIVIDER, 0x44);
-		}
-	} else {
-		ISP_SETREG8(REG_ISP_CLK_DIVIDER, 0);
-	}
-}
-
-
 int hw_mclk_config(sensor_t *s_ctrl,
 	struct sensor_power_setting *power_setting, int state)
 {
@@ -155,9 +139,8 @@ int hw_mclk_config(sensor_t *s_ctrl,
 		sensor_index = s_ctrl->board_info->sensor_index;
 	}
 
-	//hwcam_mclk_enable(sensor_index, state);
-       mclk_config(s_ctrl,sensor_index,
-            s_ctrl->board_info->mclk, state);
+	mclk_config(s_ctrl,sensor_index,
+		s_ctrl->board_info->mclk, state);
 
 	if (0 != power_setting->delay) {
 		hw_camdrv_msleep(power_setting->delay);
@@ -169,12 +152,12 @@ int hw_mclk_config(sensor_t *s_ctrl,
 int hw_sensor_gpio_config(gpio_t pin_type, hwsensor_board_info_t *sensor_info,
 	struct sensor_power_setting *power_setting, int state)
 {
+	int rc = -1;
+
 	if (hisi_is_clt_flag()) {
 		cam_info("%s just return for CLT camera.", __func__);
 		return 0;
 	}
-
-	int rc = -1;
 
 	cam_debug("%s enter, pin_type:%d state:%d delay:%u", __func__, pin_type, state, power_setting->delay);
 
@@ -223,7 +206,7 @@ int hw_sensor_ldo_config(ldo_index_t ldo, hwsensor_board_info_t *sensor_info,
 	int index;
 	int rc = -1;
 	const char *ldo_names[LDO_MAX]
-		= {"dvdd", "dvdd2", "avdd", "avdd2", "vcm", "vcm2", "iopw","misp", "avdd0", "avdd1"};
+		= {"dvdd", "dvdd2", "avdd", "avdd2", "vcm", "vcm2", "iopw","misp", "avdd0", "avdd1", "", "", ""};
 
 	cam_info("%s enter, ldo:%s state:%d", __func__, ldo_names[ldo], state);
 
@@ -231,8 +214,8 @@ int hw_sensor_ldo_config(ldo_index_t ldo, hwsensor_board_info_t *sensor_info,
 		return 0;
 
 	for(index = 0; index < sensor_info->ldo_num; index++) {
-		if(!strcmp(sensor_info->ldo[index].supply, ldo_names[ldo]))
-			break;
+        if(!strcmp(sensor_info->ldo[index].supply, ldo_names[ldo]))
+            break;
 	}
 
 	if(index == sensor_info->ldo_num) {
@@ -298,7 +281,7 @@ int hw_sensor_pmic_config(hwsensor_board_info_t *sensor_info,
     //todo ...
     //use wangzhengyong pmic interface
     if (ncp6925_ctrl.func_tbl->pmic_seq_config) {
-	rc = ncp6925_ctrl.func_tbl->pmic_seq_config(&ncp6925_ctrl, power_setting->seq_val, power_setting->config_val, state);
+	rc = ncp6925_ctrl.func_tbl->pmic_seq_config(&ncp6925_ctrl, (pmic_seq_index_t)(power_setting->seq_val), power_setting->config_val, state);
     }
 
     if (0 != power_setting->delay) {
@@ -325,16 +308,18 @@ int hw_sensor_pmic_check_exception(void)
 
 int hw_sensor_power_up(sensor_t *s_ctrl)
 {
+	struct sensor_power_setting_array *power_setting_array;
+	struct sensor_power_setting *power_setting = NULL;
+	int rc = 0;
+	unsigned int index = 0;
+	struct hisi_pmic_ctrl_t *pmic_ctrl = NULL;
+
 	if (hisi_is_clt_flag()) {
 		cam_info("%s just return for CLT camera.", __func__);
 		return 0;
 	}
 
-	struct sensor_power_setting_array *power_setting_array
-		= &s_ctrl->power_setting_array;
-	struct sensor_power_setting *power_setting = NULL;
-	int index = 0, rc = 0;
-	struct hisi_pmic_ctrl_t *pmic_ctrl = NULL;
+	power_setting_array = &s_ctrl->power_setting_array;
 
 	cam_debug("%s enter.", __func__);
 
@@ -348,7 +333,7 @@ int hw_sensor_power_up(sensor_t *s_ctrl)
             cam_info("%s (%d): sensor has already powered up.", __func__, __LINE__);
             return 0;
         }
-	}   
+	}
 
 	/* fpga board compatibility */
 	if (hw_is_fpga_board()) {
@@ -510,6 +495,16 @@ int hw_sensor_power_up(sensor_t *s_ctrl)
 			rc = hw_sensor_pmic_config(s_ctrl->board_info,
 				power_setting, POWER_ON);
 			break;
+		case SENSOR_AVDD1_EN:
+			cam_debug("%s, seq_type:%u SENSOR_AVDD1_EN", __func__, power_setting->seq_type);
+			rc = hw_sensor_gpio_config(AVDD1_EN, s_ctrl->board_info,
+				power_setting, POWER_ON);
+			break;
+		case SENSOR_AVDD2_EN:
+			cam_debug("%s, seq_type:%u SENSOR_AVDD2_EN", __func__, power_setting->seq_type);
+			rc = hw_sensor_gpio_config(AVDD2_EN, s_ctrl->board_info,
+				power_setting, POWER_ON);
+			break;
 		case SENSOR_CS:
 			break;
 		default:
@@ -541,17 +536,17 @@ int hw_sensor_power_up(sensor_t *s_ctrl)
 
 int hw_sensor_power_down(sensor_t *s_ctrl)
 {
+	struct sensor_power_setting_array *power_setting_array;
+	struct sensor_power_setting *power_setting;
+	int index, rc = 0;
+	struct hisi_pmic_ctrl_t *pmic_ctrl = NULL;
+
 	if (hisi_is_clt_flag()) {
 		cam_info("%s just return for CLT camera.", __func__);
 		return 0;
 	}
 
-	struct sensor_power_setting_array *power_setting_array
-		= &s_ctrl->power_setting_array;
-	struct sensor_power_setting *power_setting = NULL;
-	int index = 0, rc = 0;
-	struct hisi_pmic_ctrl_t *pmic_ctrl = NULL;
-
+	power_setting_array = &s_ctrl->power_setting_array;
 
 	cam_debug("%s enter.", __func__);
 
@@ -719,6 +714,16 @@ int hw_sensor_power_down(sensor_t *s_ctrl)
 			rc = hw_sensor_ldo_config(LDO_MISP, s_ctrl->board_info,
 				power_setting, POWER_OFF);
 			break;
+		case SENSOR_AVDD1_EN:
+			cam_debug("%s, seq_type:%u SENSOR_AVDD1_EN", __func__, power_setting->seq_type);
+			rc = hw_sensor_gpio_config(AVDD1_EN, s_ctrl->board_info,
+				power_setting, POWER_OFF);
+			break;
+		case SENSOR_AVDD2_EN:
+			cam_debug("%s, seq_type:%u SENSOR_AVDD2_EN", __func__, power_setting->seq_type);
+			rc = hw_sensor_gpio_config(AVDD2_EN, s_ctrl->board_info,
+				power_setting, POWER_OFF);
+			break;
 		default:
 			cam_err("%s invalid seq_type.", __func__);
 			break;
@@ -807,14 +812,17 @@ int hw_sensor_i2c_write(sensor_t *s_ctrl, void *data)
 
 int hw_sensor_i2c_read_seq(sensor_t *s_ctrl, void *data)
 {
+	struct sensor_cfg_data *cdata;
+	struct sensor_i2c_setting setting;
+	int size;
+	long rc = 0;
+
     if (NULL == data || NULL == s_ctrl) {
 		cam_err("%s data or s_ctrl is null.\n", __func__);
 		return -EFAULT;
     }
-	struct sensor_cfg_data *cdata = (struct sensor_cfg_data *)data;
-	struct sensor_i2c_setting setting;
-	int size = sizeof(struct sensor_i2c_reg)*cdata->cfg.setting.size;
-	long rc = 0;
+	cdata = (struct sensor_cfg_data *)data;
+	size = sizeof(struct sensor_i2c_reg)*cdata->cfg.setting.size;
 
 	cam_debug("%s: enter.\n", __func__);
 
@@ -843,7 +851,7 @@ int hw_sensor_i2c_read_seq(sensor_t *s_ctrl, void *data)
 	}
 	*/
 	{
-		int i=0;
+		uint32_t i=0;
 		struct sensor_cfg_data temp;
 		memset(&temp,0,sizeof(struct sensor_cfg_data));
 		for(i=0; i<cdata->cfg.setting.size; i++) {
@@ -868,14 +876,17 @@ fail:
 
 int hw_sensor_i2c_write_seq( sensor_t *s_ctrl, void *data)
 {
+	struct sensor_cfg_data *cdata;
+	struct sensor_i2c_setting setting;
+	int data_length;
+	long rc = 0;
+
 	if (NULL == data || NULL == s_ctrl) {
 		cam_err("%s data or s_ctrl is null.\n", __func__);
 		return -EFAULT;
 	}
-	struct sensor_cfg_data *cdata = (struct sensor_cfg_data *)data;
-	struct sensor_i2c_setting setting;
-	int data_length = sizeof(struct sensor_i2c_reg)*cdata->cfg.setting.size;
-	long rc = 0;
+	cdata = (struct sensor_cfg_data *)data;
+	data_length = sizeof(struct sensor_i2c_reg)*cdata->cfg.setting.size;
 
 	cam_info("%s: enter setting=%pK size=%d.\n", __func__,
 			cdata->cfg.setting.setting,
@@ -987,7 +998,7 @@ fail:
 int hw_sensor_get_dt_data(struct platform_device *pdev,
 	sensor_t *sensor)
 {
-	struct device_node *of_node = pdev->dev.of_node;
+	struct device_node *dev_node = pdev->dev.of_node;
 	hwsensor_board_info_t *sensor_info = NULL;
 	int rc = 0;
     int ret = 0;
@@ -995,7 +1006,8 @@ int hw_sensor_get_dt_data(struct platform_device *pdev,
 	u32 i, index = 0;
 	char *gpio_tag = NULL;
 	const char *gpio_ctrl_types[IO_MAX] =
-		{"reset", "fsin", "pwdn", "vcm_pwdn", "suspend", "reset2", "ldo_en", "ois", "ois2", "dvdd0-en", "dvdd1-en", "iovdd-en", "mispdcdc-en"};
+		{"reset", "fsin", "pwdn", "vcm_pwdn", "suspend", "suspend2", "reset2", "ldo_en", "ois",
+		"ois2", "dvdd0-en", "dvdd1-en", "iovdd-en", "mispdcdc-en","","","","avdd1-en","avdd2-en"};
 
 	cam_debug("enter %s", __func__);
 	sensor_info = kzalloc(sizeof(hwsensor_board_info_t),
@@ -1006,7 +1018,7 @@ int hw_sensor_get_dt_data(struct platform_device *pdev,
 	}
 	sensor->board_info= sensor_info;
 
-	rc = of_property_read_string(of_node, "huawei,sensor_name",
+	rc = of_property_read_string(dev_node, "huawei,sensor_name",
 		&sensor_info->name);
 	cam_debug("%s huawei,sensor_name %s, rc %d\n", __func__,
 		sensor_info->name, rc);
@@ -1015,7 +1027,7 @@ int hw_sensor_get_dt_data(struct platform_device *pdev,
 		goto fail;
 	}
 
-	rc = of_property_read_u32(of_node, "huawei,is_fpga",
+	rc = of_property_read_u32(dev_node, "huawei,is_fpga",
 		&is_fpga);
 	cam_debug("%s huawei,is_fpga: %d, rc %d\n", __func__,
 		is_fpga, rc);
@@ -1024,7 +1036,7 @@ int hw_sensor_get_dt_data(struct platform_device *pdev,
 		goto fail;
 	}
 
-	rc = of_property_read_u32(of_node, "huawei,sensor_index",
+	rc = of_property_read_u32(dev_node, "huawei,sensor_index",
 		(u32*)(&sensor_info->sensor_index));
 	cam_debug("%s huawei,sensor_index %d, rc %d\n", __func__,
 		sensor_info->sensor_index, rc);
@@ -1033,8 +1045,8 @@ int hw_sensor_get_dt_data(struct platform_device *pdev,
 		goto fail;
 	}
 
-	rc = of_property_read_u32(of_node, "huawei,pd_valid",
-		&sensor_info->power_conf.pd_valid);
+	rc = of_property_read_u32(dev_node, "huawei,pd_valid",
+		(u32 *)&sensor_info->power_conf.pd_valid);
 	cam_debug("%s huawei,pd_valid %d, rc %d\n", __func__,
 		sensor_info->power_conf.pd_valid, rc);
 	if (rc < 0) {
@@ -1042,8 +1054,8 @@ int hw_sensor_get_dt_data(struct platform_device *pdev,
 		goto fail;
 	}
 
-	rc = of_property_read_u32(of_node, "huawei,reset_valid",
-		&sensor_info->power_conf.reset_valid);
+	rc = of_property_read_u32(dev_node, "huawei,reset_valid",
+		(u32 *)&sensor_info->power_conf.reset_valid);
 	cam_debug("%s huawei,reset_valid %d, rc %d\n", __func__,
 		sensor_info->power_conf.reset_valid, rc);
 	if (rc < 0) {
@@ -1051,8 +1063,8 @@ int hw_sensor_get_dt_data(struct platform_device *pdev,
 		goto fail;
 	}
 
-	rc = of_property_read_u32(of_node, "huawei,vcmpd_valid",
-		&sensor_info->power_conf.vcmpd_valid);
+	rc = of_property_read_u32(dev_node, "huawei,vcmpd_valid",
+		(u32 *)&sensor_info->power_conf.vcmpd_valid);
 	cam_debug("%s huawei,vcmpd_valid %d, rc %d\n", __func__,
 		sensor_info->power_conf.vcmpd_valid, rc);
 	if (rc < 0) {
@@ -1063,11 +1075,11 @@ int hw_sensor_get_dt_data(struct platform_device *pdev,
 
     //add csi_index and i2c_index for dual camera.
     //
-    count = of_property_count_elems_of_size(of_node, "huawei,csi_index",
+    count = of_property_count_elems_of_size(dev_node, "huawei,csi_index",
         sizeof(u32));
     if (count > 0) {
-        ret = of_property_read_u32_array(of_node, "huawei,csi_index",
-            &sensor_info->csi_id, count);
+        ret = of_property_read_u32_array(dev_node, "huawei,csi_index",
+            (u32 *)&sensor_info->csi_id, count);
     } else {
         sensor_info->csi_id[0] = sensor_info->sensor_index;
         sensor_info->csi_id[1] = -1;
@@ -1075,11 +1087,11 @@ int hw_sensor_get_dt_data(struct platform_device *pdev,
     cam_info("sensor:%s csi_id[0-1]=%d:%d", sensor_info->name,
 		sensor_info->csi_id[0], sensor_info->csi_id[1]);
 
-    count = of_property_count_elems_of_size(of_node, "huawei,i2c_index",
+    count = of_property_count_elems_of_size(dev_node, "huawei,i2c_index",
         sizeof(u32));
     if (count > 0) {
-        ret = of_property_read_u32_array(of_node, "huawei,i2c_index",
-           &sensor_info->i2c_id, count);
+        ret = of_property_read_u32_array(dev_node, "huawei,i2c_index",
+           (u32 *)&sensor_info->i2c_id, count);
     } else {
         sensor_info->i2c_id[0] = sensor_info->sensor_index;
         sensor_info->i2c_id[1] = -1;
@@ -1091,7 +1103,7 @@ int hw_sensor_get_dt_data(struct platform_device *pdev,
 	if (hw_is_fpga_board())
 		return rc;
 
-	rc = of_property_read_u32(of_node, "huawei,mclk",
+	rc = of_property_read_u32(dev_node, "huawei,mclk",
 		&sensor_info->mclk);
 	cam_debug("%s huawei,mclk 0x%x, rc %d\n", __func__,
 		sensor_info->mclk, rc);
@@ -1101,14 +1113,14 @@ int hw_sensor_get_dt_data(struct platform_device *pdev,
 	}
 
 	/* get ldo */
-	sensor_info->ldo_num = of_property_count_strings(of_node, "huawei,ldo-names");
+	sensor_info->ldo_num = of_property_count_strings(dev_node, "huawei,ldo-names");
 	if(sensor_info->ldo_num < 0) {
 			cam_err("%s failed %d\n", __func__, __LINE__);
 			//goto fail;
 	} else {
 		cam_debug("ldo num = %d", sensor_info->ldo_num);
-		for (i = 0; i < sensor_info->ldo_num; i++) {
-			rc = of_property_read_string_index(of_node, "huawei,ldo-names", i, &sensor_info->ldo[i].supply);
+		for (i = 0; i < (u32)(sensor_info->ldo_num); i++) {
+			rc = of_property_read_string_index(dev_node, "huawei,ldo-names", i, &sensor_info->ldo[i].supply);
 			if(rc < 0) {
 				cam_err("%s failed %d\n", __func__, __LINE__);
 				goto fail;
@@ -1122,15 +1134,15 @@ int hw_sensor_get_dt_data(struct platform_device *pdev,
 		goto fail;
 	}
 
-	sensor_info->gpio_num = of_gpio_count(of_node);
+	sensor_info->gpio_num = of_gpio_count(dev_node);
 	if(sensor_info->gpio_num < 0 ) {
 			cam_err("%s failed %d, ret is %d\n", __func__, __LINE__, sensor_info->gpio_num);
 			goto fail;
 	}
 
 	cam_debug("gpio num = %d", sensor_info->gpio_num);
-	for(i = 0; i < sensor_info->gpio_num; i++) {
-		rc = of_property_read_string_index(of_node, "huawei,gpio-ctrl-types",
+	for(i = 0; i < (u32)(sensor_info->gpio_num); i++) {
+		rc = of_property_read_string_index(dev_node, "huawei,gpio-ctrl-types",
 			i, (const char **)&gpio_tag);
 		if(rc < 0) {
 			cam_err("%s failed %d", __func__, __LINE__);
@@ -1138,14 +1150,14 @@ int hw_sensor_get_dt_data(struct platform_device *pdev,
 		}
 		for(index = 0; index < IO_MAX; index++) {
 			if (gpio_ctrl_types[index]) {
-				if(!strcmp(gpio_ctrl_types[index], gpio_tag))
-					sensor_info->gpios[index].gpio = of_get_gpio(of_node, i);
+				if(!strncmp(gpio_ctrl_types[index], gpio_tag, strlen(gpio_tag)))
+					sensor_info->gpios[index].gpio = of_get_gpio(dev_node, i);
 			}
 		}
 		cam_debug("gpio ctrl types: %s", gpio_tag);
 	}
 
-    rc = of_property_read_u32(of_node, "module_type", &sensor_info->module_type);
+    rc = of_property_read_u32(dev_node, "module_type", (u32 *)&sensor_info->module_type);
     cam_info("%s module_type 0x%x, rc %d\n", __func__, sensor_info->module_type, rc);
     if (rc < 0) {
         sensor_info->module_type = 0;
@@ -1182,4 +1194,5 @@ int hw_is_fpga_board(void)
 	return is_fpga;
 }
 EXPORT_SYMBOL(hw_is_fpga_board);
+//lint -restore
 

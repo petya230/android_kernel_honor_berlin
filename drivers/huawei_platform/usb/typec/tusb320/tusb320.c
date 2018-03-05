@@ -59,7 +59,6 @@
 HWLOG_REGIST();
 
 struct typec_device_info *g_tusb320_dev = NULL;
-u8 reg_status_val = 0;
 
 /* read i2c start */
 static int tusb320_i2c_read(struct typec_device_info *di,
@@ -347,12 +346,11 @@ static int tusb320_ctrl_port_mode(int value)
 
 static int tusb320_read_attachment_reg(void)
 {
-    u8 reg_val;
+    u8 reg_val = 0;
 
     tusb320_read_reg(TUSB320_REG_ATTACH_STATUS, &reg_val);
-    reg_status_val = reg_val;
 
-    hwlog_info("%s: register value of 09H is 0x%x\n", __func__, reg_status_val);
+    hwlog_info("%s: register value of 09H is 0x%x\n", __func__, reg_val);
 
     tusb320_clean_mask();
 
@@ -380,10 +378,10 @@ static int tusb320_detect_attachment_status(void)
 
 static int tusb320_detect_cc_orientation(void)
 {
-    u8 reg_val, cc_val, mode_val;
+    u8 reg_val = 0, cc_val, mode_val;
     struct typec_device_info *di = g_tusb320_dev;
 
-    reg_val = reg_status_val;
+    tusb320_read_reg(TUSB320_REG_ATTACH_STATUS, &reg_val);
     cc_val = reg_val & TUSB320_REG_STATUS_CC;
     mode_val = reg_val & TUSB320_REG_STATUS_MODE;
 
@@ -405,10 +403,10 @@ static int tusb320_detect_cc_orientation(void)
 
 static int tusb320_detect_port_mode(void)
 {
-    u8 reg_val, mode_val;
+    u8 reg_val = 0, mode_val;
     struct typec_device_info *di = g_tusb320_dev;
 
-    reg_val = reg_status_val;
+    tusb320_read_reg(TUSB320_REG_ATTACH_STATUS, &reg_val);
     mode_val = reg_val & TUSB320_REG_STATUS_MODE;
 
     if (TUSB320_REG_STATUS_DFP == mode_val) {
@@ -631,16 +629,16 @@ static int tusb320_probe(
     di->typec_trigger_otg = !!typec_trigger_otg;
     hwlog_info("%s: typec_trigger_otg = %d\n", __func__, typec_trigger_otg);
 
-    pdi = typec_chip_register(di, &tusb320_ops, THIS_MODULE);
-    if (NULL == pdi) {
-        hwlog_err("%s: typec register chip error!\n", __func__);
+    di->gpio_intb = of_get_named_gpio(node, "tusb320_typec,gpio_intb", 0);
+    if (!gpio_is_valid(di->gpio_intb)) {
+        hwlog_err("%s: of_get_named_gpio-intb error!!! ret=%d, gpio_intb=%d.\n", __func__, ret, di->gpio_intb);
         ret = -EINVAL;
         goto err_gpio_enb_request_1;
     }
 
-    di->gpio_intb = of_get_named_gpio(node, "tusb320_typec,gpio_intb", 0);
-    if (!gpio_is_valid(di->gpio_intb)) {
-        hwlog_err("%s: of_get_named_gpio-intb error!!! ret=%d, gpio_intb=%d.\n", __func__, ret, di->gpio_intb);
+    pdi = typec_chip_register(di, &tusb320_ops, THIS_MODULE);
+    if (NULL == pdi) {
+        hwlog_err("%s: typec register chip error!\n", __func__);
         ret = -EINVAL;
         goto err_gpio_enb_request_1;
     }

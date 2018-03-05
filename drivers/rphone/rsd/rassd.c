@@ -349,10 +349,11 @@ int cmd_inject(const char *name, struct mmc_command *cmd)
 }
 static int rasprobe_handler_entry(mmc_request_done)
 	(struct rasprobe_instance *ri, struct pt_regs *regs) {
-	struct mmc_host *host   = (struct mmc_host *)regs->regs[0];
-	struct mmc_request *mrq = (struct mmc_request *)regs->regs[1];
-	struct mmc_command *cmd = mrq->cmd;
-	struct mmc_data *data   = mrq->data;
+	struct RasRegs *rd = NULL;
+	struct mmc_host *host   = NULL;
+	struct mmc_request *mrq = NULL;
+	struct mmc_command *cmd = NULL;
+	struct mmc_data *data   = NULL;
 	struct fault *fault_temp = NULL;
 	int read, write;
 	static const int data_errors[] = {
@@ -360,6 +361,12 @@ static int rasprobe_handler_entry(mmc_request_done)
 		-EILSEQ,
 		-EIO,
 	};
+	rasprobe_entry(ri, regs);
+	rd = (struct RasRegs *)ri->data;
+	host = (struct mmc_host *)rd->args[0];
+	mrq = (struct mmc_request *)rd->args[1];
+	cmd = mrq->cmd;
+	data = mrq->data;
 	/*do cmd inject,*/
 	cmd_inject(mmc_hostname(host), cmd);
 	if (!host->card || !mmc_card_sd(host->card))

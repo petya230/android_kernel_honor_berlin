@@ -31,11 +31,12 @@
 #endif
 #include <linux/hisi/hisi_adc.h>
 #include <huawei_platform/power/huawei_charger_sh.h>
-#include <huawei_platform/inputhub/iom7/inputhub_route.h>
-#include <huawei_platform/inputhub/iom7/protocol.h>
-#include <huawei_platform/inputhub/iom7/sensor_info.h>
+#include <inputhub_route.h>
+#include <protocol.h>
+#include <sensor_info.h>
 static unsigned int is_board_type = 2;	/*0:sft 1:udp 2:asic */
 extern struct charger_platform_data charger_dts_data;
+#define HI6523_FCP_REG_TOTAL_NUM 88
 /**********************************************************
 *  Function:       hi6523_read_block
 *  Discription:    register read block interface
@@ -46,38 +47,13 @@ extern struct charger_platform_data charger_dts_data;
 **********************************************************/
 static int hi6523_read_block(u8 reg, u8*value, unsigned len)
 {
-	int ret = -1;
-	write_info_t	pkg_ap;
-	read_info_t pkg_mcu;
-	pkt_i2c_read_req_t pkt_i2c_read;
-
-	memset(&pkg_ap, 0, sizeof(pkg_ap));
-	memset(&pkg_mcu, 0, sizeof(pkg_mcu));
-
-	pkt_i2c_read.addr = HI6523_I2C_SLAVE_ADDRESS;
-	pkt_i2c_read.busid = 3;
-	pkt_i2c_read.reg = reg;
-	pkt_i2c_read.length= len;
-
-	pkg_ap.tag=TAG_I2C;
-	pkg_ap.cmd=CMD_I2C_READ_REQ;
-	pkg_ap.wr_buf=&pkt_i2c_read.busid;
-	pkg_ap.wr_len=sizeof(pkt_i2c_read) - sizeof(pkt_i2c_read.hd);
-	ret=write_customize_cmd(&pkg_ap,  &pkg_mcu);
-
-	if (ret) {
-		hwlog_err("hi6523 read register %d fail, ret=%d\n", reg, ret);
-		return -1;
+	int ret = mcu_i2c_rw(3, HI6523_I2C_SLAVE_ADDRESS, &reg, 1, value, len);
+	if (ret < 0) {
+		hwlog_err("hi6523 read register %d fail!\n", reg);
 	} else {
-		if (pkg_mcu.errno != 0) {
-			hwlog_err("hi6523 read register %d fail!\n", reg);
-			return -1;
-		} else {
-			memcpy(value, pkg_mcu.data, len);
-			hwlog_info("hi6523 read value %d from register %d success!\n", *value, reg);
-			return 0;
-		}
+		hwlog_info("hi6523 read value %d from register %d success!\n", *value, reg);
 	}
+	return ret;
 }
 
 /**********************************************************
@@ -89,44 +65,17 @@ static int hi6523_read_block(u8 reg, u8*value, unsigned len)
 **********************************************************/
 static int hi6523_write_byte(uint8_t reg, uint8_t value)
 {
-	int ret = -1;
-	write_info_t	pkg_ap;
-	read_info_t pkg_mcu;
-	pkt_i2c_write_req_t *pkt_i2c_write = kzalloc(sizeof(pkt_i2c_write_req_t) + 1, GFP_KERNEL);
-	if (!pkt_i2c_write) {
-		hwlog_err("hi6523_write_byte alloc failed in %s\n", __func__);
-		return -1;
-	}
-
-	memset(&pkg_ap, 0, sizeof(pkg_ap));
-	memset(&pkg_mcu, 0, sizeof(pkg_mcu));
-
-	pkt_i2c_write->addr = HI6523_I2C_SLAVE_ADDRESS;
-	pkt_i2c_write->busid = 3;
-	pkt_i2c_write->reg = reg;
-	pkt_i2c_write->length= 1;
-	memcpy(pkt_i2c_write->data, &value, 1);
-
-	pkg_ap.tag=TAG_I2C;
-	pkg_ap.cmd=CMD_I2C_WRITE_REQ;
-	pkg_ap.wr_buf=&pkt_i2c_write->busid;
-	pkg_ap.wr_len=sizeof(*pkt_i2c_write) - sizeof(pkt_i2c_write->hd) + 1;
-	ret = write_customize_cmd(&pkg_ap,  &pkg_mcu);
-	if (ret) {
-		hwlog_err("write value %d to register %d fail, ret=%d\n", value, reg, ret);
-		kfree(pkt_i2c_write);
-		return -1;
+	uint8_t tx_buf[2];
+	int ret;
+	tx_buf[0] = reg;
+	tx_buf[1] = value;
+	ret = mcu_i2c_rw(3, HI6523_I2C_SLAVE_ADDRESS, tx_buf, 2, NULL, 0);
+	if (ret < 0) {
+		hwlog_err("write value %d to register %d fail!\n", value, reg);
 	} else {
-		if (pkg_mcu.errno != 0) {
-			hwlog_err("write value %d to register %d fail!\n", value, reg);
-			kfree(pkt_i2c_write);
-			return -1;
-		} else {
-			hwlog_info("hi6523 write value %d to register %d success!\n", value, reg);
-			kfree(pkt_i2c_write);
-			return 0;
-		}
+		hwlog_info("hi6523 write value %d to register %d success!\n", value, reg);
 	}
+	return ret;
 }
 
 /**********************************************************
@@ -268,7 +217,7 @@ static struct hi6523_sysfs_field_info *hi6523_sysfs_field_lookup(const char
 	int i, limit = ARRAY_SIZE(hi6523_sysfs_field_tbl);
 
 	for (i = 0; i < limit; i++)
-		if (!strcmp(name, hi6523_sysfs_field_tbl[i].attr.attr.name))
+		if (!strncmp(name, hi6523_sysfs_field_tbl[i].attr.attr.name, strlen(name)))
 			break;
 
 	if (i >= limit)
@@ -290,7 +239,9 @@ static ssize_t hi6523_sysfs_show(struct device *dev,
 {
 	struct hi6523_sysfs_field_info *info;
 	struct hi6523_sysfs_field_info *info2;
+#ifdef CONFIG_HISI_DEBUG_FS
 	int ret;
+#endif
 	u8 v;
 
 	info = hi6523_sysfs_field_lookup(attr->attr.name);
@@ -307,10 +258,11 @@ static ssize_t hi6523_sysfs_show(struct device *dev,
 			return -EINVAL;
 		info->reg = info2->reg;
 	}
-
+#ifdef CONFIG_HISI_DEBUG_FS
 	ret = hi6523_read_mask(info->reg, info->mask, info->shift, &v);
 	if (ret)
 		return ret;
+#endif
 
 	return scnprintf(buf, PAGE_SIZE, "0x%hhx\n", v);
 }
@@ -354,10 +306,11 @@ static ssize_t hi6523_sysfs_store(struct device *dev,
 			return -EINVAL;
 		}
 	}
-
+#ifdef CONFIG_HISI_DEBUG_FS
 	ret = hi6523_write_mask(info->reg, info->mask, info->shift, v);
 	if (ret)
 		return ret;
+#endif
 
 	return count;
 }
@@ -808,6 +761,51 @@ static int hi6523_dump_register(char *reg_value)
 }
 
 /**********************************************************
+*  Function:       hi6523_fcp_reg_dump
+*  Discription:    print the register value about fcp
+*  Parameters:   pbuffer:string for save register value
+*  return value:  void
+**********************************************************/
+static void hi6523_fcp_reg_dump(char *pbuffer)
+{
+	u8 reg[HI6523_FCP_REG_TOTAL_NUM] = { 0 };
+	char buff[14] = { 0 };
+	u8 i =0;
+
+	hi6523_read_block(5, &reg[0], 11);
+	hi6523_read_block(32, &reg[11], 9);
+	hi6523_read_block(61, &reg[20], 51);
+	hi6523_read_block(144, &reg[71], 17);
+	for (i = 0; i < 11; i++) {
+		snprintf(buff, sizeof(buff), "r[%d]0x%-3x", i+5, reg[i]);
+		strncat(pbuffer, buff, strlen(buff));
+	}
+	snprintf(buff, sizeof(buff), "\n");
+	strncat(pbuffer, buff, strlen(buff));
+	for (i = 11; i < 20; i++) {
+		snprintf(buff, sizeof(buff), "r[%d]0x%-3x", i+21, reg[i]);
+		strncat(pbuffer, buff, strlen(buff));
+	}
+	snprintf(buff, sizeof(buff), "\n");
+	strncat(pbuffer, buff, strlen(buff));
+	for (i = 20; i < 71; i++) {
+		if(!((i+41)%10)) {
+			snprintf(buff, sizeof(buff), "\n");
+			strncat(pbuffer, buff, strlen(buff));
+		}
+		snprintf(buff, sizeof(buff), "r[%d]0x%-3x", i+41, reg[i]);
+		strncat(pbuffer, buff, strlen(buff));
+	}
+	snprintf(buff, sizeof(buff), "\n");
+	strncat(pbuffer, buff, strlen(buff));
+	for (i = 71; i < 88; i++) {
+		snprintf(buff, sizeof(buff), "r[%d]0x%-3x", i+73, reg[i]);
+		strncat(pbuffer, buff, strlen(buff));
+	}
+	return;
+}
+
+/**********************************************************
 *  Function:       hi6523_get_register_head
 *  Discription:    print the register head in charging process
 *  Parameters:   reg_head:string for save register head
@@ -875,6 +873,10 @@ static int hi6523_set_charger_hiz(int enable)
 	return hi6523_write_mask(CHG_HIZ_CTRL_REG, CHG_HIZ_ENABLE_MSK,
 				 CHG_HIZ_ENABLE_SHIFT, enable);
 }
+
+struct fcp_adapter_device_ops sh_fcp_hi6523_ops = {
+	.reg_dump = hi6523_fcp_reg_dump,
+};
 
 static struct charge_device_ops hi6523_ops = {
 	.dev_check = hi6523_device_check,

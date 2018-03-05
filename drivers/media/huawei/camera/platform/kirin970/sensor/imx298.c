@@ -33,7 +33,9 @@
 #include "hwsensor.h"
 #include "sensor_commom.h"
 #include "hw_csi.h"
+#include "../pmic/hw_pmic.h"
 
+//lint -save -e31 -e64 -e650
 #define I2S(i) container_of(i, sensor_t, intf)
 
 extern struct hw_csi_pad hw_csi_pad;
@@ -41,95 +43,74 @@ static hwsensor_vtbl_t s_imx298_vtbl;
 
 static char *sensor_dts_name = "IMX298_VENDOR";
 
-int imx298_config(hwsensor_intf_t* si, void  *argp);
+static int imx298_config(hwsensor_intf_t* si, void  *argp);
 
-struct sensor_power_setting hw_imx298_power_setting[] = {
+static struct sensor_power_setting hw_imx298_power_setting[] = {
 
-	//set camera reset gpio 146 to low
-	{
-		.seq_type = SENSOR_SUSPEND,
-		.config_val = SENSOR_GPIO_LOW,
-		.sensor_index = SENSOR_INDEX_INVALID,
-		.delay = 0,
-	},
-
-	//enable gpio51 output iovdd 1.8v
-	{
-		.seq_type = SENSOR_LDO_EN,
-		.config_val = SENSOR_GPIO_LOW,
-		.sensor_index = SENSOR_INDEX_INVALID,
-		.delay = 0,
-	},
-
-	//SCAM1 AVDD VLDO13 2.85V
+    //disable main camera reset
     {
-        .seq_type = SENSOR_AVDD,
-        .data = (void*)"slave-sensor-avdd",
-        .config_val = LDO_VOLTAGE_V2P85V,
+        .seq_type = SENSOR_SUSPEND,
+        .config_val = SENSOR_GPIO_LOW,
         .sensor_index = SENSOR_INDEX_INVALID,
         .delay = 0,
     },
-
-	//SCAM1 DVDD VLDO32 1.2V
+#if 0
+    //disable sub camera reset
+    {
+        .seq_type = SENSOR_SUSPEND2,
+        .config_val = SENSOR_GPIO_LOW,
+        .sensor_index = SENSOR_INDEX_INVALID,
+        .delay = 0,
+    },
+#endif
+    //MCAM IOVDD 1.80V
+    {
+        .seq_type = SENSOR_IOVDD,
+        .config_val = LDO_VOLTAGE_1P8V,
+        .sensor_index = SENSOR_INDEX_INVALID,
+        .delay = 1,
+    },
+    //MCAM1 AVDD 2.8V
+    {
+	  .seq_type = SENSOR_PMIC,
+	  .seq_val = VOUT_LDO_4,
+	  .config_val = PMIC_2P8V,
+	  .sensor_index = SENSOR_INDEX_INVALID,
+	  .delay = 0,
+    },
+    //MCAM OIS
+    {
+	  .seq_type = SENSOR_PMIC,
+	  .seq_val = VOUT_BUCK_1,
+	  .config_val = PMIC_2P8V,
+	  .sensor_index = SENSOR_INDEX_INVALID,
+	  .delay = 0,
+    },
+    //MCAM1 DVDD 1.1V
     {
         .seq_type = SENSOR_DVDD,
-		.data = (void*)"slave-sensor-dvdd",
-        .config_val = LDO_VOLTAGE_1P2V,
+        .config_val = LDO_VOLTAGE_1P1V,
         .sensor_index = SENSOR_INDEX_INVALID,
-        .delay = 1,
+        .delay = 0,
     },
-
-	//MCAM1 AFVDD LDO25 2.85V
+    //OIS_DRV [2.60v]
     {
-        .seq_type = SENSOR_VCM_AVDD,
-        .data = (void*)"cameravcm-vcc",
-        .config_val = LDO_VOLTAGE_V2P85V,
+        .seq_type = SENSOR_OIS_DRV,
+        .config_val = LDO_VOLTAGE_V2P8V,
+        .sensor_index = SENSOR_INDEX_INVALID,
+        .delay = 0,
+    },
+    {
+        .seq_type = SENSOR_MCLK,
         .sensor_index = SENSOR_INDEX_INVALID,
         .delay = 1,
     },
-
-	//enable gpio34 output ois af vdd 2.95v
-	{
-		.seq_type = SENSOR_OIS,
-		.config_val = SENSOR_GPIO_LOW,
-		.sensor_index = SENSOR_INDEX_INVALID,
-		.delay = 0,
-	},
-
-
-
-	//MCAM AVDD VOUT19 2.8V
-	{
-		.seq_type = SENSOR_AVDD2,
-		.data = (void*)"main-sensor-avdd",
-		.config_val = LDO_VOLTAGE_V2P8V,
-		.sensor_index = SENSOR_INDEX_INVALID,
-		.delay = 0,
-	},
-
-	//MCAM0 DVDD VLDO1.2V
-	{
-		.seq_type = SENSOR_DVDD2,
-		.data = (void*)"main-sensor-dvdd",
-		.config_val = LDO_VOLTAGE_1P2V,
-		.sensor_index = SENSOR_INDEX_INVALID,
-		.delay = 0,
-	},
-
-	//MCAM ISP_CLK0 16M
-	{
-		.seq_type = SENSOR_MCLK,
-		.sensor_index = SENSOR_INDEX_INVALID,
-		.delay = 1,
-	},
-
-	//MCAM Reset GPIO_052
-	{
-		.seq_type = SENSOR_RST,
-		.config_val = SENSOR_GPIO_LOW,
-		.sensor_index = SENSOR_INDEX_INVALID,
-		.delay = 1,
-	},
+    {
+        .seq_type = SENSOR_RST,
+        .config_val = SENSOR_GPIO_LOW,
+        .sensor_index = SENSOR_INDEX_INVALID,
+        .delay = 1,
+    },
 };
 
 static sensor_t s_imx298 =
@@ -165,7 +146,7 @@ s_imx298_driver =
 	},
 };
 
-char const*
+static char const*
 imx298_get_name(
         hwsensor_intf_t* si)
 {
@@ -173,7 +154,7 @@ imx298_get_name(
     return sensor->board_info->name;
 }
 
-int
+static int
 imx298_ois_wpb_ctrl(hwsensor_intf_t* si, int state)  //update ois fw need pull gpio pin
 {
     int rc = -1;
@@ -210,7 +191,7 @@ imx298_ois_wpb_ctrl(hwsensor_intf_t* si, int state)  //update ois fw need pull g
     return 0;
 }
 
-int
+static int
 imx298_power_up(
         hwsensor_intf_t* si)
 {
@@ -234,7 +215,7 @@ imx298_power_up(
     return ret;
 }
 
-int
+static int
 imx298_power_down(
         hwsensor_intf_t* si)
 {
@@ -259,14 +240,14 @@ imx298_power_down(
 	return ret;
 }
 
-int imx298_csi_enable(hwsensor_intf_t* si)
+static int imx298_csi_enable(hwsensor_intf_t* si)
 {
     int ret = 0;
     sensor_t* sensor = NULL;
 
     sensor = I2S(si);
 
-    ret = hw_csi_pad.hw_csi_enable(0, sensor->board_info->csi_lane, sensor->board_info->csi_mipi_clk);//by hefei
+    ret = hw_csi_pad.hw_csi_enable((int)0, sensor->board_info->csi_lane, sensor->board_info->csi_mipi_clk);//by hefei
     if(ret)
     {
         cam_err("failed to csi enable index 0 ");
@@ -276,14 +257,14 @@ int imx298_csi_enable(hwsensor_intf_t* si)
     return 0;
 }
 
-int imx298_csi_disable(hwsensor_intf_t* si)
+static int imx298_csi_disable(hwsensor_intf_t* si)
 {
     int ret = 0;
     sensor_t* sensor = NULL;
 
     sensor = I2S(si);
 
-    ret = hw_csi_pad.hw_csi_disable(0);//by hefei
+    ret = hw_csi_pad.hw_csi_disable((int)0);//by hefei
     if(ret)
     {
         cam_err("failed to csi disable index 0 ");
@@ -346,10 +327,12 @@ imx298_match_id(
         strncpy(cdata->cfg.name, sensor->board_info->name, DEVICE_NAME_SIZE-1);
         cdata->data = sensor->board_info->sensor_index;
     }
+#if 0 //delete no use line
     if (cdata->data != SENSOR_INDEX_INVALID) {
         hwsensor_writefile(sensor->board_info->sensor_index, cdata->cfg.name);
         cam_info("%s, cdata->cfg.name = %s", __func__,cdata->cfg.name );
     }
+#endif
     cam_info("%s cdata->data=%d", __func__, cdata->data);
 
     return 0;
@@ -412,7 +395,7 @@ s_imx298_vtbl =
 	.ois_wpb_ctrl = imx298_ois_wpb_ctrl,
 };
 
-int
+static int
 imx298_config(
         hwsensor_intf_t* si,
         void  *argp)
@@ -530,3 +513,4 @@ module_init(imx298_init_module);
 module_exit(imx298_exit_module);
 MODULE_DESCRIPTION("imx298");
 MODULE_LICENSE("GPL v2");
+//lint -restore

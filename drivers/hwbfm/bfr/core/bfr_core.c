@@ -124,7 +124,7 @@ static bfr_recovery_policy_e s_fixed_recovery_policy[] =
         DATA_MOUNT_FAILED_AND_ERASED, 1,
         {
             {1, FRM_REBOOT},
-            {1, FRM_GOTO_ERECOVERY_FACTORY_RESET},
+            {1, FRM_GOTO_ERECOVERY_LOWLEVEL_FORMAT_DATA},
             {1, FRM_GOTO_ERECOVERY_DOWNLOAD_RECOVERY},
             {1, FRM_GOTO_ERECOVERY_DOWNLOAD_RECOVERY},
         },
@@ -986,7 +986,8 @@ static int bfr_create_recovery_record(bfr_recovery_record_t *precord)
             s_rrecord_param[i].buf_size - (unsigned int)sizeof(pheader->crc32));
 
         /* 1. write herder */
-        ret = bfmr_write_emmc_raw_part(dev_path, s_rrecord_param[i].part_offset, (char *)pheader, header_size);
+        ret = bfmr_write_emmc_raw_part(dev_path, (unsigned long long)s_rrecord_param[i].part_offset,
+            (char *)pheader, (unsigned long long)header_size);
         if (0 != ret)
         {
             BFMR_PRINT_ERR("Write recovery record header to [%s] failed!\n", dev_path);
@@ -994,8 +995,9 @@ static int bfr_create_recovery_record(bfr_recovery_record_t *precord)
         }
 
         /* 2. write record */
-        ret = bfmr_write_emmc_raw_part(dev_path, (s_rrecord_param[i].part_offset
-            + header_size + (pheader->boot_fail_count - 1) * record_size), (char *)precord, record_size);
+        ret = bfmr_write_emmc_raw_part(dev_path, (unsigned long long)((unsigned long long)s_rrecord_param[i].part_offset
+            + (unsigned long long)header_size + ((unsigned long long)pheader->boot_fail_count - 1) * (unsigned long long)record_size),
+            (char *)precord, (unsigned long long)record_size);
         if (0 != ret)
         {
             BFMR_PRINT_ERR("Write recovery record to [%s] failed!\n", dev_path);
@@ -1275,7 +1277,7 @@ bfr_recovery_method_e try_to_recovery(
 
     @note:
 */
-int __init bfr_init(void)
+int bfr_init(void)
 {
     int ret = -1;
 

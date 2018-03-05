@@ -36,7 +36,7 @@
 
 //add for HiLOGE
 #include <linux/hisi/hilog.h>
-//lint -save -e740
+//lint -save -e740 -e454 -e455 -e456
 #define HILOG_CAMERA_MODULE_NAME    "Camera"
 #define HILOG_CAMERA_SUBMODULE_NAME    "FW_Interaction"
 
@@ -149,8 +149,17 @@ static void hisp150_update_ddrfreq(unsigned int ddr_bandwidth);
 
 void hisp150_init_timestamp(void);
 void hisp150_destroy_timestamp(void);
-void hisp150_set_timestamp(msg_ack_request_t *ack);
+void hisp150_set_timestamp(unsigned int *timestampH, unsigned int *timestampL);
 void hisp150_handle_msg(hisp_msg_t *msg);
+
+static bool hisp150_is_secure_supported(void)
+{
+#ifdef CONFIG_HISI_CAMERA_ISP_SECURE
+	return true;
+#else
+	return false;
+#endif
+}
 
 void hisp150_init_timestamp(void)
 {
@@ -190,7 +199,7 @@ void hisp150_destroy_timestamp(void)
  *we can calculate fw_timeval with fw syscounter
  *and deliver it to hal. Hal then gets second and microsecond
  *********************************************/
-void hisp150_set_timestamp(msg_ack_request_t *ack)
+void hisp150_set_timestamp(unsigned int *timestampH, unsigned int *timestampL)
 {
 /* #define NANOSECOND_PER_SECOND 	(1000000000) */
 
@@ -198,24 +207,26 @@ void hisp150_set_timestamp(msg_ack_request_t *ack)
 	u64 fw_micro_second = 0;
 	u64 fw_sys_counter = 0;
 	u64 micro_second = 0;
-	if (NULL == ack){
-		cam_err("%s err ack is NULL.", __func__);
-		return;
-	}
 
-	if (TIMESTAMP_UNINTIAL ==  s_timestamp_state){
+
+	if (TIMESTAMP_UNINTIAL ==  s_timestamp_state) {
 		cam_err("%s wouldn't enter this branch.\n", __func__);
 		hisp150_init_timestamp();
 	}
 
-	cam_debug("%s ack_high:0x%x ack_low:0x%x", __func__,
-		ack->timestampH, ack->timestampL);
-
-	if (ack->timestampH == 0 && ack->timestampL == 0) {
+	if (timestampH == NULL || timestampL == NULL) {
+		cam_err("%s timestampH or timestampL is null.\n", __func__);
 		return;
 	}
 
-	fw_sys_counter = ((u64)ack->timestampH<< 32) | (u64)ack->timestampL;//lint !e838
+	cam_debug("%s ack_high:0x%x ack_low:0x%x", __func__,
+		*timestampH, *timestampL);
+
+	if (*timestampH == 0 && *timestampL == 0) {
+		return;
+	}
+
+    fw_sys_counter = ((u64)(*timestampH)<< 32) | (u64)(*timestampL);//lint !e838
 	micro_second = (fw_sys_counter - s_system_counter) * MICROSECOND_PER_SECOND / s_system_couter_rate;//lint !e838
 
 	//chang nano second to micro second
@@ -227,10 +238,10 @@ void hisp150_set_timestamp(msg_ack_request_t *ack)
 	//fw_micro_second= s_timeval.tv_sec * MICROSECOND_PER_SECOND + s_timeval.tv_usec;
 #endif
 
-	ack->timestampH = (u32)(fw_micro_second >>32 & 0xFFFFFFFF);
-	ack->timestampL = (u32)(fw_micro_second & 0xFFFFFFFF);
+	*timestampH = (u32)(fw_micro_second >>32 & 0xFFFFFFFF);
+	*timestampL = (u32)(fw_micro_second & 0xFFFFFFFF);
 
-	cam_debug("%s h:0x%x l:0x%x", __func__, ack->timestampH, ack->timestampL);
+	cam_debug("%s h:0x%x l:0x%x", __func__, *timestampH, *timestampL);
 }
 
 void hisp150_handle_msg(hisp_msg_t *msg)
@@ -240,7 +251,10 @@ void hisp150_handle_msg(hisp_msg_t *msg)
 	switch (msg->api_name)
 	{
 		case REQUEST_RESPONSE:
-			hisp150_set_timestamp(&(msg->u.ack_request));
+			hisp150_set_timestamp(&(msg->u.ack_request.timestampH), &(msg->u.ack_request.timestampL));
+			break;
+		case MSG_EVENT_SENT:
+			hisp150_set_timestamp(&(msg->u.event_sent.timestampH), &(msg->u.event_sent.timestampL));
 			break;
 
 		default:
@@ -281,7 +295,7 @@ static void hisp150_save_rpmsg_data(void *data, int len)
 {
 	struct rpmsg_hisp150_service *hisi_serv = rpmsg_local.hisi_isp_serv;
 	struct sk_buff *skb = NULL;
-	char *skbdata = NULL;
+	unsigned char *skbdata = NULL;
 
 	cam_debug("Enter %s\n", __func__);
 	if (NULL == hisi_serv){
@@ -413,9 +427,16 @@ char const *hisp150_get_name(hisp_intf_t *i)
 	return hi->name;
 }
 
+
 static int hisp150_unmap_a7isp_addr(void *cfg)
 {
     struct hisp_cfg_data *pcfg = NULL;
+
+	if (false == hisp150_is_secure_supported())
+	{
+		return -ENODEV;
+	}
+
     if (NULL == cfg){
 		cam_err("func %s: cfg is NULL",__func__);
 		return -1;
@@ -436,6 +457,10 @@ static int hisp150_get_a7isp_addr(void *cfg)
     struct sg_table *table;
 	struct ion_handle* hdl = NULL;
 	cam_info("func %s: enter",__func__);
+	if (false == hisp150_is_secure_supported())
+	{
+		return -ENODEV;
+	}
 
 	if (NULL == cfg){
 		cam_err("func %s: cfg is NULL",__func__);
@@ -544,7 +569,7 @@ static int hisp150_config(hisp_intf_t *i, void *cfg)
 static int hisp150_power_on(hisp_intf_t *i)
 {
 	int rc = 0;
-	bool rproc_enable = false;
+	bool rproc_enabled = false;
 	bool hi_opened = false;
     bool ion_client_created = false;
 	hisp150_t *hi = NULL;
@@ -585,7 +610,7 @@ static int hisp150_power_on(hisp_intf_t *i)
 			HiLOGE(HILOG_CAMERA_MODULE_NAME, HILOG_CAMERA_SUBMODULE_NAME, "Failed: hisi_isp_rproc_enable.%d!\n", rc);
 			goto FAILED_RET;
 		}
-		rproc_enable = true;
+		rproc_enabled = true;
 
 		rc  = wait_for_completion_timeout(&channel_sync, msecs_to_jiffies(timeout));
 		if (0 == rc ) {
@@ -647,7 +672,7 @@ FAILED_RET:
 		atomic_dec(&hi->opened);
 	}
 
-	if (rproc_enable) {
+	if (rproc_enabled) {
 		hisi_isp_rproc_disable();
                rproc_set_sync_flag(true);
 	}
@@ -1100,6 +1125,8 @@ static const struct of_device_id s_hisp150_dt_match[] = {
 MODULE_DEVICE_TABLE(of, s_hisp150_dt_match);
 
 static struct rpmsg_driver rpmsg_hisp150_driver = {
+	.drv.name   = KBUILD_MODNAME, //lint !e64 !e485
+	.drv.owner  = THIS_MODULE, //lint !e64 !e485
 	.id_table = rpmsg_hisp150_id_table,
 	.probe = hisp150_rpmsg_probe,
 	.callback = hisp150_rpmsg_driver_cb,

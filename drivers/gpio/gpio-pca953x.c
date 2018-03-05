@@ -78,7 +78,7 @@ MODULE_DEVICE_TABLE(i2c, pca953x_id);
 #define MAX_BANK 5
 #define BANK_SZ 8
 
-#define NBANK(chip) (chip->gpio_chip.ngpio / BANK_SZ)
+#define NBANK(chip) DIV_ROUND_UP(chip->gpio_chip.ngpio, BANK_SZ)
 
 struct pca953x_chip {
 	unsigned gpio_start;
@@ -710,7 +710,7 @@ static int pca953x_probe(struct i2c_client *client,
 		chip->names = pdata->names;
 	} else {
 #ifdef CONFIG_GPIO_PCA953X_HISI
-		pca953x_get_alt_pdata(client, &chip->gpio_start, &invert);
+		pca953x_get_alt_pdata(client, &chip->gpio_start, &invert);/*lint !e679*/
 #ifdef CONFIG_OF_GPIO
 		/* If I2C node has no interrupts property, disable GPIO interrupts */
 		if (of_find_property(client->dev.of_node, "interrupts", NULL) == NULL) {
@@ -719,7 +719,7 @@ static int pca953x_probe(struct i2c_client *client,
 			ret = of_get_gpio(client->dev.of_node, 0);
 			if (ret < 0) {
 				dev_err(&client->dev, "could not get gpio, %d\n", ret);
-				return ret;
+				return ret;/*lint !e429*/
 			}
 
 			ret = devm_gpio_request_one(&client->dev,
@@ -728,7 +728,7 @@ static int pca953x_probe(struct i2c_client *client,
 				dev_name(&client->dev));
 			if (ret) {
 				dev_err(&client->dev, "could not request gpio, %d\n", ret);
-				return ret;
+				return ret;/*lint !e429*/
 			}
 
 			client->irq = gpio_to_irq(ret);

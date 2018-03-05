@@ -63,6 +63,22 @@ static void hisifb_ce_service_deinit(void);
 	_wait_ret;																					\
 })		/*lint -restore */																		\
 
+#define acm_set_hue(acm_dst, pinfo)\
+	acm_dst->hue_r0_hh = pinfo->r0_hh;\
+	acm_dst->hue_r0_lh = pinfo->r0_lh;\
+	acm_dst->hue_r1_hh = pinfo->r1_hh;\
+	acm_dst->hue_r1_lh = pinfo->r1_lh;\
+	acm_dst->hue_r2_hh = pinfo->r2_hh;\
+	acm_dst->hue_r2_lh = pinfo->r2_lh;\
+	acm_dst->hue_r3_hh = pinfo->r3_hh;\
+	acm_dst->hue_r3_lh = pinfo->r3_lh;\
+	acm_dst->hue_r4_hh = pinfo->r4_hh;\
+	acm_dst->hue_r4_lh = pinfo->r4_lh;\
+	acm_dst->hue_r5_hh = pinfo->r5_hh;\
+	acm_dst->hue_r5_lh = pinfo->r5_lh;\
+	acm_dst->hue_r6_hh = pinfo->r6_hh;\
+	acm_dst->hue_r6_lh = pinfo->r6_lh;
+
 static bool g_is_effect_init = false;
 static bool g_is_ce_service_init = false;
 static struct mutex g_ce_service_lock;
@@ -445,13 +461,13 @@ int hisifb_ce_service_get_param(struct fb_info *info, void __user *argp)
 	int mode = 0;
 	struct timespec ts;
 
-	if (NULL == info) {
-		HISI_FB_ERR("[effect] info is NULL\n");
+	if (NULL == argp) {
+		HISI_FB_ERR("[effect] argp is NULL\n");
 		return -EINVAL;
 	}
 
-	if (NULL == argp) {
-		HISI_FB_ERR("[effect] argp is NULL\n");
+	if (NULL == info) {
+		HISI_FB_ERR("[effect] info is NULL\n");
 		return -EINVAL;
 	}
 
@@ -980,13 +996,13 @@ ssize_t hisifb_display_effect_metadata_ctrl_show(struct fb_info *info, char *buf
 
 	if (NULL == info) {
 		HISI_FB_ERR("NULL Pointer\n");
-		return 0;
+		return -1;
 	}
 
 	hisifd = (struct hisi_fb_data_type *)info->par;
 	if (NULL == hisifd) {
 		HISI_FB_ERR("NULL Pointer\n");
-		return 0;
+		return -1;
 	}
 
 	metadata_ctrl = &(hisifd -> metadata_ctrl);
@@ -1006,26 +1022,26 @@ ssize_t hisifb_display_effect_metadata_ctrl_store(struct fb_info *info, const ch
 
 	if (NULL == info) {
 		HISI_FB_ERR("NULL Pointer\n");
-		return 0;
+		return -1;
 	}
 
 	hisifd = (struct hisi_fb_data_type *)info->par;
 	if (NULL == hisifd) {
 		HISI_FB_ERR("NULL Pointer\n");
-		return 0;
+		return -1;
 	}
 
 	pdata = dev_get_platdata(&hisifd->pdev->dev);//lint !e838
 	if (NULL == pdata) {
 		HISI_FB_ERR("[effect] pdata is NULL\n");
-		return 0;
+		return -1;
 	}
 
 	metadata_ctrl = &(hisifd->metadata_ctrl);
 
 	if (count > METADATA_SIZE * sizeof(char)) {
 		HISI_FB_ERR("Buffer too large\n");
-		return 0;
+		return -1;
 	}
 
 	if (buf[GALLERY_CTRL_BIT] != GALLERY_OFF && metadata_ctrl->metadata[GALLERY_CTRL_BIT] == GALLERY_OFF) {
@@ -1351,8 +1367,8 @@ void hisi_dss_dpp_hiace_set_reg(struct hisi_fb_data_type *hisifd)
 	}
 
 	if (PRIMARY_PANEL_IDX == hisifd->index) {
-		ce_info = &(hisifd->hiace_info);
 		hiace_base = hisifd->dss_base + DSS_HI_ACE_OFFSET;
+		ce_info = &(hisifd->hiace_info);
 	} else {
 		HISI_FB_ERR("[effect] fb%d, not support!\n", hisifd->index);
 		return;
@@ -1380,6 +1396,7 @@ void hisi_dss_dpp_hiace_set_reg(struct hisi_fb_data_type *hisifd)
 
 			mutex_lock(&ce_info->lut_lock);
 			for (i = 0; i < (6 * 6 * 11); i++) {
+				// cppcheck-suppress *
 				outp32(hiace_base + HIACE_GAMMA_VxHy_3z2_3z1_3z_W, hisifd->hiace_info.lut_table[i]);
 			}
 			mutex_unlock(&ce_info->lut_lock);
@@ -1551,6 +1568,7 @@ void hisi_dpp_hiace_end_handle_func(struct work_struct *work)
 			}
 			mutex_lock(&ce_info->lut_lock);
 			for (i = 0; i < (6 * 6 * 11); i++) {
+				// cppcheck-suppress *
 				outp32(hiace_base + HIACE_GAMMA_VxHy_3z2_3z1_3z_W, hisifd->hiace_info.lut_table[i]);
 			}
 			mutex_unlock(&ce_info->lut_lock);
@@ -2151,20 +2169,7 @@ int hisi_effect_acm_info_get(struct hisi_fb_data_type *hisifd, struct acm_info *
 
 	pinfo = &hisifd->panel_info;
 
-	acm_dst->hue_r0_hh = pinfo->r0_hh;
-	acm_dst->hue_r0_lh = pinfo->r0_lh;
-	acm_dst->hue_r1_hh = pinfo->r1_hh;
-	acm_dst->hue_r1_lh = pinfo->r1_lh;
-	acm_dst->hue_r2_hh = pinfo->r2_hh;
-	acm_dst->hue_r2_lh = pinfo->r2_lh;
-	acm_dst->hue_r3_hh = pinfo->r3_hh;
-	acm_dst->hue_r3_lh = pinfo->r3_lh;
-	acm_dst->hue_r4_hh = pinfo->r4_hh;
-	acm_dst->hue_r4_lh = pinfo->r4_lh;
-	acm_dst->hue_r5_hh = pinfo->r5_hh;
-	acm_dst->hue_r5_lh = pinfo->r5_lh;
-	acm_dst->hue_r6_hh = pinfo->r6_hh;
-	acm_dst->hue_r6_lh = pinfo->r6_lh;
+	acm_set_hue(acm_dst, pinfo);
 	acm_dst->enable = pinfo->acm_ce_support;
 
 	if (hisi_effect_copy_to_user(acm_dst->hue_table, pinfo->acm_lut_hue_table, ACM_HUE_LUT_LENGTH)) {
@@ -2373,20 +2378,17 @@ int hisi_effect_arsr1p_info_set(struct hisi_fb_data_type *hisifd, struct arsr1p_
 
 static int set_acm_normal_param(struct acm_info *acm_dst, struct hisi_panel_info *pinfo)
 {
-	acm_dst->hue_r0_hh = pinfo->r0_hh;
-	acm_dst->hue_r0_lh = pinfo->r0_lh;
-	acm_dst->hue_r1_hh = pinfo->r1_hh;
-	acm_dst->hue_r1_lh = pinfo->r1_lh;
-	acm_dst->hue_r2_hh = pinfo->r2_hh;
-	acm_dst->hue_r2_lh = pinfo->r2_lh;
-	acm_dst->hue_r3_hh = pinfo->r3_hh;
-	acm_dst->hue_r3_lh = pinfo->r3_lh;
-	acm_dst->hue_r4_hh = pinfo->r4_hh;
-	acm_dst->hue_r4_lh = pinfo->r4_lh;
-	acm_dst->hue_r5_hh = pinfo->r5_hh;
-	acm_dst->hue_r5_lh = pinfo->r5_lh;
-	acm_dst->hue_r6_hh = pinfo->r6_hh;
-	acm_dst->hue_r6_lh = pinfo->r6_lh;
+	if (acm_dst == NULL) {
+		HISI_FB_DEBUG("acm_dst is NULL!\n");
+		return -1;
+	}
+
+	if (pinfo == NULL) {
+		HISI_FB_DEBUG("pinfo is NULL!\n");
+		return -1;
+	}
+
+	acm_set_hue(acm_dst, pinfo);
 
 	/* malloc acm_dst lut table memory*/
 	if (hisi_effect_alloc_and_copy(&acm_dst->hue_table, pinfo->acm_lut_hue_table,
@@ -2445,6 +2447,16 @@ static int set_acm_normal_param(struct acm_info *acm_dst, struct hisi_panel_info
 
 static int set_acm_cinema_param(struct acm_info *acm_dst, struct hisi_panel_info *pinfo)
 {
+	if (acm_dst == NULL) {
+		HISI_FB_DEBUG("acm_dst is NULL!\n");
+		return -1;
+	}
+
+	if (pinfo == NULL) {
+		HISI_FB_DEBUG("pinfo is NULL!\n");
+		return -1;
+	}
+
 	acm_dst->hue_r0_hh = pinfo->cinema_r0_hh;
 	acm_dst->hue_r0_lh = pinfo->cinema_r0_lh;
 	acm_dst->hue_r1_hh = pinfo->cinema_r1_hh;
@@ -2517,6 +2529,16 @@ static int set_acm_cinema_param(struct acm_info *acm_dst, struct hisi_panel_info
 
 static int set_acm_user_param(struct acm_info *acm_dst, struct acm_info *acm_src)
 {
+	if (acm_dst == NULL) {
+		HISI_FB_DEBUG("acm_dst is NULL!\n");
+		return -1;
+	}
+
+	if (acm_src == NULL) {
+		HISI_FB_DEBUG("acm_src is NULL!\n");
+		return -1;
+	}
+
 	acm_dst->hue_r0_hh = acm_src->hue_r0_hh;
 	acm_dst->hue_r0_lh = acm_src->hue_r0_lh;
 	acm_dst->hue_r1_hh = acm_src->hue_r1_hh;
@@ -2897,6 +2919,193 @@ err_ret:
 	return;
 }
 
+/*******************************************************************************
+**ACM REG DIMMING
+*/
+/*lint -e866*/
+static inline uint32_t cal_hue_value(uint32_t cur,uint32_t target,int count) {
+	if (count <= 0) {
+		return cur;
+	}
+
+	if (abs((int)(cur - target)) > HUE_REG_RANGE) {
+		if (cur > target) {
+			target += HUE_REG_OFFSET;
+		} else {
+			cur += HUE_REG_OFFSET;
+		}
+	}
+
+	if (target > cur) {
+		cur += (target - cur) / (uint32_t)count;
+	} else if (cur > target) {
+		cur -= (cur - target) / (uint32_t)count;
+	}
+
+	cur %= HUE_REG_OFFSET;
+
+	return cur;
+}
+
+static inline uint32_t cal_sata_value(uint32_t cur,uint32_t target,int count) {
+	if (count <= 0) {
+		return cur;
+	}
+
+	if (target > cur) {
+		cur += (target - cur) / (uint32_t)count;
+	} else if (cur > target) {
+		cur -= (cur - target) / (uint32_t)count;
+	}
+
+	return cur;
+}
+
+/*lint -e838*/
+static inline int satr_unint32_to_int(uint32_t input) {
+	int result = 0;
+
+	if (input >= SATR_REG_RANGE) {
+		result = (int)input - SATR_REG_OFFSET;
+	} else {
+		result = (int)input;
+	}
+	return result;
+}
+
+/*lint -e838*/
+static inline uint32_t cal_satr_value(uint32_t cur,uint32_t target,int count) {
+	int i_cur = 0;
+	int i_target = 0;
+
+	if (count <= 0) {
+		return cur;
+	}
+
+	i_cur = satr_unint32_to_int(cur);
+	i_target = satr_unint32_to_int(target);
+
+	return (uint32_t)(i_cur + (i_target - i_cur) / count) % SATR_REG_OFFSET;
+}
+
+/*lint -e838*/
+static inline void cal_cur_acm_reg(int count,acm_reg_t *cur_acm_reg,acm_reg_table_t *target_acm_reg) {
+	int index = 0;
+
+	for (index = 0;index < ACM_HUE_SIZE;index++) {
+		cur_acm_reg->acm_lut_hue_table[index] = cal_hue_value(cur_acm_reg->acm_lut_hue_table[index],target_acm_reg->acm_lut_hue_table[index],count);
+	}
+	for (index = 0;index < ACM_SATA_SIZE;index++) {
+		cur_acm_reg->acm_lut_sata_table[index] = cal_sata_value(cur_acm_reg->acm_lut_sata_table[index],target_acm_reg->acm_lut_sata_table[index],count);
+	}
+	for (index = 0;index < ACM_SATR_SIZE;index++) {
+		cur_acm_reg->acm_lut_satr0_table[index] = cal_satr_value(cur_acm_reg->acm_lut_satr0_table[index],target_acm_reg->acm_lut_satr0_table[index],count);
+		cur_acm_reg->acm_lut_satr1_table[index] = cal_satr_value(cur_acm_reg->acm_lut_satr1_table[index],target_acm_reg->acm_lut_satr1_table[index],count);
+		cur_acm_reg->acm_lut_satr2_table[index] = cal_satr_value(cur_acm_reg->acm_lut_satr2_table[index],target_acm_reg->acm_lut_satr2_table[index],count);
+		cur_acm_reg->acm_lut_satr3_table[index] = cal_satr_value(cur_acm_reg->acm_lut_satr3_table[index],target_acm_reg->acm_lut_satr3_table[index],count);
+		cur_acm_reg->acm_lut_satr4_table[index] = cal_satr_value(cur_acm_reg->acm_lut_satr4_table[index],target_acm_reg->acm_lut_satr4_table[index],count);
+		cur_acm_reg->acm_lut_satr5_table[index] = cal_satr_value(cur_acm_reg->acm_lut_satr5_table[index],target_acm_reg->acm_lut_satr5_table[index],count);
+		cur_acm_reg->acm_lut_satr6_table[index] = cal_satr_value(cur_acm_reg->acm_lut_satr6_table[index],target_acm_reg->acm_lut_satr6_table[index],count);
+		cur_acm_reg->acm_lut_satr7_table[index] = cal_satr_value(cur_acm_reg->acm_lut_satr7_table[index],target_acm_reg->acm_lut_satr7_table[index],count);
+	}
+}
+
+/*lint -e838*/
+void hisi_effect_color_dimming_acm_reg_set(struct hisi_fb_data_type *hisifd, acm_reg_t *cur_acm_reg) {
+	acm_reg_table_t target_acm_reg = {0};
+	struct hisi_panel_info *pinfo = NULL;
+
+	if (NULL == hisifd) {
+		HISI_FB_ERR("hisifd is NULL!");
+		return;
+	}
+
+	if (NULL == cur_acm_reg) {
+		HISI_FB_ERR("cur_acm_reg is NULL!");
+		return;
+	}
+
+	pinfo = &(hisifd->panel_info);
+
+	if (SCENE_MODE_GALLERY == hisifd->user_scene_mode || SCENE_MODE_DEFAULT == hisifd->user_scene_mode) {
+		target_acm_reg.acm_lut_hue_table = pinfo->acm_lut_hue_table;
+		target_acm_reg.acm_lut_sata_table = pinfo->acm_lut_sata_table;
+		target_acm_reg.acm_lut_satr0_table = pinfo->acm_lut_satr0_table;
+		target_acm_reg.acm_lut_satr1_table = pinfo->acm_lut_satr1_table;
+		target_acm_reg.acm_lut_satr2_table = pinfo->acm_lut_satr2_table;
+		target_acm_reg.acm_lut_satr3_table = pinfo->acm_lut_satr3_table;
+		target_acm_reg.acm_lut_satr4_table = pinfo->acm_lut_satr4_table;
+		target_acm_reg.acm_lut_satr5_table = pinfo->acm_lut_satr5_table;
+		target_acm_reg.acm_lut_satr6_table = pinfo->acm_lut_satr6_table;
+		target_acm_reg.acm_lut_satr7_table = pinfo->acm_lut_satr7_table;
+	} else {
+		target_acm_reg.acm_lut_hue_table = pinfo->video_acm_lut_hue_table;
+		target_acm_reg.acm_lut_sata_table = pinfo->video_acm_lut_sata_table;
+		target_acm_reg.acm_lut_satr0_table = pinfo->video_acm_lut_satr0_table;
+		target_acm_reg.acm_lut_satr1_table = pinfo->video_acm_lut_satr1_table;
+		target_acm_reg.acm_lut_satr2_table = pinfo->video_acm_lut_satr2_table;
+		target_acm_reg.acm_lut_satr3_table = pinfo->video_acm_lut_satr3_table;
+		target_acm_reg.acm_lut_satr4_table = pinfo->video_acm_lut_satr4_table;
+		target_acm_reg.acm_lut_satr5_table = pinfo->video_acm_lut_satr5_table;
+		target_acm_reg.acm_lut_satr6_table = pinfo->video_acm_lut_satr6_table;
+		target_acm_reg.acm_lut_satr7_table = pinfo->video_acm_lut_satr7_table;
+	}
+
+	cal_cur_acm_reg(hisifd->dimming_count,cur_acm_reg,&target_acm_reg);
+}
+
+/*lint -e838*/
+void hisi_effect_color_dimming_acm_reg_init(struct hisi_fb_data_type *hisifd) {//add dimming reg init
+	struct hisi_panel_info *pinfo = NULL;
+	acm_reg_t *cur_acm_reg = NULL;
+	int index = 0;
+
+	if (NULL == hisifd) {
+		HISI_FB_ERR("hisifd, null pointer warning.\n");
+		return;
+	}
+
+	pinfo = &(hisifd->panel_info);
+
+	cur_acm_reg = &(hisifd->acm_reg);
+
+	if (SCENE_MODE_GALLERY == hisifd->user_scene_mode || SCENE_MODE_DEFAULT == hisifd->user_scene_mode) {
+		for (index = 0;index < ACM_HUE_SIZE;index++) {
+			cur_acm_reg->acm_lut_hue_table[index] = pinfo->acm_lut_hue_table[index];
+		}
+		for (index = 0;index < ACM_SATA_SIZE;index++) {
+			cur_acm_reg->acm_lut_sata_table[index] = pinfo->acm_lut_sata_table[index];
+		}
+		for (index = 0;index < ACM_SATR_SIZE;index++) {
+			cur_acm_reg->acm_lut_satr0_table[index] = pinfo->acm_lut_satr0_table[index];
+			cur_acm_reg->acm_lut_satr1_table[index] = pinfo->acm_lut_satr1_table[index];
+			cur_acm_reg->acm_lut_satr2_table[index] = pinfo->acm_lut_satr2_table[index];
+			cur_acm_reg->acm_lut_satr3_table[index] = pinfo->acm_lut_satr3_table[index];
+			cur_acm_reg->acm_lut_satr4_table[index] = pinfo->acm_lut_satr4_table[index];
+			cur_acm_reg->acm_lut_satr5_table[index] = pinfo->acm_lut_satr5_table[index];
+			cur_acm_reg->acm_lut_satr6_table[index] = pinfo->acm_lut_satr6_table[index];
+			cur_acm_reg->acm_lut_satr7_table[index] = pinfo->acm_lut_satr7_table[index];
+		}
+	} else {
+		for (index = 0;index < ACM_HUE_SIZE;index++) {
+			cur_acm_reg->acm_lut_hue_table[index] = pinfo->video_acm_lut_hue_table[index];
+		}
+		for (index = 0;index < ACM_SATA_SIZE;index++) {
+			cur_acm_reg->acm_lut_sata_table[index] = pinfo->video_acm_lut_sata_table[index];
+		}
+		for (index = 0;index < ACM_SATR_SIZE;index++) {
+			cur_acm_reg->acm_lut_satr0_table[index] = pinfo->video_acm_lut_satr0_table[index];
+			cur_acm_reg->acm_lut_satr1_table[index] = pinfo->video_acm_lut_satr1_table[index];
+			cur_acm_reg->acm_lut_satr2_table[index] = pinfo->video_acm_lut_satr2_table[index];
+			cur_acm_reg->acm_lut_satr3_table[index] = pinfo->video_acm_lut_satr3_table[index];
+			cur_acm_reg->acm_lut_satr4_table[index] = pinfo->video_acm_lut_satr4_table[index];
+			cur_acm_reg->acm_lut_satr5_table[index] = pinfo->video_acm_lut_satr5_table[index];
+			cur_acm_reg->acm_lut_satr6_table[index] = pinfo->video_acm_lut_satr6_table[index];
+			cur_acm_reg->acm_lut_satr7_table[index] = pinfo->video_acm_lut_satr7_table[index];
+		}
+	}
+}
+
 #define XCC_COEF_LEN	12
 #define GMP_BLOCK_SIZE	137
 #define GMP_CNT_NUM	18
@@ -2904,6 +3113,16 @@ err_ret:
 static void lcp_igm_set_reg(char __iomem *lcp_lut_base, struct lcp_info *lcp_param)
 {
 	int cnt;
+
+	if (lcp_lut_base == NULL) {
+		HISI_FB_DEBUG("lcp_lut_base is NULL!\n");
+		return;
+	}
+
+	if (lcp_param == NULL) {
+		HISI_FB_DEBUG("lcp_param is NULL!\n");
+		return;
+	}
 
 	for (cnt = 0; cnt < IGM_LUT_LEN; cnt = cnt + 2) {
 		set_reg(lcp_lut_base + (LCP_U_DEGAMA_R_COEF + cnt * 2), lcp_param->igm_r_table[cnt], 12,0);
@@ -2924,6 +3143,16 @@ static void lcp_xcc_set_reg(char __iomem *lcp_base, struct lcp_info *lcp_param)
 {
 	int cnt;
 
+	if (lcp_base == NULL) {
+		HISI_FB_DEBUG("lcp_base is NULL!\n");
+		return;
+	}
+
+	if (lcp_param == NULL) {
+		HISI_FB_DEBUG("lcp_param is NULL!\n");
+		return;
+	}
+
 	for (cnt = 0; cnt < XCC_COEF_LEN; cnt++)
 		set_reg(lcp_base + LCP_XCC_COEF_00 +cnt * 4,  lcp_param->xcc_table[cnt], 17, 0);
 }
@@ -2933,6 +3162,16 @@ static void lcp_gmp_set_reg(char __iomem *lcp_lut_base, struct lcp_info *lcp_par
 	int cnt;
 	int block;
 	int valBlock = 0;
+
+	if (lcp_lut_base == NULL) {
+		HISI_FB_DEBUG("lcp_lut_base is NULL!\n");
+		return;
+	}
+
+	if (lcp_param == NULL) {
+		HISI_FB_DEBUG("lcp_param is NULL!\n");
+		return;
+	}
 
 	for (block = 0; block < GMP_BLOCK_SIZE; block ++) {
 		for (cnt = 0; cnt < GMP_CNT_NUM; cnt ++) {
@@ -3128,6 +3367,21 @@ static int set_arsr1p_param(struct hisi_fb_data_type *hisifd, dss_arsr1p_t *post
 	ihinc = (int32_t)(ARSR1P_INC_FACTOR * (uint64_t)src_rect.w / dst_rect.w);
 	ivinc = (int32_t)(ARSR1P_INC_FACTOR * (uint64_t)src_rect.h / dst_rect.h);
 
+	if (hisifd == NULL) {
+		HISI_FB_DEBUG("hisifd is NULL!\n");
+		return -1;
+	}
+
+	if (post_scf == NULL) {
+		HISI_FB_DEBUG("post_scf is NULL!\n");
+		return -1;
+	}
+
+	if (arsr1p_param == NULL) {
+		HISI_FB_DEBUG("arsr1p_param is NULL!\n");
+		return -1;
+	}
+
 	// 0x2000<=ihinc<=ARSR1P_INC_FACTOR; 0x2000<=ivinc<=ARSR1P_INC_FACTOR;
 	if ((ihinc < 0x2000) || (ihinc > ARSR1P_INC_FACTOR)
 		|| (ivinc < 0x2000) || (ivinc > ARSR1P_INC_FACTOR)) {
@@ -3142,12 +3396,10 @@ static int set_arsr1p_param(struct hisi_fb_data_type *hisifd, dss_arsr1p_t *post
 
 	//ihleft1 = (startX_o * ihinc) - (ov_startX0 << 16)
 	ihleft1 = dst_rect.x * ihinc - src_rect.x * ARSR1P_INC_FACTOR;
-	if (ihleft1 < 0)
-		ihleft1 = 0;
+	if (ihleft1 < 0) ihleft1 = 0;
 	//ihleft = ihleft1 - even(8 * 65536 / ihinc) * ihinc;
 	ihleft = ihleft1 - extraw_left * ihinc;
-	if (ihleft < 0)
-		ihleft = 0;
+	if (ihleft < 0) ihleft = 0;
 
 	//ihright1 = ihleft1 + (oww-1) * ihinc
 	ihright1 = ihleft1 + (dst_rect.w - 1) * ihinc;
@@ -3159,8 +3411,7 @@ static int set_arsr1p_param(struct hisi_fb_data_type *hisifd, dss_arsr1p_t *post
 
 	//ivtop = (startY_o * ivinc) - (ov_startY0<<16)
 	ivtop = dst_rect.y * ivinc - src_rect.y * ARSR1P_INC_FACTOR;
-	if (ivtop < 0)
-		ivtop = 0;
+	if (ivtop < 0)  ivtop = 0;
 	//ivbottom = ivtop + (ohh - 1) * ivinc
 	ivbottom = ivtop + (dst_rect.h - 1) * ivinc;
 	//ivbottom >= img_height * ivinc
@@ -3230,10 +3481,11 @@ static int set_arsr1p_param(struct hisi_fb_data_type *hisifd, dss_arsr1p_t *post
 		post_scf->lsc_cfg3 = arsr1p_param->lsc_cfg3;
 	}
 
-	post_scf->dpp_img_hrz_bef_sr= src_rect.w;
-	post_scf->dpp_img_vrt_bef_sr= src_rect.h;
-	post_scf->dpp_img_hrz_aft_sr = dst_rect.w;
-	post_scf->dpp_img_vrt_aft_sr = dst_rect.h;
+	post_scf->dpp_img_size_bef_sr = set_bits32(post_scf->dpp_img_size_bef_sr,
+		(DSS_HEIGHT((uint32_t)src_rect.h) << 16) | DSS_WIDTH((uint32_t)src_rect.w), 32, 0);
+	post_scf->dpp_img_size_aft_sr = set_bits32(post_scf->dpp_img_size_aft_sr,
+		(DSS_HEIGHT((uint32_t)dst_rect.h) << 16) | DSS_WIDTH((uint32_t)dst_rect.w), 32, 0);
+	post_scf->dpp_used = 1;
 
 	return 0;
 }
@@ -3249,6 +3501,11 @@ int hisi_effect_arsr1p_config(struct hisi_fb_data_type *hisifd, dss_overlay_t *p
 
 	if ((NULL == hisifd) || (NULL == pov_req)) {
 		HISI_FB_ERR("hisifd or pov_req  is NULL!");
+		return 0;
+	}
+
+	if (PRIMARY_PANEL_IDX != hisifd->index) {
+		HISI_FB_DEBUG("hisifd %d not surpport!",hisifd->index);
 		return 0;
 	}
 
@@ -3329,19 +3586,19 @@ int hisi_effect_arsr1p_config(struct hisi_fb_data_type *hisifd, dss_overlay_t *p
 		post_scf->skin_cfg = set_bits32(post_scf->skin_cfg, 0x30a06, 32, 0);
 
 		post_scf->shoot_cfg1 = set_bits32(post_scf->shoot_cfg1, 0x2000014, 32, 0);
-		post_scf->shoot_cfg2 = set_bits32(post_scf->shoot_cfg2, 0x80001f0, 32, 0);
+		post_scf->shoot_cfg2 = set_bits32(post_scf->shoot_cfg2, 0x8002000, 32, 0);
 
 		post_scf->sharp_cfg1 = set_bits32(post_scf->sharp_cfg1, 0x40300703, 32, 0);
 		post_scf->sharp_cfg2 = set_bits32(post_scf->sharp_cfg2, 0x40300905, 32, 0);
-		post_scf->sharp_cfg3 = set_bits32(post_scf->sharp_cfg3, 0x640000, 32, 0);
-		post_scf->sharp_cfg4 = set_bits32(post_scf->sharp_cfg4, 0x0, 32, 0);
+		post_scf->sharp_cfg3 = set_bits32(post_scf->sharp_cfg3, 0x640064, 32, 0);
+		post_scf->sharp_cfg4 = set_bits32(post_scf->sharp_cfg4, 0x8c0000, 32, 0);
 		post_scf->sharp_cfg5 = set_bits32(post_scf->sharp_cfg5, 0x8c0000, 32, 0);
-		post_scf->sharp_cfg6 = set_bits32(post_scf->sharp_cfg6, 0x24141006, 32, 0);
-		post_scf->sharp_cfg7 = set_bits32(post_scf->sharp_cfg7, 0x2500210, 32, 0);
+		post_scf->sharp_cfg6 = set_bits32(post_scf->sharp_cfg6, 0x24140a03, 32, 0);
+		post_scf->sharp_cfg7 = set_bits32(post_scf->sharp_cfg7, 0x2320208, 32, 0);
 		post_scf->sharp_cfg8 = set_bits32(post_scf->sharp_cfg8, 0x600280, 32, 0);
 		post_scf->sharp_cfg9 = set_bits32(post_scf->sharp_cfg9, 0x1002300, 32, 0);
-		post_scf->sharp_cfg10 = set_bits32(post_scf->sharp_cfg10, 0x0, 32, 0);
-		post_scf->sharp_cfg11 = set_bits32(post_scf->sharp_cfg11, 0x0, 32, 0);
+		post_scf->sharp_cfg10 = set_bits32(post_scf->sharp_cfg10, 0x280, 32, 0);
+		post_scf->sharp_cfg11 = set_bits32(post_scf->sharp_cfg11, 0x2300, 32, 0);
 
 		post_scf->diff_ctrl = set_bits32(post_scf->diff_ctrl, 0x140f, 32, 0);
 		post_scf->lsc_cfg1 = set_bits32(post_scf->lsc_cfg1, 0x3c618410, 32, 0);

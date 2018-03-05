@@ -286,7 +286,7 @@ static void enable_mtcmos(struct hisi_regulator_ip_core *pmic, struct hisi_regul
 	if (sreg->register_info.mtcmos_en_addr == CRGPERI_ADDR_FLAG) {
 		hisi_regulator_ip_core_write(pmic, sreg->register_info.mtcmos_en_reg,
 						sreg->register_info.mtcmos_en_mask);
-		BRAND_DEBUG("<[%s]: [pmic:0x%p] [reg:0x%x] [value:0x%x]>\n", __func__, pmic->regs, sreg->register_info.mtcmos_en_reg,
+		BRAND_DEBUG("<[%s]: [pmic:0x%pK] [reg:0x%x] [value:0x%x]>\n", __func__, pmic->regs, sreg->register_info.mtcmos_en_reg,
 				sreg->register_info.mtcmos_en_mask);
 		BRAND_DEBUG("<[%s]: [pmic + reg + 0x08]=0x%x>\n", __func__,
 				hisi_regulator_ip_core_read(pmic, sreg->register_info.mtcmos_en_reg + 0x08));
@@ -307,7 +307,7 @@ static void disable_mtcmos(struct hisi_regulator_ip_core *pmic, struct hisi_regu
 	if (sreg->register_info.mtcmos_en_addr == CRGPERI_ADDR_FLAG) {
 		hisi_regulator_ip_core_write(pmic, sreg->register_info.mtcmos_en_reg + CRGPERI_ADDR_OFFSET,
 						sreg->register_info.mtcmos_en_mask);
-		BRAND_DEBUG("<[%s]: [pmic:0x%p] [reg:0x%x] [value:0x%x]>\n", __func__, pmic->regs, sreg->register_info.mtcmos_en_reg + CRGPERI_ADDR_OFFSET,
+		BRAND_DEBUG("<[%s]: [pmic:0x%pK] [reg:0x%x] [value:0x%x]>\n", __func__, pmic->regs, sreg->register_info.mtcmos_en_reg + CRGPERI_ADDR_OFFSET,
 				sreg->register_info.mtcmos_en_mask);
 		BRAND_DEBUG("<[%s]: [pmic + reg + 0x04]=0x%x>\n", __func__,
 				hisi_regulator_ip_core_read(pmic, (sreg->register_info.mtcmos_en_reg + CRGPERI_ADDR_OFFSET + 0x04)));
@@ -329,7 +329,7 @@ static void enable_softrst(struct hisi_regulator_ip_core *pmic, struct hisi_regu
 	if (sreg->register_info.swrest_en_addr == CRGPERI_ADDR_FLAG) {
 		hisi_regulator_ip_core_write(pmic, sreg->register_info.swrest_en_reg,
 						sreg->register_info.swrest_en_mask);
-		BRAND_DEBUG("<[%s]: [pmic:0x%p] [reg:0x%x] [value:0x%x]>\n", __func__, pmic->regs, sreg->register_info.swrest_en_reg,
+		BRAND_DEBUG("<[%s]: [pmic:0x%pK] [reg:0x%x] [value:0x%x]>\n", __func__, pmic->regs, sreg->register_info.swrest_en_reg,
 				sreg->register_info.swrest_en_mask);
 		BRAND_DEBUG("<[%s]: [pmic + reg+ 0x08]=0x%x>\n", __func__,
 				hisi_regulator_ip_core_read(pmic, sreg->register_info.swrest_en_reg + 0x08));
@@ -349,7 +349,7 @@ static void disable_softrst(struct hisi_regulator_ip_core *pmic, struct hisi_reg
 	if (sreg->register_info.swrest_en_addr == CRGPERI_ADDR_FLAG) {
 		hisi_regulator_ip_core_write(pmic, sreg->register_info.swrest_en_reg + CRGPERI_ADDR_OFFSET,
 						sreg->register_info.swrest_en_mask);
-		BRAND_DEBUG("<[%s]: [pmic:0x%p] [reg:0x%x] [value:0x%x]>\n", __func__, pmic->regs, sreg->register_info.swrest_en_reg + CRGPERI_ADDR_OFFSET,
+		BRAND_DEBUG("<[%s]: [pmic:0x%pK] [reg:0x%x] [value:0x%x]>\n", __func__, pmic->regs, sreg->register_info.swrest_en_reg + CRGPERI_ADDR_OFFSET,
 				sreg->register_info.swrest_en_mask);
 		BRAND_DEBUG("<[%s]: [pmic + reg + 0x04]=0x%x>\n", __func__,
 				hisi_regulator_ip_core_read(pmic, (sreg->register_info.swrest_en_reg + CRGPERI_ADDR_OFFSET + 0x04)));
@@ -368,7 +368,7 @@ static inline void enable_iso(struct hisi_regulator_ip_core *pmic, struct hisi_r
 	if (sreg->register_info.iso_en_addr == CRGPERI_ADDR_FLAG) {
 		hisi_regulator_ip_core_write(pmic, sreg->register_info.iso_en_reg,
 						sreg->register_info.iso_en_mask);
-		BRAND_DEBUG("<[%s]: [pmic:0x%p] [reg:0x%x] [value:0x%x]>\n", __func__, pmic->regs, sreg->register_info.iso_en_reg, sreg->register_info.iso_en_mask);
+		BRAND_DEBUG("<[%s]: [pmic:0x%pK] [reg:0x%x] [value:0x%x]>\n", __func__, pmic->regs, sreg->register_info.iso_en_reg, sreg->register_info.iso_en_mask);
 		BRAND_DEBUG("<[%s]: [pmic + reg + 0x08]=0x%x>\n", __func__, hisi_regulator_ip_core_read(pmic, sreg->register_info.iso_en_reg + 0x08));
 	} else if (sreg->register_info.iso_en_addr == SCTRL_ADDR_FLAG) {
 		hisi_sctrl_regu_write(sreg->register_info.iso_en_mask, sreg->register_info.iso_en_reg);
@@ -388,7 +388,7 @@ static inline void disable_iso(struct hisi_regulator_ip_core *pmic, struct hisi_
 	if (sreg->register_info.iso_en_addr == CRGPERI_ADDR_FLAG) {
 		hisi_regulator_ip_core_write(pmic, sreg->register_info.iso_en_reg + CRGPERI_ADDR_OFFSET,
 						sreg->register_info.iso_en_mask);
-		BRAND_DEBUG("<[%s]: [pmic:0x%p] [reg:0x%x] [value:0x%x]>\n", __func__, pmic->regs, sreg->register_info.iso_en_reg + CRGPERI_ADDR_OFFSET,
+		BRAND_DEBUG("<[%s]: [pmic:0x%pK] [reg:0x%x] [value:0x%x]>\n", __func__, pmic->regs, sreg->register_info.iso_en_reg + CRGPERI_ADDR_OFFSET,
 				sreg->register_info.iso_en_mask);
 		BRAND_DEBUG("<[%s]: [pmic + reg + 0x04]=0x%x>\n", __func__,
 				hisi_regulator_ip_core_read(pmic, (sreg->register_info.iso_en_reg + CRGPERI_ADDR_OFFSET + 0x04)));

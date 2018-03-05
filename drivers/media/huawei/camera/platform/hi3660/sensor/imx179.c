@@ -11,6 +11,7 @@
 #include "sensor_commom.h"
 #include "hw_csi.h"
 #include "../pmic/hw_pmic.h"
+//lint -save -e569 -e31 -e485
 
 #define I2S(i) container_of(i, sensor_t, intf)
 
@@ -461,4 +462,5 @@ module_init(imx179_init_module);
 module_exit(imx179_exit_module);
 MODULE_DESCRIPTION("imx179");
 MODULE_LICENSE("GPL v2");
+//lint -restore
 

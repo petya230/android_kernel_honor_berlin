@@ -23,6 +23,8 @@
 #include <linux/syscalls.h>
 #include <linux/fs.h>
 #include <linux/delay.h>
+#include <linux/atomic.h>
+#include <linux/types.h>
 #include <linux/hisi/kirin_partition.h>
 #include <hisi_partition.h>
 #include <linux/hisi/hisi_bootup_keypoint.h>
@@ -31,6 +33,7 @@
 #include <chipset_common/bfmr/common/bfmr_common.h>
 #include <chipset_common/bfmr/bfm/chipsets/bfm_chipsets.h>
 #include <chipset_common/hwbfm/hw_boot_fail_core.h>
+#include <huawei_platform/log/log_usertype/log-usertype.h>
 #include "bfm_hisi_dmd_info_priv.h"
 
 
@@ -56,6 +59,11 @@
 #define BFM_HISI_WAIT_FOR_LOG_PART_TIMEOUT (40)
 #define BFM_BFI_PART_MAX_COUNT (2)
 
+#define  BFM_MAX_U32 (0xFFFFFFFFU)
+#define BFM_HISI_PWR_KEY_PRESS_KEYWORD "power key press interrupt"
+#define BFM_BOOT_SUCCESS_TIME_IN_KENREL ((long long)40000000) /* unit: microsecond */
+#define BFM_US_PER_SEC ((long long)1000000)
+#define BFM_MS_PER_SEC ((long long)1000)
 
 /*----local prototypes----------------------------------------------------------------*/
 
@@ -112,6 +120,20 @@ typedef enum
     MODID_BFM_FRAMEWORK_PACKAGE_MANAGER_SETTING_FILE_DAMAGED,
     MODID_BFM_END              = HISI_BB_MOD_BFM_END
 } bfm_hisi_modid_for_bfmr;
+
+typedef struct
+{
+    long long integer_part;
+    long long decimal_part;
+} bfm_kernel_print_time_t;
+
+struct persistent_ram_buffer
+{
+    uint32_t sig;
+    unsigned int start;
+    unsigned int size;
+    uint8_t data[0];
+};
 
 
 /*----local variables-----------------------------------------------------------------*/
@@ -285,6 +307,9 @@ static unsigned int bfmr_capture_logcat_on_beta_version(char *buf, unsigned int 
 static unsigned int bfmr_capture_critical_process_crash_log(char *buf, unsigned int buf_len, char *src_log_file_path);
 static unsigned int bfmr_capture_fixed_framework_bootfail_log(char *buf, unsigned int buf_len, char *src_log_file_path);
 static unsigned int bfm_save_user_space_bfm_log(char *pdir, char *src_log_path);
+static long long bfm_get_print_time_in_us(char *plog_start_addr, char *pkmsg);
+static long long bfm_get_power_key_press_time_in_us(char *plog_start_addr, char *power_key_press_log);
+static bool bfm_is_valid_long_press_bootfail_log(char *log_add, unsigned int log_len);
 static int bfm_save_bootfail_log_to_fs_immediately(
     bfm_process_bootfail_param_t *process_bootfail_param,
     bfm_bootfail_log_saving_param_t *psave_param,
@@ -651,6 +676,7 @@ unsigned int bfmr_capture_log_from_system(char *buf, unsigned int buf_len, bfmr_
             {
                 BFMR_PRINT_KEY_INFO("there is no bottom layer boot fail log!\n");
             }
+            up(&s_process_bottom_layer_boot_fail_sem);
             break;
         }
     case LOG_TYPE_KMSG:
@@ -693,7 +719,14 @@ unsigned int bfmr_capture_log_from_system(char *buf, unsigned int buf_len, bfmr_
         }
     case LOG_TYPE_BETA_APP_LOGCAT:
         {
-            bytes_captured = bfmr_capture_logcat_on_beta_version(buf, buf_len, BFM_LOGCAT_FILE_PATH);
+            if ((BETA_USER == get_logusertype_flag()) || (OVERSEA_USER == get_logusertype_flag()))
+            {
+                bytes_captured = bfmr_capture_logcat_on_beta_version(buf, buf_len, BFM_LOGCAT_FILE_PATH);
+            }
+            else
+            {
+                bytes_captured = 0U;
+            }
             break;
         }
     case LOG_TYPE_CRITICAL_PROCESS_CRASH:
@@ -748,6 +781,8 @@ static int bfm_check_validity_of_bootfail_log_in_dfx(bfm_bfi_member_info_t *pbfi
     int fd = -1;
     int i = 0;
 
+    old_fs = get_fs();
+    set_fs(KERNEL_DS);
     bfi_part_full_path = (char *)bfmr_malloc(BFMR_DEV_FULL_PATH_MAX_LEN + 1);
     if (NULL == bfi_part_full_path)
     {
@@ -771,8 +806,7 @@ static int bfm_check_validity_of_bootfail_log_in_dfx(bfm_bfi_member_info_t *pbfi
         goto __out;
     }
 
-    old_fs = get_fs();
-    set_fs(KERNEL_DS);
+    ret = -1;
     fd = sys_open(bfi_part_full_path, O_RDONLY, BFMR_FILE_LIMIT);
     if (fd < 0)
     {
@@ -789,25 +823,26 @@ static int bfm_check_validity_of_bootfail_log_in_dfx(bfm_bfi_member_info_t *pbfi
         goto __out;
     }
 
-    for(i = 0; i < BFM_BFI_RECORD_TOTAL_COUNT; i++)
+    for (i = 0; i < BFM_BFI_RECORD_TOTAL_COUNT; i++)
     {
         memset((void *)pdata_buf, 0, BFM_BFI_MEMBER_SIZE);
         bytes_read = sys_read(fd, pdata_buf, BFM_BFI_MEMBER_SIZE);
         if (bytes_read < 0)
         {
-            BFMR_PRINT_ERR("sys_read [%s] failed [ret = %ld]\n", bfi_part_full_path, bytes_read);
+            BFMR_PRINT_ERR("sys_read [%s] failed! [ret = %ld]\n", bfi_part_full_path, bytes_read);
             goto  __out;
         }
 
         memcpy((void *)pbfi_info, (void *)pdata_buf, sizeof(bfm_bfi_member_info_t));
-        if (pbfi_info->rtcValue == rtc_time)
+        if ((pbfi_info->rtcValue == rtc_time) && (rtc_time != 0ULL))
         {
+            BFMR_PRINT_KEY_INFO("RTC time in BFI[%d]: %llu, RTC time in DFX: %llu\n", i, pbfi_info->rtcValue, rtc_time);
             ret = 0;
             break;
         }
     }
 
-    BFMR_PRINT_KEY_INFO("get bfi info %s!\n", (0 == ret) ? ("successfully") : ("failed!"));
+    BFMR_PRINT_KEY_INFO("get bfi info %s!\n", (0 == ret) ? ("successfully") : ("failed"));
 
 __out:
     if (fd > 0)
@@ -821,6 +856,85 @@ __out:
     bfmr_free(pdata_buf);
 
     return ret;
+}
+
+
+static long long bfm_get_print_time_in_us(char *plog_start_addr, char *pkmsg)
+{
+    bfm_kernel_print_time_t print_time = {0};
+
+    if (unlikely((NULL == pkmsg)))
+    {
+        BFMR_PRINT_INVALID_PARAMS("power_key_press_log is NULL\n");
+        return 0LL;
+    }
+
+    memset((void *)&print_time, 0, sizeof(print_time));
+    while (pkmsg >= plog_start_addr)
+    {
+        if ('\n' == *pkmsg)
+        {
+            sscanf(pkmsg + 1, "[%lld.%llds]", &print_time.integer_part, &print_time.decimal_part);
+            break;
+        }
+        pkmsg--;
+    }
+
+    return (BFM_US_PER_SEC * print_time.integer_part + print_time.decimal_part);
+}
+
+
+static long long bfm_get_power_key_press_time_in_us(char *plog_start_addr, char *power_key_press_log)
+{
+    return bfm_get_print_time_in_us(plog_start_addr, power_key_press_log);
+}
+
+
+static bool bfm_is_valid_long_press_bootfail_log(char *log_add, unsigned int log_len)
+{
+    char *ptemp = NULL;
+    char *pkey_press_log = NULL;
+    long long key_press_time = 0LL;
+    unsigned int total_log_size = 0;
+    unsigned int new_log_size = 0;
+    struct persistent_ram_buffer *log_header = (struct persistent_ram_buffer *)log_add;
+    bool is_valid_long_press_bootfail_log = true;
+
+    if (unlikely((NULL == log_add) || (0U == log_len)))
+    {
+        BFMR_PRINT_INVALID_PARAMS("pdfx_head_info is NULL or log_len is 0\n");
+        goto __out;
+    }
+
+    total_log_size = BFMR_MIN(log_header->size, LAST_KMSG_SIZE - sizeof(struct persistent_ram_buffer));
+    new_log_size = BFMR_MIN(total_log_size, log_header->start);
+    ptemp = (char *)bfmr_malloc((unsigned long)(total_log_size + 1));
+    if (NULL == ptemp)
+    {
+        BFMR_PRINT_ERR("bfmr_malloc failed!\n");
+        goto __out;
+    }
+    memset((void *)ptemp, 0, (unsigned long)(total_log_size + 1));
+
+    log_add += sizeof(struct persistent_ram_buffer);
+    memcpy(ptemp, log_add + new_log_size, (unsigned long)(total_log_size - new_log_size));
+    memcpy(ptemp + (total_log_size - new_log_size), log_add, (unsigned long)new_log_size);
+    pkey_press_log = bfmr_reverse_find_string(ptemp, BFM_HISI_PWR_KEY_PRESS_KEYWORD);
+    if (NULL != pkey_press_log)
+    {
+        key_press_time = bfm_get_power_key_press_time_in_us(ptemp, pkey_press_log);
+    }
+
+    BFMR_PRINT_KEY_INFO("The long press occurs @%lldms!\n", key_press_time / (BFM_MS_PER_SEC));
+    is_valid_long_press_bootfail_log = (key_press_time <= BFM_BOOT_SUCCESS_TIME_IN_KENREL) ? (false) : (true);
+
+__out:
+    if (NULL != ptemp)
+    {
+        bfmr_free(ptemp);
+    }
+
+    return is_valid_long_press_bootfail_log;
 }
 
 
@@ -877,7 +991,6 @@ static int bfm_save_bootfail_log_to_fs_immediately(
         }
 
         memset((void *)pdfx_log_read_param, 0, sizeof(bfm_dfx_log_read_param_t));
-        
         process_bootfail_param->save_bottom_layer_bootfail_log = save_bottom_layer_bootfail_log;
         process_bootfail_param->bootfail_errno = pbfi_info->bfmErrNo;
         process_bootfail_param->bootfail_time = pbfi_info->rtcValue;
@@ -893,8 +1006,23 @@ static int bfm_save_bootfail_log_to_fs_immediately(
         pdfx_log_read_param->bl2_log_len = pdfx_log_info->fastbootlog_size;
         pdfx_log_read_param->kernel_log_start = (char *)pdfx_log_info + pdfx_log_info->last_kmsg_start_addr;
         pdfx_log_read_param->kernel_log_len = pdfx_log_info->last_kmsg_size;
-        pdfx_log_read_param->applogcat_log_start = (char *)pdfx_log_info + pdfx_log_info->last_applog_start_addr;
-        pdfx_log_read_param->applogcat_log_len = pdfx_log_info->last_applog_size;
+        if (process_bootfail_param && process_bootfail_param->bootfail_errno >= NATIVE_ERRNO_START && pdfx_log_info->last_applog_size < BFM_MAX_U32)
+        {
+            pdfx_log_read_param->applogcat_log_start = (char *)pdfx_log_info + pdfx_log_info->last_applog_start_addr;
+            pdfx_log_read_param->applogcat_log_len = (unsigned int)pdfx_log_info->last_applog_size;
+        }
+        else
+        {
+            pdfx_log_read_param->applogcat_log_start = NULL;
+            pdfx_log_read_param->applogcat_log_len = 0U;
+        }
+        if ((KERNEL_PRESS10S == process_bootfail_param->bootfail_errno)
+            && (!bfm_is_valid_long_press_bootfail_log(pdfx_log_read_param->kernel_log_start,
+            pdfx_log_read_param->kernel_log_len)))
+        {
+            BFMR_PRINT_ERR("Invalid long press log!\n");
+            goto __next;
+        }
         ret = psave_param->capture_and_save_bootfail_log(process_bootfail_param);
         if (0 != ret)
         {
@@ -937,6 +1065,7 @@ int bfm_parse_and_save_bottom_layer_bootfail_log(
 {
     int ret = -1;
     struct dfx_head_info *pdfx_head_info = (struct dfx_head_info *)buf;
+    bool find_valid_log = false;
 
     if (unlikely((NULL == process_bootfail_param) || (NULL == buf)))
     {
@@ -944,29 +1073,17 @@ int bfm_parse_and_save_bottom_layer_bootfail_log(
         return -1;
     }
 
-    /* 1. wait for the log part */
-    BFMR_PRINT_SIMPLE_INFO("============ wait for log part start =============\n");
-    if (0 != bfmr_wait_for_part_mount_with_timeout(bfm_get_bfmr_log_part_mount_point(),
-        BFM_HISI_WAIT_FOR_LOG_PART_TIMEOUT))
-    {
-        BFMR_PRINT_ERR("[%s] is not ready, the boot fail logs can't be saved!\n", bfm_get_bfmr_log_part_mount_point());
-        goto __out;
-    }
-    BFMR_PRINT_SIMPLE_INFO("============ wait for log part end =============\n");
-
+    /* 1. check the validity of source log */
     BFMR_PRINT_KEY_INFO("There is %u bytes bottom layer log to be parsed! its size shoule be: %u\n",
         buf_len, bfm_get_dfx_log_length());
-
-    /* 2. check the validity of source log */
+    down(&s_process_bottom_layer_boot_fail_sem);
     pdfx_head_info = (struct dfx_head_info *)buf;
     if ((DFX_MAGIC_NUMBER == pdfx_head_info->magic)
         && (pdfx_head_info->need_save_number > 0)
         && (pdfx_head_info->need_save_number <= TOTAL_NUMBER))
     {
         BFMR_PRINT_KEY_INFO("There are %d logs need be saved!\n", pdfx_head_info->need_save_number);
-        ret = bfm_save_bootfail_log_to_fs_immediately(process_bootfail_param,
-            &s_bootfail_log_saving_param, pdfx_head_info, 1);
-        BFMR_PRINT_KEY_INFO("Save boot fail log %s!\n", (0 == ret) ? ("successfully") : ("failed"));
+        find_valid_log = true;
     }
     else
     {
@@ -974,6 +1091,24 @@ int bfm_parse_and_save_bottom_layer_bootfail_log(
             "need_save_number:%d, it must be: (0 < need_save_number <= %d), "
             "there is at least one is wrong\n", (unsigned int)pdfx_head_info->magic,
             (unsigned int)DFX_MAGIC_NUMBER, pdfx_head_info->need_save_number, (int)TOTAL_NUMBER);
+    }
+    up(&s_process_bottom_layer_boot_fail_sem);
+
+    if (find_valid_log)
+    {
+        /* 2. wait for the log part */
+        BFMR_PRINT_SIMPLE_INFO("============ wait for log part start =============\n");
+        if (0 != bfmr_wait_for_part_mount_with_timeout(bfm_get_bfmr_log_part_mount_point(),
+            BFM_HISI_WAIT_FOR_LOG_PART_TIMEOUT))
+        {
+            BFMR_PRINT_ERR("[%s] is not ready, the boot fail logs can't be saved!\n", bfm_get_bfmr_log_part_mount_point());
+            goto __out;
+        }
+        BFMR_PRINT_SIMPLE_INFO("============ wait for log part end =============\n");
+
+        ret = bfm_save_bootfail_log_to_fs_immediately(process_bootfail_param,
+            &s_bootfail_log_saving_param, pdfx_head_info, 1);
+        BFMR_PRINT_KEY_INFO("Save boot fail log %s!\n", (0 == ret) ? ("successfully") : ("failed"));
     }
 
 __out:
@@ -1512,6 +1647,7 @@ int bfm_platform_process_boot_success(void)
     }
 
 __out:
+    bfmr_free(pbfi_memeber);
     return ret;
 }
 
@@ -1734,7 +1870,7 @@ static int bfm_get_rtc_time_of_latest_bootail_log_from_dfx_part(u64 *prtc_time)
     }
 
     dfx_header = (struct dfx_head_info *)bfmr_malloc(sizeof(struct dfx_head_info));
-    if (NULL == dfx_full_path)
+    if (NULL == dfx_header)
     {
         BFMR_PRINT_ERR("bfmr_malloc failed!\n");
         goto __out;
@@ -1862,7 +1998,7 @@ unsigned int bfm_get_dfx_log_length(void)
 static void bfm_save_log_to_bfi_part(u32 hisi_modid, bfm_process_bootfail_param_t *param)
 {
     u64 rtc_time_of_latest_log;
-    bfm_bfi_header_info_t *pbfi_header_info;
+    bfm_bfi_header_info_t *pbfi_header_info = NULL;
     bfm_bfi_member_info_t *pbfi_member_info = NULL;
 
     BFMR_PRINT_ENTER();
@@ -1904,8 +2040,8 @@ static void bfm_save_log_to_bfi_part(u32 hisi_modid, bfm_process_bootfail_param_
     memset(pbfi_member_info, 0, sizeof(bfm_bfi_member_info_t));
 
     pbfi_member_info->rtcValue = rtc_time_of_latest_log;
-    pbfi_member_info->bfmErrNo = bfm_get_bootfail_errno_according_to_hisi_modid(hisi_modid);
-    bfm_get_boot_stage((bfmr_detail_boot_stage_e *)&(pbfi_member_info->bfmStageCode));
+    pbfi_member_info->bfmErrNo = (unsigned int)param->bootfail_errno;
+    pbfi_member_info->bfmStageCode = (unsigned int)param->boot_stage;
     pbfi_member_info->isSystemRooted = bfm_is_system_rooted();
     pbfi_member_info->isUserPerceptiable = bfm_is_user_sensible_bootfail(
         pbfi_member_info->bfmErrNo, param->suggested_recovery_method);
@@ -2072,11 +2208,13 @@ static void bfm_release_buffer_saving_dfx_log(void)
 
 static int bfm_read_log_in_dfx_part(void)
 {
+    int i = 0;
     int fd = -1;
     int ret = -1;
     mm_segment_t old_fs = 0;
     long bytes_read = 0L;
     char *dfx_full_path = NULL;
+    bool find_dfx_part = false;
 
     old_fs = get_fs();
     set_fs(KERNEL_DS);
@@ -2087,13 +2225,13 @@ static int bfm_read_log_in_dfx_part(void)
         s_bottom_layer_log_buf = NULL;
     }
 
-    s_bottom_layer_log_buf = (char *)bfmr_malloc(DFX_USED_SIZE);
+    s_bottom_layer_log_buf = (char *)bfmr_malloc((unsigned long)(DFX_USED_SIZE + 1));
     if (NULL == s_bottom_layer_log_buf)
     {
         BFMR_PRINT_ERR("bfmr_malloc failed!\n");
         goto __out;
     }
-    memset((void *)s_bottom_layer_log_buf, 0, DFX_USED_SIZE);
+    memset((void *)s_bottom_layer_log_buf, 0, (unsigned long)(DFX_USED_SIZE + 1));
 
     dfx_full_path = (char *)bfmr_malloc(BFMR_DEV_FULL_PATH_MAX_LEN + 1);
     if (NULL == dfx_full_path)
@@ -2103,17 +2241,20 @@ static int bfm_read_log_in_dfx_part(void)
     }
     memset((void *)dfx_full_path, 0, BFMR_DEV_FULL_PATH_MAX_LEN + 1);
 
-    ret = bfmr_wait_for_part_mount_with_timeout(bfm_get_bfmr_log_part_mount_point(),
-        BFM_HISI_WAIT_FOR_LOG_PART_TIMEOUT);
-    if (0 != ret)
+    while (i++ < (int)BFM_HISI_WAIT_FOR_LOG_PART_TIMEOUT)
     {
-        BFMR_PRINT_ERR("Failed to wait for the log part to be mounted!\n");
-        goto __out;
+        (void)bfmr_get_device_full_path(PART_DFX, dfx_full_path, BFMR_DEV_FULL_PATH_MAX_LEN);
+        if (bfmr_is_file_existed(dfx_full_path))
+        {
+            find_dfx_part = true;
+            break;
+        }
+        msleep(1000);
     }
 
-    if (0 != bfmr_get_device_full_path(PART_DFX, dfx_full_path, BFMR_DEV_FULL_PATH_MAX_LEN))
+    if (!find_dfx_part)
     {
-        BFMR_PRINT_ERR("get full path for device [%s] failed!\n", dfx_full_path);
+        BFMR_PRINT_ERR("Can not find the dfx part!\n");
         goto __out;
     }
 
@@ -2184,6 +2325,42 @@ bool bfmr_is_enabled(void)
 }
 
 
+/***********************************************************************
+ *
+ *if want save log to raw partion, you must implement below funcion.
+ * currently, in bfm_core we can only support one type boot_fail log.
+ *
+ **********************************************************************/
+char* bfm_get_raw_part_name(void)
+{
+    return "unsupport";
+}
+
+
+int bfm_get_raw_part_offset(void)
+{
+    return 0;
+}
+
+
+void bfmr_alloc_and_init_raw_log_info(bfm_process_bootfail_param_t *pparam, bfmr_log_dst_t *pdst)
+{
+    return;
+}
+
+
+void bfmr_save_and_free_raw_log_info(bfm_process_bootfail_param_t *pparam)
+{
+    return;
+}
+
+
+void bfmr_update_raw_log_info(bfmr_log_src_t *psrc, bfmr_log_dst_t *pdst, unsigned int bytes_read)
+{
+    return;
+}
+
+
 int bfm_chipsets_init(bfm_chipsets_init_param_t *param)
 {
     int ret = 0;
@@ -2210,29 +2387,3 @@ int bfm_chipsets_init(bfm_chipsets_init_param_t *param)
     return 0;
 }
 
-/***********************************************************************
- *
- *if want save log to raw partion, you must implement below funcion.
- * currently, in bfm_core we can only support one type boot_fail log.
- *
- **********************************************************************/
-char* bfm_get_raw_part_name(void)
-{
-    return "unsupport";
-}
-int bfm_get_raw_part_offset(void)
-{
-    return 0;
-}
-void bfmr_alloc_and_init_raw_log_info(bfm_process_bootfail_param_t *pparam, bfmr_log_dst_t *pdst)
-{
-    return;
-}
-void bfmr_save_and_free_raw_log_info(bfm_process_bootfail_param_t *pparam)
-{
-    return;
-}
-void bfmr_update_raw_log_info(bfmr_log_src_t *psrc, bfmr_log_dst_t *pdst, unsigned int bytes_read)
-{
-    return;
-}

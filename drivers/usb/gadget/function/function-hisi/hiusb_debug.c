@@ -80,24 +80,23 @@ static const struct file_operations hiusb_debug_charger_fops = {
 };
 
 /* eventmask debugfs interface */
-ssize_t hiusb_do_eventmask_show(void *dev_data, char *buf, size_t len);
-ssize_t hiusb_do_eventmask_store(void *dev_data, const char *buf, size_t size);
+int hiusb_do_eventmask_show(void *dev_data);
+void hiusb_do_eventmask_store(void *dev_data, int eventmask);
 
 /* cat eventmask interface */
 static int hiusb_eventmask_show(struct seq_file *s, void *d)
 {
 	void *usbdev = s->private;
-	char *buf;
-	int alen = 0;
+	int eventmask;
 
-	buf = kzalloc(PAGE_SIZE, GFP_KERNEL);
-	if (!buf)
-		return -ENOMEM;
+	if (!usbdev) {
+		pr_err("platform_get_drvdata return null\n");
+		seq_printf(s, "platform_get_drvdata return null\n");
+		return 0;
+	}
 
-	alen = hiusb_do_eventmask_show(usbdev, buf, PAGE_SIZE);
-	seq_write(s, buf, alen);
-
-	kfree(buf);
+	eventmask = hiusb_do_eventmask_show(usbdev);
+	seq_printf(s, "%d\n", eventmask);
 
 	return 0;
 }
@@ -116,21 +115,19 @@ ssize_t hiusb_debug_eventmask_read(struct file *file, char __user *buf, size_t s
 ssize_t hiusb_debug_eventmask_write(struct file *file, const char __user *buf, size_t size, loff_t *ppos)
 {
 	void *usbdev = ((struct seq_file *)file->private_data)->private;
+	int eventmask;
 
-	if (size >= PAGE_SIZE) {
-		printk(KERN_ERR "set charger type cmd too long!\n");
-		return -ENOMEM;
+	if (!usbdev) {
+		pr_err("platform_get_drvdata return null\n");
+		return -ENODEV;
 	}
 
-	if (copy_from_user(_debug_write_buf, buf, size)) {
-		printk(KERN_ERR "[USB.ERROR] Can't get user data!\n");
-		return -ENOSPC;
+	if (kstrtoint_from_user(buf, size, 0, &eventmask)) {
+		pr_err("get eventmask from user input failed\n");
+		return -EINVAL;
 	}
-	_debug_write_buf[size] = '\0';
 
-	printk(KERN_ERR "[USB.DBGFS]use debug interface change charger type:(%s)\n", _debug_write_buf);
-
-	hiusb_do_eventmask_store(usbdev, _debug_write_buf, size);
+	hiusb_do_eventmask_store(usbdev, eventmask);
 
 	return size;
 }
@@ -149,24 +146,29 @@ static const struct file_operations hiusb_debug_eventmask_fops = {
 };
 
 /* set eye diagram param debugfs interface */
-int hiusb_get_eyepattern_param(void *dev_data, char *buf, size_t len);
-int hiusb_set_eyepattern_param(void *dev_data, const char *buf, size_t size);
+void hiusb_get_eyepattern_param(void *dev_data, unsigned int *eye_diagram_param,
+		unsigned int *eye_diagram_host_param);
+void hiusb_set_eyepattern_param(void *dev_data, unsigned int eye_diagram_param);
 
 /* cat eyepattern interface */
 static int hiusb_eyepattern_param_show(struct seq_file *s, void *d)
 {
 	void *usbdev = s->private;
-	char *buf;
-	int alen = 0;
+	unsigned int eye_diagram_param;
+	unsigned int eye_diagram_host_param;
 
-	buf = kzalloc(PAGE_SIZE, GFP_KERNEL);
-	if (!buf)
-		return -ENOMEM;
+	if (!usbdev) {
+		pr_err("platform_get_drvdata return null\n");
+		seq_printf(s, "platform_get_drvdata return null\n");
+		return 0;
+	}
 
-	alen = hiusb_get_eyepattern_param(usbdev, buf, PAGE_SIZE);
-	seq_write(s, buf, alen);
+	hiusb_get_eyepattern_param(usbdev, &eye_diagram_param,
+			&eye_diagram_host_param);
 
-	kfree(buf);
+	seq_printf(s, "device:0x%x\nhost:0x%x\n",
+			eye_diagram_param, eye_diagram_host_param);
+
 	return 0;
 }
 
@@ -184,21 +186,19 @@ ssize_t hiusb_debug_eyepattern_param_read(struct file *file, char __user *buf, s
 ssize_t hiusb_debug_eyepattern_param_write(struct file *file, const char __user *buf, size_t size, loff_t *ppos)
 {
 	void *usbdev = ((struct seq_file *)file->private_data)->private;
+	unsigned int eye_diagram_param;
 
-	if (size >= PAGE_SIZE) {
-		printk(KERN_ERR "set charger type cmd too long!\n");
-		return -ENOMEM;
+	if (!usbdev) {
+		pr_err("platform_get_drvdata return null\n");
+		return -ENODEV;
 	}
 
-	if (copy_from_user(_debug_write_buf, buf, size)) {
-		printk(KERN_ERR "[USB.ERROR] Can't get user data!\n");
-		return -ENOSPC;
+	if (kstrtouint_from_user(buf, size, 0, &eye_diagram_param)) {
+		pr_err("get eye_diagram_param from string failed!\n");
+		return -EINVAL;
 	}
-	_debug_write_buf[size] = '\0';
 
-	printk(KERN_ERR "[USB.DBGFS]use debug interface change charger type:(%s)\n", _debug_write_buf);
-
-	hiusb_set_eyepattern_param(usbdev, _debug_write_buf, size);
+	hiusb_set_eyepattern_param(usbdev, eye_diagram_param);
 
 	return size;
 }
@@ -246,22 +246,9 @@ ssize_t hiusb_debug_acm_cdev_read(struct file *file, char __user *buf, size_t si
  */
 ssize_t hiusb_debug_acm_cdev_write(struct file *file, const char __user *buf, size_t size, loff_t *ppos)
 {
-	if (size >= PAGE_SIZE) {
-		printk(KERN_ERR "set charger type cmd too long!\n");
-		return -ENOMEM;
-	}
-
-	if (copy_from_user(_debug_write_buf, buf, size)) {
-		printk(KERN_ERR "[USB.ERROR] Can't get user data!\n");
-		return -ENOSPC;
-	}
-	_debug_write_buf[size] = '\0';
-
-	printk(KERN_ERR "[USB.DBGFS]use debug interface change charger type:(%s)\n", _debug_write_buf);
-
-	if (sscanf(buf, "%32d", &g_acm_dump_port) != 1) {
-		g_acm_dump_port = (unsigned int)-1;
-		return size;
+	if (kstrtouint_from_user(buf, size, 0, &g_acm_dump_port)) {
+		pr_err("[%s] set g_acm_dump_port failed\n", __func__);
+		return -EINVAL;
 	}
 
 	return size;

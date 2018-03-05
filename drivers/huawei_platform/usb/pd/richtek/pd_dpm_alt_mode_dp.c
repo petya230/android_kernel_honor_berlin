@@ -21,7 +21,10 @@
 #include <huawei_platform/usb/pd/richtek/pd_dpm_core.h>
 #include <huawei_platform/usb/pd/richtek/rt1711h.h>
 #include "pd_dpm_prv.h"
+
+#ifdef CONFIG_HUAWEI_DSM
 #include <dsm/dsm_pub.h>
+#endif
 
 #ifdef CONFIG_USB_POWER_DELIVERY
 #ifdef CONFIG_USB_PD_ALT_MODE
@@ -155,7 +158,10 @@ int dp_dfp_u_notify_pe_ready(
 	DPM_DBG("dp_dfp_u_notify_pe_ready\r\n");
 	if(pd_port->data_role != PD_ROLE_DFP) {
 		snprintf(buf, sizeof(buf), "the data_role %d is not %d\n", pd_port->data_role, PD_ROLE_DFP);
+
+#ifdef CONFIG_HUAWEI_DSM
 		rt_dsm_report(ERROR_RT_DATA_ROLE_ISNOT_PD_ROLE_DFP, buf);
+#endif
 	}
 	if (pd_port->dp_dfp_u_state != DP_DFP_U_DISCOVER_MODES)
 		return 0;
@@ -534,14 +540,14 @@ static inline bool dp_dfp_u_select_pin_mode(pd_port_t *pd_port)
 	}
 
 	/* Priority */
-	if (pin_caps & MODE_DP_PIN_D)
-		pin_caps = MODE_DP_PIN_D;
-	else if (pin_caps & MODE_DP_PIN_F)
-		pin_caps = MODE_DP_PIN_F;
-	else if (pin_caps & MODE_DP_PIN_C)
+	if (pin_caps & MODE_DP_PIN_C)
 		pin_caps = MODE_DP_PIN_C;
+	else if (pin_caps & MODE_DP_PIN_D)
+		pin_caps = MODE_DP_PIN_D;
 	else if (pin_caps & MODE_DP_PIN_E)
 		pin_caps = MODE_DP_PIN_E;
+	else if (pin_caps & MODE_DP_PIN_F)
+		pin_caps = MODE_DP_PIN_F;
 
 	if (dp_local_connected == DPSTS_DFP_D_CONNECTED) {
 		pd_port->local_dp_config = VDO_DP_DFP_CFG(pin_caps, signal);
@@ -782,7 +788,10 @@ int dp_ufp_u_request_dp_status(pd_port_t *pd_port, pd_event_t *pd_event)
 
 	if(pd_event->pd_msg == NULL) {
 		snprintf(buf, sizeof(buf), "the pd_msg is NULL\n");
+
+#ifdef CONFIG_HUAWEI_DSM
 		rt_dsm_report(ERROR_RT_PD_MSG_NULL, buf);
+#endif
 	}
 	dp_status = pd_event->pd_msg->payload[1];
 
@@ -857,7 +866,10 @@ int dp_ufp_u_request_dp_config(pd_port_t *pd_port, pd_event_t *pd_event)
 
 	if(pd_event->pd_msg == NULL) {
 		snprintf(buf, sizeof(buf), "the pd_msg is NULL\n");
+
+#ifdef CONFIG_HUAWEI_DSM
 		rt_dsm_report(ERROR_RT_PD_MSG_NULL, buf);
+#endif
 	}
 	dp_config = pd_event->pd_msg->payload[1];
 
@@ -893,7 +905,10 @@ void dp_ufp_u_send_dp_attention(pd_port_t *pd_port, pd_event_t *pd_event)
 				pd_port, USB_SID_DISPLAYPORT);
 		if(svid_data == NULL) {
 			snprintf(buf, sizeof(buf), "the svid_data is NULL\n");
+
+#ifdef CONFIG_HUAWEI_DSM
 			rt_dsm_report(ERROR_RT_SVID_DATA_NULL, buf);
+#endif
 		}
 		pd_send_vdm_dp_attention(pd_port, TCPC_TX_SOP,
 			svid_data->active_mode, pd_port->dp_status);

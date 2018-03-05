@@ -33,6 +33,10 @@
 #include <hw_country_code.h>
 #endif /* HW_WIFI_DRIVER_NORMALIZE */
 
+#ifdef CONFIG_HW_ABS
+bool g_abs_enabled = false;
+#endif /* CONFIG_HW_ABS */
+
 #ifdef HW_WIFI_WAKEUP_SRC_PARSE
 #define MAX_MSG_LENGTH 30
 volatile bool g_wifi_firstwake = FALSE;
@@ -290,6 +294,10 @@ void hw_dhd_check_and_disable_timestamps(void)
 ***************************************************************************/
 static void wlan_send_nl_event(struct net_device *net_dev,  u16 port)
 {
+/* Because selinux permission problem ,this function is not used
+** And send uevent can cause panic problem in VV product 
+**/
+#ifdef HW_WIFI_WAKEUP_SRC_SEND_UEVENT
 	struct device* dev = NULL;
 	char *uevent[2];
 	char msg[MAX_MSG_LENGTH];
@@ -301,7 +309,7 @@ static void wlan_send_nl_event(struct net_device *net_dev,  u16 port)
 	uevent[0] = msg;
 	uevent[1] = NULL;
 	kobject_uevent_env(&(dev->kobj), KOBJ_CHANGE, (char**)&uevent);
-
+#endif
 	return;
 }
 
@@ -853,9 +861,12 @@ int dhd_wlanfty_ver(void)
 	char buf[WLC_IOCTL_SMLEN] = {0};
 
 	if( NULL != dhd_wlanfty) {
-
+#ifndef	HW_PCIE_STABILITY
 		if (dhd_wlanfty->busstate == DHD_BUS_DOWN)	{
-			DHD_ERROR(("%s: bus is down\n", __FUNCTION__));
+#else
+		if (dhd_wlanfty->busstate == DHD_BUS_DOWN || dhd_wlanfty->up == 0) {
+#endif
+			DHD_ERROR(("%s: bus is down or wifi is closed\n", __FUNCTION__));
 			return -1;
 		}
 
@@ -1349,6 +1360,188 @@ int hw_iovar_int_set(dhd_pub_t *dhd_pub, char *name, int value)
 	error = dhd_wl_ioctl_cmd(dhd_pub, WLC_SET_VAR, (void *)&var, len, TRUE, 0);
 
 	return (error);
+}
+#endif
+
+#ifdef HW_REG_RECOVERY
+
+#define MIN_REG_RECOVERY_CYCLE (5 * 60 * 1000)
+#define MIN_REG_BLOCK_TIME (10 * 1000)
+#define MIN_RECOVERY_TO_PANIC (3)
+#define WLAN_REBOOT_REASON_LEN 24
+static u32 is_reboot_panic = 0;
+static unsigned int g_reg_recovery_cnt = 0;
+static unsigned long g_last_recovery3 = 0;
+static unsigned long g_last_recovery2 = 0;
+static unsigned long g_last_recovery1 = 0;
+
+void hw_record_reg_recovery() {
+    unsigned long now = jiffies;
+    g_last_recovery3 = g_last_recovery2;
+    g_last_recovery2 = g_last_recovery1;
+    g_last_recovery1 = now;
+    g_reg_recovery_cnt++;
+    HW_PRINT_HI("%s 1:%lu 2:%lu 3:%lu\n", __func__, g_last_recovery3, g_last_recovery2, g_last_recovery1);
+}
+
+int hw_need_reg_recovery(unsigned long request_stamp) {
+    unsigned long now = jiffies;
+    if (now > (msecs_to_jiffies(MIN_REG_BLOCK_TIME) + request_stamp)) {
+        return 1;
+    } else {
+        return 0;
+    }
+}
+
+int hw_need_reg_panic() {
+    unsigned long now = jiffies;
+    if (!is_reboot_panic && g_reg_recovery_cnt >= MIN_RECOVERY_TO_PANIC &&
+            (now < g_last_recovery3 + msecs_to_jiffies(MIN_REG_RECOVERY_CYCLE))) {
+        return 1;
+    }
+    return 0;
+}
+
+static int __init wlan_parse_reboot_reason_cmdline(char *reboot_reason_cmdline) {
+        char reboot_reason[WLAN_REBOOT_REASON_LEN] = "undef";
+        HW_PRINT_HI("[%s]\n", __func__);
+        memset(reboot_reason, 0x0, WLAN_REBOOT_REASON_LEN);
+        memcpy(reboot_reason, reboot_reason_cmdline, WLAN_REBOOT_REASON_LEN);
+        if (strcmp(reboot_reason, "AP_S_PANIC") == 0) {
+            is_reboot_panic = 1;
+        }
+        HW_PRINT_HI("[%s][%s][%u]\n", __func__, reboot_reason, is_reboot_panic);
+        return 0;
+}
+
+early_param("reboot_reason", wlan_parse_reboot_reason_cmdline);
+
+#endif
+
+#if defined(HW_WIFI_DMD_LOG)
+#define DMD_TRACE_BUF_SIZE (384)
+static int dmd_cmd52_count = 0;
+static int dmd_cmd53_count = 0;
+static char dmd_trace_buf[DMD_TRACE_BUF_SIZE];
+
+void hw_dmd_set_dhd_state(int state) {
+    if (DMD_DHD_STATE_OPEN == state) {
+        dmd_cmd52_count = 0;
+        dmd_cmd53_count = 0;
+        HW_PRINT_HI("dmd_set_dhd_state: DMD_DHD_STATE_OPEN\n");
+    } else if (DMD_DHD_STATE_STOP == state) {
+        dmd_cmd52_count = DMD_SDIO_CMD52_MAX_CNT;
+        dmd_cmd53_count = DMD_SDIO_CMD52_MAX_CNT;
+        HW_PRINT_HI("dmd_set_dhd_state: DMD_DHD_STATE_STOP\n");
+    } else {
+        HW_PRINT_HI("dmd_set_dhd_state unknown state: %d\n", state);
+    }
+}
+
+/* limit count of DMD log(sdio52 and cmd53),
+ * allow count(DMD_SDIO_CMD52_MAX_CNT) of log in one session, dont report log when DHD stopped
+ * return value: 1 allow report, 0 not report
+ */
+int hw_dmd_trigger_sdio_cmd(int dsm_id) {
+    int current_count = DMD_SDIO_CMD52_MAX_CNT;
+
+    if (DSM_WIFI_CMD52_ERROR == dsm_id) {
+        current_count = dmd_cmd52_count;
+    } else if (DSM_WIFI_CMD53_ERROR == dsm_id) {
+        current_count = dmd_cmd53_count;
+    } else {
+        current_count = DMD_SDIO_CMD52_MAX_CNT;
+    }
+
+    return ((current_count < DMD_SDIO_CMD52_MAX_CNT) ? 1: 0);
+}
+
+void hw_dmd_increase_count(int dsm_id) {
+    if (DSM_WIFI_CMD52_ERROR == dsm_id) {
+        dmd_cmd52_count += 1;
+    } else if (DSM_WIFI_CMD53_ERROR == dsm_id) {
+        dmd_cmd53_count += 1;
+    } else {
+        HW_PRINT_HI("hw_dmd_increase_count unknown id: %d\n", dsm_id);
+    }
+}
+
+char* hw_dmd_get_trace_log(void) {
+    return dmd_trace_buf;
+}
+
+void hw_dmd_trace_log(const char *fmt, ...) {
+    va_list ap;
+    memset(dmd_trace_buf, 0, DMD_TRACE_BUF_SIZE);
+
+    va_start(ap, fmt);
+    if(fmt) {
+        vsnprintf(dmd_trace_buf, DMD_TRACE_BUF_SIZE, fmt, ap);
+    }
+    va_end(ap);
+    HW_PRINT_HI("dhd trace log: %s \n", dmd_trace_buf);
+}
+
+#endif
+#ifdef HW_AP_POWERSAVE
+static int ap_early_suspend;
+void hw_suspend_work_handler(struct work_struct *work) {
+    int enable = 0;
+    dhd_pub_t *dhdp;
+
+    dhdp = container_of(work, dhd_pub_t, ap_suspend_work);
+    if(dhdp) {
+        if (ap_early_suspend) {
+            enable = 1;
+            dhd_iovar(dhdp, 0, "radio_pwrsave_enable", (char*)&enable, sizeof(enable), NULL, 0, TRUE);
+            HW_PRINT_HI("early suspend enter\n");
+        } else {
+            enable = 0;
+            dhd_iovar(dhdp, 0, "radio_pwrsave_enable", (char*)&enable, sizeof(enable), NULL, 0, TRUE);
+            HW_PRINT_HI("later resume enter\n");
+        }
+    }
+}
+
+int hw_dhd_fb_notify(int blank, unsigned long action, dhd_pub_t *pub) {
+    switch(blank){
+    case FB_BLANK_UNBLANK:
+        /*resume device*/
+        switch(action) {
+        case FB_EARLY_EVENT_BLANK:
+            ap_early_suspend = 0;
+            if (pub->up && pub->op_mode & DHD_FLAG_HOSTAP_MODE) {
+                schedule_work(&pub->ap_suspend_work);
+            }
+            break;
+        case FB_EVENT_BLANK:
+            break;
+        default:
+            break;
+        }
+        break;
+    case FB_BLANK_VSYNC_SUSPEND:
+    case FB_BLANK_HSYNC_SUSPEND:
+    case FB_BLANK_NORMAL:
+    case FB_BLANK_POWERDOWN:
+    default:
+        /*suspend device*/
+        switch(action) {
+        case FB_EARLY_EVENT_BLANK:
+            ap_early_suspend = 1;
+            if (pub->up && pub->op_mode & DHD_FLAG_HOSTAP_MODE) {
+                schedule_work(&pub->ap_suspend_work);
+            }
+            break;
+        case FB_EVENT_BLANK:
+            break;
+        default:
+            break;
+        }
+        break;
+    }
+
+    return NOTIFY_OK;
 }
 #endif
 ////end of file

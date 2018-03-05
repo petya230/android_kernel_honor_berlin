@@ -11,6 +11,7 @@
 #include "hwsensor.h"
 #include "sensor_commom.h"
 #include "hw_csi.h"
+//lint -save -e650 -e31
 
 #define I2S(i) container_of(i, sensor_t, intf)
 
@@ -244,7 +245,7 @@ int imx298_csi_enable(hwsensor_intf_t* si)
 
     sensor = I2S(si);
 
-    ret = hw_csi_pad.hw_csi_enable(0, sensor->board_info->csi_lane, sensor->board_info->csi_mipi_clk);//by hefei
+    ret = hw_csi_pad.hw_csi_enable((csi_index_t)0, sensor->board_info->csi_lane, sensor->board_info->csi_mipi_clk);//by hefei
     if(ret)
     {
         cam_err("failed to csi enable index 0 ");
@@ -261,7 +262,7 @@ int imx298_csi_disable(hwsensor_intf_t* si)
 
     sensor = I2S(si);
 
-    ret = hw_csi_pad.hw_csi_disable(0);//by hefei
+    ret = hw_csi_pad.hw_csi_disable((csi_index_t)0);//by hefei
     if(ret)
     {
         cam_err("failed to csi disable index 0 ");
@@ -505,3 +506,5 @@ module_init(imx298_init_module);
 module_exit(imx298_exit_module);
 MODULE_DESCRIPTION("imx298");
 MODULE_LICENSE("GPL v2");
+//lint -restore
+

@@ -241,7 +241,7 @@ hw_laser_subdev_ioctl(
 	}
 
 	s = SD2Laser(sd);
-	cam_info("hw laser cmd = %x",cmd);
+	cam_dbg("hw laser cmd = %x",cmd);
 
 	switch (cmd)
 	{

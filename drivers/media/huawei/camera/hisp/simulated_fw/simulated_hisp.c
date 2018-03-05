@@ -16,6 +16,8 @@
 #include <media/huawei/camera.h>
 #ifdef HISP_V150
 #include <media/huawei/hisp150_cfg.h>
+#elif defined HISP_V160
+#include <media/huawei/hisp160_cfg.h>
 #else
 #include <media/huawei/hisp_cfg.h>
 #endif
@@ -281,6 +283,10 @@ static Simulated_hisp_t s_Simulated_hisp = {
 #else
 #ifdef HISP_V150
 	.name = "hisp150",
+	#else
+#ifdef HISP_V160
+	.name = "hisp160",
+#endif
 #endif
 #endif
 #endif
@@ -1229,6 +1235,10 @@ static const struct of_device_id s_Simulated_hisp_dt_match[] = {
 #else
 #ifdef HISP_V150
 	 .compatible = "huawei,hisi_isp150",
+#else
+#ifdef HISP_V160
+	 .compatible = "huawei,hisi_isp160",
+#endif
 #endif
 #endif
 #endif
@@ -1318,6 +1328,10 @@ static struct platform_driver s_Simulated_hisp_driver = {
 #else
 #ifdef HISP_V150
 		   .name = "huawei,hisi_isp150",
+#else
+#ifdef HISP_V160
+		   .name = "huawei,hisi_isp160",
+#endif
 #endif
 #endif
 #endif

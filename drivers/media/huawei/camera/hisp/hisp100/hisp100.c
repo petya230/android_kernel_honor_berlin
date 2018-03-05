@@ -509,7 +509,7 @@ static int hisp100_dependent_clock_disable(hisp100_t *hi)
 static int hisp100_power_on(hisp_intf_t *i)
 {
 	int rc = 0;
-	bool rproc_enable = false;
+	bool rproc_enabled = false;
 	bool hi_opened = false;
 	bool clock_enable = false;
 	hisp100_t *hi = NULL;
@@ -550,7 +550,7 @@ static int hisp100_power_on(hisp_intf_t *i)
 			HiLOGE(HILOG_CAMERA_MODULE_NAME, HILOG_CAMERA_SUBMODULE_NAME, "Failed: hisi_isp_rproc_enable.%d!\n", rc);
 			goto FAILED_RET;
 		}
-		rproc_enable = true;
+		rproc_enabled = true;
 
 		rc  = wait_for_completion_timeout(&channel_sync, msecs_to_jiffies(15000));
 		if (0 == rc ) {
@@ -602,7 +602,7 @@ FAILED_RET:
 		atomic_dec(&hi->opened);
 	}
 
-	if (rproc_enable) {
+	if (rproc_enabled) {
 		hisi_isp_rproc_disable();
         rproc_set_sync_flag(true);
 	}
@@ -1055,6 +1055,8 @@ static const struct of_device_id s_hisp100_dt_match[] = {
 MODULE_DEVICE_TABLE(of, s_hisp100_dt_match);
 
 static struct rpmsg_driver rpmsg_hisp100_driver = {
+	.drv.name   = KBUILD_MODNAME, //lint !e64 !e485
+	.drv.owner  = THIS_MODULE, //lint !e64 !e485
 	.id_table = rpmsg_hisp100_id_table,
 	.probe = hisp100_rpmsg_probe,
 	.callback = hisp100_rpmsg_driver_cb,

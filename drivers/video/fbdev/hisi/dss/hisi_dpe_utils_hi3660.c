@@ -1100,6 +1100,7 @@ void init_dbuf(struct hisi_fb_data_type *hisifd)
 	thd_cg_out = (dfs_time * pinfo->pxl_clk_rate * pinfo->xres) /
 		(((pinfo->ldi.h_pulse_width + pinfo->ldi.h_back_porch + pinfo->ldi.h_front_porch) * pinfo->pxl_clk_rate_div
 		+ pinfo->xres) * 6 * 1000000UL);
+
 	sram_valid_num = thd_cg_out / depth;
 	thd_cg_in = (sram_valid_num + 1) * depth - 1;
 
@@ -1110,7 +1111,7 @@ void init_dbuf(struct hisi_fb_data_type *hisifd)
 	thd_flux_req_befdfs_in = GET_FLUX_REQ_IN(sram_max_mem_depth);
 	thd_flux_req_befdfs_out = GET_FLUX_REQ_OUT(sram_max_mem_depth);
 
-	sram_min_support_depth = dfs_time_min * pinfo->xres * pinfo->pxl_clk_rate_div / (1000000 / 60 / (pinfo->yres +
+	sram_min_support_depth = dfs_time_min * pinfo->xres / (1000000 / 60 / (pinfo->yres +
 		pinfo->ldi.v_back_porch + pinfo->ldi.v_front_porch + pinfo->ldi.v_pulse_width) * (DBUF_WIDTH_BIT / 3 / BITS_PER_BYTE));
 
 	//thd_flux_req_aftdfs_in   =[(sram_valid_num+1)*depth - 50*HSIZE/((1000000/60/(VSIZE+VFP+VBP+VSW))*6)]/3
@@ -1770,6 +1771,7 @@ inline void acm_set_lut_hue(char __iomem *address, uint32_t table[], uint32_t si
 	}
 }
 
+/*lint -e838*/
 void init_acm(struct hisi_fb_data_type *hisifd)
 {
 	char __iomem *acm_base = NULL;
@@ -1912,6 +1914,34 @@ void init_acm(struct hisi_fb_data_type *hisifd)
 	set_reg(acm_base + ACM_LUT_SEL, (~lut_sel) & 0x3FF, 10, 0);
 	set_reg(acm_base + ACM_EN, 0x1, 1, 0);
 	g_acm_State = 1;
+	//acm reg dimming init
+	hisi_effect_color_dimming_acm_reg_init(hisifd);
+}
+
+inline void xcc_set_coef(char __iomem *base_addr, struct hisi_panel_info *pinfo,
+    uint32_t rectify_R, uint32_t rectify_G, uint32_t rectify_B)
+{
+	if (pinfo == NULL) {
+		HISI_FB_ERR("xcc_set_coef pinfo is NULL!\n");
+		return;
+	}
+
+	outp32(base_addr + LCP_XCC_COEF_00, pinfo->xcc_table[0]);
+	outp32(base_addr + LCP_XCC_COEF_01, pinfo->xcc_table[1]
+	    * g_led_rg_csc_value[0] / 32768 * rectify_R / 32768);
+	outp32(base_addr + LCP_XCC_COEF_02, pinfo->xcc_table[2]);
+	outp32(base_addr + LCP_XCC_COEF_03, pinfo->xcc_table[3]);
+	outp32(base_addr + LCP_XCC_COEF_10, pinfo->xcc_table[4]);
+	outp32(base_addr + LCP_XCC_COEF_11, pinfo->xcc_table[5]);
+	outp32(base_addr + LCP_XCC_COEF_12, pinfo->xcc_table[6]
+	    * g_led_rg_csc_value[4] / 32768 * rectify_G / 32768);
+	outp32(base_addr + LCP_XCC_COEF_13, pinfo->xcc_table[7]);
+	outp32(base_addr + LCP_XCC_COEF_20, pinfo->xcc_table[8]);
+	outp32(base_addr + LCP_XCC_COEF_21, pinfo->xcc_table[9]);
+	outp32(base_addr + LCP_XCC_COEF_22, pinfo->xcc_table[10]);
+	outp32(base_addr + LCP_XCC_COEF_23, pinfo->xcc_table[11]
+	    * g_led_rg_csc_value[8] / 32768 * DISCOUNT_COEFFICIENT(g_comform_value)
+	    * rectify_B / 32768);
 }
 
 void init_igm_gmp_xcc_gm(struct hisi_fb_data_type *hisifd)
@@ -1990,23 +2020,7 @@ void init_igm_gmp_xcc_gm(struct hisi_fb_data_type *hisifd)
 	if (pinfo->xcc_support == 1) {
 		// XCC matrix
 		if (pinfo->xcc_table_len > 0 && pinfo->xcc_table) {
-			outp32(lcp_base + LCP_XCC_COEF_00, pinfo->xcc_table[0]);
-			outp32(lcp_base + LCP_XCC_COEF_01, pinfo->xcc_table[1]
-				* g_led_rg_csc_value[0] / 32768 * color_temp_rectify_R / 32768);
-			outp32(lcp_base + LCP_XCC_COEF_02, pinfo->xcc_table[2]);
-			outp32(lcp_base + LCP_XCC_COEF_03, pinfo->xcc_table[3]);
-			outp32(lcp_base + LCP_XCC_COEF_10, pinfo->xcc_table[4]);
-			outp32(lcp_base + LCP_XCC_COEF_11, pinfo->xcc_table[5]);
-			outp32(lcp_base + LCP_XCC_COEF_12, pinfo->xcc_table[6]
-				* g_led_rg_csc_value[4] / 32768 * color_temp_rectify_G / 32768);
-			outp32(lcp_base + LCP_XCC_COEF_13, pinfo->xcc_table[7]);
-			outp32(lcp_base + LCP_XCC_COEF_20, pinfo->xcc_table[8]);
-			outp32(lcp_base + LCP_XCC_COEF_21, pinfo->xcc_table[9]);
-			outp32(lcp_base + LCP_XCC_COEF_22, pinfo->xcc_table[10]);
-			outp32(lcp_base + LCP_XCC_COEF_23, pinfo->xcc_table[11]
-				* g_led_rg_csc_value[8] / 32768 * DISCOUNT_COEFFICIENT(g_comform_value)
-				* color_temp_rectify_B / 32768);
-
+			xcc_set_coef(lcp_base, pinfo, color_temp_rectify_R, color_temp_rectify_G, color_temp_rectify_B);
 			//enable xcc
 			set_reg(lcp_base + LCP_XCC_BYPASS_EN, 0x0, 1, 0);
 		}
@@ -2171,22 +2185,7 @@ int dpe_set_ct_cscValue(struct hisi_fb_data_type *hisifd)
 	if (pinfo->xcc_support == 1) {
 		// XCC matrix
 		if (pinfo->xcc_table_len > 0 && pinfo->xcc_table) {
-			outp32(lcp_base + LCP_XCC_COEF_00, pinfo->xcc_table[0]);
-			outp32(lcp_base + LCP_XCC_COEF_01, pinfo->xcc_table[1]
-				* g_led_rg_csc_value[0] / 32768 * color_temp_rectify_R / 32768);
-			outp32(lcp_base + LCP_XCC_COEF_02, pinfo->xcc_table[2]);
-			outp32(lcp_base + LCP_XCC_COEF_03, pinfo->xcc_table[3]);
-			outp32(lcp_base + LCP_XCC_COEF_10, pinfo->xcc_table[4]);
-			outp32(lcp_base + LCP_XCC_COEF_11, pinfo->xcc_table[5]);
-			outp32(lcp_base + LCP_XCC_COEF_12, pinfo->xcc_table[6]
-				* g_led_rg_csc_value[4] / 32768 * color_temp_rectify_G / 32768);
-			outp32(lcp_base + LCP_XCC_COEF_13, pinfo->xcc_table[7]);
-			outp32(lcp_base + LCP_XCC_COEF_20, pinfo->xcc_table[8]);
-			outp32(lcp_base + LCP_XCC_COEF_21, pinfo->xcc_table[9]);
-			outp32(lcp_base + LCP_XCC_COEF_22, pinfo->xcc_table[10]);
-			outp32(lcp_base + LCP_XCC_COEF_23, pinfo->xcc_table[11]
-				* g_led_rg_csc_value[8] / 32768 * DISCOUNT_COEFFICIENT(g_comform_value)
-				* color_temp_rectify_B / 32768);
+			xcc_set_coef(lcp_base, pinfo, color_temp_rectify_R, color_temp_rectify_G, color_temp_rectify_B);
 			hisifd->color_temperature_flag = 2;
 		}
 	}
@@ -2215,24 +2214,24 @@ int dpe_set_xcc_cscValue(struct hisi_fb_data_type *hisifd)
 {
 	return 0;
 }
-
+/*lint -e550*/
 int dpe_set_comform_ct_cscValue(struct hisi_fb_data_type *hisifd)
 {
 	struct hisi_panel_info *pinfo = NULL;
-	char __iomem *lcp_base = NULL;
 	uint32_t color_temp_rectify_R = 32768, color_temp_rectify_G = 32768, color_temp_rectify_B = 32768;
+	char __iomem *lcp_base = NULL;
 
 	BUG_ON(hisifd == NULL);
 	pinfo = &(hisifd->panel_info);
 
-	if (hisifd->index == PRIMARY_PANEL_IDX) {
-		lcp_base = hisifd->dss_base + DSS_DPP_LCP_OFFSET;
-	} else {
+	if (hisifd->index != PRIMARY_PANEL_IDX) {
 		HISI_FB_ERR("fb%d, not support!", hisifd->index);
 		return -1;
 	}
 
-	if (pinfo->color_temp_rectify_support && pinfo->color_temp_rectify_R && pinfo->color_temp_rectify_R <= 32768) {
+	lcp_base = hisifd->dss_base + DSS_DPP_LCP_OFFSET;
+
+	if (pinfo->color_temp_rectify_support && pinfo->color_temp_rectify_R <= 32768 && pinfo->color_temp_rectify_R) {
 		color_temp_rectify_R = pinfo->color_temp_rectify_R;
 	}
 
@@ -2240,7 +2239,7 @@ int dpe_set_comform_ct_cscValue(struct hisi_fb_data_type *hisifd)
 		color_temp_rectify_G = pinfo->color_temp_rectify_G;
 	}
 
-	if (pinfo->color_temp_rectify_support && pinfo->color_temp_rectify_B && pinfo->color_temp_rectify_B <= 32768) {
+	if (pinfo->color_temp_rectify_support && pinfo->color_temp_rectify_B <= 32768 && pinfo->color_temp_rectify_B) {
 		color_temp_rectify_B = pinfo->color_temp_rectify_B;
 	}
 
@@ -2248,28 +2247,13 @@ int dpe_set_comform_ct_cscValue(struct hisi_fb_data_type *hisifd)
 	if (pinfo->xcc_support == 1) {
 		// XCC matrix
 		if (pinfo->xcc_table_len > 0 && pinfo->xcc_table) {
-			outp32(lcp_base + LCP_XCC_COEF_00, pinfo->xcc_table[0]);
-			outp32(lcp_base + LCP_XCC_COEF_01, pinfo->xcc_table[1]
-				* g_led_rg_csc_value[0] / 32768 * color_temp_rectify_R / 32768);
-			outp32(lcp_base + LCP_XCC_COEF_02, pinfo->xcc_table[2]);
-			outp32(lcp_base + LCP_XCC_COEF_03, pinfo->xcc_table[3]);
-			outp32(lcp_base + LCP_XCC_COEF_10, pinfo->xcc_table[4]);
-			outp32(lcp_base + LCP_XCC_COEF_11, pinfo->xcc_table[5]);
-			outp32(lcp_base + LCP_XCC_COEF_12, pinfo->xcc_table[6]
-				* g_led_rg_csc_value[4] / 32768 * color_temp_rectify_G / 32768);
-			outp32(lcp_base + LCP_XCC_COEF_13, pinfo->xcc_table[7]);
-			outp32(lcp_base + LCP_XCC_COEF_20, pinfo->xcc_table[8]);
-			outp32(lcp_base + LCP_XCC_COEF_21, pinfo->xcc_table[9]);
-			outp32(lcp_base + LCP_XCC_COEF_22, pinfo->xcc_table[10]);
-			outp32(lcp_base + LCP_XCC_COEF_23, pinfo->xcc_table[11]
-				* g_led_rg_csc_value[8] / 32768 * DISCOUNT_COEFFICIENT(g_comform_value)
-				* color_temp_rectify_B / 32768);
+			xcc_set_coef(lcp_base, pinfo, color_temp_rectify_R, color_temp_rectify_G, color_temp_rectify_B);
 		}
 	}
 
 	return 0;
 }
-
+/*lint +e550*/
 ssize_t dpe_show_comform_ct_cscValue(struct hisi_fb_data_type *hisifd, char *buf)
 {
 	struct hisi_panel_info *pinfo = NULL;
@@ -2323,7 +2307,9 @@ int dpe_set_led_rg_ct_cscValue(struct hisi_fb_data_type *hisifd)
 {
 	struct hisi_panel_info *pinfo = NULL;
 	char __iomem *lcp_base = NULL;
-	uint32_t color_temp_rectify_R = 32768, color_temp_rectify_G = 32768, color_temp_rectify_B = 32768;
+	uint32_t color_temp_rectify_R = 32768;
+	uint32_t color_temp_rectify_G = 32768;
+	uint32_t color_temp_rectify_B = 32768;
 
 	BUG_ON(hisifd == NULL);
 	pinfo = &(hisifd->panel_info);
@@ -2335,7 +2321,7 @@ int dpe_set_led_rg_ct_cscValue(struct hisi_fb_data_type *hisifd)
 		return -1;
 	}
 
-	if (pinfo->color_temp_rectify_support && pinfo->color_temp_rectify_R && pinfo->color_temp_rectify_R <= 32768) {
+	if (pinfo->color_temp_rectify_R && pinfo->color_temp_rectify_support && pinfo->color_temp_rectify_R <= 32768) {
 		color_temp_rectify_R = pinfo->color_temp_rectify_R;
 	}
 
@@ -2343,7 +2329,7 @@ int dpe_set_led_rg_ct_cscValue(struct hisi_fb_data_type *hisifd)
 		color_temp_rectify_G = pinfo->color_temp_rectify_G;
 	}
 
-	if (pinfo->color_temp_rectify_support && pinfo->color_temp_rectify_B && pinfo->color_temp_rectify_B <= 32768) {
+	if (pinfo->color_temp_rectify_B && pinfo->color_temp_rectify_support && pinfo->color_temp_rectify_B <= 32768) {
 		color_temp_rectify_B = pinfo->color_temp_rectify_B;
 	}
 
@@ -2452,3 +2438,24 @@ ssize_t dpe_show_gmp_state(char *buf)
 
 	return ret;
 }
+/*lint -e838*/
+void dpe_sbl_set_al_bl(struct hisi_fb_data_type *hisifd)
+{
+	char __iomem *sbl_base;
+
+	if (hisifd == NULL) {
+		HISI_FB_ERR("hisifd, NUll pointer warning.\n");
+		return;
+	}
+
+	sbl_base = hisifd->dss_base + DSS_DPP_SBL_OFFSET;
+
+	set_reg(sbl_base + SBL_REG_CALC_BACKLIGHT_7_TO_0, (uint32_t)hisifd->sbl.sbl_backlight_l, 8, 0);
+	set_reg(sbl_base + SBL_REG_CALC_BACKLIGHT_15_TO_8, (uint32_t)hisifd->sbl.sbl_backlight_h, 8, 0);
+	set_reg(sbl_base + SBL_REG_CALC_AMBIENT_LIGHT_7_TO_0, (uint32_t)hisifd->sbl.sbl_ambient_light_l, 8, 0);
+	set_reg(sbl_base + SBL_REG_CALC_AMBIENT_LIGHT_15_TO_8, (uint32_t)hisifd->sbl.sbl_ambient_light_h, 8, 0);
+
+	return;
+}
+/*lint +e838*/
+

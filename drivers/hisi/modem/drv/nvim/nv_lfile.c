@@ -143,7 +143,7 @@ s32 nv_lfile_ftell(FILE* fp)
     ret = sys_llseek(fp, 0, 0, &seek, SEEK_CUR);
     if(ret)
     {
-        printf("sys_llseek error 0x%x\n",ret);
+        nv_printf("sys_llseek error 0x%x\n",ret);
         return NV_ERROR;
     }
 

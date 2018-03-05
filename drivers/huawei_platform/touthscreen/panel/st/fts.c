@@ -873,6 +873,7 @@ static void st_power_off(struct ts_device_data *chip_data)
 	st_regulator_disable(chip_data);
 }
 
+// add Power Cycle function  2015/11/3 20:06
 void st_chip_powercycle(struct fts_ts_info *info)
 {
 	st_regulator_disable(info->dev_data);

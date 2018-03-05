@@ -408,6 +408,27 @@ static struct of_device_id of_hisi_regulator_match_tbl[] = {
 extern void get_current_regulator_dev(struct seq_file *s);
 extern void set_regulator_state(char *ldo_name, int value);
 extern void get_regulator_state(char *ldo_name);
+extern int set_regulator_voltage(char *ldo_name, unsigned int vol_value);
+
+u32 pmu_atoi(char *s)
+{
+	char *p = s;
+	char c;
+	u64 ret = 0;
+	if (s == NULL)
+		return 0;
+	while ((c = *p++) != '\0') {
+		if ('0' <= c && c <= '9') {
+			ret *= 10;
+			ret += (u64)((unsigned char)c - '0');
+			if (ret > U32_MAX)
+				return 0;
+		} else {
+			break;
+		}
+	}
+	return (u32)ret;
+}
 static int dbg_hisi_regulator_show(struct seq_file *s, void *data)
 {
 	seq_printf(s, "\n\r");
@@ -433,11 +454,18 @@ static const struct file_operations debug_regulator_state_fops = {
 
 static int dbg_control_regulator_show(struct seq_file *s, void *data)
 {
-	printk("usage1: echo [r]/[w] LDO_Name > control_regulator\n\r \
-		    enable and disable LDO; get LDO current voltage;\n\r \
-		    eg: echo W LDO16 0 > control_regulator		:disable LDO16\n\r \
-		    echo W LDO16 1 > control_regulator	:enable LDO16\n\r \
-		    echo R LDO16 > control_regulator	:get LDO16 voltage\n\r\n\r");
+	printk("                                                                             \n\r \
+		---------------------------------------------------------------------------------\n\r \
+		|usage:                                                                         |\n\r \
+		|	S = state	R = read	V = voltage                                         |\n\r \
+		|	set ldo state and voltage                                                   |\n\r \
+		|	get ldo state and current voltage                                           |\n\r \
+		|example:                                                                       |\n\r \
+		|	echo S ldo16 0   > control_regulator	:disable ldo16                      |\n\r \
+		|	echo S ldo16 1   > control_regulator	:enable ldo16                       |\n\r \
+		|	echo R ldo16     > control_regulator	:get ldo16 state and voltage        |\n\r \
+		|	echo V ldo16 xxx > control_regulator	:set ldo16 voltage                  |\n\r \
+		---------------------------------------------------------------------------------\n\r");
 	return 0;
 }
 static ssize_t dbg_control_regulator_set_value(struct file *filp, const char __user *buffer,
@@ -445,8 +473,9 @@ static ssize_t dbg_control_regulator_set_value(struct file *filp, const char __u
 {
 	char tmp[128] = {0};
 	char ptr[128] = {0};
+	char *vol = NULL;
 	char num = 0;
-	int i;
+	unsigned int i;
 	int next_flag = 1;
 
 	if (count >= 128) {
@@ -465,7 +494,7 @@ static ssize_t dbg_control_regulator_set_value(struct file *filp, const char __u
 		}
 		ptr[i - 2] = '\0';
 		get_regulator_state(ptr);
-	} else if (tmp[0] == 'W' || tmp[0] == 'w') {
+	} else if (tmp[0] == 'S' || tmp[0] == 's') {
 		for (i = 2; i < (count - 1); i++) {
 			if (tmp[i] == ' ') {
 				next_flag = 0;
@@ -479,6 +508,21 @@ static ssize_t dbg_control_regulator_set_value(struct file *filp, const char __u
 			}
 		}
 		set_regulator_state(ptr, num);
+	} else if (tmp[0] == 'V' || tmp[0] == 'v') {
+		for (i = 2; i < (count - 1); i++) {
+			if (tmp[i] == ' ') {
+				next_flag = 0;
+				ptr[i - 2] = '\0';
+				continue;
+			}
+			if (next_flag) {
+				ptr[i - 2] = tmp[i];
+			} else {
+				vol = &tmp[i];
+				break;
+			}
+		}
+		set_regulator_voltage(ptr, pmu_atoi(vol));
 	}
 
 	*ppos += count;

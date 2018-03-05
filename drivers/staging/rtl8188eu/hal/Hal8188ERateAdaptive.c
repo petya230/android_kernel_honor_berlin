@@ -340,7 +340,7 @@ static void odm_RateDecision_8188E(struct odm_dm_struct *dm_odm,
 			DynamicTxRPTTimingCounter = 0;
 		}
 
-		pRaInfo->PreRate = pRaInfo->DecisionRate;
+		pRaInfo->PreRate = pRaInfo->DecisionRate;  /* YJ, add, 120120 */
 
 		odm_ResetRaCounter_8188E(pRaInfo);
 	}

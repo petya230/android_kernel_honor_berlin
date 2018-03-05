@@ -7,6 +7,7 @@
 * it under the terms of the GNU General Public License version 2 as
 * published by the Free Software Foundation.
 */
+/*lint -e528 -e529 -e578 -e629 -e533 -e613 -e10*/
 #include <linux/delay.h>
 #include <linux/i2c.h>
 #include <linux/i2c-dev.h>
@@ -26,11 +27,11 @@
 #include <huawei_platform/log/hw_log.h>
 #include <linux/list.h>
 #ifdef CONFIG_HUAWEI_DSM
-#include <dsm/dsm_pub.h>
+#include <dsm_audio/dsm_audio.h>
 #endif
 #include "huawei_platform/audio/tfa98xx.h"
 #include "huawei_platform/audio/tfa9872.h"
-#include "huawei_platform/audio/deviceboxID.h"
+#include <deviceboxID/deviceboxID.h>
 /*lint -e715 -e785 -e826 -e846 -e838 -e84 -e514 -e516 -e845*/
 /*lint -e778 -e866 -e30 -e701 -e528 -e750 -e753 -e64 -e825*/
 #define SUPPORT_DEVICE_TREE
@@ -123,6 +124,7 @@ static int tfa9872_get_version(struct list_head *tfa98xx, unsigned int type, uns
 	*value = 0;
 	return 0;
 }
+/*lint -save -e* */
 static int tfa9872_get_reg_val(struct list_head *tfa98xx, unsigned int type, struct tfa98xx_reg_ops *reg_val, unsigned int __user *pUser)
 {
 	int ret = 0;
@@ -146,6 +148,8 @@ static int tfa9872_get_reg_val(struct list_head *tfa98xx, unsigned int type, str
 
 	return ret;
 }
+/*lint -restore*/
+/*lint -save -e* */
 static int tfa9872_set_reg_val(struct list_head *tfa98xx, struct tfa98xx_reg_ops *reg_val, unsigned int __user *pUser)
 {
 	int ret = 0;
@@ -162,6 +166,8 @@ static int tfa9872_set_reg_val(struct list_head *tfa98xx, struct tfa98xx_reg_ops
 	hwlog_info("%s:  tfa98xx smartpa set reg val: addr = 0x%x, val = 0x%x\n", __func__, reg_val->reg_addr, reg_val->reg_val);
 	return ret;
 }
+/*lint -restore*/
+/*lint -save -e* */
 static int tfa9872_set_param(struct list_head *tfa98xx, unsigned int __user *pUser)
 {
 	int ret = 0;
@@ -213,6 +219,8 @@ static int tfa9872_set_param(struct list_head *tfa98xx, unsigned int __user *pUs
 	hwlog_info("%s:  tfa98xx smartpa set param\n", __func__);
 	return ret;
 }
+/*lint -restore*/
+/*lint -save -e* */
 static void tfa9872_reset(struct tfa98xx_priv *p)
 {
 	gpio_set_value((unsigned int)p->gpio_reset, 1);
@@ -221,6 +229,8 @@ static void tfa9872_reset(struct tfa98xx_priv *p)
 	msleep(TFA9872_RESET_TIME);
 	return;
 }
+/*lint -restore*/
+/*lint -save -e* */
 static void tfa9872_set_gain(struct tfa98xx_priv *p, unsigned int volume)
 {
 	if(NULL == p){
@@ -244,6 +254,8 @@ static void tfa9872_set_gain(struct tfa98xx_priv *p, unsigned int volume)
 			TFA9872_GAIN_ATT_MASK_TDMSPKG,
 			volume << TFA9872_GAIN_ATT_OFFSET_TDMSPKG);
 }
+/*lint -restore*/
+/*lint -save -e* */
 static int tfa9872_digital_mute(struct list_head *tfa98xx, int mute)
 {
 	struct list_head *pos = NULL;
@@ -287,8 +299,10 @@ static int tfa9872_digital_mute(struct list_head *tfa98xx, int mute)
 	}
 	return 0;
 }
+/*lint -restore*/
 //tfa9872_spk_digital_mute || tfa9872_rec_digital_mute
 //spk is set gain == gain_incall in dts
+/*lint -save -e* */
 static int tfa9872_single_digital_mute(struct list_head *tfa98xx, unsigned int type, int mute)
 {
 	struct tfa98xx_priv *p = NULL;
@@ -336,6 +350,8 @@ static int tfa9872_single_digital_mute(struct list_head *tfa98xx, unsigned int t
 	mutex_unlock(&p->lock);
 	return 0;
 }
+/*lint -restore*/
+/*lint -save -e* */
 static void tfa9872_irq_enable(struct tfa98xx_priv *p)
 {
 	if(NULL == p)
@@ -349,6 +365,8 @@ static void tfa9872_irq_enable(struct tfa98xx_priv *p)
 
 	return;
 }
+/*lint -restore*/
+/*lint -save -e* */
 static int tfa9872_open(struct inode *inode, struct file *filp)
 {
 	int ret = 0;
@@ -418,6 +436,7 @@ static int tfa9872_open(struct inode *inode, struct file *filp)
 				regmap_write(p->regmap, 0x20, 0x2890);
 				regmap_write(p->regmap, 0x22, 0x047c);
 				regmap_write(p->regmap, 0x23, 0x0009);
+				regmap_write(p->regmap, 0x50, 0x009D);
 				regmap_write(p->regmap, 0x51, 0x0000); //POR=0x0080
 				regmap_write(p->regmap, 0x52, 0x5a1c); //POR=0x7ae8
 				regmap_write(p->regmap, 0x61, 0x019a); //POR=0x0000
@@ -431,8 +450,6 @@ static int tfa9872_open(struct inode *inode, struct file *filp)
 				regmap_write(p->regmap, 0x82, 0x01ed); //POR=0x000d
 				regmap_write(p->regmap, 0x83, 0x001a); //POR=0x0013
 
-				regmap_write(p->regmap, 0xA0, 0);
-				regmap_write(p->regmap, 0x0F, 0);
 				switch(p->type){
 					case TFA98XX_L: //left(spk)
 						regmap_write(p->regmap, 0x26, 0x0010);
@@ -454,13 +471,29 @@ static int tfa9872_open(struct inode *inode, struct file *filp)
 						//Unsupported type
 						break;
 				}
+				if(false == p->dcie_cfg){
+					regmap_update_bits(p->regmap, TFA9872_DCDC_CONTROL0,
+							TFA9872_DCDC_CTRL_MASK_DCIE, 0);
+				} else {
+					regmap_update_bits(p->regmap, TFA9872_DCDC_CONTROL0,
+							TFA9872_DCDC_CTRL_MASK_DCIE, TFA9872_DCDC_CTRL_MASK_DCIE);
+				}
 				//IRQ setup
 				if(p->gpio_irq < 0){
 					hwlog_info("%s: gpio_irq is invalid\n", __func__);
 				} else {
 					tfa9872_irq_enable(p);
 				}
+
+				regmap_write(p->regmap, 0xA0, 0);
+				regmap_write(p->regmap, 0x0F, 0);
 				break;
+		}
+		/*smartpa electricity limit */
+		if (p->pa_elec_limit) {
+			hwlog_info("%s: smartpa electricity limit, pa_elec_limit = %d\n", __func__, p->pa_elec_limit);
+			regmap_update_bits(p->regmap, TFA9872_DCDC_CONTROL0, TFA9872_DCMCC_MASK, TFA9872_DCMCC_OFFSET);//set 1011 in 6 : 3 bit, maximum coil current is 2.88A
+			regmap_update_bits(p->regmap, TFA9872_PFM_CONTROL, TFA9872_PFM_CONTROL_MASK, TFA9872_PFM_CONTROL_MASK);
 		}
 	}
 
@@ -471,11 +504,14 @@ static int tfa9872_open(struct inode *inode, struct file *filp)
 	hwlog_info("%s: exit %d\n", __func__, ret);
 	return ret;
 }
+/*lint -restore*/
+/*lint -save -e* */
 static int tfa9872_release(struct inode *inode, struct file *filp)
 {
 	hwlog_info("%s: enter\n", __func__);
 	return 0;
 }
+/*lint -restore*/
 struct tfa98xx_ioctl_ops tfa9872_ioctl_ops = {
 	.tfa98xx_open = tfa9872_open,
 	.tfa98xx_release = tfa9872_release,
@@ -499,6 +535,7 @@ static int tfa9872_resume(struct device *dev)
 #define tfa9872_suspend NULL
 #define tfa9872_resume NULL
 #endif
+/*lint -save -e* */
 static const struct regmap_config tfa9872_regmap = {
 	.reg_bits         = 8,
 	.val_bits         = 16,
@@ -509,6 +546,8 @@ static const struct regmap_config tfa9872_regmap = {
 	//.readable_reg     = tfa9872_readable_register,
 	.cache_type       = REGCACHE_NONE,
 };
+/*lint -restore*/
+/*lint -save -e* */
 static ssize_t tfa98xx_reg_write(struct file *filp, struct kobject *kobj,
 				struct bin_attribute *bin_attr,
 				char *buf, loff_t off, size_t count)
@@ -522,6 +561,8 @@ static ssize_t tfa98xx_reg_write(struct file *filp, struct kobject *kobj,
 	p->reg = (u8)buf[0];
 	return 1;
 }
+/*lint -restore*/
+/*lint -save -e* */
 static ssize_t tfa98xx_rw_write(struct file *filp, struct kobject *kobj,
 				struct bin_attribute *bin_attr,
 				char *buf, loff_t off, size_t count)
@@ -540,6 +581,8 @@ static ssize_t tfa98xx_rw_write(struct file *filp, struct kobject *kobj,
 	regmap_write(p->regmap, p->reg, val);
 	return 1;
 }
+/*lint -restore*/
+/*lint -save -e* */
 static ssize_t tfa98xx_rw_read(struct file *filp, struct kobject *kobj,
 				struct bin_attribute *bin_attr,
 				char *buf, loff_t off, size_t count)
@@ -558,6 +601,8 @@ static ssize_t tfa98xx_rw_read(struct file *filp, struct kobject *kobj,
 
 	return 2;
 }
+/*lint -restore*/
+/*lint -save -e* */
 static struct bin_attribute dev_attr_rw = {
 	.attr = {
 		.name = "rw",
@@ -576,6 +621,16 @@ static struct bin_attribute dev_attr_reg = {
 	.read = NULL,
 	.write = tfa98xx_reg_write,
 };
+/*lint -restore*/
+static bool is_abnormal_irq(unsigned int out1, unsigned int out2)
+{
+	if ((out1 & (TFA9872_INTERRUPT_MASK_UVP | TFA9872_INTERRUPT_MASK_UTP)) || (out2 & TFA9872_INTERRUPT_MASK_OCP)) {
+		return true;
+	} else {
+		return false;
+	}
+}
+/*lint -save -e* */
 static irqreturn_t tfa9872_thread_irq(int irq, void *data)
 {
 	unsigned int status_flags0 = 0, status_flags1 = 0, status_flags3 = 0, status_flags4 = 0;
@@ -601,29 +656,30 @@ static irqreturn_t tfa9872_thread_irq(int irq, void *data)
 	hwlog_info("%s: irq1: 0x%.4x, irq2: 0x%.4x, irq3: 0x%.4x\n",
 				__FUNCTION__, out1, out2, out3);
 #ifdef CONFIG_HUAWEI_DSM
-	if (interrupt_time < DMD_INT_FREQUENCY * DMD_UPLOAD_TIME) {
+	if ((interrupt_time < DMD_INT_FREQUENCY * DMD_UPLOAD_TIME) && is_abnormal_irq(out1, out2)) {
 		if (interrupt_time % DMD_INT_FREQUENCY == 0) {
-			if (!dsm_client_ocuppy(smartpa_dclient)) {
-				hwlog_info("tfa9872 record notify\n");
 				spk_id = deviceboxID_read(SPEAKER_ID);
 				rcv_id = deviceboxID_read(RECEIVER_ID);
-				dsm_client_record(smartpa_dclient,
+			audio_dsm_report_info(AUDIO_SMARTPA, DSM_SMARTPA_INT_ERR,
 					"%s: spk_id:%d, rcv_id:%d, status_flags: 0x%x, 0x%x, 0x%x, 0x%x, irq1: 0x%x, irq2: 0x%x, irq3: 0x%x\n",
 					__func__, spk_id, rcv_id, status_flags0, status_flags1, status_flags3, status_flags4, out1, out2, out3);
-				dsm_client_notify(smartpa_dclient, DSM_SMARTPA_INT_ERR);
-			}
 		}
 		interrupt_time++;
 	}
 #endif
 	return IRQ_HANDLED;
 }
+/*lint -restore*/
+/*lint -save -e* */
 static int tfa9872_i2c_probe(struct i2c_client *i2c, const struct i2c_device_id *id)
 {
 	int ret = FAILED;
+	int val = 0;
 	const char *type_dts_name = "smartpa_type";
 	const char *gain_dts_name = "gain";
 	const char *gain_incall_dts_name = "gain_incall";
+	const char *pa_elec_limit_name = "pa_elec_limit";
+	const char *dcie_cfg_dts_name = "dcie_cfg";
 	struct tfa98xx_priv *tfa9872 = NULL;
 	tfa9872 = devm_kzalloc(&i2c->dev, sizeof(struct tfa98xx_priv), GFP_KERNEL);
 	if (NULL == tfa9872) {
@@ -644,6 +700,26 @@ static int tfa9872_i2c_probe(struct i2c_client *i2c, const struct i2c_device_id 
 	ret = of_property_read_u32(i2c->dev.of_node, gain_incall_dts_name, &tfa9872->gain_incall);
 	if (ret) {
 		tfa9872->gain_incall = tfa9872_type_gain_def[tfa9872->type].gain_incall;
+	}
+	hwlog_info("%s: get tfa9872 type[%d]_gain_incall =0x%x\n", __func__, tfa9872->type, tfa9872->gain_incall);
+	ret = of_property_read_u32(i2c->dev.of_node, pa_elec_limit_name, &tfa9872->pa_elec_limit);
+	if (ret) {
+		hwlog_info("%s: unlimited tfa9872 maximum coil current, ret=%d, pa_elec_limit = %d\n", __func__, ret, tfa9872->pa_elec_limit);
+	} else {
+		hwlog_info("%s: limit tfa9872 maximum coil current, ret=%d, pa_elec_limit = %d\n", __func__, ret, tfa9872->pa_elec_limit);
+	}
+	ret = of_property_read_u32(i2c->dev.of_node, dcie_cfg_dts_name, &val);
+	if (ret !=0) {
+		hwlog_err("%s: can't get dcie_cfg from dts, set defaut false value!!!\n", __func__);
+		tfa9872->dcie_cfg = true;
+	} else {
+		if (val) {
+			tfa9872->dcie_cfg = true;
+			hwlog_info("%s: dcie_cfg is true!\n", __func__);
+		} else {
+			tfa9872->dcie_cfg = false;
+			hwlog_info("%s: dcie_cfg is false!\n", __func__);
+		}
 	}
 	hwlog_info("%s: get tfa9872 type[%d]_gain_incall =0x%x\n", __func__, tfa9872->type, tfa9872->gain_incall);
 	tfa9872->regmap = regmap_init_i2c(i2c, &tfa9872_regmap);
@@ -726,6 +802,8 @@ err_out:
 	}
 	return ret;
 }
+/*lint -restore*/
+/*lint -save -e* */
 static int tfa9872_i2c_remove(struct i2c_client *client)
 {
 	device_remove_bin_file(&client->dev, &dev_attr_reg);
@@ -734,6 +812,8 @@ static int tfa9872_i2c_remove(struct i2c_client *client)
 	hwlog_info("%s: exit\n", __func__);
 	return 0;
 }
+/*lint -restore*/
+/*lint -save -e* */
 static void tfa9872_i2c_shutdown(struct i2c_client *client)
 {
 	struct list_head *head = get_tfa98xx_list_head();
@@ -741,6 +821,7 @@ static void tfa9872_i2c_shutdown(struct i2c_client *client)
 	tfa9872_digital_mute(head, MUTE_OFF);
 	return;
 }
+/*lint -restore*/
 static const struct dev_pm_ops tfa9872_pm_ops = {
 	.suspend        = tfa9872_suspend,
 	.resume            = tfa9872_resume,
@@ -749,12 +830,16 @@ static const struct of_device_id tfa9872_match[] = {
 	{ .compatible = "huawei,tfa9872", },
 	{},
 };
+/*lint -save -e* */
 MODULE_DEVICE_TABLE(of, tfa9872_match);
+/*lint -restore*/
 static const struct i2c_device_id tfa9872_i2c_id[] = {
 	{ "tfa9872", 0 },
 	{ }
 };
+/*lint -save -e* */
 MODULE_DEVICE_TABLE(i2c, tfa9872_i2c_id);
+/*lint -restore*/
 static struct i2c_driver tfa9872_i2c_driver = {
 	.driver = {
 		.name = "tfa9872",
@@ -767,17 +852,23 @@ static struct i2c_driver tfa9872_i2c_driver = {
 	.shutdown = tfa9872_i2c_shutdown,
 	.id_table = tfa9872_i2c_id,
 };
+/*lint -save -e* */
 static int __init tfa98xx_init(void)
 {
 	return i2c_add_driver(&tfa9872_i2c_driver);
 }
+/*lint -restore*/
+/*lint -save -e* */
 static void __exit tfa98xx_exit(void)
 {
 	tfa98xx_list_del_all();
 	i2c_del_driver(&tfa9872_i2c_driver);
 }
+/*lint -restore*/
+/*lint -save -e* */
 module_init(tfa98xx_init);
 module_exit(tfa98xx_exit);
+/*lint -restore*/
 MODULE_DESCRIPTION("TFA9872 i2c device driver");
 MODULE_AUTHOR("zhujiaxin<zhujiaxin@huawei.com>");
 MODULE_LICENSE("GPL");

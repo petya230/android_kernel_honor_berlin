@@ -170,6 +170,7 @@ static ssize_t store_virt_addr(struct kobject *dev,
 
 		switch (args) {
 		case 0:
+			/* cppcheck-suppress * */
 			if (1 != sscanf(head, "%u", &pid)) {
 				return -1;
 			}

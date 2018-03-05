@@ -1,5 +1,5 @@
 #ifdef __SLT_FEATURE__
-#include "pcie-kirin.h"
+#include "pcie-kirin-common.h"
 #include <linux/file.h>
 #include <linux/module.h>
 #include <linux/types.h>
@@ -13,150 +13,86 @@
 #include <linux/fs.h>
 #include <asm/memory.h>
 #include <linux/pci_regs.h>
+#include <linux/mfd/hisi_pmic.h>
 
 
 #define WIFI_FIRMWARE_START 0x180000
 #define SLT_RANDOM_DATA 0x1234abcd
 #define SLT_TEST_DATA_SIZE 0xc0000
+#define LDO5_VSET_OFFSET 0x53
+#define LDO30_VSET_OFFSET 0x6b
 
 #define SIZE_M	(0x100000)
 #define L0S_MODE 0
 #define L1_MODE 1
-#define L0S_L1_MODE 1
 #define L1_1_MODE 2
 #define L1_2_MODE 3
 
-
-
-extern struct kirin_pcie g_kirin_pcie[MAX_RC_NUM];
-extern int kirin_pcie_enumerate(u32 rc_idx);
-extern void kirin_pcie_writel_rc(struct pcie_port *pp, u32 val, void __iomem *dbi_base);
 #define PCIETESTCMD	        _IOWR('p', 0xc1, unsigned long)
 
+struct pcie_slt {
+	atomic_t ioctl_excl;
+	atomic_t open_excl;
+	u32 ldo5_offset;
+	u32 ldo30_offset;
+	u32 ldo5_normal;
+	u32 ldo5_low;
+	u32 ldo30_normal;
+	u32 ldo30_low;
+	int pcie_slt_major_number;
+};
+struct pcie_slt g_pcie_slt;
 
-static void slt_pcie_outbound_atu(struct pcie_port *pp, int index,
-		int type, u64 cpu_addr, u64 pci_addr, u32 size)
-{
-	char *dbi_base = pp->dbi_base;
-
-	kirin_pcie_writel_rc(pp, PCIE_ATU_REGION_OUTBOUND | index,
-			  dbi_base + PCIE_ATU_VIEWPORT);
-	kirin_pcie_writel_rc(pp, lower_32_bits(cpu_addr), dbi_base + PCIE_ATU_LOWER_BASE);
-	kirin_pcie_writel_rc(pp, upper_32_bits(cpu_addr), dbi_base + PCIE_ATU_UPPER_BASE);
-	kirin_pcie_writel_rc(pp, lower_32_bits(cpu_addr + size - 1),
-			  dbi_base + PCIE_ATU_LIMIT);
-	kirin_pcie_writel_rc(pp, lower_32_bits(pci_addr), dbi_base + PCIE_ATU_LOWER_TARGET);
-	kirin_pcie_writel_rc(pp, upper_32_bits(pci_addr), dbi_base + PCIE_ATU_UPPER_TARGET);
-	kirin_pcie_writel_rc(pp, type, dbi_base + PCIE_ATU_CR1);
-	kirin_pcie_writel_rc(pp, PCIE_ATU_ENABLE, dbi_base + PCIE_ATU_CR2);
-}
-static int slt_wlan_on(struct kirin_pcie *pcie, int on)
+static int32_t pcie_get_ldoinfo(struct kirin_pcie *pcie)
 {
 	struct device_node *np;
-	int wl_power;
-	int ret = 0;
+	struct pcie_port *pp;
+	u32 val[3] = {0, 0};
 
-	np = pcie->pp.dev->of_node;
-	if (np) {
-		if (!(of_property_read_u32(np, "wl_power", &wl_power))) {
-			PCIE_PR_INFO("WL Power On Number is [%d] ", wl_power);
-		} else {
-			PCIE_PR_INFO("dts has no member as wl_power");
-			return -1;
-		}
-	} else {
-		PCIE_PR_INFO("can not find kirin-pcie\n");
+	pp = &pcie->pp;
+	np = pp->dev->of_node;
+
+	if (of_property_read_u32_array(np, "ldo5", val, 3)) {
+		PCIE_PR_ERR("Failed to get phy_assert info");
 		return -1;
 	}
+	g_pcie_slt.ldo5_offset= val[0];
+	g_pcie_slt.ldo5_normal = val[1];
+	g_pcie_slt.ldo5_low = val[2];
 
-	ret = gpio_request(wl_power, "slt_wlan_on");
-	if (ret < 0) {
-		PCIE_PR_ERR("Can't request gpio");
-		ret = 0;
+	if (of_property_read_u32_array(np, "ldo30", val, 3)) {
+		PCIE_PR_ERR("Failed to get phy_deassert info");
+		return -1;
 	}
-	if (on) {
-		PCIE_PR_INFO("Power on Wlan");
-		gpio_direction_output(wl_power, 1);
-	} else {
-		PCIE_PR_INFO("Power down Wlan");
-		gpio_direction_output(wl_power, 0);
-	}
-	gpio_free(wl_power);
+	g_pcie_slt.ldo30_offset= val[0];
+	g_pcie_slt.ldo30_normal = val[1];
+	g_pcie_slt.ldo30_low = val[2];
 
-	return ret;
-
-}
-/**
- * slt_enable_dbi - make it possible to access the rc configuration registers in the CDM,
- * or the ep configuration registers.
- * @flag: If flag equals 0, you can access the ep configuration registers in the CDM;
- *  If not, you can access the rc configuration registers in the CDM.
- */
-static void slt_enable_dbi(struct kirin_pcie *pcie, int flag)
-{
-	int ret1;
-	int ret2;
-
-	ret1 = kirin_elb_readl(pcie, SOC_PCIECTRL_CTRL0_ADDR);
-	ret2 = kirin_elb_readl(pcie, SOC_PCIECTRL_CTRL1_ADDR);
-	if (flag) {
-		ret1 = ret1 | PCIE_ELBI_SLV_DBI_ENABLE;
-		ret2 = ret2 | PCIE_ELBI_SLV_DBI_ENABLE;
-	} else {
-		ret1 = ret1 & (~PCIE_ELBI_SLV_DBI_ENABLE);
-		ret2 = ret2 & (~PCIE_ELBI_SLV_DBI_ENABLE);
-	}
-	kirin_elb_writel(pcie, ret1, SOC_PCIECTRL_CTRL0_ADDR);
-	kirin_elb_writel(pcie, ret2, SOC_PCIECTRL_CTRL1_ADDR);
-
-	udelay((unsigned long)2);
-	ret1 = kirin_elb_readl(pcie, SOC_PCIECTRL_CTRL0_ADDR);
-	ret2 = kirin_elb_readl(pcie, SOC_PCIECTRL_CTRL1_ADDR);
-
-	PCIE_PR_INFO("apb register 0x0=[0x%x], 0x4=[0x%x]", ret1, ret2);
+	return 0;
 }
 
-/**
- * set_bme - enable bus master or not.
- * @flag: If flag equals 0, bus master and mem space is disabled. If not, bus master and mem space is enabled.
- */
-static void set_bme_mse(struct kirin_pcie *pcie, int flag)
+static void pcie_set_vlotage(struct kirin_pcie *pcie, enum pcie_voltage vol)
 {
-	int ret = 0;
 
-	slt_enable_dbi(pcie, 1);
-	ret = readl(pcie->pp.dbi_base + PCI_COMMAND);
-	if (flag) {
-		PCIE_PR_INFO("Enable Bus master!!!");
-		ret |= PCI_COMMAND_MASTER | PCI_COMMAND_MEMORY;
-	} else {
-		PCIE_PR_INFO("Disable Bus master!!!");
-		ret &= ~(PCI_COMMAND_MASTER | PCI_COMMAND_MEMORY);
-	}
-	writel(ret, pcie->pp.dbi_base + PCI_COMMAND);
-	udelay((unsigned long)5);
-	ret = readl(pcie->pp.dbi_base + PCI_COMMAND);
-	PCIE_PR_INFO("register[0x4] value is [0x%x]", ret);
-	slt_enable_dbi(pcie, 0);
-}
-
-static void slt_config_aspm_l0s_l1(struct kirin_pcie *pcie, enum link_aspm_state aspm_state)
-{
-	struct pci_dev *rc_dev;
-	struct pci_dev *ep_dev;
-
-	rc_dev = pcie->rc_dev;
-	ep_dev = pcie->ep_dev;
-	if (ep_dev == NULL || rc_dev == NULL) {
-		PCIE_PR_ERR("Failed to get PCI Device");
+	if (pcie_get_ldoinfo(pcie))
 		return;
-	}
 
-	pcie_capability_clear_and_set_word(rc_dev, PCI_EXP_LNKCTL,
-				   PCI_EXP_LNKCTL_ASPMC, aspm_state);
-	pcie_capability_clear_and_set_word(ep_dev, PCI_EXP_LNKCTL,
-				   PCI_EXP_LNKCTL_ASPMC, aspm_state);
+       switch(vol) {
+       case LOW_VOL: {
+		/*low voltage LDO5:1.72, LDO30:0.725*/
+		hisi_pmic_reg_write(g_pcie_slt.ldo5_low, g_pcie_slt.ldo5_offset);
+		hisi_pmic_reg_write(g_pcie_slt.ldo30_low, g_pcie_slt.ldo30_offset);
+		}
+		break;
+	case NORMAL_VOL:
+	default:{
+		/*normal voltage LDO5:1.8, LDO30:0.75*/
+		hisi_pmic_reg_write(g_pcie_slt.ldo5_normal, g_pcie_slt.ldo5_offset);
+		hisi_pmic_reg_write(g_pcie_slt.ldo30_normal, g_pcie_slt.ldo30_offset);
+		}
+	}
 }
+
 
 /* wait_for_power_status - wait for link Entry lowpower mode
  * @mode: lowpower mode index
@@ -190,7 +126,7 @@ int wait_for_power_status(struct kirin_pcie *pcie, int mode)
 				wait_condition = 1;
 			break;
 		default:
-			PCIE_PR_ERR("unknown lowpower mode\n");
+			PCIE_PR_ERR("unknown lowpower mode");
 			break;
 		}
 		if (wait_condition == 1)
@@ -198,82 +134,6 @@ int wait_for_power_status(struct kirin_pcie *pcie, int mode)
 		msleep(10);
 	}
 	return -1;
-}
-
-
-/**
-* slt_enable_l1ss - config l1ss link state;
-*/
-void slt_enable_l1ss(struct kirin_pcie *pcie, unsigned int flag)
-{
-	unsigned int val;
-	unsigned int pm;
-	int ret;
-	struct pci_dev *ep_dev;
-	struct pci_dev *rc_dev;
-
-	slt_config_aspm_l0s_l1(pcie, ASPM_L1);
-
-	rc_dev = pcie->rc_dev;
-	ep_dev = pcie->ep_dev;
-	if (ep_dev == NULL || rc_dev == NULL) {
-		PCIE_PR_ERR("Failed to get PCI Device");
-		return;
-	}
-	pm = pci_find_ext_capability(rc_dev, PCI_EXT_L1SS_CAP_ID);
-	if (pm) {
-		pci_read_config_dword(rc_dev, pm + PCI_EXT_L1SS_CTRL1, &val);
-		val &= ~(0x3 << 2);
-		val |= flag;
-		pci_write_config_dword(rc_dev, pm + PCI_EXT_L1SS_CTRL1, val);
-	}
-
-	pcie_capability_read_dword(pcie->rc_dev, PCI_EXP_DEVCTL2, &val);
-	val |= (0x1 << 10);
-	pcie_capability_write_dword(pcie->rc_dev, PCI_EXP_DEVCTL2, val);
-
-	ret = readl(pcie->apb_base + SOC_PCIECTRL_CTRL7_ADDR);
-	ret |= (0x1<<10);
-	writel(ret, pcie->apb_base + SOC_PCIECTRL_CTRL7_ADDR);
-
-	ret = readl(pcie->apb_base + SOC_PCIECTRL_CTRL8_ADDR);
-	ret |= (0x1<<3);
-	writel(ret, pcie->apb_base + SOC_PCIECTRL_CTRL8_ADDR);
-
-	pcie_capability_read_dword(ep_dev, PCI_EXP_LNKCTL, &val);
-	val &= ~0x3;
-	val |= 0x142;
-	pcie_capability_write_dword(ep_dev, PCI_EXP_LNKCTL, val);
-	/*Read register to check*/
-	val = 0;
-	pcie_capability_read_dword(ep_dev, PCI_EXP_LNKCTL, &val);
-	PCIE_PR_INFO("WIFI CFG Register[0xbc] value=[0x%x] ", val);
-
-	pm = pci_find_ext_capability(ep_dev, PCI_EXT_L1SS_CAP_ID);
-	if (pm) {
-		pci_read_config_dword(ep_dev, pm + PCI_EXT_L1SS_CTRL1, &val);
-		val &= ~(0x3 << 2);
-		val |= flag;
-		pci_write_config_dword(ep_dev, pm + PCI_EXT_L1SS_CTRL1, val);
-
-		pci_read_config_dword(ep_dev, pm + PCI_EXT_L1SS_CTRL2, &val);
-		val &= ~0xFF;
-		val |= 0x61;
-		pci_write_config_dword(ep_dev, pm + PCI_EXT_L1SS_CTRL2, val);
-	}
-	pcie_capability_read_dword(ep_dev, PCI_EXP_DEVCTL2, &val);
-	val |= (0x1 << 10);
-	pcie_capability_write_dword(ep_dev, PCI_EXP_DEVCTL2, val);
-
-	pm = pci_find_ext_capability(ep_dev, PCI_EXT_LTR_CAP_ID);
-	if (pm)
-		pci_write_config_dword(ep_dev, pm + LTR_MAX_SNOOP_LATENCY, 0x10031003);
-
-	ret = readl(pcie->apb_base + SOC_PCIECTRL_CTRL1_ADDR);
-	ret |= (0x1 << 23);
-	writel(ret, pcie->apb_base + SOC_PCIECTRL_CTRL1_ADDR);
-
-	mdelay(10);
 }
 
 enum pcie_test_result set_loopback_test(struct kirin_pcie *pcie)
@@ -291,37 +151,28 @@ enum pcie_test_result set_loopback_test(struct kirin_pcie *pcie)
 
 	loop_back_cmp = kmalloc(SLT_TEST_DATA_SIZE, GFP_KERNEL);
 	if (!loop_back_cmp) {
-		PCIE_PR_ERR("can not alloc loop_back_cmp memory");
+		PCIE_PR_ERR("Failed to alloc loop_back_cmp memory");
 		return ERR_OTHER;
 	}
 
 	pp = &(pcie->pp);
 	if (prev_ret == 0xaa) {
-		if (slt_wlan_on(pcie, 1)) {
+		if (wlan_on(pcie->rc_id, 1)) {
 			ret =  ERR_OTHER;
-			goto TEST_FAIL;
+			goto TEST_FAIL_FREE;
 		}
-		mdelay(100);
-		ret = kirin_pcie_power_on(&pcie->pp, 1);
+		ret = kirin_pcie_enumerate(pcie->rc_id);
 		if (ret) {
-			PCIE_PR_ERR("Failed to Power On RC");
+			PCIE_PR_ERR("kirin_pcie_enumerate fail");
 			ret = ERR_OTHER;
-			goto TEST_FAIL;
+			goto TEST_FAIL_FREE;
 		}
-		/*Unreset wifi*/
-		val = readl(pcie->apb_base+ SOC_PCIECTRL_CTRL12_ADDR);
-		val |= 0x7;
-		writel(val, pcie->apb_base + SOC_PCIECTRL_CTRL12_ADDR);
-		kirin_pcie_enumerate(pcie->rc_id);
 	}
 	mdelay(10);
-	set_bme_mse(pcie, 1);
+	set_bme(pcie->rc_id, 1);
+	set_mse(pcie->rc_id, 1);
 	ep_dev = pcie->ep_dev;
-	if (!ep_dev) {
-		PCIE_PR_ERR("Failed to get EP Device");
-		ret = ERR_OTHER;
-		goto TEST_FAIL;
-	}
+
 	if (prev_ret == 0xaa) {
 		pci_enable_device(ep_dev);
 		pci_set_master(ep_dev);
@@ -329,76 +180,99 @@ enum pcie_test_result set_loopback_test(struct kirin_pcie *pcie)
 	}
 
 	pci_read_config_dword(ep_dev, 0x18, &bar2);
-	PCIE_PR_INFO("bar2 is %x", bar2);
+	PCIE_PR_INFO("Bar2 is %x", bar2);
 	loop_back_src = ioremap_nocache(pcie->pp.mem_base, 4*SIZE_M);
 	if (!loop_back_src) {
-		PCIE_PR_ERR("loop_back_src ioremap fail");
-		return ERR_OTHER;
+		PCIE_PR_ERR("Failed to ioremap loop_back_src");
+		ret = ERR_OTHER;
+		goto TEST_FAIL_FREE;
 	}
-	slt_pcie_outbound_atu(pp, PCIE_ATU_REGION_INDEX0, PCIE_ATU_TYPE_MEM, pp->mem_base, (bar2 & (~0x3)), 8*SIZE_M);
+	kirin_pcie_outbound_atu(pcie->rc_id, PCIE_ATU_REGION_INDEX0, PCIE_ATU_TYPE_MEM,
+				pp->mem_base, (bar2 & (~0x3)), 8*SIZE_M);
 	for (index = 0; index < SLT_TEST_DATA_SIZE; index = index + 4) {
 		writel((SLT_RANDOM_DATA + index), (loop_back_cmp + index));
 		writel((SLT_RANDOM_DATA + index), (loop_back_src + index + WIFI_FIRMWARE_START));
 	}
 	if (memcmp((loop_back_src + WIFI_FIRMWARE_START), loop_back_cmp, SLT_TEST_DATA_SIZE)) {
-		PCIE_PR_ERR("loop back fail");
+		PCIE_PR_ERR("RC read/write EP mem fail");
 		ret = ERR_DATA_TRANS;
-		goto TEST_FAIL;
+		goto TEST_FAIL_IOUNMAP;
 	}
-	PCIE_PR_INFO("loop back OK");
-	slt_config_aspm_l0s_l1(pcie, ASPM_L0S);
+	PCIE_PR_INFO("RC read/write EP mem OK");
+
+	kirin_pcie_config_l0sl1(pcie->rc_id, ASPM_L0S);
 	if (wait_for_power_status(pcie, L0S_MODE)) {
 		PCIE_PR_ERR("Enter L0s fail");
 		ret = ERR_L0S;
-		goto TEST_FAIL;
+		goto TEST_FAIL_IOUNMAP;
 	}
 	PCIE_PR_INFO("L0S test pass");
-	slt_config_aspm_l0s_l1(pcie, ASPM_L1);
+
+	kirin_pcie_config_l0sl1(pcie->rc_id, ASPM_L1);
 	if (wait_for_power_status(pcie, L1_MODE)) {
 		PCIE_PR_ERR("Enter L1 fail");
 		ret = ERR_L1;
-		goto TEST_FAIL;
+		goto TEST_FAIL_IOUNMAP;
 	}
 	PCIE_PR_INFO("L1 test pass");
-	slt_config_aspm_l0s_l1(pcie, ASPM_L0S_L1);
+
+	kirin_pcie_config_l0sl1(pcie->rc_id, ASPM_L0S_L1);
 	if (wait_for_power_status(pcie, L1_MODE)) {
 		PCIE_PR_ERR("Enter L0s_and_L1 fail");
-		ret = ERR_L0_L1;
-		goto TEST_FAIL;
+		ret = ERR_L0S_L1;
+		goto TEST_FAIL_IOUNMAP;
 	}
 	PCIE_PR_INFO("L0s and L1 test pass");
-	/*Return to L0*/
-	slt_config_aspm_l0s_l1(pcie, ASPM_CLOSE);
-	writel(SLT_RANDOM_DATA, loop_back_src + WIFI_FIRMWARE_START);
-	slt_enable_l1ss(pcie, L1_SUB_1_1);
+
+	kirin_pcie_config_l0sl1(pcie->rc_id, ASPM_L0S_L1);
+	kirin_pcie_config_l1ss(pcie->rc_id, L1SS_ASPM_1_1);
 	if (wait_for_power_status(pcie, L1_1_MODE)) {
 		PCIE_PR_ERR("Enter L1_1 fail");
 		ret = ERR_L1_1;
-		goto TEST_FAIL;
+		goto TEST_FAIL_IOUNMAP;
 	}
-	PCIE_PR_INFO("L1SS test pass");
-	slt_enable_l1ss(pcie, L1_SUB_1_2);
+	PCIE_PR_INFO("L1_1 test pass");
+
+	kirin_pcie_config_l0sl1(pcie->rc_id, ASPM_L0S_L1);
+	kirin_pcie_config_l1ss(pcie->rc_id, L1SS_ASPM_1_2);
 	if (wait_for_power_status(pcie, L1_2_MODE)) {
 		PCIE_PR_ERR("Enter L1_2 fail");
 		ret = ERR_L1_2;
-		goto TEST_FAIL;
+		goto TEST_FAIL_IOUNMAP;
 	}
-	PCIE_PR_INFO("L1SS test pass");
+	PCIE_PR_INFO("L1_2 test pass");
 	ret = RESULT_OK;
-TEST_FAIL:
+
+TEST_FAIL_IOUNMAP:
 	iounmap(loop_back_src);
+TEST_FAIL_FREE:
 	kfree(loop_back_cmp);
 	loop_back_cmp = NULL;
 	return ret;
 }
 EXPORT_SYMBOL(set_loopback_test);
 
-struct pcie_slt {
-	atomic_t ioctl_excl;
-	atomic_t open_excl;
-	int pcie_slt_major_number;
-};
-struct pcie_slt g_pcie_slt;
+enum pcie_test_result pcie_slt_vary_voltage_test(struct kirin_pcie *pcie)
+{
+	enum pcie_test_result ret;
+
+	/*low voltage LDO5:1.72, LDO30:0.725*/
+	pcie_set_vlotage(pcie, LOW_VOL);
+	ret = set_loopback_test(pcie);
+	if (ret) {
+		PCIE_PR_ERR("Low voltage pcie slt test fail");
+		return ret;
+	}
+
+	/*normal voltage LDO5:1.8, LDO30:0.75*/
+	pcie_set_vlotage(pcie,NORMAL_VOL);
+	ret = set_loopback_test(pcie);
+	if (ret) {
+		PCIE_PR_ERR("Normal voltage pcie slt test fail");
+		return ret;
+	}
+	return RESULT_OK;
+}
 
 static inline int pcie_slt_lock(atomic_t *excl)
 {
@@ -425,7 +299,7 @@ static int pcie_slt_ioctl(struct file *file, u_int cmd, unsigned long result)
 
 	switch (cmd) {
 	case PCIETESTCMD:
-		test_result = set_loopback_test(&g_kirin_pcie[0]);
+		test_result = pcie_slt_vary_voltage_test (&g_kirin_pcie[0]);
 		copy_to_user((unsigned long *)result, &test_result, sizeof(int));
 
 		ret = 0;
@@ -439,21 +313,22 @@ static int pcie_slt_ioctl(struct file *file, u_int cmd, unsigned long result)
 }
 
 
+
 static int pcie_slt_open(struct inode *ip, struct file *fp)
 {
-	PCIE_PR_INFO("pcie_slt_open\n");
+	PCIE_PR_INFO("pcie_slt_open");
 
 	if (pcie_slt_lock(&(g_pcie_slt.open_excl)))
 
 		return -EBUSY;
-	PCIE_PR_INFO("pcie_slt_open success\n");
+	PCIE_PR_INFO("pcie_slt_open success");
 	return 0;
 }
 
 static int pcie_slt_release(struct inode *ip, struct file *fp)
 {
 
-	PCIE_PR_INFO("pcie_slt_release\n");
+	PCIE_PR_INFO("pcie_slt_release");
 
 	pcie_slt_unlock(&(g_pcie_slt.open_excl));
 
@@ -478,7 +353,7 @@ static int __init pcie_slt_init(void)
 	g_pcie_slt.pcie_slt_major_number = register_chrdev(0, "pcie-slt", &pcie_slt_fops);
 
 	if (g_pcie_slt.pcie_slt_major_number < 0) {
-		PCIE_PR_ERR("Can't allocate major number for pcie slt device.\n");
+		PCIE_PR_ERR("Failed to allocate major number for pcie slt device.");
 		error = -EAGAIN;
 		goto failed_register_pcie;
 	}
@@ -488,7 +363,7 @@ static int __init pcie_slt_init(void)
 	pcie_slt_class = class_create(THIS_MODULE, "pcie-slt");
 
 	if (IS_ERR(pcie_slt_class)) {
-		PCIE_PR_ERR("Error creating pcie-slt class.\n");
+		PCIE_PR_ERR("Error creating pcie-slt class.");
 		unregister_chrdev(g_pcie_slt.pcie_slt_major_number, "pcie-slt");
 		error = PTR_ERR(pcie_slt_class);
 		goto failed_register_pcie;
@@ -497,11 +372,11 @@ static int __init pcie_slt_init(void)
 	 pdevice = device_create(pcie_slt_class, NULL, MKDEV(g_pcie_slt.pcie_slt_major_number, 0), NULL, "pcie-slt");
 	if (IS_ERR(pdevice)) {
 		error = -EFAULT;
-		PCIE_PR_ERR("slt pcie: device_create error.\n");
+		PCIE_PR_ERR("slt pcie: device_create error.");
 		goto failed_register_pcie;
 	}
 
-	PCIE_PR_INFO("pcie-slt init ok!\n");
+	PCIE_PR_INFO("pcie-slt init ok!");
 
 	return 0;
 

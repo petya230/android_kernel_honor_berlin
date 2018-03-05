@@ -1,17 +1,39 @@
 /*
- * Texas Instruments TUSB422 Power Delivery
+ * TUSB422 Power Delivery
  *
  * Author: Brian Quach <brian.quach@ti.com>
- * Copyright: (C) 2016 Texas Instruments, Inc.
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
+ * Copyright (C) 2016 Texas Instruments Incorporated - http://www.ti.com/ 
+ * 
+ * 
+ *  Redistribution and use in source and binary forms, with or without 
+ *  modification, are permitted provided that the following conditions 
+ *  are met:
  *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * General Public License for more details.
+ *    Redistributions of source code must retain the above copyright 
+ *    notice, this list of conditions and the following disclaimer.
+ *
+ *    Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the 
+ *    documentation and/or other materials provided with the   
+ *    distribution.
+ *
+ *    Neither the name of Texas Instruments Incorporated nor the names of
+ *    its contributors may be used to endorse or promote products derived
+ *    from this software without specific prior written permission.
+ *
+ *  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS 
+ *  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT 
+ *  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ *  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT 
+ *  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, 
+ *  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT 
+ *  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ *  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ *  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT 
+ *  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE 
+ *  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
  */
 
 #include "tcpm.h"
@@ -28,18 +50,24 @@
 	#include <string.h>
 #endif
 #include "usb_pd_policy_engine.h"
+
 //
 //  Global variables
 //
 
+//#define ENABLE_UGREEN_DEVICE_QUIRK
+#define T_UGREEN_DEVICE_QUIRK_DEBOUNCE_MS    500
 #define T_CC_DEBOUNCE_MS     150    /* 100 - 200 ms */
 #define T_PD_DEBOUNCE_MS     15     /*  10 - 20 ms */
 #define T_DRP_TRY_MS         125    /*  75 - 150 ms */
 #define T_DRP_TRY_WAIT_MS    600    /* 400 - 800 ms */
-#define T_VBUS_OFF_MS        650    /*  ?? - 650 ms */
-#define T_ERROR_RECOVERY_MS  T_VBUS_OFF_MS   /*  25 - ?? ms */
+//#define T_VBUS_OFF_MS        650   /*   0 - 650 ms */
+//#define T_VBUS_ON_MS         275   /*   0 - 275 ms */
+#define T_ERROR_RECOVERY_MS  40     /*  25 - ?? ms */
 #define T_TRY_TIMEOUT_MS     800    /* 550 - 1100 ms */
-#define T_TRY_ROLE_SWAP_MS   500    /* custom value not defined by Type-C spec (500 ms minimum) */
+/* The following timing value is derived from the worst case max timing delays */
+#define T_TRY_ROLE_SWAP_MS   500   /* this timing value is not defined by the Type-C specification */
+#define T_SINK_DISCONNECT_MS  30   /*   0 - 40 ms */
 
 #define TCPC_POLLING_DELAY()  tcpm_msleep(1)  /* Delay to wait for next CC and voltage polling period */
 
@@ -69,8 +97,8 @@ const char * const tcstate2string[TCPC_NUM_STATES] =
 	"ORIENTED_DEBUG_ACC_SRC",
 	"DEBUG_ACC_SNK",
 	"AUDIO_ACC",
-	"ERROR_RECOVERY",
-	"DISABLED"
+	"ERROR_RECOVERY",    
+	"DISABLED"  
 };
 
 tcpc_device_t* tcpm_get_device(unsigned int port)
@@ -92,11 +120,35 @@ static void tcpm_notify_conn_state(unsigned int port, tcpc_state_t state)
 {
 	if (conn_state_change_cbk) conn_state_change_cbk(port, state);
 
-	// For Attached.SRC state, PAL is notified before VBUS is applied.
+	// For Attached.SRC state, PAL is notified and mux is configured before VBUS is applied.
 	if (state != TCPC_STATE_ATTACHED_SRC)
 	{
 #ifdef CONFIG_TUSB422_PAL
 		usb_pd_pal_notify_connect_state(port, state, tcpc_dev[port].plug_polarity);
+#else
+		switch (state)
+		{
+			case TCPC_STATE_UNATTACHED_SRC:
+				tcpm_mux_control(port, PD_DATA_ROLE_DFP, MUX_DISABLE, tcpc_dev[port].plug_polarity);
+				break;
+
+			case TCPC_STATE_UNATTACHED_SNK:
+				tcpm_mux_control(port, PD_DATA_ROLE_UFP, MUX_DISABLE, tcpc_dev[port].plug_polarity);
+				break;
+
+			case TCPC_STATE_ATTACHED_SNK:
+				tcpm_mux_control(port, PD_DATA_ROLE_UFP, MUX_USB, tcpc_dev[port].plug_polarity);
+				break;
+
+			case TCPC_STATE_UNORIENTED_DEBUG_ACC_SRC:
+			case TCPC_STATE_ORIENTED_DEBUG_ACC_SRC:
+			case TCPC_STATE_DEBUG_ACC_SNK:
+			case TCPC_STATE_AUDIO_ACC:
+				break;
+
+			default:
+				break;
+		}
 #endif
 	}
 
@@ -105,9 +157,9 @@ static void tcpm_notify_conn_state(unsigned int port, tcpc_state_t state)
 
 static void tcpm_notify_current_change(unsigned int port, tcpc_cc_snk_state_t state)
 {
-	DEBUG("Current advertisement change detected: %s\n",
-		  (state == CC_SNK_STATE_POWER30) ? "3.0A" :
-		  (state == CC_SNK_STATE_POWER15) ? "1.5A" :
+	DEBUG("Current advertisement change detected: %s\n", 
+		  (state == CC_SNK_STATE_POWER30) ? "3.0A" : 
+		  (state == CC_SNK_STATE_POWER15) ? "1.5A" : 
 		  (state == CC_SNK_STATE_DEFAULT) ? "500/900mA" : "?");
 
 	if (current_change_cbk)	current_change_cbk(port, state);
@@ -117,7 +169,7 @@ static void tcpm_notify_current_change(unsigned int port, tcpc_cc_snk_state_t st
 
 static void tcpm_notify_hard_reset(unsigned int port)
 {
-	DEBUG("Hard Reset Rx'd.\n");
+	CRIT("Hard Reset Rx'd.\n");
 	if (pd_hard_reset_cbk) pd_hard_reset_cbk(port);
 	return;
 }
@@ -150,24 +202,26 @@ void tcpm_src_vbus_disable(unsigned int port)
 {
 	DEBUG("SRC VBUS off.\n");
 	tcpc_write8(port, TCPC_REG_COMMAND, TCPC_CMD_DISABLE_SRC_VBUS);
-	tcpm_hal_vbus_disable(port, VBUS_SRC_HI_VOLT);
-	tcpm_hal_vbus_disable(port, VBUS_SRC_5V);
+	tcpm_source_vbus_disable(port);
 	return;
 }
 
-void tcpm_src_vbus_5v_enable(unsigned int port)
-{
-	DEBUG("-> SRC VBUS 5V.\n");
-	tcpc_write8(port, TCPC_REG_COMMAND, TCPC_CMD_SRC_VBUS_DEFAULT);
-	tcpm_hal_vbus_enable(port, VBUS_SRC_5V);
-	return;
-}
 
-void tcpm_src_vbus_hi_volt_enable(unsigned int port)
+void tcpm_src_vbus_enable(unsigned int port, uint16_t mv)
 {
-	DEBUG("-> SRC VBUS Hi.\n");
-	tcpc_write8(port, TCPC_REG_COMMAND, TCPC_CMD_SRC_VBUS_HI_VOLTAGE);
-	tcpm_hal_vbus_enable(port, VBUS_SRC_HI_VOLT);
+	DEBUG("-> SRC VBUS %umV.\n", mv);
+
+	if (mv == 5000)
+	{
+		tcpc_write8(port, TCPC_REG_COMMAND, TCPC_CMD_SRC_VBUS_DEFAULT);
+	}
+	else
+	{
+		// << Issue vendor-defined commands to set the target voltage level here >>
+
+		tcpc_write8(port, TCPC_REG_COMMAND, TCPC_CMD_SRC_VBUS_HI_VOLTAGE);
+	}
+
 	return;
 }
 
@@ -175,7 +229,6 @@ void tcpm_snk_vbus_enable(unsigned int port)
 {
 	DEBUG("-> SNK VBUS.\n");
 	tcpc_write8(port, TCPC_REG_COMMAND, TCPC_CMD_SNK_VBUS);
-	tcpm_hal_vbus_enable(port, VBUS_SNK);
 	return;
 }
 
@@ -183,18 +236,20 @@ void tcpm_snk_vbus_disable(unsigned int port)
 {
 	DEBUG("SNK VBUS off.\n");
 	tcpc_write8(port, TCPC_REG_COMMAND, TCPC_CMD_DISABLE_SNK_VBUS);
-	tcpm_hal_vbus_disable(port, VBUS_SNK);
+	tcpm_sink_vbus_disable(port);
 	return;
 }
 
 void tcpm_set_voltage_alarm_hi(unsigned int port, uint16_t threshold_25mv)
 {
+	INFO("%s: %umV\n", __func__, threshold_25mv * 25);
 	tcpc_write16(port, TCPC_REG_VBUS_VOLTAGE_ALARM_HI_CFG, threshold_25mv);
 	return;
 }
 
 void tcpm_set_voltage_alarm_lo(unsigned int port, uint16_t threshold_25mv)
 {
+	INFO("%s: %umV\n", __func__, threshold_25mv * 25);
 	tcpc_write16(port, TCPC_REG_VBUS_VOLTAGE_ALARM_LO_CFG, threshold_25mv);
 	return;
 }
@@ -208,18 +263,10 @@ static uint16_t tcpm_get_voltage_alarm_lo_threshold(unsigned int port)
 	return threshold_25mv;
 }
 
-bool tcpm_is_vbus_present(unsigned int port)
-{
-	uint8_t pwr_status;
-
-	tcpc_read8(port, TCPC_REG_POWER_STATUS, &pwr_status);
-
-	return(pwr_status & TCPC_PWR_STATUS_VBUS_PRESENT) ? true : false;
-}
-
 
 void tcpm_set_vconn_enable(unsigned int port, bool enable)
 {
+	tcpm_source_vconn(port, enable);
 	if (enable)
 	{
 		tcpc_modify8(port, TCPC_REG_POWER_CTRL, 0, TCPC_PWR_CTRL_ENABLE_VCONN);
@@ -229,11 +276,12 @@ void tcpm_set_vconn_enable(unsigned int port, bool enable)
 		tcpc_modify8(port, TCPC_REG_POWER_CTRL, TCPC_PWR_CTRL_ENABLE_VCONN, 0);
 	}
 
+
 	return;
 }
 
 
-bool tcpm_is_vconn_source(unsigned int port)
+bool tcpm_is_vconn_enabled(unsigned int port)
 {
 	uint8_t pwr_ctrl;
 
@@ -241,7 +289,6 @@ bool tcpm_is_vconn_source(unsigned int port)
 
 	return(pwr_ctrl & TCPC_PWR_CTRL_ENABLE_VCONN) ? true : false;
 }
-
 
 void tcpm_set_rp_value(unsigned int port, tcpc_role_rp_val_t rp_val)
 {
@@ -256,13 +303,13 @@ void tcpm_remove_rp_from_vconn_pin(unsigned int port)
 	if (dev->plug_polarity == PLUG_UNFLIPPED)
 	{
 		// Remove Rp from CC2 pin.
-		tcpc_write8(port, TCPC_REG_ROLE_CTRL,
+		tcpc_write8(port, TCPC_REG_ROLE_CTRL, 
 					tcpc_reg_role_ctrl_set(false, dev->rp_val, CC_RP, CC_OPEN));
 	}
 	else
 	{
 		// Remove Rp from CC1 pin.
-		tcpc_write8(port, TCPC_REG_ROLE_CTRL,
+		tcpc_write8(port, TCPC_REG_ROLE_CTRL, 
 					tcpc_reg_role_ctrl_set(false, dev->rp_val, CC_OPEN, CC_RP));
 	}
 
@@ -275,18 +322,20 @@ void tcpm_cc_pin_control(unsigned int port, tc_role_t new_role)
 
 	if (dev->silicon_revision == 0)
 	{
-		tcpc_write8(port, TCPC_REG_ROLE_CTRL,
+		/*** TUSB422 PG1.0 workaround for role control change from DRP to non-DRP not working (CDDS #41) ***/
+		// Set both CC pins to Open to go to disconnected state before setting non-DRP control state.
+		tcpc_write8(port, TCPC_REG_ROLE_CTRL, 
 					tcpc_reg_role_ctrl_set(false, dev->rp_val, CC_OPEN, CC_OPEN));
 	}
 
 	if (new_role == ROLE_SNK)
 	{
-		tcpc_write8(port, TCPC_REG_ROLE_CTRL,
+		tcpc_write8(port, TCPC_REG_ROLE_CTRL, 
 					tcpc_reg_role_ctrl_set(false, dev->rp_val, CC_RD, CC_RD));
 	}
 	else if (new_role == ROLE_SRC)
 	{
-		tcpc_write8(port, TCPC_REG_ROLE_CTRL,
+		tcpc_write8(port, TCPC_REG_ROLE_CTRL, 
 					tcpc_reg_role_ctrl_set(false, dev->rp_val, CC_RP, CC_RP));
 	}
 
@@ -296,7 +345,7 @@ void tcpm_cc_pin_control(unsigned int port, tc_role_t new_role)
 void tcpm_update_msg_header_info(unsigned int port, uint8_t data_role, uint8_t power_role)
 {
 	// Update msg header info.
-	tcpc_write8(port, TCPC_REG_MSG_HDR_INFO,
+	tcpc_write8(port, TCPC_REG_MSG_HDR_INFO, 
 				TCPC_REG_MSG_HDR_INFO_SET(0, data_role, power_role));
 
 	return;
@@ -308,16 +357,20 @@ void tcpm_set_bist_test_mode(unsigned int port)
 	uint8_t ctrl = TCPC_CTRL_BIST_TEST_MODE;
 
 	ctrl |= (dev->plug_polarity == PLUG_FLIPPED) ? TCPC_CTRL_PLUG_ORIENTATION : 0;
-
-	// Note: This setting has no effect in PG1.0.
-	tusb422_i2c_write_byte(TCPC_REG_TCPC_CTRL, ctrl);
-	//	tcpc_write8(port, TCPC_REG_TCPC_CTRL, ctrl);
+	tcpc_write8(port, TCPC_REG_TCPC_CTRL, ctrl);
 	return;
 }
 
-void tcpm_enable_bleed_discharge(unsigned int port)
+void tcpm_set_bleed_discharge(unsigned int port, bool enable)
 {
+	if (enable)
+	{
 	tcpc_modify8(port, TCPC_REG_POWER_CTRL, 0, TCPC_PWR_CTRL_ENABLE_BLEED_DISCHARGE);
+	}
+	else
+	{
+		tcpc_modify8(port, TCPC_REG_POWER_CTRL, TCPC_PWR_CTRL_ENABLE_BLEED_DISCHARGE, 0);
+	}
 	return;
 }
 
@@ -342,20 +395,26 @@ static void tcpm_enable_voltage_monitoring(unsigned int port)
 
 void tcpm_enable_vbus_detect(unsigned int port)
 {
+	tcpc_device_t *dev = &tcpc_dev[port];
 	uint8_t pwr_status;
 
 	// Read power status.
 	tcpc_read8(port, TCPC_REG_POWER_STATUS, &pwr_status);
 
+	// Check if VBUS present detection is not enabled.
 	if (!(pwr_status & TCPC_PWR_STATUS_VBUS_PRES_DETECT_EN))
 	{
-		// ADC is used for VBUS detection so ensure voltage monitoring is enabled.
-		tcpc_modify8(port, TCPC_REG_POWER_CTRL, TCPC_PWR_CTRL_VBUS_VOLTAGE_MONITOR, 0);
+		if (dev->silicon_revision == 0)
+		{
+			/*** TUSB422 PG1.0 workaround for VBUS detection gated by voltage monitoring enable (CDDS #37) ***/
+			// Enable voltage monitoring to ungate VBUS detection.
+			tcpc_modify8(port, TCPC_REG_POWER_CTRL, TCPC_PWR_CTRL_VBUS_VOLTAGE_MONITOR, 0);
+		}
 
 		// Enable VBUS detect.
 		tcpc_write8(port, TCPC_REG_COMMAND, TCPC_CMD_ENABLE_VBUS_DETECT);
 
-		// Delay by one polling period to ensure VBUS measurement is valid.
+		// Delay by one polling period to ensure VBUS present status is valid.
 		TCPC_POLLING_DELAY();
 	}
 
@@ -370,6 +429,18 @@ void tcpm_disable_vbus_detect(unsigned int port)
 	return;
 }
 
+bool tcpm_is_vbus_present(unsigned int port)
+{
+	uint8_t pwr_status;
+
+	// Enable VBUS detection.
+	tcpm_enable_vbus_detect(port);
+
+	tcpc_read8(port, TCPC_REG_POWER_STATUS, &pwr_status);
+
+	return(pwr_status & TCPC_PWR_STATUS_VBUS_PRESENT) ? true : false;
+}
+
 
 void tcpm_register_dump(unsigned int port)
 {
@@ -381,33 +452,41 @@ void tcpm_register_dump(unsigned int port)
 	for (i = 0x10; i < 0x16; i++)
 	{
 		tcpc_read8(port, i, &data);
-		PRINT("%02x: %02x\n", i, data);
+		PRINT("%02x: %02x\n", i, data); 
 	}
 
 	for (i = 0x18; i < 0x20; i++)
 	{
 		tcpc_read8(port, i, &data);
-		PRINT("%02x: %02x\n", i, data);
+		PRINT("%02x: %02x\n", i, data); 
 	}
 
 	for (i = 0x2E; i < 0x30; i++)
 	{
 		tcpc_read8(port, i, &data);
-		PRINT("%02x: %02x\n", i, data);
+		PRINT("%02x: %02x\n", i, data); 
 	}
 
 	for (i = 0x70; i < 0x7A; i++)
 	{
 		tcpc_read8(port, i, &data);
-		PRINT("%02x: %02x\n", i, data);
+		PRINT("%02x: %02x\n", i, data); 
 	}
 
 	tcpc_read8(port, 0x90, &data);
-	PRINT("90: %02x\n", data);
+	PRINT("90: %02x\n", data); 
+
+	tcpc_read8(port, 0x92, &data);
+	PRINT("92: %02x\n", data); 
 
 	tcpc_read8(port, 0x94, &data);
-	PRINT("94: %02x\n", data);
+	PRINT("94: %02x\n", data); 
 
+	tcpc_read8(port, 0xA0, &data);
+	PRINT("A0: %02x\n", data); 
+
+	tcpc_read8(port, 0xA1, &data);
+	PRINT("A1: %02x\n", data); 
 	return;
 }
 
@@ -428,7 +507,7 @@ void tcpm_register_callbacks(const tcpm_callbacks_t *callbacks)
 
 static void tcpm_set_state(tcpc_device_t *dev, tcpc_state_t new_state)
 {
-	CRIT("%s\n", tcstate2string[new_state]);
+	PRINT("%s\n", tcstate2string[new_state]);
 
 	dev->last_state = dev->state;
 	dev->state = new_state;
@@ -437,7 +516,30 @@ static void tcpm_set_state(tcpc_device_t *dev, tcpc_state_t new_state)
 	return;
 }
 
+static void timeout_ugreen_device_quirk_debounce(unsigned int port)
+{
+	unsigned int cc1, cc2;
+	tcpc_device_t *dev = &tcpc_dev[port];
 
+	PRINT("%s\n", __func__);
+	tcpc_write8(port, TCPC_REG_ROLE_CTRL, 
+				tcpc_reg_role_ctrl_set(false, RP_HIGH_CURRENT, CC_RP, CC_RP));
+	TCPC_POLLING_DELAY();
+	tcpc_read8(port, TCPC_REG_CC_STATUS, &dev->cc_status);
+	cc1 = TCPC_CC1_STATE(dev->cc_status);
+	cc2 = TCPC_CC2_STATE(dev->cc_status);
+	PRINT("cc1 = %u, cc2 = %u\n", cc1, cc2);
+	if ((cc1 == CC_SRC_STATE_RD) && 
+		(cc2 == CC_SRC_STATE_RD))
+	{
+		tcpm_set_state(dev, TCPC_STATE_UNORIENTED_DEBUG_ACC_SRC);
+	}
+	else
+	{
+		tcpm_set_state(dev, TCPC_STATE_ATTACHED_SRC);
+	}
+	return;
+}
 static void timeout_cc_debounce(unsigned int port)
 {
 	unsigned int cc1, cc2;
@@ -445,43 +547,58 @@ static void timeout_cc_debounce(unsigned int port)
 
 	// Read CC status.
 	tcpc_read8(port, TCPC_REG_CC_STATUS, &dev->cc_status);
-	DEBUG("%s CC status = 0x%x\n", __func__, dev->cc_status);
+	PRINT("%s CC status = 0x%x\n", __func__, dev->cc_status);
 
 	cc1 = TCPC_CC1_STATE(dev->cc_status);
 	cc2 = TCPC_CC2_STATE(dev->cc_status);
 
 	if (dev->state == TCPC_STATE_ATTACH_WAIT_SRC)
 	{
-		if ((cc1 == CC_SRC_STATE_RA) &&
+		if ((cc1 == CC_SRC_STATE_RA) && 
 			(cc2 == CC_SRC_STATE_RA))
 		{
 			tcpm_set_state(dev, TCPC_STATE_AUDIO_ACC);
 		}
-		else if ((cc1 == CC_SRC_STATE_RD) &&
+		else if ((cc1 == CC_SRC_STATE_RD) || 
 				 (cc2 == CC_SRC_STATE_RD))
 		{
-			tcpm_set_state(dev, TCPC_STATE_UNORIENTED_DEBUG_ACC_SRC);
-		}
-		else if ((cc1 == CC_SRC_STATE_RD) ||
-				 (cc2 == CC_SRC_STATE_RD))
-		{
-			if ((dev->flags & TC_FLAGS_TRY_SNK) &&
-				(dev->role == ROLE_DRP))
+			// Check if VBUS is below vSafe0V.
+			if (tcpm_get_vbus_voltage(port) < VSAFE0V_MAX)
 			{
-				tcpm_set_state(dev, TCPC_STATE_TRY_SNK);
-			}
-			else
-			{
-				// Check if VBUS is below vSafe0V.
-				if (tcpm_get_vbus_voltage(port) < VSAFE0V_MAX)
+				if ((cc1 == CC_SRC_STATE_RD) && 
+					(cc2 == CC_SRC_STATE_RD))
 				{
-					tcpm_set_state(dev, TCPC_STATE_ATTACHED_SRC);
+#ifdef ENABLE_UGREEN_DEVICE_QUIRK
+PRINT("Detected Unoriented Debug Accessory.  Trying workaround for UGREEN.\n");
+					if (dev->plug_polarity == PLUG_UNFLIPPED)
+					{
+						tcpc_write8(port, TCPC_REG_ROLE_CTRL, 
+									tcpc_reg_role_ctrl_set(false, RP_HIGH_CURRENT, CC_OPEN, CC_RP));
+					}
+					else
+					{
+						tcpc_write8(port, TCPC_REG_ROLE_CTRL, 
+									tcpc_reg_role_ctrl_set(false, RP_HIGH_CURRENT, CC_RP, CC_OPEN));
+					}
+					timer_start(&dev->timer, T_UGREEN_DEVICE_QUIRK_DEBOUNCE_MS, timeout_ugreen_device_quirk_debounce);
+#else
+					tcpm_set_state(dev, TCPC_STATE_UNORIENTED_DEBUG_ACC_SRC);
+#endif
+				}
+				else if ((dev->flags & TC_FLAGS_TRY_SNK) && 
+						 (dev->role == ROLE_DRP))
+				{
+					tcpm_set_state(dev, TCPC_STATE_TRY_SNK);
 				}
 				else
 				{
-					// Set low voltage alarm for vSafe0V to trigger transition to Attached.SRC.
-					tcpm_set_voltage_alarm_lo(port, VSAFE0V_MAX);
+					tcpm_set_state(dev, TCPC_STATE_ATTACHED_SRC);
 				}
+			}
+			else
+			{
+				// Set low voltage alarm for vSafe0V to trigger restart of CC debounce.
+				tcpm_set_voltage_alarm_lo(port, VSAFE0V_MAX);
 			}
 		}
 		else /* Invalid CC state */
@@ -489,24 +606,32 @@ static void timeout_cc_debounce(unsigned int port)
 			tcpm_set_state(dev, TCPC_STATE_UNATTACHED_SRC);
 		}
 	}
-	else if ((dev->state == TCPC_STATE_TRY_SRC) ||
-			 (dev->state == TCPC_STATE_TRY_WAIT_SRC))
+	else if (dev->state == TCPC_STATE_TRY_WAIT_SRC)
 	{
-		// Enable voltage monitoring.
-		tcpm_enable_voltage_monitoring(port);
-
-		// Verify VBUS is still below vSafe0V.
-		if (tcpm_get_vbus_voltage(port) < VSAFE0V_MAX)
+		// Check for Rd on exactly one pin.
+		if (((cc1 == CC_SRC_STATE_RD) && (cc2 != CC_SRC_STATE_RD)) || 
+			((cc1 != CC_SRC_STATE_RD) && (cc2 == CC_SRC_STATE_RD)))
 		{
-			// Disable force discharge.
-			tcpc_modify8(port, TCPC_REG_POWER_CTRL, TCPC_PWR_CTRL_FORCE_DISCHARGE, 0);
+			// Enable voltage monitoring.
+			tcpm_enable_voltage_monitoring(port);
 
-			tcpm_set_state(dev, TCPC_STATE_ATTACHED_SRC);
+			// Verify VBUS is still below vSafe0V.
+			if (tcpm_get_vbus_voltage(port) < VSAFE0V_MAX)
+			{
+				// Make sure VBUS detect is disabled. Otherwise USB-PD SRC->SNK power role swap will fail.
+				tcpm_disable_vbus_detect(port);
+
+				tcpm_set_state(dev, TCPC_STATE_ATTACHED_SRC);
+			}
+			else
+			{
+				// Set low voltage alarm for vSafe0V to trigger transition to Attached.SRC.
+				tcpm_set_voltage_alarm_lo(port, VSAFE0V_MAX);
+			}
 		}
-		else
+		else /* Invalid CC state */
 		{
-			// Set low voltage alarm for vSafe0V to trigger transition to Attached.SRC.
-			tcpm_set_voltage_alarm_lo(port, VSAFE0V_MAX);
+			tcpm_set_state(dev, TCPC_STATE_UNATTACHED_SNK);
 		}
 	}
 	else if (dev->state == TCPC_STATE_ATTACH_WAIT_SNK)
@@ -515,13 +640,13 @@ static void timeout_cc_debounce(unsigned int port)
 
 		if (tcpm_is_vbus_present(port))
 		{
-			// Debug Accessory if SNK.Rp on both CC1 and CC2.
-			if ((cc1 != CC_SNK_STATE_OPEN) &&
+			// Debug Accessory if SNK.Rp on both CC1 and CC2. 
+			if ((cc1 != CC_SNK_STATE_OPEN) && 
 				(cc2 != CC_SNK_STATE_OPEN))
 			{
 				tcpm_set_state(dev, TCPC_STATE_DEBUG_ACC_SNK);
 			}
-			else if ((dev->flags & TC_FLAGS_TRY_SRC) &&
+			else if ((dev->flags & TC_FLAGS_TRY_SRC) && 
 					 (dev->role == ROLE_DRP))
 			{
 				tcpm_set_state(dev, TCPC_STATE_TRY_SRC);
@@ -543,8 +668,8 @@ static void timeout_cc_debounce(unsigned int port)
 	}
 	else if (dev->state == TCPC_STATE_AUDIO_ACC)
 	{
-		if ((cc1 == CC_SNK_STATE_OPEN) &&
-			(cc2 == CC_SNK_STATE_OPEN))
+		if ((cc1 == CC_SRC_STATE_OPEN) && 
+			(cc2 == CC_SRC_STATE_OPEN))
 		{
 			if (dev->role == ROLE_SNK)
 			{
@@ -574,6 +699,9 @@ static void timeout_drp_try(unsigned int port)
 	tcpc_device_t *dev = &tcpc_dev[port];
 
 	DEBUG("%s\n", __func__);
+	// Read CC status.
+	tcpc_read8(port, TCPC_REG_CC_STATUS, &dev->cc_status);
+	PRINT("%s CC status = 0x%x\n", __func__, dev->cc_status);
 
 	if (dev->state == TCPC_STATE_TRY_SNK)
 	{
@@ -583,15 +711,16 @@ static void timeout_drp_try(unsigned int port)
 	{
 		// Read CC status.
 		tcpc_read8(port, TCPC_REG_CC_STATUS, &dev->cc_status);
-		DEBUG("%s CC status = 0x%x\n", __func__, dev->cc_status);
+		PRINT("%s CC status = 0x%x\n", __func__, dev->cc_status);
 
 		cc1 = TCPC_CC1_STATE(dev->cc_status);
 		cc2 = TCPC_CC2_STATE(dev->cc_status);
 
 		// If neither CC pin is in Rd state.
-		if ((cc1 != CC_SRC_STATE_RD) &&
+		if ((cc1 != CC_SRC_STATE_RD) && 
 			(cc2 != CC_SRC_STATE_RD))
 		{
+			PRINT("No Rd detected\n");
 			if (dev->state == TCPC_STATE_TRY_SRC)
 			{
 				// Check if VBUS is below vSafe0V.
@@ -644,14 +773,11 @@ static void timeout_pd_debounce(unsigned int port)
 	if (dev->state == TCPC_STATE_TRY_SNK_LOOK4SRC)
 	{
 		// Check for Rp on exactly one pin.
-		if (((cc1 == CC_SNK_STATE_OPEN) && (cc2 != CC_SNK_STATE_OPEN)) ||
+		if (((cc1 == CC_SNK_STATE_OPEN) && (cc2 != CC_SNK_STATE_OPEN)) || 
 			((cc1 != CC_SNK_STATE_OPEN) && (cc2 == CC_SNK_STATE_OPEN)))
 		{
 			// Source detected for tPDDebounce.
 			dev->src_detected = true;
-
-			// Enable VBUS detection.
-			tcpm_enable_vbus_detect(dev->port);
 
 			if (tcpm_is_vbus_present(port))
 			{
@@ -659,26 +785,13 @@ static void timeout_pd_debounce(unsigned int port)
 			}
 		}
 	}
-	else if ((dev->state == TCPC_STATE_TRY_SRC) ||
-			 (dev->state == TCPC_STATE_TRY_WAIT_SRC))
+	else if (dev->state == TCPC_STATE_TRY_SRC)
 	{
 		// Check for Rd on exactly one pin.
-		if (((cc1 == CC_SRC_STATE_RD) && (cc2 != CC_SRC_STATE_RD)) ||
+		if (((cc1 == CC_SRC_STATE_RD) && (cc2 != CC_SRC_STATE_RD)) || 
 			((cc1 != CC_SRC_STATE_RD) && (cc2 == CC_SRC_STATE_RD)))
 		{
-			// Enable voltage monitoring.
-			tcpm_enable_voltage_monitoring(port);
-
-			// Check if VBUS is below vSafe0V. It should always be for TryWait.SRC.
-			if (tcpm_get_vbus_voltage(port) < VSAFE0V_MAX)
-			{
-				tcpm_set_state(dev, TCPC_STATE_ATTACHED_SRC);
-			}
-			else
-			{
-				// Set low voltage alarm for vSafe0V to trigger transition to Attached.SRC.
-				tcpm_set_voltage_alarm_lo(port, VSAFE0V_MAX);
-			}
+			tcpm_set_state(dev, TCPC_STATE_ATTACHED_SRC);
 		}
 	}
 
@@ -697,14 +810,16 @@ static void timeout_pd_debounce(unsigned int port)
 		}
 		else if (dev->state == TCPC_STATE_TRY_SNK_LOOK4SRC)
 		{
+			// Make sure VBUS detect is disabled. Otherwise USB-PD SRC->SNK power role swap will fail.
+			tcpm_disable_vbus_detect(port);
+
 			tcpm_set_state(dev, TCPC_STATE_TRY_WAIT_SRC);
 		}
 		else if (dev->state == TCPC_STATE_TRY_WAIT_SNK)
 		{
 			tcpm_set_state(dev, TCPC_STATE_UNATTACHED_SNK);
 		}
-		else if ((dev->state == TCPC_STATE_TRY_SRC) ||
-				 (dev->state == TCPC_STATE_TRY_WAIT_SRC))
+		else if (dev->state == TCPC_STATE_TRY_SRC)
 		{
 			// Set state change flag so tDRPTry timer will be restarted in connection state machine.
 			dev->state_change = true;
@@ -726,7 +841,7 @@ static void timeout_pd_debounce(unsigned int port)
 }
 
 
-static void timeout_vbus4v_debounce(unsigned int port)
+static void timeout_sink_disconnect(unsigned int port)
 {
 	tcpc_device_t *dev = &tcpc_dev[port];
 	uint16_t v_threshold;
@@ -742,10 +857,10 @@ static void timeout_vbus4v_debounce(unsigned int port)
 			// Unattached.SNK.
 			tcpm_set_state(dev, TCPC_STATE_UNATTACHED_SNK);
 		}
-		else
+		else 
 		{
 			tcpc_read16(port, TCPC_REG_VBUS_VOLTAGE_ALARM_LO_CFG, &v_threshold);
-
+	
 			// Re-enabled the voltage alarm if it is disabled.
 			if (v_threshold == 0)
 			{
@@ -778,8 +893,11 @@ static void timeout_error_recovery(unsigned int port)
 
 void tcpm_enable_pd_receive(unsigned int port, bool enable_sop_p, bool enable_sop_pp)
 {
+#ifdef CABLE_PLUG
+	uint8_t rx_det_en = (TCPC_RX_EN_CABLE_RESET | TCPC_RX_EN_HARD_RESET);
+#else
 	uint8_t rx_det_en = (TCPC_RX_EN_HARD_RESET | TCPC_RX_EN_SOP);
-
+#endif
 	INFO("Enable PD Rx: SOP'=%u, SOP\"=%u\n", enable_sop_p, enable_sop_pp);
 
 	// Ensure BIST test mode is disabled.
@@ -796,7 +914,7 @@ void tcpm_enable_pd_receive(unsigned int port, bool enable_sop_p, bool enable_so
 	}
 
 	// Enable PD receive. (will be cleared by TCPC upon hard reset or disconnect)
-	tcpc_write8(port, TCPC_REG_RX_DETECT, rx_det_en);
+	tcpc_write8(port, TCPC_REG_RX_DETECT, rx_det_en); 
 
 	return;
 }
@@ -824,8 +942,9 @@ void tcpm_force_discharge(unsigned int port, uint16_t threshold_25mv)
 {
 	CRIT("Force VBUS discharge to %u mV\n", threshold_25mv * 25);
 
+	// Set the threshold to stop discharge for VBUS source.
 	tcpc_write16(port, TCPC_REG_VBUS_STOP_DISCHARGE_THRESH, threshold_25mv);
-
+	// Start the force discharge.
 	tcpc_modify8(port, TCPC_REG_POWER_CTRL, 0, TCPC_PWR_CTRL_FORCE_DISCHARGE);
 
 	return;
@@ -838,13 +957,17 @@ void tcpm_set_autodischarge_disconnect(unsigned int port, bool enable)
 	{
 		tcpc_modify8(port, TCPC_REG_POWER_CTRL, 0, TCPC_PWR_CTRL_AUTO_DISCHARGE_DISCONNECT);
 
-		// Set low voltage alarm to trigger transition to Unattached.SNK if
+		// Set low voltage alarm to trigger transition to Unattached.SNK if 
 		// VBUS <= 4V for longer than (2 x tPDDebounce).
-		tcpm_set_voltage_alarm_lo(port, VDISCON_MAX);   // BQ - remove to fix phone reboot with PD charger.
+		tcpm_set_voltage_alarm_lo(port, VDISCON_MAX);
 	}
 	else
 	{
+		// Disable AutoDischargeDisconnect.
 		tcpc_modify8(port, TCPC_REG_POWER_CTRL, TCPC_PWR_CTRL_AUTO_DISCHARGE_DISCONNECT, 0);
+
+		// Disable sink disconnect threshold.
+		tcpm_set_sink_disconnect_threshold(port, 0);
 
 		// Disable low voltage alarm.
 		tcpm_set_voltage_alarm_lo(port, 0);
@@ -855,10 +978,57 @@ void tcpm_set_autodischarge_disconnect(unsigned int port, bool enable)
 	return;
 }
 
-/* threshold has 25mV LSB, set to zero to disable and use VBUS_PRESENT to start auto-discharge disconnect */
+/* Threshold has 25mV LSB, set to zero to disable and use VBUS_PRESENT to start auto-discharge disconnect */
+/* When non-zero, this threshold is also used for VBUS sink disconnect detect alert */
 void tcpm_set_sink_disconnect_threshold(unsigned int port, uint16_t threshold_25mv)
 {
+	tcpc_device_t *dev = &tcpc_dev[port];
+
+	INFO("%s: %umV\n", __func__, threshold_25mv * 25);
+
+#ifdef USE_VOLTAGE_ALARM_FOR_SINK_DISCONNECT
+	if (threshold_25mv != 0)
+	{
+		// Use low voltage alarm instead of disconnect threshold.
+		tcpm_set_voltage_alarm_lo(port, threshold_25mv);
+	}
+#else
+	if (dev->silicon_revision <= 2)
+	{
+		/*** TUSB422 PG1.x workaround for clearing sink disconnect threshold results in a VBUS disconnect alert (CDDS #97) ***/
+		if (threshold_25mv == 0)
+		{
+			tcpc_modify16(port, TCPC_REG_ALERT_MASK, TCPC_ALERT_VBUS_DISCONNECT, 0);
+		}
+		else
+		{
+			tcpc_modify16(port, TCPC_REG_ALERT_MASK, 0, TCPC_ALERT_VBUS_DISCONNECT);
+		}
+	}
+
 	tcpc_write16(port, TCPC_REG_VBUS_SINK_DISCONNECT_THRESH, threshold_25mv);
+#endif
+
+	return;
+}
+
+void tcpm_snk_swap_standby(unsigned int port)
+{
+	/* 
+	 * TCPC spec section 4.4.5.4.4 Discharge by the Sink TCPC during a Connection: 
+	 * While there is a valid Source-to-Sink connection, the TCPC acting as a Sink shall reduce its current to less than 
+	 * iSnkSwapStdby (2.5mA) within tSnkSwapStby (15ms) when handling a Power Role Swap or Hard Reset.
+	 * The TCPM shall write POWER_CONTROL.AutoDischargeDisconnect to 0 or VBUS_SINK_DISCONNECT_THRESHOLD to 0 and 
+	 * COMMAND.DisableSinkVbus to disable the Sink disconnect detection and remove the Sink connection upon reception 
+	 * of or prior to transmitting a Power Role Swap or Hard Reset.
+	 */
+
+	// Disable AutoDischargeDisconnect per TCPC spec.
+	tcpm_set_autodischarge_disconnect(port, false);
+
+	// Disable sink VBUS per TCPC spec.
+	tcpm_snk_vbus_disable(port);
+
 	return;
 }
 
@@ -885,12 +1055,13 @@ void tcpm_read_message(unsigned int port, uint8_t *buf, uint8_t len)
 
 	if (tcpc_dev[port].silicon_revision == 0)
 	{
-		/****** TUSB422 PG1.0 workaround for zero byte cnt issue (CDDS #48) ******/
+		/*** TUSB422 PG1.0 workaround for zero byte cnt issue (CDDS #48) ***/
 		if (byte_cnt == 0)
 		{
 			CRIT("\n## ERROR: tcpm_read_msg: zero byte cnt!\n\n");
 		}
 
+		// Use byte count from the packet header if there is a mismatch.
 		if (byte_cnt != (len + 3))
 		{
 			CRIT("RxByteCnt = %u invalid, using length %u from header!\n", byte_cnt, len);
@@ -930,11 +1101,13 @@ void tcpm_read_message(unsigned int port, uint8_t *buf, uint8_t len)
 
 	if (tcpc_dev[port].silicon_revision == 0)
 	{
+		/*** TUSB422 PG1.0 workaround for zero byte cnt issue (CDDS #48) ***/
 		if (byte_cnt == 0)
 		{
 			CRIT("\n## ERROR: tcpm_read_msg: zero byte cnt!\n\n");
 		}
 
+		// Use byte count from the packet header if there is a mismatch
 		if (byte_cnt != (len + 3))
 		{
 			CRIT("RxByteCnt = %u invalid, using length %u from header!\n", byte_cnt, len);
@@ -966,7 +1139,7 @@ void tcpm_transmit(unsigned int port, uint8_t *buf, tcpc_transmit_t sop_type)
 {
 	if (buf)
 	{
-		// Write Tx byte cnt, header, and buffer all together.
+		// Write Tx byte cnt, header, and buffer all together. 
 		// (Add 1 to length since we are also writing byte cnt)
 #ifdef CONFIG_TUSB422
 		tcpc_write_block(port, TCPC_REG_TX_BYTE_CNT, buf, buf[0] + 1);
@@ -1003,15 +1176,19 @@ void tcpm_execute_error_recovery(unsigned int port)
 	tcpm_src_vbus_disable(port);
 	tcpm_snk_vbus_disable(port);
 
-	tcpc_write16(port, TCPC_REG_VBUS_STOP_DISCHARGE_THRESH, VSTOP_DISCHRG);
+	// Clear stop discharge threshold so discharge will stop at vSafe0V if VBUS source.
+	tcpc_write16(port, TCPC_REG_VBUS_STOP_DISCHARGE_THRESH, 0);
 
 	// AutoDischargeDisconnect=0, Disable VCONN, Enable VBUS voltage monitor/alarms, Force discharge, Enable bleed.
-	tcpc_write8(port, TCPC_REG_POWER_CTRL,
+	tcpc_write8(port, TCPC_REG_POWER_CTRL, 
 				(TCPC_PWR_CTRL_FORCE_DISCHARGE | TCPC_PWR_CTRL_ENABLE_BLEED_DISCHARGE));
 
 	// Remove CC1 & CC2 terminations.
-	tcpc_write8(port, TCPC_REG_ROLE_CTRL,
+	tcpc_write8(port, TCPC_REG_ROLE_CTRL, 
 				tcpc_reg_role_ctrl_set(false, dev->rp_val, CC_OPEN, CC_OPEN));
+
+	// Notify upper layer of the unattach to cancel any running USB-PD timers.
+	tcpm_notify_conn_state(port, TCPC_STATE_UNATTACHED_SNK);
 
 	timer_start(&dev->timer, T_ERROR_RECOVERY_MS, timeout_error_recovery);
 
@@ -1055,11 +1232,11 @@ void tcpm_change_role(unsigned int port, tc_role_t new_role)
 }
 
 
-/* This function will attempt a manual Type-C role swap. It will temporarily
- * change the role from DRP to DFP or UFP and perform a Type-C error recovery.
- * If a new connection is not established within 1 second, the DRP role will be
- * automatically restored and another Type-C error recovery will be executed.
- * Note: If Try.SRC is enabled and currently Attached.SNK, this function will
+/* This function will attempt a manual Type-C role swap. It will temporarily 
+ * change the role from DRP to DFP or UFP and perform a Type-C error recovery. 
+ * If a connection is not established within T_TRY_ROLE_SWAP_MS, the DRP role 
+ * will be restored and another Type-C error recovery will be executed. 
+ * Note: If Try.SRC is enabled and currently Attached.SNK, this function will 
  * not be able to swap to SRC if the port partner also implements Try.SRC. */
 void tcpm_try_role_swap(unsigned int port)
 {
@@ -1067,7 +1244,7 @@ void tcpm_try_role_swap(unsigned int port)
 
 	INFO("%s\n", __func__);
 
-	if (!(dev->cc_status & CC_STATUS_LOOKING4CONNECTION) &&
+	if (!(dev->cc_status & CC_STATUS_LOOKING4CONNECTION) && 
 		(dev->role == ROLE_DRP))
 	{
 		if (dev->cc_status & CC_STATUS_CONNECT_RESULT)
@@ -1118,7 +1295,7 @@ static void tcpm_handle_attached_state(unsigned int port)
 	tusb422_lfo_timer_cancel(&dev->timer2);
 
 #ifdef CONFIG_WAKELOCK
-	tusb422_wake_lock_attach();
+	tusb422_wake_lock_attach();   
 #endif
 
 	if (dev->flags & TC_FLAGS_TEMP_ROLE)
@@ -1139,7 +1316,7 @@ void tcpm_connection_state_machine(unsigned int port)
 	tcpc_role_cc_t cc_pull;
 	tcpc_device_t *dev = &tcpc_dev[port];
 
-	INFO("%s: state_change = %x, state = 0x%x.", __func__, dev->state_change, dev->state);
+	PRINT("%s: state_change = %x, state = 0x%x.", __func__, dev->state_change, dev->state);
 
 	if (!dev->state_change)
 		return;
@@ -1149,6 +1326,8 @@ void tcpm_connection_state_machine(unsigned int port)
 
 	cc1 = TCPC_CC1_STATE(dev->cc_status);
 	cc2 = TCPC_CC2_STATE(dev->cc_status);
+
+	PRINT("\ncc1 = %d, cc2 = %d\n", cc1, cc2);
 
 	switch (dev->state)
 	{
@@ -1164,13 +1343,13 @@ void tcpm_connection_state_machine(unsigned int port)
 			tcpm_src_vbus_disable(port);
 			tcpm_snk_vbus_disable(port);
 
-			tcpc_write16(port, TCPC_REG_VBUS_STOP_DISCHARGE_THRESH, VSTOP_DISCHRG);
-
+			tcpm_source_vconn(port, false);
 			if (dev->silicon_revision <= 1)
 			{
 				/*** TUSB422 PG1.0 workaround for CC polling issue (CDDS #59) ***/
-				/*** TUSB422 PG1.0 workaround for Tx Discarded issue (CDDS #38) ***/
+				/*** TUSB422 PG1.0 workaround for PD Tx Discarded issue (CDDS #38) ***/
 				/*** TUSB422 PG1.0/1.1 workaround for DRP toggle cycle not reset (CDDS #65) ***/
+				/*** TUSB422 PG1.1/1.2 workaround for disconnect does not disable PD receive (CDDS #60) ***/
 				tusb422_sw_reset(port);
 
 #ifdef DISABLE_VCONN_OC_DETECT
@@ -1185,29 +1364,34 @@ void tcpm_connection_state_machine(unsigned int port)
 				tcpc_write16(port, TCPC_REG_ALERT, TCPC_ALERT_VOLT_ALARM_HI);
 
 				// Set low voltage alarm so we can disable voltage monitoring when discharge is complete.
-				tcpm_set_voltage_alarm_lo(port, VSTOP_DISCHRG);
+				tcpm_set_voltage_alarm_lo(port, VSAFE0V_MAX);
 
 				// AutoDischargeDisconnect=0, Disable VCONN, Enable VBUS voltage monitor/alarms, Force discharge, Enable bleed.
-				tcpc_write8(port, TCPC_REG_POWER_CTRL,
+				tcpc_write8(port, TCPC_REG_POWER_CTRL, 
 							(TCPC_PWR_CTRL_FORCE_DISCHARGE | TCPC_PWR_CTRL_ENABLE_BLEED_DISCHARGE));
 			}
 			else
 			{
-				if (dev->silicon_revision <= 3)
-				{
-					// Disable PD receive. PG1.1/1.2/1.3 does not automatically disable PD upon disconnect.
+					/*** TUSB422 PG1.1/1.2 workaround for disconnect does not disable PD receive (CDDS #60) ***/
+					// Disable PD receive.
 					tcpc_write8(port, TCPC_REG_RX_DETECT, 0);
-				}
+
+				// Set hi voltage alarm threshold to max and clear alert.
+				tcpm_set_voltage_alarm_hi(port, 0x3FF);
+				tcpc_write16(port, TCPC_REG_ALERT, TCPC_ALERT_VOLT_ALARM_HI);
 
 				// Set low voltage alarm so we can disable voltage monitoring when discharge is complete.
-				tcpm_set_voltage_alarm_lo(port, VSTOP_DISCHRG);
+				tcpm_set_voltage_alarm_lo(port, VSAFE0V_MAX);
+
+				// Clear stop discharge threshold so discharge will stop at vSafe0V if VBUS source.
+				tcpc_write16(port, TCPC_REG_VBUS_STOP_DISCHARGE_THRESH, 0);
 
 				// AutoDischargeDisconnect=0, Disable VCONN, Enable VBUS voltage monitor/alarms, Force discharge, Enable bleed.
-				tcpc_write8(port, TCPC_REG_POWER_CTRL,
+				tcpc_write8(port, TCPC_REG_POWER_CTRL, 
 							(TCPC_PWR_CTRL_FORCE_DISCHARGE | TCPC_PWR_CTRL_ENABLE_BLEED_DISCHARGE));
 
 				// Disable VBUS detect.
-				tcpc_write8(port, TCPC_REG_COMMAND, TCPC_CMD_DISABLE_VBUS_DETECT);
+				tcpm_disable_vbus_detect(port);
 
 				// Disable sink disconnect threshold.
 				tcpm_set_sink_disconnect_threshold(port, 0);
@@ -1226,21 +1410,27 @@ void tcpm_connection_state_machine(unsigned int port)
 				{
 					/*** TUSB422 PG1.0/1.1 workaround for DRP toggle cycle not reset (CDDS #65) ***/
 					// Clear the DRP bit to force the CC pin state immediately.
-					tcpc_write8(port, TCPC_REG_ROLE_CTRL,
+					tcpc_write8(port, TCPC_REG_ROLE_CTRL, 
 								tcpc_reg_role_ctrl_set(false, dev->rp_val, cc_pull, cc_pull));
 				}
 
-				tcpc_write8(port, TCPC_REG_ROLE_CTRL,
+#ifdef ENABLE_UGREEN_DEVICE_QUIRK
+PRINT("Using temporary 3.0A current advertisement\n");
+				tcpc_write8(port, TCPC_REG_ROLE_CTRL, 
+							tcpc_reg_role_ctrl_set(true, RP_HIGH_CURRENT, cc_pull, cc_pull));
+#else
+				tcpc_write8(port, TCPC_REG_ROLE_CTRL, 
 							tcpc_reg_role_ctrl_set(true, dev->rp_val, cc_pull, cc_pull));
+#endif
 			}
 			else if (dev->role == ROLE_SNK)
 			{
-				tcpc_write8(port, TCPC_REG_ROLE_CTRL,
+				tcpc_write8(port, TCPC_REG_ROLE_CTRL, 
 							tcpc_reg_role_ctrl_set(false, dev->rp_val, CC_RD, CC_RD));
 			}
 			else /* ROLE_SRC */
 			{
-				tcpc_write8(port, TCPC_REG_ROLE_CTRL,
+				tcpc_write8(port, TCPC_REG_ROLE_CTRL, 
 							tcpc_reg_role_ctrl_set(false, dev->rp_val, CC_RP, CC_RP));
 			}
 
@@ -1261,16 +1451,27 @@ void tcpm_connection_state_machine(unsigned int port)
 			break;
 
 		case TCPC_STATE_TRY_WAIT_SRC:
+#ifdef ENABLE_UGREEN_DEVICE_QUIRK
+			PRINT("Try.Wait.SRC with Rp=3.0A\n");
+			tcpc_write8(port, TCPC_REG_ROLE_CTRL, 
+						tcpc_reg_role_ctrl_set(false, RP_HIGH_CURRENT, CC_RP, CC_RP));
+#else
 			// Pull up both CC pins to Rp.
-			tcpc_write8(port, TCPC_REG_ROLE_CTRL,
+			tcpc_write8(port, TCPC_REG_ROLE_CTRL, 
 						tcpc_reg_role_ctrl_set(false, dev->rp_val, CC_RP, CC_RP));
-
+#endif
 			timer_start(&dev->timer, T_DRP_TRY_MS, timeout_drp_try);
 			break;
 
 		case TCPC_STATE_TRY_WAIT_SNK:
+			// Clear source attach notification flag.
+			dev->src_attach_notify = false;
+
+			// Disable VCONN.
+			tcpm_set_vconn_enable(port, false);
+
 			// Terminate both CC pins to Rd.
-			tcpc_write8(port, TCPC_REG_ROLE_CTRL,
+			tcpc_write8(port, TCPC_REG_ROLE_CTRL, 
 						tcpc_reg_role_ctrl_set(false, dev->rp_val, CC_RD, CC_RD));
 
 			timer_start(&dev->timer, T_PD_DEBOUNCE_MS, timeout_pd_debounce);
@@ -1287,9 +1488,9 @@ void tcpm_connection_state_machine(unsigned int port)
 
 				dev->src_current_adv = (tcpc_cc_snk_state_t)cc1;
 
-				DEBUG("SRC current: %s\n",
-					  (cc1 == CC_SNK_STATE_POWER30) ? "3.0A" :
-					  (cc1 == CC_SNK_STATE_POWER15) ? "1.5A" :
+				DEBUG("SRC current: %s\n", 
+					  (cc1 == CC_SNK_STATE_POWER30) ? "3.0A" : 
+					  (cc1 == CC_SNK_STATE_POWER15) ? "1.5A" : 
 					  (cc1 == CC_SNK_STATE_DEFAULT) ? "500/900mA" : "?");
 			}
 			else /* CC1 voltage < CC2 voltage */
@@ -1299,30 +1500,30 @@ void tcpm_connection_state_machine(unsigned int port)
 
 				dev->src_current_adv = (tcpc_cc_snk_state_t)cc2;
 
-				DEBUG("SRC current: %s\n",
-					  (cc2 == CC_SNK_STATE_POWER30) ? "3.0A" :
-					  (cc2 == CC_SNK_STATE_POWER15) ? "1.5A" :
+				DEBUG("SRC current: %s\n", 
+					  (cc2 == CC_SNK_STATE_POWER30) ? "3.0A" : 
+					  (cc2 == CC_SNK_STATE_POWER15) ? "1.5A" : 
 					  (cc2 == CC_SNK_STATE_DEFAULT) ? "500/900mA" : "?");
 			}
 
 			// Set plug orientation for attached states.
-			tcpc_write8(port, TCPC_REG_TCPC_CTRL,
+			tcpc_write8(port, TCPC_REG_TCPC_CTRL, 
 						(dev->plug_polarity == PLUG_FLIPPED) ? TCPC_CTRL_PLUG_ORIENTATION : 0);
 
 			// Update msg header info for UFP sink.
-			tcpc_write8(port, TCPC_REG_MSG_HDR_INFO,
+			tcpc_write8(port, TCPC_REG_MSG_HDR_INFO, 
 						TCPC_REG_MSG_HDR_INFO_SET(0, PD_DATA_ROLE_UFP, PD_PWR_ROLE_SNK));
 
 			// AutoDischargeDisconnect=1, Enable VBUS voltage monitor & alarms, Enable Bleed discharge.
-			tcpc_write8(port, TCPC_REG_POWER_CTRL,
+			tcpc_write8(port, TCPC_REG_POWER_CTRL, 
 						(TCPC_PWR_CTRL_AUTO_DISCHARGE_DISCONNECT | TCPC_PWR_CTRL_ENABLE_BLEED_DISCHARGE));
 
-			// Set low voltage alarm to trigger transition to Unattached.SNK if
+			// Set low voltage alarm to trigger transition to Unattached.SNK if 
 			// VBUS <= 4V for longer than (2 x tPDDebounce).
 			tcpm_set_voltage_alarm_lo(port, VDISCON_MAX);
 
 			// Enable VBUS sink.
-			tcpm_snk_vbus_enable(port);
+			tcpm_sink_vbus(port, false, 5000, GET_SRC_CURRENT_MA(dev->src_current_adv));
 
 			// Notify upper layers.
 			tcpm_notify_conn_state(port, dev->state);
@@ -1339,22 +1540,24 @@ void tcpm_connection_state_machine(unsigned int port)
 			tcpm_handle_attached_state(port);
 
 			// Update msg header info for DFP source.
-			tcpc_write8(port, TCPC_REG_MSG_HDR_INFO,
+			tcpc_write8(port, TCPC_REG_MSG_HDR_INFO, 
 						TCPC_REG_MSG_HDR_INFO_SET(0, PD_DATA_ROLE_DFP, PD_PWR_ROLE_SRC));
 
 			// AutoDischargeDisconnect=1, VCONN=off, Enable VBUS voltage monitor & voltage alarms.
 			tcpc_write8(port, TCPC_REG_POWER_CTRL, TCPC_PWR_CTRL_AUTO_DISCHARGE_DISCONNECT);
 
-			// Enable VBUS source.
-			tcpm_src_vbus_5v_enable(port);
+			// Enable VBUS source vSafe5V.
+			tcpm_source_vbus(port, false, 5000);
 
-			// Notify upper layers.
-			tcpm_notify_conn_state(port, dev->state);
+			// Notify upper layers after vSafe5V is reached.
+			dev->src_attach_notify = true;
+			tcpm_set_voltage_alarm_hi(port, VSAFE5V_MIN);
 			break;
 
 		case TCPC_STATE_ATTACHED_SRC:
 		case TCPC_STATE_ORIENTED_DEBUG_ACC_SRC:
 			tcpm_handle_attached_state(port);
+			PRINT("\nTCPC_STATE_ATTACHED_SRC ++++\n");
 
 			if (cc1 == CC_SRC_STATE_RD)
 			{
@@ -1366,32 +1569,39 @@ void tcpm_connection_state_machine(unsigned int port)
 			}
 
 			// Set plug orientation for attached states.
-			tcpc_write8(port, TCPC_REG_TCPC_CTRL,
+			tcpc_write8(port, TCPC_REG_TCPC_CTRL, 
 						(dev->plug_polarity == PLUG_FLIPPED) ? TCPC_CTRL_PLUG_ORIENTATION : 0);
 
 			// Update msg header info for DFP source.
-			tcpc_write8(port, TCPC_REG_MSG_HDR_INFO,
+			tcpc_write8(port, TCPC_REG_MSG_HDR_INFO, 
 						TCPC_REG_MSG_HDR_INFO_SET(0, PD_DATA_ROLE_DFP, PD_PWR_ROLE_SRC));
+#ifdef ENABLE_UGREEN_DEVICE_QUIRK
+			PRINT("Restoring correct Rp-val\n");
+			tcpc_modify8(port, TCPC_REG_ROLE_CTRL, TCPC_ROLE_CTRL_RP_VALUE_MASK, 
+						 (dev->rp_val << TCPC_ROLE_CTRL_RP_VALUE_SHIFT));
+#endif
 
 			if (dev->state == TCPC_STATE_ATTACHED_SRC)
 			{
-				if ((cc1 == CC_SRC_STATE_RA) ||
+#ifdef CHECK_RA_FOR_VCONN_ENABLE
+				if ((cc1 == CC_SRC_STATE_RA) || 
 					(cc2 == CC_SRC_STATE_RA))
 				{
-					CRIT("VCONN enabled\n");
+					PRINT("VCONN enabled\n");
 
 					// Remove Rp from VCONN pin.
 					tcpm_remove_rp_from_vconn_pin(port);
+					tcpm_source_vconn(port, true);
 
 					// AutoDischargeDisconnect=1, Enable VCONN, Enable VBUS voltage monitor & alarms.
-					tcpc_write8(port, TCPC_REG_POWER_CTRL,
+					tcpc_write8(port, TCPC_REG_POWER_CTRL, 
 								(TCPC_PWR_CTRL_AUTO_DISCHARGE_DISCONNECT | TCPC_PWR_CTRL_ENABLE_VCONN));
 				}
 				else /* No Ra detected. Do not enable VCONN */
 				{
 					if (dev->silicon_revision <= 1)
 					{
-						/****** TUSB422 PG1.0/1.1 workaround for DFP may disconnect during PD receive (CDDS #63) ******/
+						/*** TUSB422 PG1.0/1.1 workaround for DFP may disconnect during PD receive (CDDS #63) ***/
 						// Remove Rp from unconnected pin.
 						tcpm_remove_rp_from_vconn_pin(port);
 					}
@@ -1399,13 +1609,22 @@ void tcpm_connection_state_machine(unsigned int port)
 					// AutoDischargeDisconnect=1, VCONN=off, Enable VBUS voltage monitor & alarms.
 					tcpc_write8(port, TCPC_REG_POWER_CTRL, TCPC_PWR_CTRL_AUTO_DISCHARGE_DISCONNECT);
 				}
-
-#ifdef CONFIG_TUSB422_PAL
-				usb_pd_pal_notify_connect_state(port, dev->state, tcpc_dev[port].plug_polarity);
+#else /* Always enable VCONN */
+				PRINT("Enabling VCONN\n");
+				tcpm_remove_rp_from_vconn_pin(port);
+				tcpm_source_vconn(port, true);
+				tcpc_write8(port, TCPC_REG_POWER_CTRL, 
+							(TCPC_PWR_CTRL_AUTO_DISCHARGE_DISCONNECT | TCPC_PWR_CTRL_ENABLE_VCONN));
 #endif
 
-				// Enable VBUS source.
-				tcpm_src_vbus_5v_enable(port);
+#ifdef CONFIG_TUSB422_PAL
+				usb_pd_pal_notify_connect_state(port, dev->state, dev->plug_polarity);
+#else
+				tcpm_mux_control(port, PD_DATA_ROLE_DFP, MUX_USB, dev->plug_polarity);
+#endif
+
+				// Enable VBUS source vSafe5V.
+				tcpm_source_vbus(port, false, 5000);
 
 				// Notify upper layers after vSafe5V is reached.
 				dev->src_attach_notify = true;
@@ -1414,30 +1633,41 @@ void tcpm_connection_state_machine(unsigned int port)
 			else /* TCPC_STATE_ORIENTED_DEBUG_ACC_SRC */
 			{
 				// Notify upper layers.
+				PRINT("TCPC_STATE_ORIENTED_DEBUG_ACC_SRC ++++\n");
 				tcpm_notify_conn_state(port, dev->state);
 			}
 			break;
 
 		case TCPC_STATE_TRY_SRC:
 		case TCPC_STATE_TRY_SNK:
+			if ((dev->silicon_revision <= 2) && (dev->state == TCPC_STATE_TRY_SRC))
+			{
+				/*** TUSB422 PG1.0 workaround for PD Tx Discarded issue (CDDS #38) ***/
+				/*** TUSB422 PG1.x workaround for CC open status not reported during Try.SRC issue (CDDS #101) ***/
+				tcpm_disable_vbus_detect(port);
+			}
+
 			if (dev->silicon_revision == 0)
 			{
-				/****** TUSB422 PG1.0 workaround for role change issue (CDDS #41) ******/
-				// Disable VBUS detect. (Try.SRC fix)
-				tcpc_write8(port, TCPC_REG_COMMAND, TCPC_CMD_DISABLE_VBUS_DETECT);
-
-				// Remove CC1 & CC2 terminations.
-				tcpc_write8(port, TCPC_REG_ROLE_CTRL,
+				/*** TUSB422 PG1.0 workaround for role control change from DRP to non-DRP not working (CDDS #41) ***/
+				// Set both CC pins to Open to go to disconnected state before setting non-DRP control state.
+				tcpc_write8(port, TCPC_REG_ROLE_CTRL, 
 							tcpc_reg_role_ctrl_set(false, dev->rp_val, CC_OPEN, CC_OPEN));
 			}
 
-			// Try.SRC - Both CC1 and CC2 pulled to Rp.
-			// Try.SNK - Both CC1 and CC2 terminated to Rd.
+			// Try.SRC - CC1 and CC2 terminated to Rp.
+			// Try.SNK - CC1 and CC2 terminated to Rd.
 			cc_pull = (dev->state == TCPC_STATE_TRY_SNK) ? CC_RD : CC_RP;
 
-			tcpc_write8(port, TCPC_REG_ROLE_CTRL,
+#ifdef ENABLE_UGREEN_DEVICE_QUIRK
+			if (dev->state == TCPC_STATE_TRY_SNK)
+				PRINT("Set Rd on both CC pins\n");
+			tcpc_write8(port, TCPC_REG_ROLE_CTRL, 
+						tcpc_reg_role_ctrl_set(false, RP_HIGH_CURRENT, cc_pull, cc_pull));
+#else
+			tcpc_write8(port, TCPC_REG_ROLE_CTRL, 
 						tcpc_reg_role_ctrl_set(false, dev->rp_val, cc_pull, cc_pull));
-
+#endif
 			timer_start(&dev->timer, T_DRP_TRY_MS, timeout_drp_try);
 			break;
 
@@ -1460,214 +1690,249 @@ void tcpm_connection_state_machine(unsigned int port)
 	return;
 }
 
+static void tcpm_handle_cc_open_state(tcpc_device_t *dev)
+{
+	usb_pd_port_t *pd_dev = usb_pd_pe_get_device(dev->port);
 
+	switch (dev->state)
+	{
+		case TCPC_STATE_ATTACH_WAIT_SRC:
+		case TCPC_STATE_ATTACHED_SRC:
+		case TCPC_STATE_UNORIENTED_DEBUG_ACC_SRC:
+		case TCPC_STATE_ORIENTED_DEBUG_ACC_SRC:
+			if ((dev->flags & TC_FLAGS_TRY_SRC) &&
+				(dev->role == ROLE_DRP) &&
+				(dev->state == TCPC_STATE_ATTACHED_SRC))
+			{
+				// If exiting Attached.SRC and Try.SRC is supported, 
+				// disable VBUS and transition to TryWait.SNK.
+				tcpm_src_vbus_disable(dev->port);
+
+				// Cancel PD policy engine timers which may be active.
+				timer_cancel(&pd_dev->timer);
+
+				tcpm_set_state(dev, TCPC_STATE_TRY_WAIT_SNK);
+			}
+			else if (dev->role == ROLE_DRP)
+			{
+				tcpm_set_state(dev, TCPC_STATE_UNATTACHED_SNK);
+			}
+			else
+			{
+				tcpm_set_state(dev, TCPC_STATE_UNATTACHED_SRC);
+			}
+			break;
+
+		case TCPC_STATE_AUDIO_ACC:
+			// Debounce for tCCDebounce.
+			timer_start(&dev->timer, T_CC_DEBOUNCE_MS, timeout_cc_debounce);
+			break;
+
+		case TCPC_STATE_TRY_SNK_LOOK4SRC:
+			// Restart tPDDebounce timer.
+			timer_start(&dev->timer, T_PD_DEBOUNCE_MS, timeout_pd_debounce);
+			break;
+
+		case TCPC_STATE_ATTACH_WAIT_SNK:
+		case TCPC_STATE_TRY_WAIT_SNK:
+			// Debounce for tPDDebounce.
+			// Use LFO timer to prevent stopping concurrent CC debounce timer.
+			tusb422_lfo_timer_start(&dev->timer2, T_PD_DEBOUNCE_MS, timeout_pd_debounce);
+			break;
+
+		case TCPC_STATE_ATTACHED_SNK:
+		case TCPC_STATE_DEBUG_ACC_SNK:
+			// Verify we are not in the process of a USB PD PR_Swap.
+			if (!pd_dev->power_role_swap_in_progress)
+			{
+				// Make sure VBUS detect is enabled. (May have been disabled when sink issues a PD Hard Reset)
+				tcpm_enable_vbus_detect(dev->port);
+			}
+			break;
+
+		default:
+			// Do nothing. We are either waiting for VBUS removal or a timeout to occur.
+			break;
+	}
+
+	return;
+}
+
+static void tcpm_handle_cc_connected_state(tcpc_device_t *dev)
+{
+	unsigned int cc1, cc2;
+
+	cc1 = TCPC_CC1_STATE(dev->cc_status);
+	cc2 = TCPC_CC2_STATE(dev->cc_status);
+
+	// Cancel tPDDebounce timer.
+	if (dev->timer2.function == timeout_pd_debounce)
+	{
+		tusb422_lfo_timer_cancel(&dev->timer2);
+	}
+
+	switch (dev->state)
+	{
+		case TCPC_STATE_UNATTACHED_SRC:
+		case TCPC_STATE_UNATTACHED_SNK:
+			if (dev->cc_status & CC_STATUS_CONNECT_RESULT)
+			{
+				/* TCPC is presenting Rd */
+				/* Rp was detected on at least one CC pin */
+				tcpm_set_state(dev, TCPC_STATE_ATTACH_WAIT_SNK);
+
+				// Debounce CC. 
+				timer_start(&dev->timer, T_CC_DEBOUNCE_MS, timeout_cc_debounce);
+			}
+			else /* TCPC is presenting Rp */
+			{
+				// If Rd on either CC pin or Ra on both CC pins.
+				if (((cc1 == CC_SRC_STATE_RD) || (cc2 == CC_SRC_STATE_RD)) ||
+					((cc1 == CC_SRC_STATE_RA) && (cc2 == CC_SRC_STATE_RA)))
+				{
+					// Enable voltage monitoring.
+					tcpm_enable_voltage_monitoring(dev->port);
+
+					tcpm_set_state(dev, TCPC_STATE_ATTACH_WAIT_SRC);
+
+					// Check if VBUS is below vSafe0V.
+					if (tcpm_get_vbus_voltage(dev->port) < VSAFE0V_MAX)
+					{
+						// Debounce CC.
+						timer_start(&dev->timer, T_CC_DEBOUNCE_MS, timeout_cc_debounce);
+#ifdef ENABLE_UGREEN_DEVICE_QUIRK
+						if (cc1 == CC_SRC_STATE_RD)
+						{
+							dev->plug_polarity = PLUG_UNFLIPPED;
+						}
+						else /* Rd on CC2 */
+						{
+							dev->plug_polarity = PLUG_FLIPPED;
+						}
+#endif
+					}
+					else
+					{
+						// Set low voltage alarm for vSafe0V to trigger start of CC debounce.
+						tcpm_set_voltage_alarm_lo(dev->port, VSAFE0V_MAX);
+					}
+				}
+			}
+			break;
+
+		case TCPC_STATE_ATTACH_WAIT_SNK:
+			// Do nothing.  Wait for CC debounce timer to expire.
+			break;
+
+		case TCPC_STATE_ATTACH_WAIT_SRC:
+			if (((cc1 == CC_STATE_OPEN) && (cc2 == CC_SRC_STATE_RA)) ||
+				((cc1 == CC_SRC_STATE_RA) && (cc2 == CC_STATE_OPEN)))
+			{
+				if (dev->role == ROLE_DRP)
+				{
+					tcpm_set_state(dev, TCPC_STATE_UNATTACHED_SNK);
+				}
+				else
+				{
+					tcpm_set_state(dev, TCPC_STATE_UNATTACHED_SRC);
+				}
+			}
+			break;
+
+		case TCPC_STATE_TRY_SNK_LOOK4SRC:
+			// Check for Rp on exactly one CC pin.
+			if (((cc1 == CC_SNK_STATE_OPEN) && (cc2 != CC_SNK_STATE_OPEN)) || 
+				((cc1 != CC_SNK_STATE_OPEN) && (cc2 == CC_SNK_STATE_OPEN)))
+			{
+				// Restart tPDDebounce timer. 
+				timer_start(&dev->timer, T_PD_DEBOUNCE_MS, timeout_pd_debounce);
+			}
+			break;
+
+		case TCPC_STATE_TRY_WAIT_SNK:
+			// Debounce CC. 
+			timer_start(&dev->timer, T_CC_DEBOUNCE_MS, timeout_cc_debounce);
+			break;
+
+		case TCPC_STATE_TRY_SRC:
+			// Check for Rd on exactly one CC pin.
+			if (((cc1 == CC_SRC_STATE_RD) && (cc2 != CC_SRC_STATE_RD)) || 
+				((cc1 != CC_SRC_STATE_RD) && (cc2 == CC_SRC_STATE_RD)))
+			{
+				// Debounce. 
+				timer_start(&dev->timer, T_PD_DEBOUNCE_MS, timeout_pd_debounce);
+			}
+			break;
+
+		case TCPC_STATE_TRY_WAIT_SRC:
+			// Check for Rd on exactly one CC pin.
+			if (((cc1 == CC_SRC_STATE_RD) && (cc2 != CC_SRC_STATE_RD)) || 
+				((cc1 != CC_SRC_STATE_RD) && (cc2 == CC_SRC_STATE_RD)))
+			{
+				// Debounce. 
+				timer_start(&dev->timer, T_CC_DEBOUNCE_MS, timeout_cc_debounce);
+			}
+			break;
+
+		case TCPC_STATE_UNORIENTED_DEBUG_ACC_SRC:
+			if ((cc1 == CC_SRC_STATE_RA) || 
+				(cc2 == CC_SRC_STATE_RA))
+			{
+				tcpm_set_state(dev, TCPC_STATE_ORIENTED_DEBUG_ACC_SRC);
+			}
+			break;
+
+		case TCPC_STATE_ATTACHED_SNK:
+		case TCPC_STATE_DEBUG_ACC_SNK:
+			// Report current change to upper layers.
+			if (dev->plug_polarity == PLUG_UNFLIPPED)
+			{
+				dev->src_current_adv = (tcpc_cc_snk_state_t)cc1;
+			}
+			else
+			{
+				dev->src_current_adv = (tcpc_cc_snk_state_t)cc2;
+			}
+
+			tcpm_notify_current_change(dev->port, dev->src_current_adv);
+			break;
+
+		default:
+			break;
+	}
+
+	return;
+}
 static void alert_cc_status_handler(tcpc_device_t *dev)
 {
 	unsigned int cc1, cc2;
-	usb_pd_port_t *pd_dev;
+	usb_pd_port_t *pd_dev = usb_pd_pe_get_device(dev->port);
 
 	// Read CC status.
 	tcpc_read8(dev->port, TCPC_REG_CC_STATUS, &dev->cc_status);
 
 	CRIT("CC status = 0x%02x\n", dev->cc_status);
 
-	if (dev->state == TCPC_STATE_TRY_SNK)
+	if ((dev->cc_status & CC_STATUS_LOOKING4CONNECTION) ||
+		(dev->state == TCPC_STATE_TRY_SNK))
 	{
+		// Ignore CC status while looking for connection.
 		// Do not monitor CC1 & CC2 while in Try.SNK.  Wait until tDRPTryWait expires.
 		return;
 	}
 
-	if (!(dev->cc_status & CC_STATUS_LOOKING4CONNECTION))
+	cc1 = TCPC_CC1_STATE(dev->cc_status);
+	cc2 = TCPC_CC2_STATE(dev->cc_status);
+
+	// If open state on CC1 and CC2.
+	if ((cc1 == CC_STATE_OPEN) && 
+		(cc2 == CC_STATE_OPEN))
 	{
-		cc1 = TCPC_CC1_STATE(dev->cc_status);
-		cc2 = TCPC_CC2_STATE(dev->cc_status);
-
-		// If open state on CC1 and CC2.
-		if ((cc1 == CC_STATE_OPEN) &&
-			(cc2 == CC_STATE_OPEN))
-		{
-			switch (dev->state)
-			{
-				case TCPC_STATE_ATTACH_WAIT_SRC:
-				case TCPC_STATE_ATTACHED_SRC:
-				case TCPC_STATE_UNORIENTED_DEBUG_ACC_SRC:
-				case TCPC_STATE_ORIENTED_DEBUG_ACC_SRC:
-					if ((dev->flags & TC_FLAGS_TRY_SRC) &&
-						(dev->role == ROLE_DRP) &&
-						(dev->state == TCPC_STATE_ATTACHED_SRC))
-					{
-						// If exiting Attached.SRC and Try.SRC is supported,
-						// disable VBUS and transition to TryWait.SNK.
-						tcpm_src_vbus_disable(dev->port);
-
-						tcpm_set_state(dev, TCPC_STATE_TRY_WAIT_SNK);
-					}
-					else if (dev->role == ROLE_DRP)
-					{
-						tcpm_set_state(dev, TCPC_STATE_UNATTACHED_SNK);
-					}
-					else
-					{
-						tcpm_set_state(dev, TCPC_STATE_UNATTACHED_SRC);
-					}
-					break;
-
-				case TCPC_STATE_AUDIO_ACC:
-					// Debounce for tCCDebounce.
-					timer_start(&dev->timer, T_CC_DEBOUNCE_MS, timeout_cc_debounce);
-					break;
-
-				case TCPC_STATE_TRY_SNK_LOOK4SRC:
-					// Restart tPDDebounce timer.
-					timer_start(&dev->timer, T_PD_DEBOUNCE_MS, timeout_pd_debounce);
-					break;
-
-				case TCPC_STATE_ATTACH_WAIT_SNK:
-				case TCPC_STATE_TRY_WAIT_SNK:
-					// Debounce for tPDDebounce.
-					// Use LFO timer to prevent stopping concurrent CC debounce timer.
-					tusb422_lfo_timer_start(&dev->timer2, T_PD_DEBOUNCE_MS, timeout_pd_debounce);
-					break;
-
-				case TCPC_STATE_ATTACHED_SNK:
-				case TCPC_STATE_DEBUG_ACC_SNK:
-					pd_dev = usb_pd_pe_get_device(dev->port);
-					if (*pd_dev->current_state != PE_PRS_TRANSITION_TO_OFF)
-					{
-						tcpm_enable_vbus_detect(dev->port);
-					}
-					break;
-
-				default:
-					// Do nothing. We are either waiting for VBUS removal or a timeout to occur.
-					break;
-			}
-		}
-		else /* At least one CC pin is connected */
-		{
-			// Cancel tPDDebounce timer.
-			if (dev->timer2.function == timeout_pd_debounce)
-			{
-				tusb422_lfo_timer_cancel(&dev->timer2);
-			}
-
-			switch (dev->state)
-			{
-				case TCPC_STATE_UNATTACHED_SRC:
-				case TCPC_STATE_UNATTACHED_SNK:
-					if (dev->cc_status & CC_STATUS_CONNECT_RESULT)
-					{
-						/* TCPC is presenting Rd */
-						/* Rp was detected on at least one CC pin */
-
-						// Enable VBUS detection.
-						tcpm_enable_vbus_detect(dev->port);
-
-						tcpm_set_state(dev, TCPC_STATE_ATTACH_WAIT_SNK);
-
-						// Debounce CC.
-						timer_start(&dev->timer, T_CC_DEBOUNCE_MS, timeout_cc_debounce);
-					}
-					else /* TCPC is presenting Rp */
-					{
-						// If Rd on either CC pin or Ra on both CC pins.
-						if (((cc1 == CC_SRC_STATE_RD) || (cc2 == CC_SRC_STATE_RD)) ||
-							((cc1 == CC_SRC_STATE_RA) && (cc2 == CC_SRC_STATE_RA)))
-						{
-							// Enable voltage monitoring.
-							tcpm_enable_voltage_monitoring(dev->port);
-
-							// Check if VBUS is below vSafe0V.
-							if (tcpm_get_vbus_voltage(dev->port) < VSAFE0V_MAX)
-							{
-								tcpm_set_state(dev, TCPC_STATE_ATTACH_WAIT_SRC);
-
-								// Debounce CC.
-								timer_start(&dev->timer, T_CC_DEBOUNCE_MS, timeout_cc_debounce);
-							}
-							else
-							{
-								tcpm_set_state(dev, TCPC_STATE_UNATTACHED_SRC);
-							}
-						}
-					}
-					break;
-
-				case TCPC_STATE_ATTACH_WAIT_SNK:
-					// Do nothing.  Wait for CC debounce timer to expire.
-					break;
-
-				case TCPC_STATE_ATTACH_WAIT_SRC:
-					if (((cc1 == CC_STATE_OPEN) && (cc2 == CC_SRC_STATE_RA)) ||
-						((cc1 == CC_SRC_STATE_RA) && (cc2 == CC_STATE_OPEN)))
-					{
-						if (dev->role == ROLE_DRP)
-						{
-							tcpm_set_state(dev, TCPC_STATE_UNATTACHED_SNK);
-						}
-						else
-						{
-							tcpm_set_state(dev, TCPC_STATE_UNATTACHED_SRC);
-						}
-					}
-					break;
-
-				case TCPC_STATE_TRY_SNK_LOOK4SRC:
-					// Check for Rp on exactly one CC pin.
-					if (((cc1 == CC_SNK_STATE_OPEN) && (cc2 != CC_SNK_STATE_OPEN)) ||
-						((cc1 != CC_SNK_STATE_OPEN) && (cc2 == CC_SNK_STATE_OPEN)))
-					{
-						// Restart tPDDebounce timer.
-						timer_start(&dev->timer, T_PD_DEBOUNCE_MS, timeout_pd_debounce);
-					}
-					break;
-
-				case TCPC_STATE_TRY_WAIT_SNK:
-					// Enable VBUS detection.
-					tcpm_enable_vbus_detect(dev->port);
-
-					// Debounce CC.
-					timer_start(&dev->timer, T_CC_DEBOUNCE_MS, timeout_cc_debounce);
-					break;
-
-				case TCPC_STATE_TRY_SRC:
-				case TCPC_STATE_TRY_WAIT_SRC:
-					// Check for Rd on exactly one CC pin.
-					if (((cc1 == CC_SRC_STATE_RD) && (cc2 != CC_SRC_STATE_RD)) ||
-						((cc1 != CC_SRC_STATE_RD) && (cc2 == CC_SRC_STATE_RD)))
-					{
-						// Debounce.
-						timer_start(&dev->timer, T_PD_DEBOUNCE_MS, timeout_pd_debounce);
-					}
-					break;
-
-				case TCPC_STATE_UNORIENTED_DEBUG_ACC_SRC:
-					if ((cc1 == CC_SRC_STATE_RA) ||
-						(cc2 == CC_SRC_STATE_RA))
-					{
-						tcpm_set_state(dev, TCPC_STATE_ORIENTED_DEBUG_ACC_SRC);
-					}
-					break;
-
-				case TCPC_STATE_ATTACHED_SNK:
-				case TCPC_STATE_DEBUG_ACC_SNK:
-					// Report current change to upper layers.
-					if (dev->plug_polarity == PLUG_UNFLIPPED)
-					{
-						dev->src_current_adv = (tcpc_cc_snk_state_t)cc1;
-					}
-					else
-					{
-						dev->src_current_adv = (tcpc_cc_snk_state_t)cc2;
-					}
-
-					tcpm_notify_current_change(dev->port, dev->src_current_adv);
-					break;
-
-				default:
-					break;
-			}
-		}
+		tcpm_handle_cc_open_state(dev);
+	}
+	else /* At least one CC pin is connected */
+	{
+		tcpm_handle_cc_connected_state(dev);
 	}
 
 	return;
@@ -1697,13 +1962,13 @@ static void alert_power_status_handler(tcpc_device_t *dev)
 					cc1 = TCPC_CC1_STATE(dev->cc_status);
 					cc2 = TCPC_CC2_STATE(dev->cc_status);
 
-					if ((cc1 != CC_SNK_STATE_OPEN) &&
+					if ((cc1 != CC_SNK_STATE_OPEN) && 
 						(cc2 != CC_SNK_STATE_OPEN))
 					{
 						// Debug Accessory if SNK.Rp on both CC1 and CC2.
 						tcpm_set_state(dev, TCPC_STATE_DEBUG_ACC_SNK);
 					}
-					else if ((dev->flags & TC_FLAGS_TRY_SRC) &&
+					else if ((dev->flags & TC_FLAGS_TRY_SRC) && 
 							 (dev->role == ROLE_DRP))
 					{
 						tcpm_set_state(dev, TCPC_STATE_TRY_SRC);
@@ -1722,6 +1987,7 @@ static void alert_power_status_handler(tcpc_device_t *dev)
 		}
 		else /* VBUS below threshold */
 		{
+			INFO("VBUS not present\n");
 			if ((dev->state == TCPC_STATE_ATTACHED_SNK) ||
 				(dev->state == TCPC_STATE_DEBUG_ACC_SNK))
 			{
@@ -1741,12 +2007,14 @@ static void alert_fault_status_handler(tcpc_device_t *dev)
 
 	tcpc_read8(dev->port, TCPC_REG_FAULT_STATUS, &status);
 
-	CRIT("Fault status = 0x%02x\n", status);
+	PRINT("Fault status = 0x%02x\n", status);    
 
 	if (status & TCPC_AUTO_DIS_FAIL_STATUS)
 	{
+		DEBUG("Auto discharge failed\n");
 		if (dev->silicon_revision == 0)
 		{
+			/*** TUSB422 PG1.0 workaround for VBUS discharge not disable upon fault (CDDS #33) ***/
 			// Stop VBUS discharge.
 			tusb422_stop_vbus_discharge(dev->port);
 		}
@@ -1754,13 +2022,14 @@ static void alert_fault_status_handler(tcpc_device_t *dev)
 
 	if (status & TCPC_FORCE_DIS_FAIL_STATUS)
 	{
+		DEBUG("Force discharge failed\n");
 		// Disable force VBUS discharge.
 		tcpc_modify8(dev->port, TCPC_REG_POWER_CTRL, TCPC_PWR_CTRL_FORCE_DISCHARGE, 0);
 	}
 
 	if (status & TCPC_VCONN_OCP_FAULT_STATUS)
 	{
-		DEBUG("VCONN OCP\n");
+		PRINT("VCONN OCP fault\n");
 		dev->vconn_ocp_cnt++;
 	}
 
@@ -1774,6 +2043,7 @@ static void tcpm_alert_handler(unsigned int port)
 {
 	unsigned int cc1, cc2;
 	uint16_t alert;
+	uint16_t alert_mask;
 	uint16_t clear_bits;
 	uint16_t v_threshold;
 	tcpc_device_t *dev = &tcpc_dev[port];
@@ -1784,13 +2054,17 @@ static void tcpm_alert_handler(unsigned int port)
 	INFO("->P%u IRQ: 0x%04x\n", port, alert);
 
 	// Clear alerts except voltage alarms, fault, vendor IRQ, and Rx status which cannot be cleared until after servicing.
-	clear_bits = alert & ~(TCPC_ALERT_RX_STATUS | TCPC_ALERT_FAULT |
+	clear_bits = alert & ~(TCPC_ALERT_RX_STATUS | TCPC_ALERT_FAULT | 
 						   TCPC_ALERT_VOLT_ALARM_HI | TCPC_ALERT_VOLT_ALARM_LO | TUSB422_ALERT_IRQ_STATUS);
 
 	if (clear_bits)
 	{
 		tcpc_write16(port, TCPC_REG_ALERT, clear_bits);
 	}
+
+	// Read the alert mask and clear any masked alerts.
+	tcpc_read16(port, TCPC_REG_ALERT_MASK, &alert_mask);
+	alert &= alert_mask;
 
 	if (alert & TUSB422_ALERT_IRQ_STATUS)
 	{
@@ -1802,8 +2076,16 @@ static void tcpm_alert_handler(unsigned int port)
 
 	if (alert & TCPC_ALERT_VBUS_DISCONNECT)
 	{
-		// Not active unless VBUS SNK DISCONNECT THRESHOLD is set.
-		// Do nothing.  If we are sink, wait for POWER_STATUS.VbusPresent = 0.
+		// This alert is active when VBUS SNK DISCONNECT THRESHOLD is set.
+		INFO("Alert: VBUS disconnect\n");
+#ifndef USE_VOLTAGE_ALARM_FOR_SINK_DISCONNECT
+		if ((dev->state == TCPC_STATE_ATTACHED_SNK) ||
+			(dev->state == TCPC_STATE_DEBUG_ACC_SNK))
+		{
+			// Go directly to Unattached.SNK.
+			tcpm_set_state(dev, TCPC_STATE_UNATTACHED_SNK);
+		}
+#endif
 	}
 
 	if (alert & TCPC_ALERT_RX_BUF_OVERFLOW)
@@ -1828,21 +2110,22 @@ static void tcpm_alert_handler(unsigned int port)
 		// Clear alert.
 		tcpc_write16(port, TCPC_REG_ALERT, TCPC_ALERT_VOLT_ALARM_LO);
 
-		if ((dev->state == TCPC_STATE_UNATTACHED_SRC) ||
+		if ((dev->state == TCPC_STATE_UNATTACHED_SRC) || 
 			(dev->state == TCPC_STATE_UNATTACHED_SNK))
 		{
 			// Disable force discharge.
-			// AutoDischargeDisconnect=0, Disable VCONN, Disable VBUS voltage monitor/alarms, Enable bleed.
-			tcpc_write8(port, TCPC_REG_POWER_CTRL,
+			// AutoDischargeDisconnect=0, Disable VCONN, Disable VBUS voltage monitor/alarms, Enable bleed.   
+			tcpc_write8(port, TCPC_REG_POWER_CTRL, 
 						(TCPC_PWR_CTRL_DEFAULTS | TCPC_PWR_CTRL_ENABLE_BLEED_DISCHARGE));
 		}
 		else if (dev->state == TCPC_STATE_ATTACH_WAIT_SRC)
 		{
-			// Start timer to transition to Attached.SRC after vSafe0V and sink detected for tCCDebounce.
+			// Start timer to transition to UnorientedDebugAccessory.SRC, Attached.SRC, or Try.SNK 
+			// after vSafe0V and sink detected for tCCDebounce. 
 			timer_start(&dev->timer, T_CC_DEBOUNCE_MS, timeout_cc_debounce);
 		}
-		else if ((dev->state == TCPC_STATE_TRY_SRC) ||
-				 (dev->state == TCPC_STATE_TRY_WAIT_SRC))
+		else if ((dev->state == TCPC_STATE_TRY_SRC) || 
+				 (dev->state == TCPC_STATE_TRY_WAIT_SRC)) 
 		{
 			// Read CC status.
 			tcpc_read8(port, TCPC_REG_CC_STATUS, &dev->cc_status);
@@ -1852,7 +2135,7 @@ static void tcpm_alert_handler(unsigned int port)
 			cc2 = TCPC_CC2_STATE(dev->cc_status);
 
 			// Check for Rd on exactly one pin.
-			if (((cc1 == CC_SRC_STATE_RD) && (cc2 != CC_SRC_STATE_RD)) ||
+			if (((cc1 == CC_SRC_STATE_RD) && (cc2 != CC_SRC_STATE_RD)) || 
 				((cc1 != CC_SRC_STATE_RD) && (cc2 == CC_SRC_STATE_RD)))
 			{
 				// Wait for tCCDebounce before we transition to Attached.SRC and enable VBUS.
@@ -1872,8 +2155,16 @@ static void tcpm_alert_handler(unsigned int port)
 			if (v_threshold == VDISCON_MAX)
 			{
 				// Debounce for (2 x tPDDebounce). (per USB-IF recommendation)
-				timer_start(&dev->timer, (T_PD_DEBOUNCE_MS * 2), timeout_vbus4v_debounce);
+				timer_start(&dev->timer, T_SINK_DISCONNECT_MS, timeout_sink_disconnect);
 			}
+#ifdef USE_VOLTAGE_ALARM_FOR_SINK_DISCONNECT
+			else if (v_threshold > VSAFE5V_MIN)
+			{
+				// If low voltage alarm threshold is > vSafe5V_min, then the alarm is being used to detect disconnect instead of sink disconnect threshold.
+				// Go directly to Unattached.SNK to force VBUS discharge.
+				tcpm_set_state(dev, TCPC_STATE_UNATTACHED_SNK);
+			}
+#endif
 		}
 
 		// Notify upper layers.
@@ -1887,7 +2178,9 @@ static void tcpm_alert_handler(unsigned int port)
 		// Clear alert.
 		tcpc_write16(port, TCPC_REG_ALERT, TCPC_ALERT_VOLT_ALARM_HI);
 
-		if (dev->state == TCPC_STATE_ATTACHED_SRC)
+		if ((dev->state == TCPC_STATE_ATTACHED_SRC) ||
+			(dev->state == TCPC_STATE_UNORIENTED_DEBUG_ACC_SRC) ||
+			(dev->state == TCPC_STATE_ORIENTED_DEBUG_ACC_SRC))
 		{
 			if (dev->src_attach_notify)
 			{
@@ -1902,9 +2195,25 @@ static void tcpm_alert_handler(unsigned int port)
 		tcpm_notify_voltage_alarm(port, true);
 	}
 
-	// Sending a Hard Reset will set both SUCCESS and FAILED status.
-	if (alert & TCPC_ALERT_TX_SUCCESS)
+	// IF Hard Reset, Tx and Rx status can be ignored.
+	// ELSE, handle any Tx status.
+	// ELSE, handle any Rx status.
+	// When both Tx and Rx status are set, the Rx status is left pending to allow the 
+	// PD state machine to execute for the Tx notification first. The Rx status is
+	// handled upon re-entry into the alert handler.
+	if (alert & TCPC_ALERT_RX_HARD_RESET)
 	{
+		if (alert & TCPC_ALERT_RX_STATUS)
+		{
+			// Clear Rx alert.
+			tcpc_write16(port, TCPC_REG_ALERT, TCPC_ALERT_RX_STATUS);
+		}
+
+		tcpm_notify_hard_reset(port);
+	}
+	else if (alert & TCPC_ALERT_TX_SUCCESS)
+	{
+		// Sending a Hard Reset will set both SUCCESS and FAILED status.
 		tcpm_notify_pd_transmit(port, TX_STATUS_SUCCESS);
 	}
 	else if (alert & TCPC_ALERT_TX_DISCARDED)
@@ -1915,13 +2224,7 @@ static void tcpm_alert_handler(unsigned int port)
 	{
 		tcpm_notify_pd_transmit(port, TX_STATUS_FAILED);
 	}
-
-	if (alert & TCPC_ALERT_RX_HARD_RESET)
-	{
-		tcpm_notify_hard_reset(port);
-	}
-
-	if (alert & TCPC_ALERT_RX_STATUS)
+	else if (alert & TCPC_ALERT_RX_STATUS)
 	{
 		tcpm_notify_pd_receive(port);
 
@@ -1975,27 +2278,29 @@ static int tcpm_port_init(unsigned int port, const tcpc_config_t *config)
 		tcpm_set_state(dev, TCPC_STATE_UNATTACHED_SRC);
 	}
 
-	PRINT("Port[%u]: addr: 0x%02x, %s, Rp: %s, Flags: %s.\n",
-		  port, config->slave_addr,
-		  (dev->role == ROLE_SRC) ? "SRC" :
-		  (dev->role == ROLE_SNK) ? "SNK" : "DRP",
-		  (dev->rp_val == RP_DEFAULT_CURRENT) ? "default" :
-		  (dev->rp_val == RP_MEDIUM_CURRENT) ? "1.5A" : "3.0A",
+	PRINT("Port[%u]: addr: 0x%02x, %s, Rp: %s, Flags: %s.\n", 
+		  port, config->slave_addr, 
+		  (dev->role == ROLE_SRC) ? "SRC" : 
+		  (dev->role == ROLE_SNK) ? "SNK" : "DRP", 
+		  (dev->rp_val == RP_DEFAULT_CURRENT) ? "default" : 
+		  (dev->rp_val == RP_MEDIUM_CURRENT) ? "1.5A" : "3.0A", 
 		  (dev->flags & TC_FLAGS_TRY_SRC) ? "Try-SRC" : (dev->flags & TC_FLAGS_TRY_SNK) ? "Try-SNK" : "None");
 
+	tusb422_sw_reset(port);
 	// Read VID/PID/DID.
 	tcpc_read16(port, TCPC_REG_VENDOR_ID, &id);
-	PRINT("VID: 0x%04x\n", id);
+	PRINT("VID: 0x%04x\n", id); 
+
 	if (id != TI_VID)
 		return ERR_NO_TI_DEV;
 
 	tcpc_read16(port, TCPC_REG_PRODUCT_ID, &id);
-	PRINT("PID: 0x%04x\n", id);
+	PRINT("PID: 0x%04x\n", id); 
 	if (id != TI_PID)
 		return ERR_NO_TI_DEV;
 
 	tcpc_read16(port, TCPC_REG_DEVICE_ID, &id);
-	PRINT("DID: 0x%04x\n", id);
+	PRINT("DID: 0x%04x\n", id); 
 
 	// Wait for TCPC init status to clear.
 	do
@@ -2019,7 +2324,7 @@ static int tcpm_port_init(unsigned int port, const tcpc_config_t *config)
 
 	// Read the silicon revision.
 	dev->silicon_revision = tusb422_get_revision(port);
-	PRINT("REV: 0x%02x\n", dev->silicon_revision);
+	PRINT("REV: 0x%02x\n", dev->silicon_revision); 
 
 	return 0;
 }
@@ -2067,18 +2372,16 @@ bool tcpm_alert_event(unsigned int port)
 	return true;
 }
 
-
+// TUSB422 EVM incorrectly reports SNK and SRC VBUS faults so we ignore them.
 bool tcpm_vbus_snk_fault_event(unsigned int port)
 {
-	CRIT("VBUS SNK fault!\n");
-
+//	CRIT("VBUS SNK fault!\n");
 	return false;
 }
 
 
 bool tcpm_vbus_src_fault_event(unsigned int port)
 {
-	CRIT("VBUS SRC fault!\n");
-
+//	CRIT("VBUS SRC fault!\n");
 	return false;
 }

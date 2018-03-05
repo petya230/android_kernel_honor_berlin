@@ -20,7 +20,9 @@
 #include <linux/sched.h>
 #include <linux/jiffies.h>
 #include <linux/version.h>
+#ifdef CONFIG_HUAWEI_DSM
 #include <dsm/dsm_pub.h>
+#endif
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 9, 0))
 #include <linux/sched/rt.h>
@@ -65,7 +67,9 @@ pd_msg_t *__pd_alloc_msg(struct tcpc_device *tcpc_dev)
 	PD_ERR("pd_alloc_msg failed\r\n");
 	if (true) {
 		snprintf(buf, sizeof(buf), "pd alloc msg failed\n");
+#ifdef CONFIG_HUAWEI_DSM
 		rt_dsm_report(ERROR_RT_PD_ALLOC_MSG, buf);
+#endif
 	}
 	return (pd_msg_t *)NULL;
 }
@@ -89,7 +93,9 @@ static void __pd_free_msg(struct tcpc_device *tcpc_dev, pd_msg_t *pd_msg)
 
 	if ((mask & tcpc_dev->pd_msg_buffer_allocated) == 0) {
 		snprintf(buf, sizeof(buf), "pd free msg failed\n");
+#ifdef CONFIG_HUAWEI_DSM
 		rt_dsm_report(ERROR_RT_PD_FREE_MSG, buf);
+#endif
 	}
 	tcpc_dev->pd_msg_buffer_allocated &= (~mask);
 }
@@ -261,7 +267,9 @@ bool pd_put_vdm_event(struct tcpc_device *tcpc_dev,
 
 		if(pd_msg == NULL) {
 			snprintf(buf, sizeof(buf), "the pd_msg is NULL\n");
+#ifdef CONFIG_HUAWEI_DSM
 			rt_dsm_report(ERROR_RT_PD_MSG_NULL, buf);
+#endif
 		}
 		/* pd_msg->time_stamp = 0; */
 		tcpc_dev->pd_last_vdm_msg = *pd_msg;

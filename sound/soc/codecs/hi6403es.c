@@ -93,6 +93,7 @@ struct hi6403es_board_cfg {
 	bool classh_rcv_hp_switch;
 	bool hp_high_low_change_enable;
 	bool hp_res_detect_enable;
+	bool gpio_pd_enable;
 };
 
 /* codec private data */
@@ -2118,7 +2119,7 @@ int hi6403es_hp_high_level_power_event(struct snd_soc_dapm_widget *w,
 	return 0;
 }
 
-void hi6403es_pll_param_pass(struct snd_soc_dapm_widget *w, 
+void hi6403es_pll_param_pass(struct snd_soc_dapm_widget *w,
 						enum hi64xx_pll_type pll_type, int event)
 {
 	struct hi6403es_platform_data *priv = NULL;
@@ -4218,7 +4219,7 @@ static void hi6403es_dump_reg(char *buf, unsigned int dump_size)
 	for (i = BASE_ADDR_PAGE_IO + 0x00; i <= BASE_ADDR_PAGE_IO + 0x07c; i += 4)
 	{
 		len += snprintf(buf + len, dump_size - len, "%#04x-%#04x\n", CODEC_BASE_ADDR | i, snd_soc_read(g_hi6403es_codec, i));
-		if (len >= dump_size)
+		if (((unsigned int)len) >= dump_size)
 			return;
 	}
 
@@ -4229,21 +4230,21 @@ static void hi6403es_dump_reg(char *buf, unsigned int dump_size)
 			continue;
 		}
 		len += snprintf(buf + len, dump_size - len, "%#04x-%#04x\n", CODEC_BASE_ADDR | i, snd_soc_read(g_hi6403es_codec, i));
-		if (len >= dump_size)
+		if (((unsigned int)len) >= dump_size)
 			return;
 	}
 
 	for (i = BASE_ADDR_PAGE_CFG + 0x41; i <= BASE_ADDR_PAGE_CFG + 0x4c; i++)
 	{
 		len += snprintf(buf + len, dump_size - len, "%#04x-%#04x\n", CODEC_BASE_ADDR | i, snd_soc_read(g_hi6403es_codec, i));
-		if (len >= dump_size)
+		if (((unsigned int)len) >= dump_size)
 			return;
 	}
 
 	for (i = BASE_ADDR_PAGE_DIG + 0x00; i <= BASE_ADDR_PAGE_DIG + 0x3FF; i++)
 	{
 		len += snprintf(buf + len, dump_size - len, "%#04x-%#04x\n", CODEC_BASE_ADDR | i, snd_soc_read(g_hi6403es_codec, i));
-		if (len >= dump_size)
+		if (((unsigned int)len) >= dump_size)
 			return;
 	}
 	len = strlen(buf);
@@ -5111,7 +5112,7 @@ unsigned int hi6403es_get_resvalue(struct snd_soc_codec *codec)
 	unsigned int volume_value[HI6403ES_IMP_RES_NUM] = {0};
 	unsigned int calc_res_value = 0;
 	int i = 0;
-	int data_num = 0;
+	unsigned int data_num = 0;
 
 	hi6403es_headphone_resdet_enable(codec, true);
 
@@ -5137,7 +5138,7 @@ unsigned int hi6403es_get_resvalue(struct snd_soc_codec *codec)
 			calc_res_value = hi6403es_calc_res(codec, volume_value[i], i);
 			pr_info("%s : afer calculated res[%d] is %d\n", __FUNCTION__, i, calc_res_value);
 			if (HI6403ES_FAKE_RES_VALUE != calc_res_value) {
-				data_num ++;
+				data_num++;
 				res_value += calc_res_value;
 			}
 		}
@@ -5237,15 +5238,12 @@ static void hi6403es_mad_set_param(struct snd_soc_codec *codec)
 
 enum hi64xx_pll_type hi6403es_pll_for_reg_access(struct snd_soc_codec *codec, unsigned int reg)
 {
-#if 1
 	if ((reg >= 0x20007200 && reg <= 0x20007fff) ||
 		(reg >= 0x20007041 && reg <= 0x2000704c)) {
 		return PLL_HIGH;
 	} else {
 		return PLL_NONE;
 	}
-#endif
-	return PLL_NONE;
 }
 
 static int hi6403es_resmgr_init(struct hi6403es_platform_data *pd)
@@ -5350,13 +5348,16 @@ static void hi6403es_init_chip(struct snd_soc_codec *codec)
 				0x7<<HI6403ES_SLIM_CLK_IO_CURRENT_BIT, 0x5<<HI6403ES_SLIM_CLK_IO_CURRENT_BIT);
 	}
 
-	/* GPIO0 pd enable */
-	hi64xx_update_bits(codec, HI6403ES_GPIO0_IOCONFIG_REG, 0x40, 0x40);
+	if (priv->board_config.gpio_pd_enable) {
+		/* GPIO0 pd enable */
+		hi64xx_update_bits(codec, HI6403ES_GPIO0_IOCONFIG_REG, 0x40, 0x40);
+		/* 12.228M GPIO pd enable */
+		hi64xx_update_bits(codec, HI6403ES_12M288_IOCONFIG_REG, 0x40, 0x40);
+	}
+
 	/* dsd clk disable */
 	snd_soc_write(codec, HI6403ES_DSD_CLK_CFG_REG0, 0xC0);
 	snd_soc_write(codec, HI6403ES_DSD_CLK_CFG_REG1, 0x80);
-	/* 12.228M GPIO pd enable */
-	hi64xx_update_bits(codec, HI6403ES_12M288_IOCONFIG_REG, 0x40, 0x40);
 	/* SPK CLK GPIO pd disable */
 	hi64xx_update_bits(codec, HI6403ES_SPK_CLK_IOCONFIG_REG, 0x40, 0x0);
 	/* mic voltage config */
@@ -5596,7 +5597,7 @@ static void hi6403es_init_chip(struct snd_soc_codec *codec)
 	if (priv->board_config.classh_rcv_hp_switch)
 		priv->rcv_hp_classh_state |= rcv_classh_state;
 	else
-		priv->rcv_hp_classh_state &= ~rcv_classh_state;
+		priv->rcv_hp_classh_state &= ~rcv_classh_state;/*lint !e64*/
 	set_classh_config(codec, priv->rcv_hp_classh_state);
 
 	/* classA/B -> classH  */
@@ -5970,7 +5971,7 @@ static void hi6403es_compat_deinit(void)
 
 static void hi6403es_get_board_micnum(struct device_node *node, struct hi6403es_board_cfg *board_cfg)
 {
-	int val = 0;
+	unsigned int val = 0;
 
 	if (!of_property_read_u32(node, "hisilicon,mic_num", &val)) {
 		board_cfg->mic_num = val;
@@ -5981,7 +5982,7 @@ static void hi6403es_get_board_micnum(struct device_node *node, struct hi6403es_
 
 static void hi6403es_get_board_pa(struct device_node *node, struct hi6403es_board_cfg *board_cfg)
 {
-	int val = 0;
+	unsigned int val = 0;
 
 	if (!of_property_read_u32(node, "use_stereo_smartpa", &val)){
 		if(val){
@@ -5996,7 +5997,7 @@ static void hi6403es_get_board_pa(struct device_node *node, struct hi6403es_boar
 
 static void hi6403es_get_board_hpswitch(struct device_node *node, struct hi6403es_board_cfg *board_cfg)
 {
-	int val = 0;
+	unsigned int val = 0;
 
 	if (!of_property_read_u32(node, "hisilicon,classh_rcv_hp_switch", &val)){
 		if(val){
@@ -6011,7 +6012,7 @@ static void hi6403es_get_board_hpswitch(struct device_node *node, struct hi6403e
 
 static void hi6403es_get_board_high_low_change(struct device_node *node, struct hi6403es_board_cfg *board_cfg)
 {
-	int val = 0;
+	unsigned int val = 0;
 
 	if (!of_property_read_u32(node, "hisilicon,hp_high_low_change_enable", &val)){
 		if(val){
@@ -6026,7 +6027,7 @@ static void hi6403es_get_board_high_low_change(struct device_node *node, struct 
 
 static void hi6403es_get_board_hp_res_detect(struct device_node *node, struct hi6403es_board_cfg *board_cfg)
 {
-	int val = 0;
+	unsigned int val = 0;
 
 	if (!of_property_read_u32(node, "hisilicon,hp_res_detect_enable", &val)){
 		if(val){
@@ -6039,6 +6040,15 @@ static void hi6403es_get_board_hp_res_detect(struct device_node *node, struct hi
 	}
 }
 
+static void hi6403es_get_board_gpio_pd_status(struct device_node *node, struct hi6403es_board_cfg *board_cfg)
+{
+	if (of_property_read_bool(node, "gpio_pd_enable")) {
+		board_cfg->gpio_pd_enable = true;
+	} else {
+		board_cfg->gpio_pd_enable = false;
+	}
+}
+
 static void hi6403es_get_board_cfg(struct device_node *node, struct hi6403es_board_cfg *board_cfg)
 {
 	hi6403es_get_board_micnum(node, board_cfg);
@@ -6046,6 +6056,7 @@ static void hi6403es_get_board_cfg(struct device_node *node, struct hi6403es_boa
 	hi6403es_get_board_hpswitch(node, board_cfg);
 	hi6403es_get_board_high_low_change(node, board_cfg);
 	hi6403es_get_board_hp_res_detect(node, board_cfg);
+	hi6403es_get_board_gpio_pd_status(node, board_cfg);
 }
 
 static int hi6403es_irq_init(struct hi64xx_irq *irq_data)
@@ -6090,7 +6101,7 @@ static struct snd_soc_codec_driver hi6403es_codec_driver = {
 	.dapm_routes = route_map,
 	.num_dapm_routes = ARRAY_SIZE(route_map),
 };
-
+/*lint -e429*/
 static int hi6403es_platform_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -6111,12 +6122,13 @@ static int hi6403es_platform_probe(struct platform_device *pdev)
 		goto free_platform_data;
 	} else {
 		hi6403es_get_board_cfg(priv->node, &priv->board_config);
-		dev_info(dev, "%s : mic_num %d , use_stereo_smartpa %d, classh_rcv_hp_switch %d, hp_high_low_change_enable %d, hp_res_detect_enable %d\n",
+		dev_info(dev, "%s : mic_num %d , use_stereo_smartpa %d, classh_rcv_hp_switch %d, hp_high_low_change_enable %d, hp_res_detect_enable %d, gpio_pd_enable %d\n",
 			__FUNCTION__, priv->board_config.mic_num,
 			priv->board_config.use_stereo_smartpa,
 			priv->board_config.classh_rcv_hp_switch,
 			priv->board_config.hp_high_low_change_enable,
-			priv->board_config.hp_res_detect_enable);
+			priv->board_config.hp_res_detect_enable,
+			priv->board_config.gpio_pd_enable);
 	}
 
 	priv->irqmgr = (struct hi64xx_irq *)dev_get_drvdata(pdev->dev.parent);
@@ -6263,7 +6275,7 @@ free_platform_data:
 
 	return ret;
 }
-
+/*lint +e429*/
 static int hi6403es_platform_remove(struct platform_device *pdev)
 {
 	struct hi6403es_platform_data *priv = platform_get_drvdata(pdev);

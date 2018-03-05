@@ -268,7 +268,7 @@ __out:
 bool bfmr_is_file_existed(char *pfile_path)
 {
     mm_segment_t old_fs;
-    struct stat st;
+    bfm_stat_t st;
     int ret = -1;
 
     if (unlikely(NULL == pfile_path))
@@ -279,7 +279,8 @@ bool bfmr_is_file_existed(char *pfile_path)
 
     old_fs = get_fs();
     set_fs(KERNEL_DS);
-    ret = sys_newlstat(pfile_path, &st);
+    memset((void *)&st, 0, sizeof(st));
+    ret = bfm_sys_lstat(pfile_path, &st);
     set_fs(old_fs);
 
     return (0 == ret) ? (true) : (false);
@@ -517,7 +518,7 @@ __out:
 long bfmr_get_file_length(const char *pfile_path)
 {
     mm_segment_t old_fs;
-    struct stat st;
+    bfm_stat_t st;
     int ret = -1;
 
     if (unlikely(NULL == pfile_path))
@@ -529,7 +530,7 @@ long bfmr_get_file_length(const char *pfile_path)
     old_fs = get_fs();
     set_fs(KERNEL_DS);
     memset((void *)&st, 0, sizeof(st));
-    ret = sys_newlstat(pfile_path, &st);
+    ret = bfm_sys_lstat(pfile_path, &st);
     if (0 != ret)
     {
         BFMR_PRINT_ERR("sys_newlstat [%s] failed![ret = %d]\n", pfile_path, ret);
@@ -749,6 +750,31 @@ char* bfmr_convert_rtc_time_to_asctime(unsigned long long rtc_time)
         tm.tm_hour, tm.tm_min, tm.tm_sec);
 
     return asctime;
+}
+
+
+char* bfmr_reverse_find_string(const char *psrc, const char *pstr_to_be_found)
+{
+    char *ptemp = (char *)psrc;
+    char *pprev = NULL;
+    unsigned int len = 0;
+
+    if (unlikely((NULL == psrc) || (NULL == pstr_to_be_found)))
+    {
+        BFMR_PRINT_INVALID_PARAMS("psrc: %p pstr_to_be_found: %p\n", psrc, pstr_to_be_found);
+        return NULL;
+    }
+
+    len = strlen(pstr_to_be_found);
+    ptemp = strstr(ptemp, pstr_to_be_found);
+    while (NULL != ptemp)
+    {
+        pprev = ptemp;
+        ptemp += len;
+        ptemp = strstr(ptemp, pstr_to_be_found);
+    }
+
+    return pprev;
 }
 
 

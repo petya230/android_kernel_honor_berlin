@@ -16,36 +16,35 @@
 #include <soc_sctrl_interface.h>
 
 
-static char *autofsgt_sctrl_base = 0;
 static char *autofsgt_pericrg_base = 0;
 
-static unsigned long g_ddr_autofsgt_disable_flag = 0;
-static unsigned long g_ddr_autofsgt_bypass_flag = 0;
-static unsigned int g_ddr_autofsgt_sw = 1;
+//static unsigned long g_ddr_autofsgt_disable_flag = 0;
+//static unsigned long g_ddr_autofsgt_bypass_flag = 0;
+//static unsigned int g_ddr_autofsgt_sw = 1;
 static struct semaphore ctrl_sem;
 
 
-
-int ddr_autofsgt_bypass(int enable)
+int ddr_autofsgt_bypass(unsigned int client, unsigned int enable)
 {
+	unsigned int mask_bit = client + 16;
 	if (enable) {
-		writel(0x20002, SOC_CRGPERIPH_PEREN11_ADDR(autofsgt_pericrg_base));
+		writel(BIT(mask_bit)| BIT(client), SOC_CRGPERIPH_PERI_COMMON_CTRL1_ADDR(autofsgt_pericrg_base));
 	} else {
-		writel(0x20000, SOC_CRGPERIPH_PERDIS11_ADDR(autofsgt_pericrg_base));
+		writel(BIT(mask_bit), SOC_CRGPERIPH_PERI_COMMON_CTRL1_ADDR(autofsgt_pericrg_base));
 	}
 
 	return 0;
 }
 
-int ddr_autofsgt_opt(unsigned int opt_cmd)
+int ddr_autofsgt_opt(unsigned int client, unsigned int cmd)
 {
-	switch (opt_cmd) {
+	switch (cmd) {
 	case DDR_AUTOFSGT_LOGIC_EN:
-		ddr_autofsgt_bypass(0);
+		ddr_autofsgt_bypass(client, 0);
 		break;
 
 	case DDR_AUTOFSGT_LOGIC_DIS:
-		ddr_autofsgt_bypass(1);
+		ddr_autofsgt_bypass(client, 1);
 		break;
 	default:
 		return -EINVAL;
@@ -60,7 +59,7 @@ int ddr_autofsgt_opt(unsigned int opt_cmd)
 /*s32 ddr_autofsgt_ctrl(DDR_AUTOFSGT_PROXY_CLIENT_ID client, DDR_AUTOFSGT_CMD_ID cmd)*/
 int ddr_autofsgt_ctrl(unsigned int client, unsigned int cmd)
 {
-	int ret = 0;
+	int ret;
 	unsigned int opt_cmd = 0;
 
 	down(&ctrl_sem);
@@ -80,7 +79,7 @@ int ddr_autofsgt_ctrl(unsigned int client, unsigned int cmd)
 		return -EINVAL;
 	}
 
-		ret = ddr_autofsgt_opt(opt_cmd);
+		ret = ddr_autofsgt_opt(client, opt_cmd);
 
 		if (ret) {
 			pr_err("[%s] opt_cmd err:[0x%x]\n", __func__, opt_cmd);

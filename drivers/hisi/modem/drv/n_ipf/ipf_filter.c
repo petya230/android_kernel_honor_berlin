@@ -8,6 +8,7 @@
 #include <bsp_module.h>
 #include <osl_malloc.h>
 #include <osl_spinlock.h>
+/*
 
 #define FILTER_RIP  10
 extern struct ipf_ctx g_ipf_ctx;
@@ -50,7 +51,7 @@ static void ipf_write_basic_filter_ex(unsigned int id, ipf_filter_node_s* filter
 
 static void ipf_read_basic_filter_ex(unsigned int id, ipf_filter_node_s* filter)
 {
-    int i;
+    unsigned int i;
     unsigned int* reg = (unsigned int*)filter;
   
     for(i=0; i<(sizeof(ipf_filter_node_s)/sizeof(unsigned int)); i++)
@@ -67,21 +68,8 @@ static void ipf_set_next_basic_filter_ex(unsigned int id, unsigned int next)
     fltn_chain.bits.fltn_next_index = next;
     ipf_writel(fltn_chain.u32, HI_IPF_FLTN_CHAIN_OFFSET(id));
 }
-/*
-static void ipf_set_next_filter(unsigned int id, unsigned int next)
-{
-    struct ipf_filter_handler* fh = g_ipf_ctx.filter_handler;
-    struct ipf_share_mem_map* sm = bsp_ipf_get_sharemem();
-    
-    if(id< fh->bf_num){
-        fh->basic_set_next(id, next);
-    }
 
-    sm->filter[id].unFltChain.Bits.fltn_next_index = next;
 
-    cache_sync();
-}
-*/
 void ipf_write_filter(unsigned int id, ipf_filter_node_s* match_infos)
 {
     struct ipf_filter_handler* fh = g_ipf_ctx.filter_handler;
@@ -98,19 +86,19 @@ void ipf_write_filter(unsigned int id, ipf_filter_node_s* match_infos)
     cache_sync();
 }
 
+
 void ipf_read_filter(unsigned int id, ipf_filter_node_s * filter)
 {
     struct ipf_filter_handler* fh = g_ipf_ctx.filter_handler;
     struct ipf_share_mem_map* sm = bsp_ipf_get_sharemem();
     
-    if(id< fh->bf_num){
+    if(id< (unsigned int)fh->bf_num){
         fh->basic_read(id, filter);
-    }else{
-        memcpy(filter, &sm->filter[id], sizeof(ipf_filter_node_s));
     }
 
     cache_sync();
 }
+
 
 __init int ipf_filterlist_init(void)
 {
@@ -143,15 +131,15 @@ __init int ipf_filterlist_init(void)
     return 0;    
 }
 
+
 __init int ipf_filter_init(void)
 {
     struct ipf_filter_handler* fh = g_ipf_ctx.filter_handler;
     struct ipf_share_mem_map* sm = bsp_ipf_get_sharemem();
 
-    memset(sm->filter, 0, sizeof(ipf_filter_node_s)*fh->total);
-
     return ipf_filterlist_init();
 }
+
 
 static void ipf_filter_freelist_enqueue(filter_map* map)
 {
@@ -181,6 +169,7 @@ static void ipf_filter_freelist_enqueue(filter_map* map)
     }
 }
 
+
 void ipf_filter_tail_add(filter_map* head, filter_map* map)
 {
     filter_map* node = head;
@@ -193,6 +182,7 @@ void ipf_filter_tail_add(filter_map* head, filter_map* map)
     node->next = map;
     map->next = NULL;
 }
+
 
 filter_map* ipf_filter_freelist_dequeue(void)
 {
@@ -227,3 +217,4 @@ void ipf_filter_list_clear(IPF_FILTER_CHAIN_TYPE_E type)
 
     udelay(FILTER_RIP);
 }
+*/

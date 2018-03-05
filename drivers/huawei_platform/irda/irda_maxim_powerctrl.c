@@ -140,6 +140,9 @@ static int irda_get_power_status(struct irda_device *irda_dev)
 		if (ret)
 			hwlog_err("get power status err.\n");
 		break;
+	case IRDA_POWER_TYPE_OTHER:
+		power_state = irda_dev->pdata.power_state.work_state;
+		break;
 	default:
 		hwlog_err("[%s] err type:%d\n", __func__, type);
 		ret = IRDA_ERROR;
@@ -209,6 +212,11 @@ static int irda_power_config(struct irda_device *irda_dev, int enable)
 		ret = hw_extern_pmic_config(1, IRDA_POWER_VOLTAGE, enable);
 		if (!ret)
 			ret = IRDA_SUCCESS;
+		break;
+	case IRDA_POWER_TYPE_OTHER:
+		irda_dev->pdata.power_state.power_state = enable;
+		hwlog_info("just change the state. enable:%d\n", enable);
+		ret = IRDA_SUCCESS;
 		break;
 	default:
 		hwlog_err("err type:%d\n", type);
@@ -313,6 +321,9 @@ static int irda_power_init(struct device *dev,
 	case IRDA_POWER_TYPE_INTERNAL_LDO:
 		ret = irda_power_internal_ldo_init(dev, irda_dev);
 		break;
+	case IRDA_POWER_TYPE_OTHER:
+		hwlog_info("power control by other. init\n");
+		break;
 	default:
 		hwlog_err("[%s] err type:%d", __func__, type);
 		ret = IRDA_ERROR;
@@ -335,6 +346,9 @@ static void irda_power_exit(struct irda_device *irda_dev)
 		break;
 	case IRDA_POWER_TYPE_EXTERNAL_LDO:
 		hwlog_info("no need to exit, direct control.\n");
+		break;
+	case IRDA_POWER_TYPE_OTHER:
+		hwlog_info("power control by other. exit\n");
 		break;
 	default:
 		break;

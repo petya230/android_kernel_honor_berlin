@@ -47,6 +47,7 @@
 #include "eeye_ap_adapter.h"
 #include "eeye_ftrace.h"
 #include "../../../../kernel/sched/sched.h"
+#include <linux/version.h>
 
 /*eeye_alarm_reentry_test函数使用测试变量*/
 static int no_reentry;
@@ -103,11 +104,17 @@ static int eeye_watchdog_kick_eprocess(struct alarm_detect_info *info)
 	expires = get_wdt_expires_time();
 	slice = get_32k_abs_timer_value();
 	last_kick_slice = rdr_get_last_wdt_kick_slice();
+
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4,4,0))
 	pr_err
 		("%s, expires [%llu] jiffies [%llu] slice [%llu] timer_jiffies [%lu] last_kick_slice [%llu]!\n",
 	     __func__, expires, jiffies_64, slice,
 	     boot_tvec_bases.timer_jiffies, last_kick_slice);
-
+#else
+	pr_err
+		("%s, expires [%llu] jiffies [%llu] slice [%llu] last_kick_slice [%llu]!\n",
+	     __func__, expires, jiffies_64, slice, last_kick_slice);
+#endif
 	/*狗复位，ftrace.bin的保存放到重启后 */
 	eeye_set_fb_reason(EARLY_ALARM_AWDT_NO_KICK);
 	pr_err("%s, exit!\n", __func__);
@@ -124,10 +131,10 @@ Author:		j00207786
 *************************************************************************/
 static int eeye_task_sched_detect(struct alarm_detect_info *info)
 {
-	int i;
+	u32 i;
 	u64 nr_switches;
 	unsigned long long delta, delta2;
-	struct rq *rq;
+	struct rq *rq;/*lint !e578 */
 	struct sched_stat_info *sched_info;
 	u32 cpu_num = num_possible_cpus();
 
@@ -135,7 +142,7 @@ static int eeye_task_sched_detect(struct alarm_detect_info *info)
 	sched_info = (struct sched_stat_info *)info->data;
 
 	for (i = 0; i < cpu_num; i++) {
-		rq = cpu_rq(i);
+		rq = (struct rq *)cpu_rq(i);/*lint !e64 !e507*/
 
 		nr_switches = rq->nr_switches;	/*相当于锁 */
 
@@ -154,7 +161,7 @@ static int eeye_task_sched_detect(struct alarm_detect_info *info)
 			    rq->curr->sched_info.last_arrival;
 
 			if (0 == sched_info->last_arrival) {
-				info->alarm_cpu = -1;
+				info->alarm_cpu = (u32)-1;
 				memset(sched_info, 0,
 				       sizeof(struct sched_stat_info));
 				continue;
@@ -170,13 +177,13 @@ static int eeye_task_sched_detect(struct alarm_detect_info *info)
 
 			/*如果nr_switches与入口处记录的不等，则发生过任务切换 */
 			if (0 != (rq->nr_switches - nr_switches)) {
-				info->alarm_cpu = -1;
+				info->alarm_cpu = (u32)-1;
 				memset(sched_info, 0,
 				       sizeof(struct sched_stat_info));
 				continue;
 			}
 			pr_warn
-			    ("%s, task [%s] on cpu [%d] is blocked [%llu]ns!\n",
+			    ("%s, task [%s] on cpu [%u] is blocked [%llu]ns!\n",
 			     __func__, sched_info->comm, i, sched_info->delta);
 			return -1;
 		}
@@ -264,7 +271,7 @@ static struct alarm_detect_info
 	g_ap_alarm_detect_list[EARLY_ALARM_ID_MAX - 1] = {
 	{
 	 .reason = EARLY_ALARM_AWDT_NO_KICK,
-	 .alarm_cpu = -1,
+	 .alarm_cpu = (u32)-1,
 	 .detect = eeye_watchdog_kick_detect,
 	 .process = eeye_watchdog_kick_eprocess,
 	 .desc = "ALARM_AWDT_NO_KICK",
@@ -272,7 +279,7 @@ static struct alarm_detect_info
 #ifdef CONFIG_SCHEDSTATS
 	{
 	 .reason = EARLY_ALARM_TASK_NO_SCHED,
-	 .alarm_cpu = -1,
+	 .alarm_cpu = (u32)-1,
 	 .data = NULL,
 	 .detect = eeye_task_sched_detect,
 	 .process = eeye_task_sched_eprocess,
@@ -283,7 +290,7 @@ static struct alarm_detect_info
 
 static struct alarm_detect_info g_alarm_detect_test = {
 	.reason = EARLY_ALARM_TEST,
-	.alarm_cpu = -1,
+	.alarm_cpu = (u32)-1,
 	.detect = eeye_test_detect,
 	.process = NULL,
 	.desc = "ALARM_TEST",
@@ -375,7 +382,7 @@ static int eeye_test_repeat_alarms(void *data)
 		msleep_time = eeye_get_random(60000);
 		msleep(msleep_time);
 	}
-	return 0;
+	return 0;/*lint !e527*/
 }
 
 /*************************************************************************
@@ -414,21 +421,21 @@ void eeye_test_illegal_alarms(int type)
 	switch (type) {
 	case 0:
 		info.reason = EARLY_ALARM_MAX + eeye_get_random(100);
-		info.alarm_cpu = -1;
+		info.alarm_cpu = (u32)-1;
 		info.detect = eeye_test_detect;
 		info.process = NULL;
 		info.desc = "ALARM_ILLEGAL_REASON";
 		break;
 	case 1:
 		info.reason = EARLY_ALARM_TEST;
-		info.alarm_cpu = -1;
+		info.alarm_cpu = (u32)-1;
 		info.detect = NULL;
 		info.process = NULL;
 		info.desc = "ALARM_DETECT_NULL";
 		break;
 	case 2:
 		info.reason = EARLY_ALARM_AWDT_NO_KICK;
-		info.alarm_cpu = -1;
+		info.alarm_cpu = (u32)-1;
 		info.detect = eeye_watchdog_kick_detect;
 		info.process = eeye_watchdog_kick_eprocess;
 		info.desc = "ALARM_AWDT_NO_KICK_FOR_TEST";

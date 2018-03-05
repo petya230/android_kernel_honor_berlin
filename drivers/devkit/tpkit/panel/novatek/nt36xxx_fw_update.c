@@ -3,6 +3,11 @@
 #include <linux/vmalloc.h>
 //#include <linux/fs.h>
 #include <asm/uaccess.h>
+#if defined (CONFIG_HUAWEI_DSM)
+#include <dsm/dsm_pub.h>
+
+extern struct dsm_client *ts_dclient;
+#endif
 
 
 #include "nt36xxx.h"
@@ -17,6 +22,18 @@
 #define FLASH_SECTOR_SIZE 4096
 #define SIZE_64KB 65536
 #define BLOCK_64KB_NUM 4
+
+#if defined (CONFIG_HUAWEI_DSM)
+enum FW_uptate_state
+{
+	Nova_Init_BootLoader_fail = 0,
+	Nova_Resume_PD_fail,
+	Erase_Flash_fail,
+	Write_Flash_fail,
+	Verify_Flash_fail,
+	TS_UPDATE_STATE_UNDEFINE = 255,
+};
+#endif
 
 
 struct nvt_ts_firmware {
@@ -80,12 +97,6 @@ static int32_t update_firmware_request(char *filename)
 		return -EINVAL;
 	}
 
-	//check chipid == 8
-	if (*(fw_entry->data+FW_BIN_CHIP_ID_OFFSET) != FW_BIN_CHIP_ID) {
-		TS_LOG_ERR("%s : bin file check failed. (chipid=%d)\n", __func__, *(fw_entry->data+FW_BIN_CHIP_ID_OFFSET));
-		return -EINVAL;
-	}
-
 	return 0;
 }
 
@@ -119,8 +130,8 @@ static int32_t Check_FW_Ver(void)
 
 	//write i2c index to 0x11E00
 	buf[0] = 0xFF;
-	buf[1] = 0x01;
-	buf[2] = 0x1E;
+	buf[1] = (nvt_ts->mmap->EVENT_BUF_ADDR >> 16) & 0xFF;
+	buf[2] = (nvt_ts->mmap->EVENT_BUF_ADDR >> 8) & 0xFF;
 	ret = novatek_ts_kit_i2c_write(nvt_ts->client, I2C_BLDR_Address, buf, 3);
 	if (ret < 0) {
 		TS_LOG_ERR("%s: i2c write error!(%d)\n", __func__, ret);
@@ -205,7 +216,7 @@ return:
 static int32_t Check_CheckSum(void)
 {
 	uint8_t buf[64] = {0};
-	uint32_t XDATA_Addr = 0x14000;
+	uint32_t XDATA_Addr = nvt_ts->mmap->READ_FLASH_CHECKSUM_ADDR;
 	int32_t ret = 0;
 	int32_t i = 0;
 	int32_t k = 0;
@@ -350,11 +361,89 @@ return:
 static int32_t Erase_Flash(void)
 {
 	uint8_t buf[64] = {0};
-	int32_t ret = 0;
-	int32_t count = 0;
-	int32_t i = 0;
-	int32_t Flash_Address = 0;
-	int32_t retry = 0;
+	int32_t ret = NO_ERR;
+	int32_t count = NO_ERR;
+	int32_t i = NO_ERR;
+	int32_t Flash_Address = NO_ERR;
+	int32_t retry = NO_ERR;
+
+	// Write Enable
+	buf[0] = NVTTDDI_DOUBLE_ZERO_CMD;
+	buf[1] = NVTTDDI_ZERO_SIX_CMD;
+	ret = novatek_ts_kit_i2c_write(nvt_ts->client, I2C_HW_Address, buf, NVTTDDI_TWO_BYTES_LENGTH);
+	if (ret < NO_ERR) {
+		TS_LOG_ERR("%s: Write Enable (for Write Status Register) error!!(%d)\n", __func__, ret);
+		return ret;
+	}
+	mdelay(NVTTDDI_DELAY_10_MS);
+	// Check 0xAA (Write Enable)
+	buf[0] = NVTTDDI_DOUBLE_ZERO_CMD;
+	buf[1] = NVTTDDI_DOUBLE_ZERO_CMD;
+	ret = novatek_ts_kit_i2c_read(nvt_ts->client, I2C_HW_Address, buf, NVTTDDI_TWO_BYTES_LENGTH);
+	if (ret < NO_ERR) {
+		TS_LOG_ERR("%s: Check 0xAA (Write Enable for Write Status Register) error!!(%d)\n", __func__, ret);
+		return ret;
+	}
+	if (buf[1] != NVTTDDI_DOUBLE_A_CMD) {
+		TS_LOG_ERR("%s: Check 0xAA (Write Enable for Write Status Register) error!! status=0x%02X\n", __func__, buf[1]);
+		return NVTTDDI_ERR;
+	}
+	mdelay(NVTTDDI_DELAY_10_MS);
+
+	// Write Status Register
+	buf[0] = NVTTDDI_DOUBLE_ZERO_CMD;
+	buf[1] = NVTTDDI_ZERO_ONE_CMD;
+	buf[2] = NVTTDDI_DOUBLE_ZERO_CMD;
+	ret = novatek_ts_kit_i2c_write(nvt_ts->client, I2C_HW_Address, buf, NVTTDDI_THREE_BYTES_LENGTH);
+	if (ret < 0) {
+		TS_LOG_ERR("%s: Write Status Register error!!(%d)\n", __func__, ret);
+		return ret;
+	}
+	mdelay(NVTTDDI_DELAY_10_MS);
+	// Check 0xAA (Write Status Register)
+	buf[0] = NVTTDDI_DOUBLE_ZERO_CMD;
+	buf[1] = NVTTDDI_DOUBLE_ZERO_CMD;
+	ret = novatek_ts_kit_i2c_read(nvt_ts->client, I2C_HW_Address, buf, NVTTDDI_TWO_BYTES_LENGTH);
+	if (ret < NO_ERR) {
+		TS_LOG_ERR("%s: Check 0xAA (Write Status Register) error!!(%d)\n", __func__, ret);
+		return ret;
+	}
+	if (buf[1] != NVTTDDI_DOUBLE_A_CMD) {
+		TS_LOG_ERR("%s: Check 0xAA (Write Status Register) error!! status=0x%02X\n", __func__, buf[1]);
+		return NVTTDDI_ERR;
+	}
+	mdelay(NVTTDDI_DELAY_10_MS);
+
+	// Read Status
+	retry = NO_ERR;
+	while (1) {
+		mdelay(NVTTDDI_DELAY_30_MS);
+		buf[0] = NVTTDDI_DOUBLE_ZERO_CMD;
+		buf[1] = NVTTDDI_ZERO_FIVE_CMD;
+		ret = novatek_ts_kit_i2c_write(nvt_ts->client, I2C_HW_Address, buf, NVTTDDI_TWO_BYTES_LENGTH);
+		if (ret < NO_ERR) {
+			TS_LOG_ERR("%s: Read Status (for Write Status Register) error!!(%d)\n", __func__, ret);
+			return ret;
+		}
+
+		// Check 0xAA (Read Status)
+		buf[0] = NVTTDDI_DOUBLE_ZERO_CMD;
+		buf[1] = NVTTDDI_DOUBLE_ZERO_CMD;
+		buf[2] = NVTTDDI_DOUBLE_ZERO_CMD;
+		ret = novatek_ts_kit_i2c_read(nvt_ts->client, I2C_HW_Address, buf, NVTTDDI_THREE_BYTES_LENGTH);
+		if (ret < NO_ERR) {
+			TS_LOG_ERR("%s: Check 0xAA (Read Status for Write Status Register) error!!(%d)\n", __func__, ret);
+			return ret;
+		}
+		if ((buf[1] == NVTTDDI_DOUBLE_A_CMD) && (buf[2] == NVTTDDI_DOUBLE_ZERO_CMD)) {
+			break;
+		}
+		retry++;
+		if (unlikely(retry > NVTTDDI_RETRY_5_TIMES)) {
+			TS_LOG_ERR("%s: Check 0xAA (Read Status for Write Status Register) failed, buf[1]=0x%02X, buf[2]=0x%02X, retry=%d\n", __func__, buf[1], buf[2], retry);
+			return NVTTDDI_ERR;
+		}
+	}
 
 	if (fw_entry->size % FLASH_SECTOR_SIZE)
 		count = fw_entry->size / FLASH_SECTOR_SIZE + 1;
@@ -465,10 +554,11 @@ Description:
 return:
 	Executive outcomes. 0---succeed. negative---failed.
 *******************************************************/
+#define NVT_ONE_PAGE_SIZE 256
 static int32_t Write_Flash(void)
 {
 	uint8_t buf[64] = {0};
-	uint32_t XDATA_Addr = 0x14002;
+	uint32_t XDATA_Addr = nvt_ts->mmap->RW_FLASH_DATA_ADDR;
 	uint32_t Flash_Address = 0;
 	int32_t i = 0, j = 0, k = 0;
 	uint8_t tmpvalue = 0;
@@ -486,13 +576,13 @@ static int32_t Write_Flash(void)
 		return ret;
 	}
 
-	if (fw_entry->size % 256)
-		count = fw_entry->size / 256 + 1;
+	if (fw_entry->size % NVT_ONE_PAGE_SIZE)
+		count = fw_entry->size / NVT_ONE_PAGE_SIZE + 1;
 	else
-		count = fw_entry->size / 256;
+		count = fw_entry->size / NVT_ONE_PAGE_SIZE;
 
 	for (i = 0; i < count; i++) {
-		Flash_Address = i * 256;
+		Flash_Address = i * NVT_ONE_PAGE_SIZE;
 
 		// Write Enable
 		buf[0] = 0x00;
@@ -505,7 +595,7 @@ static int32_t Write_Flash(void)
 		udelay(100);
 
 		// Write Page : 256 bytes
-		for (j = 0; j < min(fw_entry->size - i * 256, (size_t)256); j += 32) {
+		for (j = 0; j < min(fw_entry->size - i * NVT_ONE_PAGE_SIZE, (size_t)NVT_ONE_PAGE_SIZE); j += 32) {
 			buf[0] = (XDATA_Addr + j) & 0xFF;
 			for (k = 0; k < 32; k++) {
 				buf[1 + k] = fw_entry->data[Flash_Address + j + k];
@@ -516,15 +606,15 @@ static int32_t Write_Flash(void)
 				return ret;
 			}
 		}
-		if (fw_entry->size - Flash_Address >= 256)
-			tmpvalue=(Flash_Address >> 16) + ((Flash_Address >> 8) & 0xFF) + (Flash_Address & 0xFF) + 0x00 + (255);
+		if (fw_entry->size - Flash_Address >= NVT_ONE_PAGE_SIZE)
+			tmpvalue=(Flash_Address >> 16) + ((Flash_Address >> 8) & 0xFF) + (Flash_Address & 0xFF) + 0x00 + (NVT_ONE_PAGE_SIZE -1);
 		else
 			tmpvalue=(Flash_Address >> 16) + ((Flash_Address >> 8) & 0xFF) + (Flash_Address & 0xFF) + 0x00 + (fw_entry->size - Flash_Address - 1);
 
-		for (k = 0;k < min(fw_entry->size - Flash_Address,(size_t)256); k++)
+		for (k = 0;k < min(fw_entry->size - Flash_Address,(size_t)NVT_ONE_PAGE_SIZE); k++)
 			tmpvalue += fw_entry->data[Flash_Address + k];
 
-		tmpvalue = 255 - tmpvalue + 1;
+		tmpvalue = NVT_ONE_PAGE_SIZE - tmpvalue;
 
 		// Page Program
 		buf[0] = 0x00;
@@ -533,7 +623,7 @@ static int32_t Write_Flash(void)
 		buf[3] = ((Flash_Address >> 8) & 0xFF);
 		buf[4] = (Flash_Address & 0xFF);
 		buf[5] = 0x00;
-		buf[6] = min(fw_entry->size - Flash_Address,(size_t)256) - 1;
+		buf[6] = min(fw_entry->size - Flash_Address,(size_t)NVT_ONE_PAGE_SIZE) - 1;
 		buf[7] = tmpvalue;
 		ret = novatek_ts_kit_i2c_write(nvt_ts->client, I2C_HW_Address, buf, 8);
 		if (ret < 0) {
@@ -620,7 +710,7 @@ return:
 static int32_t Verify_Flash(void)
 {
 	uint8_t buf[64] = {0};
-	uint32_t XDATA_Addr = 0x14000;
+	uint32_t XDATA_Addr = nvt_ts->mmap->READ_FLASH_CHECKSUM_ADDR;
 	int32_t ret = 0;
 	int32_t i = 0;
 	int32_t k = 0;
@@ -727,24 +817,32 @@ static int32_t Update_Firmware(void)
 	// Step 2 : Resume PD
 	ret = Nova_Resume_PD();
 	if (ret) {
+		nvt_ts->chip_data->ts_platform_data->dsm_info.constraints_UPDATE_status = Nova_Resume_PD_fail;
+		TS_LOG_ERR("%s:Nova_Resume_PD fail\n",__func__);
 		return ret;
 	}
 
 	// Step 3 : Erase
 	ret = Erase_Flash();
 	if (ret) {
+		nvt_ts->chip_data->ts_platform_data->dsm_info.constraints_UPDATE_status = Erase_Flash_fail;
+		TS_LOG_ERR("%s:Erase_Flash fail\n",__func__);
 		return ret;
 	}
 
 	// Step 4 : Program
 	ret = Write_Flash();
 	if (ret) {
+		nvt_ts->chip_data->ts_platform_data->dsm_info.constraints_UPDATE_status = Write_Flash_fail;
+		TS_LOG_ERR("%s:Write_Flash fail\n",__func__);
 		return ret;
 	}
 
 	// Step 5 : Verify
 	ret = Verify_Flash();
 	if (ret) {
+		nvt_ts->chip_data->ts_platform_data->dsm_info.constraints_UPDATE_status = Verify_Flash_fail;
+		TS_LOG_ERR("%s:Verify_Flash fail\n",__func__);
 		return ret;
 	}
 
@@ -774,13 +872,23 @@ int32_t nvt_kit_fw_update_boot(char *file_name)
 		//---prevent last time write step was discontinued by unpredictable power off, Taylor 20160715---
 		ret = Check_CheckSum();
 		//--------------------------------------------------------------------------------	
-		if (ret < 0) {	// read firmware checksum failed
-			TS_LOG_ERR("%s: read firmware checksum failed\n", __func__);
-			Update_Firmware();
-		} else if ((ret == 0) && (Check_FW_Ver() == 0)) {	// (ic fw ver check failed) && (bin fw version > ic fw version)
-			TS_LOG_INFO("%s: firmware version not match\n", __func__);
+		 if (((ret == 0) && (Check_FW_Ver() == 0))||(ret < 0)) {	// (ic fw ver check failed) && (bin fw version > ic fw version)
+			TS_LOG_INFO("%s: firmware version not match or checksum failed.updata fw\n", __func__);
 			ret = Update_Firmware();
+			if(ret) {
+				TS_LOG_INFO("%s: updata firmware failed dmd report.\n", __func__);
+#if defined (CONFIG_HUAWEI_DSM)
+				if (!dsm_client_ocuppy(ts_dclient)) {
+					dsm_client_record(ts_dclient,
+							  "fw update result: failed.\nupdata_status is %d.\n",
+							  nvt_ts->chip_data->ts_platform_data->dsm_info.constraints_UPDATE_status);
+					dsm_client_notify(ts_dclient,
+							  DSM_TP_FWUPDATE_ERROR_NO);
+				}
+#endif
+			}
 		} else {
+			TS_LOG_INFO("%s: read firmware checksum match or IC FW version bigger, no need update.\n",__func__);
 			// Bootloader Reset
 			nvt_kit_bootloader_reset();
 			nvt_kit_check_fw_reset_state(RESET_STATE_INIT);

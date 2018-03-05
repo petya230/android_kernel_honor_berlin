@@ -1,4 +1,15 @@
-
+/*
+ * drivers/power/huawei_charger/charging_core_sh.c
+ *
+ *huawei charging core sensorhub driver
+ *
+ * Copyright (C) 2012-2015 HUAWEI, Inc.
+ * Author: HUAWEI, Inc.
+ *
+ * This package is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+*/
 
 #include <linux/init.h>
 #include <linux/module.h>
@@ -25,6 +36,7 @@ struct charge_core_info_sh *g_core_info_sh;
 static int charge_core_battery_data(struct charge_core_info_sh *di)
 {
 	int i;
+	unsigned int j;
 	struct chrg_para_lut *p_batt_data = NULL;
 
 	p_batt_data = hisi_battery_charge_params();
@@ -116,35 +128,35 @@ static int charge_core_battery_data(struct charge_core_info_sh *di)
 
 	di->data.segment_level =
 	    (p_batt_data->segment_len) / SEGMENT_PARA_TOTAL;
-	for (i = 0; i < di->data.segment_level; i++) {
-		di->segment_para[i].vbat_min =
-		    p_batt_data->segment_data[i][SEGMENT_PARA_VOLT_MIN];
-		di->segment_para[i].vbat_max =
-		    p_batt_data->segment_data[i][SEGMENT_PARA_VOLT_MAX];
-		di->segment_para[i].ichg_segment =
-		    p_batt_data->segment_data[i][SEGMENT_PARA_ICHG];
-		di->segment_para[i].vterm_segment =
-		    p_batt_data->segment_data[i][SEGMENT_PARA_VTERM];
-		di->segment_para[i].volt_back =
-		    p_batt_data->segment_data[i][SEGMENT_PARA_VOLT_BACK];
+	for (j = 0; j < di->data.segment_level; j++) {
+		di->segment_para[j].vbat_min =
+		    p_batt_data->segment_data[j][SEGMENT_PARA_VOLT_MIN];
+		di->segment_para[j].vbat_max =
+		    p_batt_data->segment_data[j][SEGMENT_PARA_VOLT_MAX];
+		di->segment_para[j].ichg_segment =
+		    p_batt_data->segment_data[j][SEGMENT_PARA_ICHG];
+		di->segment_para[j].vterm_segment =
+		    p_batt_data->segment_data[j][SEGMENT_PARA_VTERM];
+		di->segment_para[j].volt_back =
+		    p_batt_data->segment_data[j][SEGMENT_PARA_VOLT_BACK];
 
 		hwlog_info
 		    ("segment param: vbat_min = %d,vbat_max = %d,ichg_segment = %d,vterm_segment = %d,volt_back = %d\n",
-		     di->segment_para[i].vbat_min, di->segment_para[i].vbat_max,
-		     di->segment_para[i].ichg_segment,
-		     di->segment_para[i].vterm_segment,
-		     di->segment_para[i].volt_back);
+		     di->segment_para[j].vbat_min, di->segment_para[j].vbat_max,
+		     di->segment_para[j].ichg_segment,
+		     di->segment_para[j].vterm_segment,
+		     di->segment_para[j].volt_back);
 
-		if ((di->segment_para[i].vbat_min < BATTERY_VOLTAGE_MIN_MV)
-		    || (di->segment_para[i].vbat_min > BATTERY_VOLTAGE_MAX_MV)
-		    || (di->segment_para[i].vbat_max < BATTERY_VOLTAGE_MIN_MV)
-		    || (di->segment_para[i].vbat_max > BATTERY_VOLTAGE_MAX_MV)
-		    || (di->segment_para[i].ichg_segment < CHARGE_CURRENT_0000_MA)
-		    || (di->segment_para[i].ichg_segment > CHARGE_CURRENT_MAX_MA)
-		    || (di->segment_para[i].vterm_segment < BATTERY_VOLTAGE_3200_MV)
-		    || (di->segment_para[i].vterm_segment > BATTERY_VOLTAGE_4500_MV)
-		    || (di->segment_para[i].volt_back < BATTERY_VOLTAGE_0000_MV)
-		    || (di->segment_para[i].volt_back > BATTERY_VOLTAGE_0200_MV)) {
+		if ((di->segment_para[j].vbat_min < BATTERY_VOLTAGE_MIN_MV)
+		    || (di->segment_para[j].vbat_min > BATTERY_VOLTAGE_MAX_MV)
+		    || (di->segment_para[j].vbat_max < BATTERY_VOLTAGE_MIN_MV)
+		    || (di->segment_para[j].vbat_max > BATTERY_VOLTAGE_MAX_MV)
+		    || (di->segment_para[j].ichg_segment < CHARGE_CURRENT_0000_MA)
+		    || (di->segment_para[j].ichg_segment > CHARGE_CURRENT_MAX_MA)
+		    || (di->segment_para[j].vterm_segment < BATTERY_VOLTAGE_3200_MV)
+		    || (di->segment_para[j].vterm_segment > BATTERY_VOLTAGE_4500_MV)
+		    || (di->segment_para[j].volt_back < BATTERY_VOLTAGE_0000_MV)
+		    || (di->segment_para[j].volt_back > BATTERY_VOLTAGE_0200_MV)) {
 			hwlog_err("the segment_para value is out of range!!\n");
 			return -EINVAL;
 		}
@@ -152,7 +164,6 @@ static int charge_core_battery_data(struct charge_core_info_sh *di)
 
 	return 0;
 }
-
 /**********************************************************
 *  Function:       charge_core_parse_dts
 *  Discription:    parse the module dts config value
@@ -171,6 +182,13 @@ static int charge_core_parse_dts(struct device_node *np,
 	unsigned int vdpm_control_type = VDPM_BY_CAPACITY;
 	unsigned int vdpm_buf_limit = VDPM_DELTA_LIMIT_5;
 
+	/*wakesource charge current */
+	ret = of_property_read_u32(np, "iin_weaksource", &(di->data.iin_weaksource));
+	if (ret) {
+		hwlog_info("get iin_weaksource failed , sign with an invalid number.\n");
+		di->data.iin_weaksource = INVALID_CURRENT_SET;
+	}
+	hwlog_debug("iin_weaksource = %d\n", di->data.iin_weaksource);
 	/*ac charge current */
 	ret = of_property_read_u32(np, "iin_ac", &(di->data.iin_ac));
 	if (ret) {
@@ -361,7 +379,7 @@ static int charge_core_parse_dts(struct device_node *np,
 			di->vdpm_para[i / (VDPM_PARA_TOTAL)].vin_dpm = idata;
 			break;
 		case VDPM_PARA_CAP_BACK:
-			if((idata < 0) || (idata > di->data.vdpm_buf_limit)){
+			if((idata < 0) || (idata > (int)(di->data.vdpm_buf_limit))){
 				hwlog_err
 				    ("the vdpm_para cap_back is out of range!!\n");
 				return -EINVAL;
@@ -467,6 +485,8 @@ static int charge_core_parse_dts(struct device_node *np,
 *  Parameters:   pdev:platform_device
 *  return value:  0-sucess or others-fail
 **********************************************************/
+
+/*lint -save -e* */
 static int charge_core_probe(struct platform_device *pdev)
 {
 	struct charge_core_info_sh *di;
@@ -505,6 +525,7 @@ err_batt:
 	g_core_info_sh = NULL;
 	return ret;
 }
+/*lint -restore*/
 
 /**********************************************************
 *  Function:       charge_core_remove
@@ -512,6 +533,8 @@ err_batt:
 *  Parameters:   pdev:platform_device
 *  return value:  0-sucess or others-fail
 **********************************************************/
+
+/*lint -save -e* */
 static int charge_core_remove(struct platform_device *pdev)
 {
 	struct charge_core_info_sh *di = platform_get_drvdata(pdev);
@@ -547,6 +570,7 @@ static struct platform_driver charge_core_driver = {
 		   .of_match_table = of_match_ptr(charge_core_match_table),
 		   },
 };
+/*lint -restore*/
 
 /**********************************************************
 *  Function:       charge_core_init
@@ -570,8 +594,11 @@ static void __exit charge_core_exit(void)
 	platform_driver_unregister(&charge_core_driver);
 }
 
+/*lint -save -e* */
 module_init(charge_core_init);
 module_exit(charge_core_exit);
+/*lint -restore*/
+
 MODULE_AUTHOR("HUAWEI");
 MODULE_DESCRIPTION("charging core sensorhub module driver");
 MODULE_LICENSE("GPL");

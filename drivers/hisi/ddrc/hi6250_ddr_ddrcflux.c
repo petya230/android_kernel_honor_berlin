@@ -25,6 +25,7 @@
 #include <global_ddr_map.h>
 #include "hisi_ddr_ddrcflux.h"
 #include <linux/hisi/hisi_drmdriver.h>
+#include "securec.h"
 
 /*lint -e438 -e514 -e550 -e715 -e774 -e818 -e835 -e838 -e845 -e712 -e730 -e732 -e747*/
 
@@ -283,7 +284,7 @@ void ddrc_flux_data_pull(void)
 	if (!usr[ddrc_unsec_pass])
 		return;
 	ddrc_datas[count].ddrc_time = sched_clock();
-	strncpy(ddrc_datas[count].slice, dfdev->slice.name, SLICE_LEN);
+	strncpy_s(ddrc_datas[count].slice, SLICE_LEN, dfdev->slice.name, SLICE_LEN);
 	ddrc_datas[count].slice[SLICE_LEN-1] = '\0';
 
 	for (i = 0; i < DDRFLUX_LIST_LEN; i++) {
@@ -333,8 +334,9 @@ static irqreturn_t hisi_bw_timer_interrupt(int irq, void *dev_id)
 		if (!usr[ddrc_unsec_pass]) {
 			atfd_hisi_service_access_register_smc(ACCESS_REGISTER_FN_MAIN_ID, dfdev->flux_pull_dma_pa,
 					MAX_FLUX_REG_NUM * 4, ACCESS_REGISTER_FN_SUB_ID_DDR_FLUX_R);
-			memcpy(ddrc_datas[count].ddrflux_data, (unsigned long *)dfdev->flux_pull_va, sizeof(ddrc_datas[count].ddrflux_data));
-			strncpy(ddrc_datas[count].slice, dfdev->slice.name, SLICE_LEN);
+			memcpy_s(ddrc_datas[count].ddrflux_data, sizeof(ddrc_datas[count].ddrflux_data),
+				(unsigned long *)dfdev->flux_pull_va, sizeof(ddrc_datas[count].ddrflux_data));
+			strncpy_s(ddrc_datas[count].slice, SLICE_LEN, dfdev->slice.name, SLICE_LEN);
 			ddrc_datas[count].slice[SLICE_LEN-1] = '\0';
 		} else {
 			ddrc_flux_data_pull();
@@ -702,7 +704,7 @@ void __ddrflux_view_point_insert(char *slice_v)
 {
 	if (NULL == slice_v)
 		return;
-	strncpy(dfdev->slice.name, slice_v, SLICE_LEN);/*[false alarm]*/
+	strncpy_s(dfdev->slice.name, SLICE_LEN, slice_v, SLICE_LEN);/*[false alarm]*/
 	dfdev->slice.name[SLICE_LEN-1] = '\0';
 }
 
@@ -1147,7 +1149,7 @@ static int ddrc_flux_probe(struct platform_device *pdev)
 	dfdev->ddrc_flux_timer->irq = val;
 	dfdev->ddrc_flux_timer->irq_per_cpu =  IRQ_CPU_CORE;
 	dfdev->ddrc_flux_timer->pclk = NULL;
-	strncpy(dfdev->slice.name, DEFAULT_SLICE_NAME, SLICE_LEN);
+	strncpy_s(dfdev->slice.name, SLICE_LEN, DEFAULT_SLICE_NAME, SLICE_LEN);
 	dfdev->dram_type = 0x3;
 
 	spin_lock_init(&dfdev->ddrc_flux_timer->lock);

@@ -1,4 +1,15 @@
-
+/*
+ * drivers/power/bq25892_charger_sh.c
+ *
+ * BQ25892/1/2/3/4 charging sensorhub driver
+ *
+ * Copyright (C) 2012-2015 HUAWEI, Inc.
+ * Author: HUAWEI, Inc.
+ *
+ * This package is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+*/
 
 #include <linux/init.h>
 #include <linux/module.h>
@@ -31,9 +42,9 @@
 #include <linux/power/hisi/hisi_bci_battery.h>
 #include <huawei_platform/power/charger/charger_ap/bq25892/bq25892_charger.h>
 #include <linux/hisi/hisi_adc.h>
-#include <huawei_platform/inputhub/iom7/inputhub_route.h>
-#include <huawei_platform/inputhub/iom7/protocol.h>
-#include <huawei_platform/inputhub/iom7/sensor_info.h>
+#include <inputhub_route.h>
+#include <protocol.h>
+#include <sensor_info.h>
 
 static bool first_charging_done = FALSE;       /* has ever reach charge done state after connect charger. */
 static bool charging_again_after_charging_done = FALSE;
@@ -51,37 +62,13 @@ extern struct charger_platform_data charger_dts_data;
 **********************************************************/
 static int bq25892_read_block(u8 reg, u8*value, unsigned len)
 {
-	int ret = -1;
-	write_info_t	pkg_ap;
-	read_info_t pkg_mcu;
-	pkt_i2c_read_req_t pkt_i2c_read;
-
-	memset(&pkg_ap, 0, sizeof(pkg_ap));
-	memset(&pkg_mcu, 0, sizeof(pkg_mcu));
-
-	pkt_i2c_read.addr = BQ25892_CHARGER_SLAVADDR;
-	pkt_i2c_read.busid = 3;
-	pkt_i2c_read.reg = reg;
-	pkt_i2c_read.length= len;
-	
-	pkg_ap.tag=TAG_I2C;
-	pkg_ap.cmd=CMD_I2C_READ_REQ;
-	pkg_ap.wr_buf=&pkt_i2c_read.busid;
-	pkg_ap.wr_len=sizeof(pkt_i2c_read) - sizeof(pkt_i2c_read.hd);
-	ret=write_customize_cmd(&pkg_ap,  &pkg_mcu);
-	if (ret) {
-		hwlog_err("bq25892 read register %d fail, ret=%d\n", reg, ret);
-		return -1;
+	int ret = mcu_i2c_rw(3, BQ25892_CHARGER_SLAVADDR, &reg, 1, value, len);
+	if (ret < 0) {
+		hwlog_err("bq25892 read register %d fail!\n", reg);
 	} else {
-		if (pkg_mcu.errno != 0) {
-			hwlog_err("bq25892 read register %d fail!\n", reg);
-			return -1;
-		} else {
-			memcpy(value, pkg_mcu.data, len);
-			hwlog_debug("bq25892 read value %d from register %d success!\n", *value, reg);
-			return 0;
-		}
+		hwlog_debug("bq25892 read value %d from register %d success!\n", *value, reg);
 	}
+	return ret;
 }
 
 /**********************************************************
@@ -93,44 +80,17 @@ static int bq25892_read_block(u8 reg, u8*value, unsigned len)
 **********************************************************/
 static int bq25892_write_byte(uint8_t reg, uint8_t value)
 {
-	int ret = -1;
-	write_info_t	pkg_ap;
-	read_info_t pkg_mcu;
-	pkt_i2c_write_req_t *pkt_i2c_write = kzalloc(sizeof(pkt_i2c_write_req_t) + 1, GFP_KERNEL);
-	if (!pkt_i2c_write) {
-		hwlog_err("bq25892_write_byte alloc failed in %s\n", __func__);
-		return -1;
-	}
-
-	memset(&pkg_ap, 0, sizeof(pkg_ap));
-	memset(&pkg_mcu, 0, sizeof(pkg_mcu));
-
-	pkt_i2c_write->addr = BQ25892_CHARGER_SLAVADDR;
-	pkt_i2c_write->busid = 3;
-	pkt_i2c_write->reg = reg;
-	pkt_i2c_write->length= 1;
-	memcpy(pkt_i2c_write->data, &value, 1);
-	
-	pkg_ap.tag=TAG_I2C;
-	pkg_ap.cmd=CMD_I2C_WRITE_REQ;
-	pkg_ap.wr_buf=&pkt_i2c_write->busid;
-	pkg_ap.wr_len=sizeof(*pkt_i2c_write) - sizeof(pkt_i2c_write->hd) + 1;
-	ret=write_customize_cmd(&pkg_ap,  &pkg_mcu);
-	if (ret) {
-		hwlog_err("bq25892 write value %d to register %d fail, ret=%d\n", value, reg, ret);
-		kfree(pkt_i2c_write);
-		return -1;
+	uint8_t tx_buf[2];
+	int ret;
+	tx_buf[0] = reg;
+	tx_buf[1] = value;
+	ret = mcu_i2c_rw(3, BQ25892_CHARGER_SLAVADDR, tx_buf, 2, NULL, 0);
+	if (ret < 0) {
+		hwlog_err("bq25892 write value %d to register %d fail!\n", value, reg);
 	} else {
-		if (pkg_mcu.errno != 0) {
-			hwlog_err("bq25892 write value %d to register %d fail!\n", value, reg);
-			kfree(pkt_i2c_write);
-			return -1;
-		} else {
-			hwlog_debug("bq25892 write value %d to register %d success!\n", value, reg);
-			kfree(pkt_i2c_write);
-			return 0;
-		}
+		hwlog_debug("bq25892 write value %d to register %d success!\n", value, reg);
 	}
+	return ret;
 }
 
 /**********************************************************

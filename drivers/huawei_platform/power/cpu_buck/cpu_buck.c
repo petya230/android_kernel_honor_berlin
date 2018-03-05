@@ -14,6 +14,7 @@
 #include <huawei_platform/log/hw_log.h>
 #include <dsm/dsm_pub.h>
 #include <cpu_buck.h>
+#include <linux/power/hisi/coul/hisi_coul_drv.h>
 
 #define HWLOG_TAG cpu_buck
 HWLOG_REGIST();
@@ -71,6 +72,28 @@ static int __init early_parse_normal_reset_type_cmdline(char * p)
 }
 early_param("normal_reset_type", early_parse_normal_reset_type_cmdline);
 
+static void update_err_msg(struct cpu_buck_info* cbi)
+{
+	if(NULL == cbi){
+		hwlog_err("[%s] input pointer:cbi is NULL!\n",__func__);
+		return ;
+	}
+
+	char extra_err_msg[MAX_EXTRA_ERR_MSG_LEN] = {0};
+	int batt_temp = INVALID_TEMP_VAL;
+	int batt_vol = 0;
+	int batt_soc = 0;
+
+	if(HI6422V200_VSYS_PWRON_D60UR == cbi->err_no || HI6422V200_VSYS_PWROFF_ABS_2D == cbi->err_no){
+		batt_temp = hisi_battery_temperature();
+		batt_vol = hisi_battery_voltage();
+		batt_soc = hisi_battery_capacity();
+		snprintf(extra_err_msg,MAX_EXTRA_ERR_MSG_LEN-1," batt_temp = %d,batt_vol = %d,batt_soc = %d\n",batt_temp,batt_vol,batt_soc);
+	}
+	if(strlen(extra_err_msg) > 0){
+		strncat(cbi->error_info, extra_err_msg, strlen(extra_err_msg));
+	}
+}
 static void cpu_buck_work(struct work_struct *work)
 {
 	int i = 0;
@@ -79,6 +102,7 @@ static void cpu_buck_work(struct work_struct *work)
 	hwlog_info("g_fault happened = %d\n", g_fault_happened);
 	if (!g_fault_happened)
 		return;
+
 	while(cbs)
 	{
 		for (i = 0; i < cbs->info_size; ++i)
@@ -91,7 +115,8 @@ static void cpu_buck_work(struct work_struct *work)
 					already_notified = true;
 					hwlog_info("HI6422v200 PMU1:cpu_buck_number = 0; PMU2:cpu_buck_number = 1; \n");
 					hwlog_info("cpu_buck_number = %d, record and notify: %s\n", cbs->cpu_buck_number,cbs->cbi[i].error_info);
-					dsm_client_record(cpu_buck_client, "cpu_buck+number =  %d;cpu_buck %s happened!\n", cbs->cpu_buck_number,cbs->cbi[i].error_info);
+					update_err_msg(&(cbs->cbi[i]));
+					dsm_client_record(cpu_buck_client, "cpu_buck_number =  %d;cpu_buck %s happened!\n", cbs->cpu_buck_number,cbs->cbi[i].error_info);
 					dsm_client_notify(cpu_buck_client, ERROR_NO_CPU_BUCK_BASE + cbs->cbi[i].err_no);
 					break;
 				}

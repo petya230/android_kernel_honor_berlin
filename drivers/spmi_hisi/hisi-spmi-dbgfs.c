@@ -56,6 +56,7 @@ struct spmi_log_buffer {
 struct spmi_ctrl_data {
 	u32 cnt;
 	u32 addr;
+	bool atf;
 	struct dentry *dir;
 	struct list_head node;
 	struct spmi_controller *ctrl;
@@ -67,6 +68,7 @@ struct spmi_trans {
 	u32 addr;	/* 20-bit address: SID + PID + Register offset */
 	u32 offset;	/* Offset of last read data */
 	bool raw_data;	/* Set to true for raw data dump */
+	bool atf;
 	struct spmi_controller *ctrl;
 	struct spmi_log_buffer *log; /* log buffer */
 };
@@ -79,7 +81,7 @@ struct spmi_dbgfs {
 };
 
 static struct spmi_dbgfs dbgfs_data = {
-	.lock = __MUTEX_INITIALIZER(dbgfs_data.lock),
+	.lock = __MUTEX_INITIALIZER(dbgfs_data.lock),/*lint -e651 -e708 -e570 -e64 -e785*/
 	.ctrl = LIST_HEAD_INIT(dbgfs_data.ctrl),
 	.help_msg = {
 	.data =
@@ -90,6 +92,7 @@ static struct spmi_dbgfs dbgfs_data = {
 "       /help            -- Static help text\n"
 "       /spmi-0          -- Directory for SPMI bus 0\n"
 "       /spmi-0/address  -- Starting register address for reads or writes\n"
+"       /spmi-0/atf -- test atf driver or kernel driver\n"
 "       /spmi-0/count    -- Number of registers to read (only used for reads)\n"
 "       /spmi-0/data     -- Initiates the SPMI read (formatted output)\n"
 "       /spmi-0/data_raw -- Initiates the SPMI raw read or write\n"
@@ -124,9 +127,26 @@ static struct spmi_dbgfs dbgfs_data = {
 "\n"
 "Note that the count file is not used for writes.  Since 3 bytes are\n"
 "written to the 'data' file, then 3 bytes will be written across the\n"
-"SPMI bus.\n\n",
+"SPMI bus.\n\n",/*lint -e785*/
 	},
 };
+#define HISI_SPMI_FN_MAIN_ID          0xc500eee0u
+#define SPMI_READ                     0x00
+#define SPMI_WRITE                    0x01
+
+noinline int atfd_spmi_smc(u64 function_id, u64 arg0, u64 arg1, u64 arg2)
+{
+	asm volatile(
+		__asmeq("%0", "x0")
+		__asmeq("%1", "x1")
+		__asmeq("%2", "x2")
+		__asmeq("%3", "x3")
+		"smc    #0\n"
+	: "+r" (function_id)
+	: "r" (arg0), "r" (arg1), "r" (arg2));
+
+	return (int)function_id;/*lint -e715*/
+}
 
 static int spmi_dfs_open(struct spmi_ctrl_data *ctrl_data, struct file *file)
 {
@@ -165,6 +185,7 @@ static int spmi_dfs_open(struct spmi_ctrl_data *ctrl_data, struct file *file)
 	trans->cnt = ctrl_data->cnt;
 	trans->addr = ctrl_data->addr;
 	trans->ctrl = ctrl_data->ctrl;
+	trans->atf = ctrl_data->atf;
 	trans->offset = trans->addr;
 
 	file->private_data = trans;
@@ -199,7 +220,7 @@ static int spmi_dfs_close(struct inode *inode, struct file *file)
 		kfree(trans);
 	}
 
-	return 0;
+	return 0;/*lint -e715*/
 }
 
 /**
@@ -212,7 +233,7 @@ static int spmi_dfs_close(struct inode *inode, struct file *file)
  * Returns 0 on success, otherwise returns error code from SPMI driver.
  */
 static int
-spmi_read_data(struct spmi_controller *ctrl, uint8_t *buf, int offset, int cnt)
+spmi_read_data(struct spmi_controller *ctrl, uint8_t *buf, int offset, int cnt, bool atf)
 {
 	int ret = 0;
 	int len;
@@ -220,14 +241,24 @@ spmi_read_data(struct spmi_controller *ctrl, uint8_t *buf, int offset, int cnt)
 	uint16_t addr;
 
 	while (cnt > 0) {
-		sid = (offset >> 16) & 0xF;
+		sid = (offset >> 16) & 0xF;/*lint -e702*/
 		addr = offset & 0xFFFF;
 		len = min(cnt, MAX_BYTE_PER_TRANSACTION);					/*lint !e666 */
-
-		ret = spmi_ext_register_readl(ctrl, sid, addr, buf, len);
-		if (ret < 0) {
-			pr_err("SPMI read failed, err = %d\n", ret);
-			goto done;
+		if (atf) {
+			len = 1;
+			ret = atfd_spmi_smc((u64)(HISI_SPMI_FN_MAIN_ID|SPMI_READ), (u64)sid, (u64)addr, (u64)NULL);
+			if (ret < 0) {
+				pr_err("SPMI read failed, err = %d\n", ret);
+				goto done;
+			}
+			*buf = (uint8_t)ret;
+			ret = 0;
+		} else {
+			ret = spmi_ext_register_readl(ctrl, sid, addr, buf, len);
+			if (ret < 0) {
+				pr_err("SPMI read failed, err = %d\n", ret);
+				goto done;
+			}
 		}
 
 		cnt -= len;
@@ -249,7 +280,7 @@ done:
  * Returns 0 on success, otherwise returns error code from SPMI driver.
  */
 static int
-spmi_write_data(struct spmi_controller *ctrl, uint8_t *buf, int offset, int cnt)
+spmi_write_data(struct spmi_controller *ctrl, uint8_t *buf, int offset, int cnt, bool atf)
 {
 	int ret = 0;
 	int len;
@@ -257,11 +288,15 @@ spmi_write_data(struct spmi_controller *ctrl, uint8_t *buf, int offset, int cnt)
 	uint16_t addr;
 
 	while (cnt > 0) {
-		sid = (offset >> 16) & 0xF;
+		sid = (offset >> 16) & 0xF;/*lint -e702*/
 		addr = offset & 0xFFFF;
 		len = min(cnt, MAX_BYTE_PER_TRANSACTION);				/*lint !e666 */
 
-		ret = spmi_ext_register_writel(ctrl, sid, addr, buf, len);
+		if (atf) {
+			len = 1;
+			ret = atfd_spmi_smc((u64)(HISI_SPMI_FN_MAIN_ID|SPMI_WRITE), (u64)sid, (u64)addr, (u64)*buf);
+		} else
+			ret = spmi_ext_register_writel(ctrl, sid, addr, buf, len);
 		if (ret < 0) {
 			pr_err("SPMI write failed, err = %d\n", ret);
 			goto done;
@@ -296,7 +331,7 @@ static int print_to_log(struct spmi_log_buffer *log, const char *fmt, ...)
 	cnt = vscnprintf(buf, size, fmt, args);
 	va_end(args);
 
-	log->wpos += cnt;
+	log->wpos += (size_t)cnt;
 	return cnt;
 }
 
@@ -322,7 +357,7 @@ write_next_line_to_log(struct spmi_trans *trans, int offset, size_t *pcnt)
 
 	int cnt = 0;
 	int padding = offset % ITEMS_PER_LINE;
-	int items_to_read = min(ARRAY_SIZE(data) - padding, *pcnt);			/*lint !e666 */
+	int items_to_read = min(ARRAY_SIZE(data) - padding, *pcnt);			/*lint -e846 -e514 -e866 -e30 -e84 -e737  -e1058 -e712 -e666 */
 	int items_to_log = min(ITEMS_PER_LINE, padding + items_to_read);		/*lint !e666 */
 
 	/* Buffer needs enough space for an entire line */
@@ -330,10 +365,10 @@ write_next_line_to_log(struct spmi_trans *trans, int offset, size_t *pcnt)
 		goto done;
 
 	/* Read the desired number of "items" */
-	if (spmi_read_data(trans->ctrl, data, trans->addr, items_to_read))
+	if (spmi_read_data(trans->ctrl, data, (int)trans->addr, items_to_read, trans->atf))
 		goto done;
 
-	*pcnt -= items_to_read;
+	*pcnt -= items_to_read;/*lint -e737*/
 
 	/* Each line starts with the aligned offset (20-bit address) */
 	cnt = print_to_log(log, "%5.5X ", offset & 0xffff0);
@@ -383,17 +418,17 @@ write_raw_data_to_log(struct spmi_trans *trans, int offset, size_t *pcnt)
 
 	int i;
 	int cnt = 0;
-	int items_to_read = min(ARRAY_SIZE(data), *pcnt);
+	int items_to_read = min(ARRAY_SIZE(data), *pcnt);/*lint -e846 -e514 -e866 -e30 -e84 -e737  -e1058 -e712 -e666 */
 
 	/* Buffer needs enough space for an entire line */
 	if ((log->len - log->wpos) < 80)
 		goto done;
 
 	/* Read the desired number of "items" */
-	if (spmi_read_data(trans->ctrl, data, offset, items_to_read))
+	if (spmi_read_data(trans->ctrl, data, offset, items_to_read, trans->atf))
 		goto done;
 
-	*pcnt -= items_to_read;
+	*pcnt -= items_to_read;/*lint -e737*/
 
 	/* Log the data items */
 	for (i = 0; i < items_to_read; ++i) {
@@ -440,19 +475,19 @@ static int get_log_data(struct spmi_trans *trans)
 
 	/* Keep reading data until the log is full */
 	do {
-		last_cnt = item_cnt;
-		cnt = write_to_log(trans, 0, &item_cnt);
+		last_cnt = (int)item_cnt;
+		cnt = write_to_log(trans, 0, &item_cnt);/*lint -e737 -e712*/
 		items_read = last_cnt - item_cnt;
-		offset += items_read;
+		offset += (u32)items_read;
 		total_items_read += items_read;
 	} while (cnt && item_cnt > 0);
 
 	/* Adjust the transaction offset and count */
-	trans->cnt = item_cnt;
-	trans->offset += total_items_read;
+	trans->cnt = (u32)item_cnt;
+	trans->offset += (u32)total_items_read;
 
 	return total_items_read;
-}
+}/*lint -e550*/
 
 /**
  * spmi_dfs_reg_write: write user's byte array (coded as string) over SPMI.
@@ -470,29 +505,28 @@ static ssize_t spmi_dfs_reg_write(struct file *file, const char __user *buf,
 	int pos = 0;
 	int cnt = 0;
 	u8  *values;
-	size_t ret = 0;
+	int ret = 0;
 
 	struct spmi_trans *trans = file->private_data;
-	u32 offset = trans->offset;
 
 	/* Make a copy of the user data */
 	char *kbuf = kmalloc(count + 1, GFP_KERNEL);
 	if (!kbuf)
 		return -ENOMEM;
 
-	ret = copy_from_user(kbuf, buf, count);
+	ret = copy_from_user(kbuf, buf, count);/*lint -e838*/
 	if (ret == count) {
 		pr_err("failed to copy data from user\n");
-		ret = -EFAULT;
+		ret = -EFAULT;/*lint -e570*/
 		goto free_buf;
 	}
 
 	count -= ret;
-	*ppos += count;
+	*ppos += count;/*lint -e737 -e713*/
 	kbuf[count] = '\0';
 
 	/* Override the text buffer with the raw data */
-	values = kbuf;
+	values = kbuf;/*lint -e64*/
 
 	/* Parse the data in the buffer.  It should be a string of numbers */
 	while (sscanf(kbuf + pos, "%i%n", &data, &bytes_read) == 1) {
@@ -504,18 +538,18 @@ static ssize_t spmi_dfs_reg_write(struct file *file, const char __user *buf,
 		goto free_buf;
 
 	/* Perform the SPMI write(s) */
-	ret = spmi_write_data(trans->ctrl, values, trans->addr, cnt);
+	ret = spmi_write_data(trans->ctrl, values, (int)trans->addr, cnt, trans->atf);
 
 	if (ret) {
 		pr_err("SPMI write failed, err = %d\n", ret);
 	} else {
 		ret = count;
-		trans->offset += cnt;
+		trans->offset += (u32)cnt;
 	}
 
 free_buf:
 	kfree(kbuf);
-	return ret;
+	return (ssize_t)ret;
 }
 
 /**
@@ -552,9 +586,9 @@ static ssize_t spmi_dfs_reg_read(struct file *file, char __user *buf,
 	/* 'ret' is the number of bytes not copied */
 	len -= ret;
 
-	*ppos += len;
+	*ppos += len;/*lint -e737 -e713*/
 	log->rpos += len;
-	return len;
+	return (ssize_t)len;
 }
 
 static const struct file_operations spmi_dfs_reg_fops = {
@@ -562,14 +596,14 @@ static const struct file_operations spmi_dfs_reg_fops = {
 	.release	= spmi_dfs_close,
 	.read		= spmi_dfs_reg_read,
 	.write		= spmi_dfs_reg_write,
-};
+};/*lint -e785*/
 
 static const struct file_operations spmi_dfs_raw_data_fops = {
 	.open		= spmi_dfs_raw_data_open,
 	.release	= spmi_dfs_close,
 	.read		= spmi_dfs_reg_read,
 	.write		= spmi_dfs_reg_write,
-};
+};/*lint -e785*/
 
 /**
  * spmi_dfs_create_fs: create debugfs file system.
@@ -669,6 +703,12 @@ int spmi_dfs_add_controller(struct spmi_controller *ctrl)
 		goto err_remove_fs;
 	}
 
+	file = debugfs_create_bool("atf", DFS_MODE, dir, &ctrl_data->atf);
+	if (!file) {
+		pr_err("error creating 'atf' entry\n");
+		goto err_remove_fs;
+	}
+
 	file = debugfs_create_file("data", DFS_MODE, dir, ctrl_data,
 							&spmi_dfs_reg_fops);
 	if (!file) {
@@ -710,7 +750,7 @@ int spmi_dfs_del_controller(struct spmi_controller *ctrl)
 		return rc;
 
 	list_for_each_safe(pos, tmp, &dbgfs_data.ctrl) {
-		ctrl_data = list_entry(pos, struct spmi_ctrl_data, node);
+		ctrl_data = list_entry(pos, struct spmi_ctrl_data, node);/*lint -e826*/
 
 		if (ctrl_data->ctrl == ctrl) {
 			debugfs_remove_recursive(ctrl_data->dir);
@@ -738,7 +778,7 @@ struct dentry *spmi_dfs_create_file(struct spmi_controller *ctrl,
 {
 	struct spmi_ctrl_data *ctrl_data;
 
-	list_for_each_entry(ctrl_data, &dbgfs_data.ctrl, node) {
+	list_for_each_entry(ctrl_data, &dbgfs_data.ctrl, node) {/*lint -e826 -e64*/
 		if (ctrl_data->ctrl == ctrl)
 			return debugfs_create_file(name,
 					DFS_MODE, ctrl_data->dir, data, fops);
@@ -754,7 +794,7 @@ static void __exit spmi_dfs_delete_all_ctrl(struct list_head *head)
 	list_for_each_safe(pos, tmp, head) {
 		struct spmi_ctrl_data *ctrl_data;
 
-		ctrl_data = list_entry(pos, struct spmi_ctrl_data, node);
+		ctrl_data = list_entry(pos, struct spmi_ctrl_data, node);/*lint -e826*/
 		list_del(pos);
 		kfree(ctrl_data);
 	}
@@ -773,7 +813,7 @@ static void __exit spmi_dfs_destroy(void)
 	mutex_unlock(&dbgfs_data.lock);
 }
 
-module_exit(spmi_dfs_destroy);
+module_exit(spmi_dfs_destroy);/*lint -e528*/
 
-MODULE_LICENSE("GPL v2");
-MODULE_ALIAS("platform:spmi_debug_fs");
+MODULE_LICENSE("GPL v2");/*lint -e753*/
+MODULE_ALIAS("platform:spmi_debug_fs");/*lint -e753*/

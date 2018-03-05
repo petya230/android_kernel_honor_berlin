@@ -30,36 +30,22 @@
 
 #define DTS_COMP_jdi_NT36860 "hisilicon,mipi_jdi_NT36860"
 static int g_lcd_fpga_flag;
+//#define AS_EXT_LCD_ON_ASIC
 
+/*lint -e569*/
 /*******************************************************************************
 ** Power ON/OFF Sequence(sleep mode to Normal mode) begin
-*/
-/*
-static char set_horizontal_address[] = {
-	0x2A,
-	0x00,0x00,0x05,0x9F,
-};
-
-static char set_vertical_address[] = {
-	0x2B,
-	0x00,0x00,0x09,0xFF,
-};
-
-static char set_tear_scanline[] = {
-	0x44,
-	0x00,0x00,
-};
 */
 static char set_tear_on[] = {
 	0x35,
 	0x00,
 };
 
-//Random 00h, Black 01h
-static char bk_en[] = {
+/*Random 00h, Black 01h*/
+/*static char bk_en[] = {
 	0xE5,
 	0x01,
-};
+};*/
 
 static char page_select_1[] = {
 	0xFF,
@@ -74,6 +60,11 @@ static char reload[] = {
 static char exvcom[] = {
 	0x00,
 	0x5D,
+};
+
+static char test_0x02[] = {
+	0x02,
+	0x05,
 };
 
 static char page_select_2[] = {
@@ -155,13 +146,30 @@ static char exit_sleep_mode[] = {
 	0x11,
 };
 
+// 3 Lanes BAh=0x03,3 Lanes BAh = 0x02,2 Lanes BAh = 0x01,1 Lanes BAh = 0x00
+// 0x13 lane0 continuous,  0x03 lane1 continuous
+static char lane_number[] = {
+	0xBA,
+	0x03,
+};
+
 static char display_on[] = {
 	0x29,
 };
 
+static char vesa3_75x_slice8L_C1[] = {
+	0xC1,
+	0xAB,0x28,0x00,0x08,0x02,0x00,0x02,0x68,0x00,0xD5,0x00,0x0A,0x0D,0xB7,0x09,0x89,
+};
+
+static char vesa3_75x_slice8L_C2[] = {
+	0xC2,
+	0x10,0xF0,
+};
+
 static char vesa3x_enable[] = {
 	0xC0,
-	0x00,
+	0x03,
 };
 
 static char cmd_mode[] = {
@@ -176,11 +184,18 @@ static char video_mode[] = {
 };
 
 //Param[0:3] = VBP[8:11] VBP[0:7] VFP[8:11] VFP[0:7]
-//0x00,0x0C,0x00,0x0E,
+//0x00,0x20,0x00,0x1E,
 static char video_control[] = {
 	0x3B,
-	0x00,0x1E,0x00,0x1E,
+	0x00,0x20,0x00,0x1E,
 };
+
+//0x02-0x00-CMD-OK; 0x07,0xD0,-1G-OK
+static char fte_modeC_enable[] = {
+	0x44,
+	0x07,0xD0,
+};
+
 
 static char display_off[] = {
 	0x28,
@@ -192,6 +207,11 @@ static char set_tear_off[] = {
 
 static char enter_sleep_mode[] = {
 	0x10,
+};
+
+static char led_pwm_full_duty[] = {
+	0x51,
+	0xFF,
 };
 
 static char bl_ctl_on[] = {
@@ -218,37 +238,36 @@ static char video_drop_disable[] = {
 	0xF5,
 	0x00,
 };
+#if 0
+static char bist_mode_1[] = {
+	0xFF,
+	0x25,
+};
+static char bist_mode_2[] = {
+	0xFB,
+	0x01,
+};
+static char bist_mode_3[] = {
+	0x5E,
+	0x01,
+};
+#endif
+/*static char test_36h[] = {
+	0x36,
+	0x08,
+};*/
 
+/*lint +e569*/
 
 static struct dsi_cmd_desc lcd_display_init_cmds[] = {
-#if 0
-	{DTYPE_DCS_LWRITE, 0,10, WAIT_TYPE_US,
-		sizeof(set_horizontal_address), set_horizontal_address},
-	{DTYPE_DCS_LWRITE, 0,10, WAIT_TYPE_US,
-		sizeof(set_vertical_address), set_vertical_address},
-	{DTYPE_DCS_LWRITE, 0,10, WAIT_TYPE_US,
-		sizeof(set_tear_scanline), set_tear_scanline},
-#endif
-
-#if 1 //only for 5HZ,>30HZ buyong
-	{DTYPE_DCS_WRITE1, 0, 10, WAIT_TYPE_US,
-		sizeof(CMD3_page_sel), CMD3_page_sel},
-	{DTYPE_DCS_WRITE1, 0, 10, WAIT_TYPE_US,
-		sizeof(reload), reload},
-	{DTYPE_DCS_WRITE1, 0, 10, WAIT_TYPE_US,
-		sizeof(video_timeout_disable), video_timeout_disable},
-	{DTYPE_DCS_WRITE1, 0, 10, WAIT_TYPE_US,
-		sizeof(CMD2_page4_sel), CMD2_page4_sel},
-	{DTYPE_DCS_WRITE1, 0, 10, WAIT_TYPE_US,
-		sizeof(reload), reload},
-	{DTYPE_DCS_WRITE1, 0, 10, WAIT_TYPE_US,
-		sizeof(video_drop_disable), video_drop_disable},
-#endif
-
 	{DTYPE_DCS_WRITE1, 0,10, WAIT_TYPE_US,
 		sizeof(page_select_1), page_select_1},
 	{DTYPE_DCS_WRITE1, 0,10, WAIT_TYPE_US,
 		sizeof(reload), reload},
+
+	{DTYPE_DCS_WRITE1, 0,10, WAIT_TYPE_US,
+		sizeof(test_0x02), test_0x02},
+
 	{DTYPE_DCS_WRITE1, 0,10, WAIT_TYPE_US,
 		sizeof(exvcom), exvcom},
 	{DTYPE_DCS_WRITE1, 0,10, WAIT_TYPE_US,
@@ -289,24 +308,58 @@ static struct dsi_cmd_desc lcd_display_init_cmds[] = {
 		sizeof(reload), reload},
 	{DTYPE_DCS_WRITE1, 0,10, WAIT_TYPE_US,
 		sizeof(mipi_relational_param_8), mipi_relational_param_8},
+
 	{DTYPE_DCS_WRITE1, 0,10, WAIT_TYPE_US,
 		sizeof(page_select_6), page_select_6},
+	{DTYPE_DCS_WRITE1, 0,10, WAIT_TYPE_US,
+		sizeof(reload), reload},
 
+	{DTYPE_DCS_WRITE1, 0,10, WAIT_TYPE_US,
+		sizeof(lane_number), lane_number},
+	{DTYPE_DCS_WRITE1, 0, 10, WAIT_TYPE_US,
+		sizeof(led_pwm_full_duty), led_pwm_full_duty},
 	{DTYPE_DCS_WRITE1, 0, 10, WAIT_TYPE_US,
 		sizeof(bl_ctl_on), bl_ctl_on},
 	{DTYPE_DCS_WRITE1, 0,10, WAIT_TYPE_US,
 		sizeof(set_tear_on), set_tear_on},
-	{DTYPE_DCS_WRITE1, 0,10, WAIT_TYPE_US,
-		sizeof(bk_en), bk_en},
 
+	{DTYPE_DCS_LWRITE, 0, 10, WAIT_TYPE_US,
+		sizeof(fte_modeC_enable), fte_modeC_enable},
 
 };
 
+//only for 5HZ, >30HZ delete this
+static struct dsi_cmd_desc lcd_display_init_cmds_for5HZ[] = {
+	{DTYPE_DCS_WRITE1, 0, 10, WAIT_TYPE_US,
+		sizeof(CMD3_page_sel), CMD3_page_sel},
+	{DTYPE_DCS_WRITE1, 0, 10, WAIT_TYPE_US,
+		sizeof(reload), reload},
+	{DTYPE_DCS_WRITE1, 0, 10, WAIT_TYPE_US,
+		sizeof(video_timeout_disable), video_timeout_disable},
+	{DTYPE_DCS_WRITE1, 0, 10, WAIT_TYPE_US,
+		sizeof(CMD2_page4_sel), CMD2_page4_sel},
+	{DTYPE_DCS_WRITE1, 0, 10, WAIT_TYPE_US,
+		sizeof(reload), reload},
+	{DTYPE_DCS_WRITE1, 0, 10, WAIT_TYPE_US,
+		sizeof(video_drop_disable), video_drop_disable},
+	{DTYPE_DCS_WRITE1, 0, 10, WAIT_TYPE_US,
+		sizeof(page_select_6), page_select_6},
+};
+
 static struct dsi_cmd_desc lcd_display_on_cmds[] = {
+#if 1
 	{DTYPE_DCS_WRITE, 0,120, WAIT_TYPE_MS,
 		sizeof(exit_sleep_mode), exit_sleep_mode},
 	{DTYPE_DCS_WRITE, 0, 100, WAIT_TYPE_MS,
 		sizeof(display_on), display_on},
+#else
+	{DTYPE_DCS_WRITE1, 0, 100, WAIT_TYPE_MS,
+		sizeof(bist_mode_1), bist_mode_1},
+	{DTYPE_DCS_WRITE1, 0, 100, WAIT_TYPE_MS,
+		sizeof(bist_mode_2), bist_mode_2},
+	{DTYPE_DCS_WRITE1, 0, 100, WAIT_TYPE_MS,
+		sizeof(bist_mode_3), bist_mode_3},
+#endif
 };
 
 static struct dsi_cmd_desc lcd_display_off_cmds[] = {
@@ -338,16 +391,81 @@ static struct dsi_cmd_desc lcd_display_video_mode_cmds[] = {
 		sizeof(video_control), video_control},
 };
 
-static struct dsi_cmd_desc lcd_ifbc_vesa3x_en_cmd[] = {
-#if 0
+static struct dsi_cmd_desc lcd_ifbc_vesa3_75x_slice8L_init_cmd[] = {
 	{DTYPE_DCS_LWRITE, 0,10, WAIT_TYPE_US,
-		sizeof(vesa3x_initC1), vesa3x_initC1},
+		sizeof(vesa3_75x_slice8L_C1), vesa3_75x_slice8L_C1},
 	{DTYPE_DCS_LWRITE, 0,10, WAIT_TYPE_US,
-		sizeof(vesa3x_initC2), vesa3x_initC2},
-#endif
+		sizeof(vesa3_75x_slice8L_C2), vesa3_75x_slice8L_C2},
+};
+
+static struct dsi_cmd_desc lcd_ifbc_vesa_en_cmd[] = {
 	{DTYPE_DCS_WRITE1, 0, 10, WAIT_TYPE_US,
 		sizeof(vesa3x_enable), vesa3x_enable},
 };
+
+/*******************************************************************************
+** LCD VCC
+*/
+#define VCC_LCDIO_NAME		"lcdio-vcc"
+#define VCC_LCDANALOG_NAME	"lcdanalog-vcc"
+
+static struct regulator *vcc_lcdio;
+static struct regulator *vcc_lcdanalog;
+
+static struct vcc_desc lcd_vcc_init_cmds[] = {
+	/* vcc get */
+	{DTYPE_VCC_GET, VCC_LCDIO_NAME, &vcc_lcdio, 0, 0, WAIT_TYPE_MS, 0},
+	{DTYPE_VCC_GET, VCC_LCDANALOG_NAME, &vcc_lcdanalog, 0, 0, WAIT_TYPE_MS, 0},
+
+	/* vcc set voltage */
+	{DTYPE_VCC_SET_VOLTAGE, VCC_LCDANALOG_NAME, &vcc_lcdanalog, 3100000, 3100000, WAIT_TYPE_MS, 0},
+	/* io set voltage */
+	{DTYPE_VCC_SET_VOLTAGE, VCC_LCDIO_NAME, &vcc_lcdio, 1800000, 1800000, WAIT_TYPE_MS, 0},
+};
+
+static struct vcc_desc lcd_vcc_finit_cmds[] = {
+	/* vcc put */
+	{DTYPE_VCC_PUT, VCC_LCDIO_NAME, &vcc_lcdio, 0, 0, WAIT_TYPE_MS, 0},
+	{DTYPE_VCC_PUT, VCC_LCDANALOG_NAME, &vcc_lcdanalog, 0, 0, WAIT_TYPE_MS, 0},
+};
+
+static struct vcc_desc lcd_vcc_enable_cmds[] = {
+	/* vcc enable */
+	{DTYPE_VCC_ENABLE, VCC_LCDANALOG_NAME, &vcc_lcdanalog, 0, 0, WAIT_TYPE_MS, 3},
+	{DTYPE_VCC_ENABLE, VCC_LCDIO_NAME, &vcc_lcdio, 0, 0, WAIT_TYPE_MS, 3},
+};
+
+static struct vcc_desc lcd_vcc_disable_cmds[] = {
+	/* vcc disable */
+	{DTYPE_VCC_DISABLE, VCC_LCDIO_NAME, &vcc_lcdio, 0, 0, WAIT_TYPE_MS, 3},
+	{DTYPE_VCC_DISABLE, VCC_LCDANALOG_NAME, &vcc_lcdanalog, 0, 0, WAIT_TYPE_MS, 3},
+};
+
+
+/*******************************************************************************
+** LCD IOMUX
+*/
+static struct pinctrl_data pctrl;
+
+static struct pinctrl_cmd_desc lcd_pinctrl_init_cmds[] = {
+	{DTYPE_PINCTRL_GET, &pctrl, 0},
+	{DTYPE_PINCTRL_STATE_GET, &pctrl, DTYPE_PINCTRL_STATE_DEFAULT},
+	{DTYPE_PINCTRL_STATE_GET, &pctrl, DTYPE_PINCTRL_STATE_IDLE},
+};
+
+static struct pinctrl_cmd_desc lcd_pinctrl_normal_cmds[] = {
+	{DTYPE_PINCTRL_SET, &pctrl, DTYPE_PINCTRL_STATE_DEFAULT},
+};
+
+static struct pinctrl_cmd_desc lcd_pinctrl_lowpower_cmds[] = {
+	{DTYPE_PINCTRL_SET, &pctrl, DTYPE_PINCTRL_STATE_IDLE},
+};
+
+static struct pinctrl_cmd_desc lcd_pinctrl_finit_cmds[] = {
+	{DTYPE_PINCTRL_PUT, &pctrl, 0},
+};
+
+
 /*
 ** Power ON/OFF Sequence end
 *******************************************************************************/
@@ -368,6 +486,18 @@ static uint32_t gpio_lcd_n5v8_enable;
 static uint32_t gpio_lcd_reset;
 static uint32_t gpio_lcd_bl_enable;
 static uint32_t gpio_lcd_1v8;
+
+
+#define GPIO_LCD_P5V5_ENABLE_NAME	"gpio_lcd_p5v5_enable"
+#define GPIO_LCD_N5V5_ENABLE_NAME "gpio_lcd_n5v5_enable"
+
+static uint32_t gpio_lcd_p5v5_enable;
+static uint32_t gpio_lcd_n5v5_enable;
+
+#ifndef AS_EXT_LCD_ON_ASIC
+#define GPIO_LCD_ID0_NAME	"gpio_lcd_id0"
+static uint32_t gpio_lcd_id0;
+#endif
 
 static struct gpio_desc fpga_lcd_gpio_request_cmds[] = {
 	/* AVDD_5.8V */
@@ -461,9 +591,84 @@ static struct gpio_desc lcd_gpio_free_cmds[] = {
 		GPIO_LCD_RESET_NAME, &gpio_lcd_reset, 0},
 };
 
+static struct gpio_desc asic_lcd_gpio_request_cmds[] = {
+	{DTYPE_GPIO_REQUEST, WAIT_TYPE_MS, 0,
+		GPIO_LCD_P5V5_ENABLE_NAME, &gpio_lcd_p5v5_enable, 0},
+	{DTYPE_GPIO_REQUEST, WAIT_TYPE_MS, 0,
+		GPIO_LCD_N5V5_ENABLE_NAME, &gpio_lcd_n5v5_enable, 0},
+	{DTYPE_GPIO_REQUEST, WAIT_TYPE_MS, 0,
+		GPIO_LCD_RESET_NAME, &gpio_lcd_reset, 0},
+	#ifndef AS_EXT_LCD_ON_ASIC
+	{DTYPE_GPIO_REQUEST, WAIT_TYPE_MS, 0,
+		GPIO_LCD_BL_ENABLE_NAME, &gpio_lcd_bl_enable, 0},
+	{DTYPE_GPIO_REQUEST, WAIT_TYPE_MS, 0,
+		GPIO_LCD_ID0_NAME, &gpio_lcd_id0, 0},
+	#endif
+};
+
+static struct gpio_desc asic_lcd_gpio_lowpower_cmds[] = {
+	#ifndef AS_EXT_LCD_ON_ASIC
+	{DTYPE_GPIO_OUTPUT, WAIT_TYPE_MS, 5,
+		GPIO_LCD_BL_ENABLE_NAME, &gpio_lcd_bl_enable, 0},
+	#endif
+	{DTYPE_GPIO_OUTPUT, WAIT_TYPE_MS, 20,
+		GPIO_LCD_N5V5_ENABLE_NAME, &gpio_lcd_n5v5_enable, 0},
+	{DTYPE_GPIO_OUTPUT, WAIT_TYPE_MS, 20,
+		GPIO_LCD_P5V5_ENABLE_NAME, &gpio_lcd_p5v5_enable, 0},
+	{DTYPE_GPIO_OUTPUT, WAIT_TYPE_MS, 20,
+		GPIO_LCD_RESET_NAME, &gpio_lcd_reset, 0},
+
+	#ifndef AS_EXT_LCD_ON_ASIC
+	{DTYPE_GPIO_INPUT, WAIT_TYPE_US, 100,
+		GPIO_LCD_BL_ENABLE_NAME, &gpio_lcd_bl_enable, 0},
+	#endif
+	{DTYPE_GPIO_INPUT, WAIT_TYPE_MS, 5,
+		GPIO_LCD_N5V5_ENABLE_NAME, &gpio_lcd_n5v5_enable, 0},
+	{DTYPE_GPIO_INPUT, WAIT_TYPE_MS, 5,
+		GPIO_LCD_P5V5_ENABLE_NAME, &gpio_lcd_p5v5_enable, 0},
+	{DTYPE_GPIO_INPUT, WAIT_TYPE_US, 100,
+		GPIO_LCD_RESET_NAME, &gpio_lcd_reset, 0},
+};
+
+static struct gpio_desc asic_lcd_gpio_free_cmds[] = {
+	{DTYPE_GPIO_FREE, WAIT_TYPE_US, 0,
+		GPIO_LCD_P5V5_ENABLE_NAME, &gpio_lcd_p5v5_enable, 0},
+	{DTYPE_GPIO_FREE, WAIT_TYPE_US, 0,
+		GPIO_LCD_N5V5_ENABLE_NAME, &gpio_lcd_n5v5_enable, 0},
+	{DTYPE_GPIO_FREE, WAIT_TYPE_US, 0,
+		GPIO_LCD_RESET_NAME, &gpio_lcd_reset, 0},
+	#ifndef AS_EXT_LCD_ON_ASIC
+	{DTYPE_GPIO_FREE, WAIT_TYPE_US, 0,
+		GPIO_LCD_BL_ENABLE_NAME, &gpio_lcd_bl_enable, 0},
+	{DTYPE_GPIO_FREE, WAIT_TYPE_US, 0,
+		GPIO_LCD_ID0_NAME, &gpio_lcd_id0, 0},
+	#endif
+};
+
+static struct gpio_desc asic_lcd_gpio_normal_cmds_sub1[] = {
+	{DTYPE_GPIO_OUTPUT, WAIT_TYPE_MS, 5,
+		GPIO_LCD_P5V5_ENABLE_NAME, &gpio_lcd_p5v5_enable, 1},
+	{DTYPE_GPIO_OUTPUT, WAIT_TYPE_MS, 20,
+		GPIO_LCD_N5V5_ENABLE_NAME, &gpio_lcd_n5v5_enable, 1},
+	{DTYPE_GPIO_OUTPUT, WAIT_TYPE_US, 20,
+		GPIO_LCD_RESET_NAME, &gpio_lcd_reset, 1},
+	{DTYPE_GPIO_OUTPUT, WAIT_TYPE_US, 20,
+		GPIO_LCD_RESET_NAME, &gpio_lcd_reset, 0},
+	{DTYPE_GPIO_OUTPUT, WAIT_TYPE_MS, 20,
+		GPIO_LCD_RESET_NAME, &gpio_lcd_reset, 1},
+};
+#ifndef AS_EXT_LCD_ON_ASIC
+static struct gpio_desc asic_lcd_gpio_normal_cmds_sub2[] = {
+	{DTYPE_GPIO_OUTPUT, WAIT_TYPE_MS, 5,
+		GPIO_LCD_BL_ENABLE_NAME, &gpio_lcd_bl_enable, 1},
+	{DTYPE_GPIO_INPUT, WAIT_TYPE_MS, 5,
+		GPIO_LCD_ID0_NAME, &gpio_lcd_id0, 0},
+};
+#endif
 /*******************************************************************************
 **
 */
+/*lint -e30 -e84 -e514 -e516 -e572 -e732 -e747 -e778 -e845 -e846 -e866*/
 static int mipi_jdi_NT36860_panel_set_fastboot(struct platform_device *pdev)
 {
 	struct hisi_fb_data_type *hisifd = NULL;
@@ -476,7 +681,11 @@ static int mipi_jdi_NT36860_panel_set_fastboot(struct platform_device *pdev)
 
 	if (g_lcd_fpga_flag == 0) {
 		// lcd pinctrl normal
+		pinctrl_cmds_tx(pdev, lcd_pinctrl_normal_cmds,
+			ARRAY_SIZE(lcd_pinctrl_normal_cmds));
 		// lcd gpio request
+		gpio_cmds_tx(asic_lcd_gpio_request_cmds,
+			ARRAY_SIZE(asic_lcd_gpio_request_cmds));
 	} else {
 		// lcd gpio request
 		gpio_cmds_tx(fpga_lcd_gpio_request_cmds,
@@ -508,41 +717,76 @@ static int mipi_jdi_NT36860_panel_on(struct platform_device *pdev)
 	HISI_FB_INFO("fb%d, +.\n", hisifd->index);
 
 	pinfo = &(hisifd->panel_info);
+#ifdef AS_EXT_LCD_ON_ASIC
+	mipi_dsi0_base = hisifd->mipi_dsi1_base;
+#else
 	mipi_dsi0_base = hisifd->mipi_dsi0_base;
+#endif
 
 	if (pinfo->lcd_init_step == LCD_INIT_POWER_ON) {
 		// check lcd power state
 		if (g_lcd_fpga_flag == 0) {
-			;
+			// lcd vcc enable
+			vcc_cmds_tx(pdev, lcd_vcc_enable_cmds,
+				ARRAY_SIZE(lcd_vcc_enable_cmds));
+			// lcd pinctrl normal
+			pinctrl_cmds_tx(pdev, lcd_pinctrl_normal_cmds,
+				ARRAY_SIZE(lcd_pinctrl_normal_cmds));
+
+			// lcd gpio request
+			gpio_cmds_tx(asic_lcd_gpio_request_cmds, \
+				ARRAY_SIZE(asic_lcd_gpio_request_cmds));
+
+			// lcd gpio normal
+			gpio_cmds_tx(asic_lcd_gpio_normal_cmds_sub1, \
+				ARRAY_SIZE(asic_lcd_gpio_normal_cmds_sub1));
 		} else {
 			gpio_cmds_tx(fpga_lcd_gpio_request_cmds, \
 				ARRAY_SIZE(fpga_lcd_gpio_request_cmds));
 			gpio_cmds_tx(fpga_lcd_gpio_on_cmds, \
 				ARRAY_SIZE(fpga_lcd_gpio_on_cmds));
 		}
+
 		pinfo->lcd_init_step = LCD_INIT_MIPI_LP_SEND_SEQUENCE;
 
 	} else if (pinfo->lcd_init_step == LCD_INIT_MIPI_LP_SEND_SEQUENCE) {
+		if (g_lcd_fpga_flag == 0) {
+		#ifndef AS_EXT_LCD_ON_ASIC
+			// lcd gpio normal
+			gpio_cmds_tx(asic_lcd_gpio_normal_cmds_sub2, \
+				ARRAY_SIZE(asic_lcd_gpio_normal_cmds_sub2));
+		#endif
+		}
+
 		mipi_dsi_cmds_tx(lcd_display_init_cmds, \
 			ARRAY_SIZE(lcd_display_init_cmds), mipi_dsi0_base);
+
+		if (g_lcd_fpga_flag) {
+			mipi_dsi_cmds_tx(lcd_display_init_cmds_for5HZ, \
+				ARRAY_SIZE(lcd_display_init_cmds_for5HZ), mipi_dsi0_base);
+		}
 
 		if (is_mipi_cmd_panel(hisifd)) {
 			mipi_dsi_cmds_tx(lcd_display_cmd_mode_cmds, \
 				ARRAY_SIZE(lcd_display_cmd_mode_cmds), mipi_dsi0_base);
 		} else {
-			HISI_FB_INFO(" is PANEL_MIPI_VIDEO mode\n");
 			mipi_dsi_cmds_tx(lcd_display_video_mode_cmds, \
 				ARRAY_SIZE(lcd_display_video_mode_cmds), mipi_dsi0_base);
 		}
 
 		if (pinfo->ifbc_type == IFBC_TYPE_VESA3X_DUAL) {
-			mipi_dsi_cmds_tx(lcd_ifbc_vesa3x_en_cmd, \
-				ARRAY_SIZE(lcd_ifbc_vesa3x_en_cmd), mipi_dsi0_base);
+			mipi_dsi_cmds_tx(lcd_ifbc_vesa_en_cmd, \
+				ARRAY_SIZE(lcd_ifbc_vesa_en_cmd), mipi_dsi0_base);
+		} else if (pinfo->ifbc_type == IFBC_TYPE_VESA3_75X_DUAL) {
+			mipi_dsi_cmds_tx(lcd_ifbc_vesa3_75x_slice8L_init_cmd, \
+				ARRAY_SIZE(lcd_ifbc_vesa3_75x_slice8L_init_cmd), mipi_dsi0_base);
+			mipi_dsi_cmds_tx(lcd_ifbc_vesa_en_cmd, \
+				ARRAY_SIZE(lcd_ifbc_vesa_en_cmd), mipi_dsi0_base);
 		}
 
 		mipi_dsi_cmds_tx(lcd_display_on_cmds, \
 			ARRAY_SIZE(lcd_display_on_cmds), mipi_dsi0_base);
-
+	#if 1
 		// check lcd power state
 		outp32(mipi_dsi0_base + MIPIDSI_GEN_HDR_OFFSET, 0x0A06);
 		status = inp32(mipi_dsi0_base + MIPIDSI_CMD_PKT_STATUS_OFFSET);
@@ -550,13 +794,14 @@ static int mipi_jdi_NT36860_panel_on(struct platform_device *pdev)
 			udelay(50);
 			if (++try_times > 100) {
 				try_times = 0;
-				HISI_FB_ERR("Read lcd power status timeout!\n");
+				HISI_FB_ERR("fb%d, Read lcd power status timeout!\n", hisifd->index);
 				break;
 			}
 			status = inp32(mipi_dsi0_base + MIPIDSI_CMD_PKT_STATUS_OFFSET);
 		}
 		status = inp32(mipi_dsi0_base + MIPIDSI_GEN_PLD_DATA_OFFSET);
-		HISI_FB_INFO("LCD Power State = 0x%x.\n", status);
+		HISI_FB_INFO("fb%d, JDI_NT36860_LCD Power State = 0x%x.\n", hisifd->index, status);
+	#endif
 
 		pinfo->lcd_init_step = LCD_INIT_MIPI_HS_SEND_SEQUENCE;
 
@@ -584,7 +829,12 @@ static int mipi_jdi_NT36860_panel_off(struct platform_device *pdev)
 	hisifd = platform_get_drvdata(pdev);
 	BUG_ON(hisifd == NULL);
 	pinfo = &(hisifd->panel_info);
+
+#ifdef AS_EXT_LCD_ON_ASIC
+	mipi_dsi0_base = hisifd->mipi_dsi1_base;
+#else
 	mipi_dsi0_base = hisifd->mipi_dsi0_base;
+#endif
 
 	HISI_FB_INFO("fb%d, +.\n", hisifd->index);
 
@@ -594,6 +844,13 @@ static int mipi_jdi_NT36860_panel_off(struct platform_device *pdev)
 
 		mipi_dsi_cmds_tx(lcd_display_off_cmds, \
 			ARRAY_SIZE(lcd_display_off_cmds), mipi_dsi0_base);
+		if (is_mipi_cmd_panel(hisifd)) {
+			mipi_dsi_cmds_tx(enter_sleep_mode_for_mipi_cmd_mode, \
+				ARRAY_SIZE(enter_sleep_mode_for_mipi_cmd_mode), mipi_dsi0_base);
+		} else {
+			mipi_dsi_cmds_tx(enter_sleep_mode_for_mipi_video_mode, \
+				ARRAY_SIZE(enter_sleep_mode_for_mipi_video_mode), mipi_dsi0_base);
+		}
 		pinfo->lcd_uninit_step = LCD_UNINIT_MIPI_LP_SEND_SEQUENCE;
 
 	} else if (pinfo->lcd_uninit_step == LCD_UNINIT_MIPI_LP_SEND_SEQUENCE) {
@@ -601,7 +858,20 @@ static int mipi_jdi_NT36860_panel_off(struct platform_device *pdev)
 
 	} else if (pinfo->lcd_uninit_step == LCD_UNINIT_POWER_OFF) {
 		if (g_lcd_fpga_flag==0) {
+			// lcd gpio lowpower
+			gpio_cmds_tx(asic_lcd_gpio_lowpower_cmds, \
+				ARRAY_SIZE(asic_lcd_gpio_lowpower_cmds));
+			// lcd gpio free
+			gpio_cmds_tx(asic_lcd_gpio_free_cmds, \
+				ARRAY_SIZE(asic_lcd_gpio_free_cmds));
+			// lcd pinctrl lowpower
+			pinctrl_cmds_tx(pdev,lcd_pinctrl_lowpower_cmds,
+				ARRAY_SIZE(lcd_pinctrl_lowpower_cmds));
 
+			mdelay(3);
+			// lcd vcc disable
+			vcc_cmds_tx(pdev, lcd_vcc_disable_cmds,
+				ARRAY_SIZE(lcd_vcc_disable_cmds));
 		} else {
 			// lcd gpio lowpower
 			gpio_cmds_tx(lcd_gpio_off_cmds, \
@@ -631,7 +901,13 @@ static int mipi_jdi_NT36860_panel_remove(struct platform_device *pdev)
 	HISI_FB_DEBUG("fb%d, +.\n", hisifd->index);
 
 	if (g_lcd_fpga_flag == 0) {
+		// lcd vcc finit
+		vcc_cmds_tx(pdev, lcd_vcc_finit_cmds,
+			ARRAY_SIZE(lcd_vcc_finit_cmds));
 
+		// lcd pinctrl finit
+		pinctrl_cmds_tx(pdev, lcd_pinctrl_finit_cmds,
+			ARRAY_SIZE(lcd_pinctrl_finit_cmds));
 	}
 
 	HISI_FB_DEBUG("fb%d, -.\n", hisifd->index);
@@ -658,8 +934,6 @@ static int mipi_jdi_NT36860_panel_set_backlight(struct platform_device *pdev, ui
 	hisifd = platform_get_drvdata(pdev);
 	BUG_ON(hisifd == NULL);
 
-	HISI_FB_DEBUG("fb%d, +.\n", hisifd->index);
-
 	if (hisifd->panel_info.bl_set_type & BL_SET_BY_PWM) {
 
 		ret = hisi_pwm_set_backlight(hisifd, bl_level);
@@ -678,10 +952,15 @@ static int mipi_jdi_NT36860_panel_set_backlight(struct platform_device *pdev, ui
 
 		if (last_bl_level != bl_level_adjust[1]){
 			last_bl_level = bl_level_adjust[1];
+		#ifdef AS_EXT_LCD_ON_ASIC
+			mipi_dsi_cmds_tx(lcd_bl_level_adjust, \
+				ARRAY_SIZE(lcd_bl_level_adjust), hisifd->mipi_dsi1_base);
+		#else
 			mipi_dsi_cmds_tx(lcd_bl_level_adjust, \
 				ARRAY_SIZE(lcd_bl_level_adjust), hisifd->mipi_dsi0_base);
+		#endif
 			}
-		HISI_FB_INFO("lw bl_level_adjust[1] = %d.\n",bl_level_adjust[1]);
+		HISI_FB_DEBUG("lw bl_level_adjust[1] = %d.\n",bl_level_adjust[1]);
 
 	} else {
 		HISI_FB_ERR("fb%d, not support this bl_set_type(%d)!\n",
@@ -694,15 +973,14 @@ static int mipi_jdi_NT36860_panel_set_backlight(struct platform_device *pdev, ui
 
 }
 
-
 static char lcd_disp_x[] = {
 	0x2A,
-	0x00, 0x00,0x04,0x37
+	0x00, 0x00,0x05,0x9F
 };
 
 static char lcd_disp_y[] = {
 	0x2B,
-	0x00, 0x00,0x07,0x7F
+	0x00, 0x00,0x09,0xFF
 };
 
 static struct dsi_cmd_desc set_display_address[] = {
@@ -716,21 +994,10 @@ static int mipi_jdi_NT36860_panel_set_display_region(struct platform_device *pde
 	struct dss_rect *dirty)
 {
 	struct hisi_fb_data_type *hisifd = NULL;
-	struct hisi_panel_info *pinfo = NULL;
 
 	BUG_ON(pdev == NULL || dirty == NULL);
 	hisifd = platform_get_drvdata(pdev);
 	BUG_ON(hisifd == NULL);
-
-	pinfo = &(hisifd->panel_info);
-
-	if (((dirty->x % 2) != 0) || ((dirty->y % 2) != 0) ||
-		((dirty->w % 2) != 0) || ((dirty->h % 2) != 0) ||
-		(dirty->x >= pinfo->xres) || (dirty->w > pinfo->xres) || ((dirty->x + dirty->w) > pinfo->xres) ||
-		(dirty->y >= pinfo->yres) || (dirty->h > pinfo->yres) || ((dirty->y + dirty->h) > pinfo->yres)) {
-		HISI_FB_ERR("dirty_region(%d,%d, %d,%d) not support!\n",
-			dirty->x, dirty->y, dirty->w, dirty->h);
-	}
 
 	lcd_disp_x[1] = (dirty->x >> 8) & 0xff;
 	lcd_disp_x[2] = dirty->x & 0xff;
@@ -741,9 +1008,18 @@ static int mipi_jdi_NT36860_panel_set_display_region(struct platform_device *pde
 	lcd_disp_y[3] = ((dirty->y + dirty->h - 1) >> 8) & 0xff;
 	lcd_disp_y[4] = (dirty->y + dirty->h - 1) & 0xff;
 
+	HISI_FB_DEBUG("x[1] = 0x%2x, x[2] = 0x%2x, x[3] = 0x%2x, x[4] = 0x%2x.\n",
+		lcd_disp_x[1], lcd_disp_x[2], lcd_disp_x[3], lcd_disp_x[4]);
+	HISI_FB_DEBUG("y[1] = 0x%2x, y[2] = 0x%2x, y[3] = 0x%2x, y[4] = 0x%2x.\n",
+		lcd_disp_y[1], lcd_disp_y[2], lcd_disp_y[3], lcd_disp_y[4]);
+
+#ifdef AS_EXT_LCD_ON_ASIC
+	mipi_dsi_cmds_tx(set_display_address, \
+		ARRAY_SIZE(set_display_address), hisifd->mipi_dsi1_base);
+#else
 	mipi_dsi_cmds_tx(set_display_address, \
 		ARRAY_SIZE(set_display_address), hisifd->mipi_dsi0_base);
-
+#endif
 	return 0;
 }
 
@@ -845,10 +1121,25 @@ static int mipi_jdi_NT36860_probe(struct platform_device *pdev)
 		gpio_lcd_bl_enable = of_get_named_gpio(np, "gpios", 4);
 		gpio_lcd_1v8 = of_get_named_gpio(np, "gpios", 0);
 	} else {
-
+	#ifdef AS_EXT_LCD_ON_ASIC
+		gpio_lcd_p5v5_enable = of_get_named_gpio(np, "gpios", 0);
+		gpio_lcd_n5v5_enable = of_get_named_gpio(np, "gpios", 1);
+		gpio_lcd_reset = of_get_named_gpio(np, "gpios", 2);
+	#else
+		gpio_lcd_p5v5_enable = of_get_named_gpio(np, "gpios", 0);
+		gpio_lcd_n5v5_enable = of_get_named_gpio(np, "gpios", 1);
+		gpio_lcd_reset = of_get_named_gpio(np, "gpios", 2);
+		gpio_lcd_bl_enable = of_get_named_gpio(np, "gpios", 3);
+		gpio_lcd_id0 = of_get_named_gpio(np, "gpios", 4);
+	#endif
 	}
 
+#ifdef AS_EXT_LCD_ON_ASIC
+	pdev->id = 2;
+#else
 	pdev->id = 1;
+#endif
+
 	//init lcd panel info
 	pinfo = g_panel_data.panel_info;
 	memset(pinfo, 0, sizeof(struct hisi_panel_info));
@@ -872,7 +1163,11 @@ static int mipi_jdi_NT36860_probe(struct platform_device *pdev)
 	pinfo->bl_default = 102;
 #endif
 
-	pinfo->type = PANEL_MIPI_CMD;
+#ifdef AS_EXT_LCD_ON_ASIC
+	pinfo->type = PANEL_MIPI_VIDEO;//PANEL_MIPI_CMD;
+#else
+	pinfo->type = lcd_display_type;
+#endif
 	pinfo->frc_enable = 0;
 	pinfo->esd_enable = 0;
 	pinfo->esd_skip_mipi_check = 0;
@@ -880,38 +1175,82 @@ static int mipi_jdi_NT36860_probe(struct platform_device *pdev)
 
 	if (g_lcd_fpga_flag == 1) {
 		if (pinfo->type == PANEL_MIPI_CMD) {
-			//ldi
-			pinfo->ldi.h_back_porch = 96;//0x6ff;//96;
-			pinfo->ldi.h_front_porch = 108;
+			pinfo->ldi.h_back_porch = 96;//0x6ff
+			pinfo->ldi.h_front_porch = 1068; //108
 			pinfo->ldi.h_pulse_width = 48;
 			pinfo->ldi.v_back_porch = 12;
 			pinfo->ldi.v_front_porch = 14;
 			pinfo->ldi.v_pulse_width = 4;
 
-			//mipi
-			pinfo->mipi.dsi_bit_clk = 240;//240;
+			pinfo->mipi.dsi_bit_clk = 240;
+			pinfo->mipi.dsi_bit_clk_val1 = 220;
+			pinfo->mipi.dsi_bit_clk_val2 = 230;
+			pinfo->mipi.dsi_bit_clk_val3 = 240;
+			pinfo->mipi.dsi_bit_clk_val4 = 250;
+			pinfo->mipi.dsi_bit_clk_val5 = 260;
 			pinfo->dsi_bit_clk_upt_support = 0;
 			pinfo->mipi.dsi_bit_clk_upt = pinfo->mipi.dsi_bit_clk;
 			pinfo->pxl_clk_rate = 20* 1000000UL;
 		} else {
-			//ldi
-			pinfo->ldi.h_back_porch = 96;//0x6ff;//96;
-			pinfo->ldi.h_front_porch = 108;//108
-			pinfo->ldi.h_pulse_width = 48;//48
+			pinfo->ldi.h_back_porch = 96;//0x6ff
+			pinfo->ldi.h_front_porch = 1068; //108
+			pinfo->ldi.h_pulse_width = 48;
 			pinfo->ldi.v_back_porch = 12;
-			pinfo->ldi.v_front_porch = 30;
-			pinfo->ldi.v_pulse_width = 18;//18
+			pinfo->ldi.v_front_porch = 14;
+			pinfo->ldi.v_pulse_width = 4;
 
-			//mipi
-			pinfo->mipi.dsi_bit_clk = 240;//240;
+			pinfo->mipi.dsi_bit_clk = 240;
+			pinfo->mipi.dsi_bit_clk_val1 = 220;
+			pinfo->mipi.dsi_bit_clk_val2 = 230;
+			pinfo->mipi.dsi_bit_clk_val3 = 240;
+			pinfo->mipi.dsi_bit_clk_val4 = 250;
+			pinfo->mipi.dsi_bit_clk_val5 = 260;
 			pinfo->dsi_bit_clk_upt_support = 0;
 			pinfo->mipi.dsi_bit_clk_upt = pinfo->mipi.dsi_bit_clk;
 			pinfo->pxl_clk_rate = 20* 1000000UL;
 		}
 
 	} else {
-		;
+		if (pinfo->type == PANEL_MIPI_CMD) {
+			pinfo->ldi.h_back_porch = 96;//0x6ff
+			pinfo->ldi.h_front_porch = 108;
+			pinfo->ldi.h_pulse_width = 48;
+			pinfo->ldi.v_back_porch = 32;
+			pinfo->ldi.v_front_porch = 30;
+			pinfo->ldi.v_pulse_width = 18;
+
+			pinfo->mipi.dsi_bit_clk = 1000;
+			pinfo->dsi_bit_clk_upt_support = 0;
+			pinfo->mipi.dsi_bit_clk_upt = pinfo->mipi.dsi_bit_clk;
+			pinfo->pxl_clk_rate = 146 * 1000000UL;
+		} else {
+			pinfo->ldi.h_back_porch = 96;//0x6ff
+			pinfo->ldi.h_front_porch = 108;
+			pinfo->ldi.h_pulse_width = 48;
+			pinfo->ldi.v_back_porch = 32;
+			pinfo->ldi.v_front_porch = 30;
+			pinfo->ldi.v_pulse_width = 18;
+
+			pinfo->mipi.dsi_bit_clk = 1000;
+			pinfo->dsi_bit_clk_upt_support = 0;
+			pinfo->mipi.dsi_bit_clk_upt = pinfo->mipi.dsi_bit_clk;
+			pinfo->pxl_clk_rate = 146 * 1000000UL;
+		}
 	}
+
+#ifdef AS_EXT_LCD_ON_ASIC
+	pinfo->ldi.h_back_porch = 96;
+	pinfo->ldi.h_front_porch = 108;
+	pinfo->ldi.h_pulse_width = 48;
+	pinfo->ldi.v_back_porch = 32;
+	pinfo->ldi.v_front_porch = 30;
+	pinfo->ldi.v_pulse_width = 18;
+
+	pinfo->mipi.dsi_bit_clk = 1000;
+	pinfo->dsi_bit_clk_upt_support = 0;
+	pinfo->mipi.dsi_bit_clk_upt = pinfo->mipi.dsi_bit_clk;
+	pinfo->pxl_clk_rate = 238 * 1000000UL;
+#endif
 
 	pinfo->mipi.dsi_version = DSI_1_1_VERSION;
 
@@ -935,138 +1274,304 @@ static int mipi_jdi_NT36860_probe(struct platform_device *pdev)
 
 	pinfo->vsync_ctrl_type = 0;//VSYNC_CTRL_ISR_OFF | VSYNC_CTRL_MIPI_ULPS | VSYNC_CTRL_CLK_OFF;
 
-#if 0 //VESA3X and video mode have not been debug, Unavailable.
-	pinfo->ifbc_type = IFBC_TYPE_VESA3X_DUAL;
+	if (pinfo->type == PANEL_MIPI_CMD) {
+		pinfo->dirty_region_updt_support = 0;
+		pinfo->dirty_region_info.left_align = -1;
+		pinfo->dirty_region_info.right_align = -1;
+		pinfo->dirty_region_info.top_align = 32;
+		pinfo->dirty_region_info.bottom_align = 32;
+		pinfo->dirty_region_info.w_align = -1;
+		pinfo->dirty_region_info.h_align = -1;
+		pinfo->dirty_region_info.w_min = 1440;
+		pinfo->dirty_region_info.h_min = 32;
+		pinfo->dirty_region_info.top_start = -1;
+		pinfo->dirty_region_info.bottom_start = -1;
+	}
+	/* The host processor must wait for more than 15us from the end of write data transfer to a command 2Ah/2Bh */
+	if (pinfo->dirty_region_updt_support == 1) {
+		pinfo->mipi.hs_wr_to_time = 17000;        /* measured in nS */
+	}
+
+#if 1
+	//IFBC_TYPE_VESA3X_DUAL & IFBC_TYPE_VESA3_75X_DUAL are both supported
+	pinfo->ifbc_type = IFBC_TYPE_VESA3X_DUAL;//IFBC_TYPE_VESA3_75X_DUAL;
 	pinfo->pxl_clk_rate_div = 3;
 #else
 	pinfo->ifbc_type = IFBC_TYPE_NONE;
 	pinfo->pxl_clk_rate_div = 1;
 #endif
+
+#ifdef AS_EXT_LCD_ON_ASIC
+	pinfo->ifbc_type = IFBC_TYPE_NONE;
+	pinfo->pxl_clk_rate_div = 1;
+#endif
 	/* IFBC Setting begin */
 	/* dsc parameter info */
-	pinfo->vesa_dsc.bits_per_component = 8;
-	pinfo->vesa_dsc.bits_per_pixel = 8;
-	pinfo->vesa_dsc.slice_width = 719;//1439
-	pinfo->vesa_dsc.slice_height = 7;//31;
+	if (pinfo->ifbc_type == IFBC_TYPE_VESA3_75X_DUAL) {
+		//pinfo->bpp = LCD_RGB101010;
+		//pinfo->mipi.color_mode = DSI_30BITS_1;
 
-	pinfo->vesa_dsc.initial_xmit_delay = 512;
-	pinfo->vesa_dsc.first_line_bpg_offset = 12;
-	pinfo->vesa_dsc.mux_word_size = 48;
+		pinfo->vesa_dsc.bits_per_component = 10;
+		pinfo->vesa_dsc.linebuf_depth = 11;
+		pinfo->vesa_dsc.bits_per_pixel = 8;
+		pinfo->vesa_dsc.initial_xmit_delay = 512;
 
-	/* DSC_CTRL */
-	pinfo->vesa_dsc.block_pred_enable = 1;//0;
-	pinfo->vesa_dsc.linebuf_depth = 9;
+		pinfo->vesa_dsc.slice_width = 719;//1439
+		pinfo->vesa_dsc.slice_height = 7;//31;
 
-	/* RC_PARAM3 */
-	pinfo->vesa_dsc.initial_offset = 6144;
+		pinfo->vesa_dsc.first_line_bpg_offset = 12;
+		pinfo->vesa_dsc.mux_word_size = 48;
 
-	/* FLATNESS_QP_TH */
-	pinfo->vesa_dsc.flatness_min_qp = 3;
-	pinfo->vesa_dsc.flatness_max_qp = 12;
+		/* DSC_CTRL */
+		pinfo->vesa_dsc.block_pred_enable = 1;//0;
 
-	/* DSC_PARAM4 */
-	pinfo->vesa_dsc.rc_edge_factor= 0x6;
-	pinfo->vesa_dsc.rc_model_size = 8192;
+		/* RC_PARAM3 */
+		pinfo->vesa_dsc.initial_offset = 6144;
 
-	/* DSC_RC_PARAM5: 0x330b0b */
-	pinfo->vesa_dsc.rc_tgt_offset_lo = (0x330b0b >> 20) & 0xF;
-	pinfo->vesa_dsc.rc_tgt_offset_hi = (0x330b0b >> 16) & 0xF;
-	pinfo->vesa_dsc.rc_quant_incr_limit1 = (0x330b0b >> 8) & 0x1F;
-	pinfo->vesa_dsc.rc_quant_incr_limit0 = (0x330b0b >> 0) & 0x1F;
+		/* FLATNESS_QP_TH */
+		pinfo->vesa_dsc.flatness_min_qp = 7;
+		pinfo->vesa_dsc.flatness_max_qp = 16;
 
-	/* DSC_RC_BUF_THRESH0: 0xe1c2a38 */
-	pinfo->vesa_dsc.rc_buf_thresh0 = (0xe1c2a38 >> 24) & 0xFF;
-	pinfo->vesa_dsc.rc_buf_thresh1 = (0xe1c2a38 >> 16) & 0xFF;
-	pinfo->vesa_dsc.rc_buf_thresh2 = (0xe1c2a38 >> 8) & 0xFF;
-	pinfo->vesa_dsc.rc_buf_thresh3 = (0xe1c2a38 >> 0) & 0xFF;
+		/* DSC_PARAM4 */
+		pinfo->vesa_dsc.rc_edge_factor= 0x6;
+		pinfo->vesa_dsc.rc_model_size = 8192;
 
-	/* DSC_RC_BUF_THRESH1: 0x46546269 */
-	pinfo->vesa_dsc.rc_buf_thresh4 = (0x46546269 >> 24) & 0xFF;
-	pinfo->vesa_dsc.rc_buf_thresh5 = (0x46546269 >> 16) & 0xFF;
-	pinfo->vesa_dsc.rc_buf_thresh6 = (0x46546269 >> 8) & 0xFF;
-	pinfo->vesa_dsc.rc_buf_thresh7 = (0x46546269 >> 0) & 0xFF;
+		/* DSC_RC_PARAM5: 0x330f0f */
+		pinfo->vesa_dsc.rc_tgt_offset_lo = (0x330f0f >> 20) & 0xF;
+		pinfo->vesa_dsc.rc_tgt_offset_hi = (0x330f0f >> 16) & 0xF;
+		pinfo->vesa_dsc.rc_quant_incr_limit1 = (0x330f0f >> 8) & 0x1F;
+		pinfo->vesa_dsc.rc_quant_incr_limit0 = (0x330f0f >> 0) & 0x1F;
 
-	/* DSC_RC_BUF_THRESH2: 0x7077797b */
-	pinfo->vesa_dsc.rc_buf_thresh8 = (0x7077797b >> 24) & 0xFF;
-	pinfo->vesa_dsc.rc_buf_thresh9 = (0x7077797b >> 16) & 0xFF;
-	pinfo->vesa_dsc.rc_buf_thresh10 = (0x7077797b >> 8) & 0xFF;
-	pinfo->vesa_dsc.rc_buf_thresh11 = (0x7077797b >> 0) & 0xFF;
+		/* DSC_RC_BUF_THRESH0: 0xe1c2a38 */
+		pinfo->vesa_dsc.rc_buf_thresh0 = (0xe1c2a38 >> 24) & 0xFF;
+		pinfo->vesa_dsc.rc_buf_thresh1 = (0xe1c2a38 >> 16) & 0xFF;
+		pinfo->vesa_dsc.rc_buf_thresh2 = (0xe1c2a38 >> 8) & 0xFF;
+		pinfo->vesa_dsc.rc_buf_thresh3 = (0xe1c2a38 >> 0) & 0xFF;
 
-	/* DSC_RC_BUF_THRESH3: 0x7d7e0000 */
-	pinfo->vesa_dsc.rc_buf_thresh12 = (0x7d7e0000 >> 24) & 0xFF;
-	pinfo->vesa_dsc.rc_buf_thresh13 = (0x7d7e0000 >> 16) & 0xFF;
+		/* DSC_RC_BUF_THRESH1: 0x46546269 */
+		pinfo->vesa_dsc.rc_buf_thresh4 = (0x46546269 >> 24) & 0xFF;
+		pinfo->vesa_dsc.rc_buf_thresh5 = (0x46546269 >> 16) & 0xFF;
+		pinfo->vesa_dsc.rc_buf_thresh6 = (0x46546269 >> 8) & 0xFF;
+		pinfo->vesa_dsc.rc_buf_thresh7 = (0x46546269 >> 0) & 0xFF;
 
-	/* DSC_RC_RANGE_PARAM0: 0x1020100 */
-	pinfo->vesa_dsc.range_min_qp0 = (0x1020100 >> 27) & 0x1F;
-	pinfo->vesa_dsc.range_max_qp0 = (0x1020100 >> 22) & 0x1F;
-	pinfo->vesa_dsc.range_bpg_offset0 = (0x1020100 >> 16) & 0x3F;
-	pinfo->vesa_dsc.range_min_qp1 = (0x1020100 >> 11) & 0x1F;
-	pinfo->vesa_dsc.range_max_qp1 = (0x1020100 >> 6) & 0x1F;
-	pinfo->vesa_dsc.range_bpg_offset1 = (0x1020100 >> 0) & 0x3F;
+		/* DSC_RC_BUF_THRESH2: 0x7077797b */
+		pinfo->vesa_dsc.rc_buf_thresh8 = (0x7077797b >> 24) & 0xFF;
+		pinfo->vesa_dsc.rc_buf_thresh9 = (0x7077797b >> 16) & 0xFF;
+		pinfo->vesa_dsc.rc_buf_thresh10 = (0x7077797b >> 8) & 0xFF;
+		pinfo->vesa_dsc.rc_buf_thresh11 = (0x7077797b >> 0) & 0xFF;
 
-	/* DSC_RC_RANGE_PARAM1: 0x94009be */
-	pinfo->vesa_dsc.range_min_qp2 = (0x94009be >> 27) & 0x1F;
-	pinfo->vesa_dsc.range_max_qp2 = (0x94009be >> 22) & 0x1F;
-	pinfo->vesa_dsc.range_bpg_offset2 = (0x94009be >> 16) & 0x3F;
-	pinfo->vesa_dsc.range_min_qp3 = (0x94009be >> 11) & 0x1F;
-	pinfo->vesa_dsc.range_max_qp3 = (0x94009be >> 6) & 0x1F;
-	pinfo->vesa_dsc.range_bpg_offset3 = (0x94009be >> 0) & 0x3F;
+		/* DSC_RC_BUF_THRESH3: 0x7d7e0000 */
+		pinfo->vesa_dsc.rc_buf_thresh12 = (0x7d7e0000 >> 24) & 0xFF;
+		pinfo->vesa_dsc.rc_buf_thresh13 = (0x7d7e0000 >> 16) & 0xFF;
 
-	/* DSC_RC_RANGE_PARAM2, 0x19fc19fa */
-	pinfo->vesa_dsc.range_min_qp4 = (0x19fc19fa >> 27) & 0x1F;
-	pinfo->vesa_dsc.range_max_qp4 = (0x19fc19fa >> 22) & 0x1F;
-	pinfo->vesa_dsc.range_bpg_offset4 = (0x19fc19fa >> 16) & 0x3F;
-	pinfo->vesa_dsc.range_min_qp5 = (0x19fc19fa >> 11) & 0x1F;
-	pinfo->vesa_dsc.range_max_qp5 = (0x19fc19fa >> 6) & 0x1F;
-	pinfo->vesa_dsc.range_bpg_offset5 = (0x19fc19fa >> 0) & 0x3F;
+		/* DSC_RC_RANGE_PARAM0: 0x2022200 */
+		pinfo->vesa_dsc.range_min_qp0 = (0x2022200 >> 27) & 0x1F;
+		pinfo->vesa_dsc.range_max_qp0 = (0x2022200 >> 22) & 0x1F;
+		pinfo->vesa_dsc.range_bpg_offset0 = (0x2022200 >> 16) & 0x3F;
+		pinfo->vesa_dsc.range_min_qp1 = (0x2022200 >> 11) & 0x1F;
+		pinfo->vesa_dsc.range_max_qp1 = (0x2022200 >> 6) & 0x1F;
+		pinfo->vesa_dsc.range_bpg_offset1 = (0x2022200 >> 0) & 0x3F;
 
-	/* DSC_RC_RANGE_PARAM3, 0x19f81a38 */
-	pinfo->vesa_dsc.range_min_qp6 = (0x19f81a38 >> 27) & 0x1F;
-	pinfo->vesa_dsc.range_max_qp6 = (0x19f81a38 >> 22) & 0x1F;
-	pinfo->vesa_dsc.range_bpg_offset6 = (0x19f81a38 >> 16) & 0x3F;
-	pinfo->vesa_dsc.range_min_qp7 = (0x19f81a38 >> 11) & 0x1F;
-	pinfo->vesa_dsc.range_max_qp7 = (0x19f81a38 >> 6) & 0x1F;
-	pinfo->vesa_dsc.range_bpg_offset7 = (0x19f81a38 >> 0) & 0x3F;
+		/* DSC_RC_RANGE_PARAM1: 0x94009be */
+		pinfo->vesa_dsc.range_min_qp2 = 5;//(0x94009be >> 27) & 0x1F;
+		pinfo->vesa_dsc.range_max_qp2 = 9;//(0x94009be >> 22) & 0x1F;
+		pinfo->vesa_dsc.range_bpg_offset2 = (0x94009be >> 16) & 0x3F;
+		pinfo->vesa_dsc.range_min_qp3 = 5;//(0x94009be >> 11) & 0x1F;
+		pinfo->vesa_dsc.range_max_qp3 = 10;//(0x94009be >> 6) & 0x1F;
+		pinfo->vesa_dsc.range_bpg_offset3 = (0x94009be >> 0) & 0x3F;
 
-	/* DSC_RC_RANGE_PARAM4, 0x1a781ab6 */
-	pinfo->vesa_dsc.range_min_qp8 = (0x1a781ab6 >> 27) & 0x1F;
-	pinfo->vesa_dsc.range_max_qp8 = (0x1a781ab6 >> 22) & 0x1F;
-	pinfo->vesa_dsc.range_bpg_offset8 = (0x1a781ab6 >> 16) & 0x3F;
-	pinfo->vesa_dsc.range_min_qp9 = (0x1a781ab6 >> 11) & 0x1F;
-	pinfo->vesa_dsc.range_max_qp9 = (0x1a781ab6 >> 6) & 0x1F;
-	pinfo->vesa_dsc.range_bpg_offset9 = (0x1a781ab6 >> 0) & 0x3F;
+		/* DSC_RC_RANGE_PARAM2, 0x19fc19fa */
+		pinfo->vesa_dsc.range_min_qp4 = 7;//(0x19fc19fa >> 27) & 0x1F;
+		pinfo->vesa_dsc.range_max_qp4 = 11;//(0x19fc19fa >> 22) & 0x1F;
+		pinfo->vesa_dsc.range_bpg_offset4 = (0x19fc19fa >> 16) & 0x3F;
+		pinfo->vesa_dsc.range_min_qp5 = 7;//(0x19fc19fa >> 11) & 0x1F;
+		pinfo->vesa_dsc.range_max_qp5 = 11;//(0x19fc19fa >> 6) & 0x1F;
+		pinfo->vesa_dsc.range_bpg_offset5 = (0x19fc19fa >> 0) & 0x3F;
 
-	/* DSC_RC_RANGE_PARAM5, 0x2af62b34 */
-	pinfo->vesa_dsc.range_min_qp10 = (0x2af62b34 >> 27) & 0x1F;
-	pinfo->vesa_dsc.range_max_qp10 = (0x2af62b34 >> 22) & 0x1F;
-	pinfo->vesa_dsc.range_bpg_offset10 = (0x2af62b34 >> 16) & 0x3F;
-	pinfo->vesa_dsc.range_min_qp11 = (0x2af62b34 >> 11) & 0x1F;
-	pinfo->vesa_dsc.range_max_qp11 = (0x2af62b34 >> 6) & 0x1F;
-	pinfo->vesa_dsc.range_bpg_offset11 = (0x2af62b34 >> 0) & 0x3F;
+		/* DSC_RC_RANGE_PARAM3, 0x19f81a38 */
+		pinfo->vesa_dsc.range_min_qp6 = 7;//(0x19f81a38 >> 27) & 0x1F;
+		pinfo->vesa_dsc.range_max_qp6 = 11;//(0x19f81a38 >> 22) & 0x1F;
+		pinfo->vesa_dsc.range_bpg_offset6 = (0x19f81a38 >> 16) & 0x3F;
+		pinfo->vesa_dsc.range_min_qp7 = 7;//(0x19f81a38 >> 11) & 0x1F;
+		pinfo->vesa_dsc.range_max_qp7 = 12;//(0x19f81a38 >> 6) & 0x1F;
+		pinfo->vesa_dsc.range_bpg_offset7 = (0x19f81a38 >> 0) & 0x3F;
 
-	/* DSC_RC_RANGE_PARAM6, 0x2b743b74 */
-	pinfo->vesa_dsc.range_min_qp12 = (0x2b743b74 >> 27) & 0x1F;
-	pinfo->vesa_dsc.range_max_qp12 = (0x2b743b74 >> 22) & 0x1F;
-	pinfo->vesa_dsc.range_bpg_offset12 = (0x2b743b74 >> 16) & 0x3F;
-	pinfo->vesa_dsc.range_min_qp13 = (0x2b743b74 >> 11) & 0x1F;
-	pinfo->vesa_dsc.range_max_qp13 = (0x2b743b74 >> 6) & 0x1F;
-	pinfo->vesa_dsc.range_bpg_offset13 = (0x2b743b74 >> 0) & 0x3F;
+		/* DSC_RC_RANGE_PARAM4, 0x1a781ab6 */
+		pinfo->vesa_dsc.range_min_qp8 = 7;//(0x1a781ab6 >> 27) & 0x1F;
+		pinfo->vesa_dsc.range_max_qp8 = 13;//(0x1a781ab6 >> 22) & 0x1F;
+		pinfo->vesa_dsc.range_bpg_offset8 = (0x1a781ab6 >> 16) & 0x3F;
+		pinfo->vesa_dsc.range_min_qp9 = 7;//(0x1a781ab6 >> 11) & 0x1F;
+		pinfo->vesa_dsc.range_max_qp9 = 14;//(0x1a781ab6 >> 6) & 0x1F;
+		pinfo->vesa_dsc.range_bpg_offset9 = (0x1a781ab6 >> 0) & 0x3F;
 
-	/* DSC_RC_RANGE_PARAM7, 0x6bf40000 */
-	pinfo->vesa_dsc.range_min_qp14 = (0x6bf40000 >> 27) & 0x1F;
-	pinfo->vesa_dsc.range_max_qp14 = (0x6bf40000 >> 22) & 0x1F;
-	pinfo->vesa_dsc.range_bpg_offset14 = (0x6bf40000 >> 16) & 0x3F;
+		/* DSC_RC_RANGE_PARAM5, 0x2af62b34 */
+		pinfo->vesa_dsc.range_min_qp10 = 9;//(0x2af62b34 >> 27) & 0x1F;
+		pinfo->vesa_dsc.range_max_qp10 = 15;//(0x2af62b34 >> 22) & 0x1F;
+		pinfo->vesa_dsc.range_bpg_offset10 = (0x2af62b34 >> 16) & 0x3F;
+		pinfo->vesa_dsc.range_min_qp11 = 9;//(0x2af62b34 >> 11) & 0x1F;
+		pinfo->vesa_dsc.range_max_qp11 = 16;//(0x2af62b34 >> 6) & 0x1F;
+		pinfo->vesa_dsc.range_bpg_offset11 = (0x2af62b34 >> 0) & 0x3F;
 
+		/* DSC_RC_RANGE_PARAM6, 0x2b743b74 */
+		pinfo->vesa_dsc.range_min_qp12 = 9;//(0x2b743b74 >> 27) & 0x1F;
+		pinfo->vesa_dsc.range_max_qp12 = 17;//(0x2b743b74 >> 22) & 0x1F;
+		pinfo->vesa_dsc.range_bpg_offset12 = (0x2b743b74 >> 16) & 0x3F;
+		pinfo->vesa_dsc.range_min_qp13 = 11;//(0x2b743b74 >> 11) & 0x1F;
+		pinfo->vesa_dsc.range_max_qp13 = 17;//(0x2b743b74 >> 6) & 0x1F;
+		pinfo->vesa_dsc.range_bpg_offset13 = (0x2b743b74 >> 0) & 0x3F;
 
-	if (pinfo->pxl_clk_rate_div > 1) {
-		pinfo->ldi.h_back_porch /= pinfo->pxl_clk_rate_div;
-		pinfo->ldi.h_front_porch /= pinfo->pxl_clk_rate_div;
-		pinfo->ldi.h_pulse_width /= pinfo->pxl_clk_rate_div;
+		/* DSC_RC_RANGE_PARAM7, 0x6bf40000 */
+		pinfo->vesa_dsc.range_min_qp14 = 17;//(0x6bf40000 >> 27) & 0x1F;
+		pinfo->vesa_dsc.range_max_qp14 = 19;//(0x6bf40000 >> 22) & 0x1F;
+		pinfo->vesa_dsc.range_bpg_offset14 = (0x6bf40000 >> 16) & 0x3F;
+
+	} else {
+		pinfo->vesa_dsc.bits_per_component = 8;
+		pinfo->vesa_dsc.linebuf_depth = 9;
+		pinfo->vesa_dsc.bits_per_pixel = 8;
+		pinfo->vesa_dsc.initial_xmit_delay = 512;
+
+		pinfo->vesa_dsc.slice_width = 719;//1439
+		pinfo->vesa_dsc.slice_height = 7;//31;
+
+		pinfo->vesa_dsc.first_line_bpg_offset = 12;
+		pinfo->vesa_dsc.mux_word_size = 48;
+
+		/* DSC_CTRL */
+		pinfo->vesa_dsc.block_pred_enable = 1;//0;
+
+		/* RC_PARAM3 */
+		pinfo->vesa_dsc.initial_offset = 6144;
+
+		/* FLATNESS_QP_TH */
+		pinfo->vesa_dsc.flatness_min_qp = 3;
+		pinfo->vesa_dsc.flatness_max_qp = 12;
+
+		/* DSC_PARAM4 */
+		pinfo->vesa_dsc.rc_edge_factor= 0x6;
+		pinfo->vesa_dsc.rc_model_size = 8192;
+
+		/* DSC_RC_PARAM5: 0x330b0b */
+		pinfo->vesa_dsc.rc_tgt_offset_lo = (0x330b0b >> 20) & 0xF;
+		pinfo->vesa_dsc.rc_tgt_offset_hi = (0x330b0b >> 16) & 0xF;
+		pinfo->vesa_dsc.rc_quant_incr_limit1 = (0x330b0b >> 8) & 0x1F;
+		pinfo->vesa_dsc.rc_quant_incr_limit0 = (0x330b0b >> 0) & 0x1F;
+
+		/* DSC_RC_BUF_THRESH0: 0xe1c2a38 */
+		pinfo->vesa_dsc.rc_buf_thresh0 = (0xe1c2a38 >> 24) & 0xFF;
+		pinfo->vesa_dsc.rc_buf_thresh1 = (0xe1c2a38 >> 16) & 0xFF;
+		pinfo->vesa_dsc.rc_buf_thresh2 = (0xe1c2a38 >> 8) & 0xFF;
+		pinfo->vesa_dsc.rc_buf_thresh3 = (0xe1c2a38 >> 0) & 0xFF;
+
+		/* DSC_RC_BUF_THRESH1: 0x46546269 */
+		pinfo->vesa_dsc.rc_buf_thresh4 = (0x46546269 >> 24) & 0xFF;
+		pinfo->vesa_dsc.rc_buf_thresh5 = (0x46546269 >> 16) & 0xFF;
+		pinfo->vesa_dsc.rc_buf_thresh6 = (0x46546269 >> 8) & 0xFF;
+		pinfo->vesa_dsc.rc_buf_thresh7 = (0x46546269 >> 0) & 0xFF;
+
+		/* DSC_RC_BUF_THRESH2: 0x7077797b */
+		pinfo->vesa_dsc.rc_buf_thresh8 = (0x7077797b >> 24) & 0xFF;
+		pinfo->vesa_dsc.rc_buf_thresh9 = (0x7077797b >> 16) & 0xFF;
+		pinfo->vesa_dsc.rc_buf_thresh10 = (0x7077797b >> 8) & 0xFF;
+		pinfo->vesa_dsc.rc_buf_thresh11 = (0x7077797b >> 0) & 0xFF;
+
+		/* DSC_RC_BUF_THRESH3: 0x7d7e0000 */
+		pinfo->vesa_dsc.rc_buf_thresh12 = (0x7d7e0000 >> 24) & 0xFF;
+		pinfo->vesa_dsc.rc_buf_thresh13 = (0x7d7e0000 >> 16) & 0xFF;
+
+		/* DSC_RC_RANGE_PARAM0: 0x1020100 */
+		pinfo->vesa_dsc.range_min_qp0 = (0x1020100 >> 27) & 0x1F;
+		pinfo->vesa_dsc.range_max_qp0 = (0x1020100 >> 22) & 0x1F;
+		pinfo->vesa_dsc.range_bpg_offset0 = (0x1020100 >> 16) & 0x3F;
+		pinfo->vesa_dsc.range_min_qp1 = (0x1020100 >> 11) & 0x1F;
+		pinfo->vesa_dsc.range_max_qp1 = (0x1020100 >> 6) & 0x1F;
+		pinfo->vesa_dsc.range_bpg_offset1 = (0x1020100 >> 0) & 0x3F;
+
+		/* DSC_RC_RANGE_PARAM1: 0x94009be */
+		pinfo->vesa_dsc.range_min_qp2 = (0x94009be >> 27) & 0x1F;
+		pinfo->vesa_dsc.range_max_qp2 = (0x94009be >> 22) & 0x1F;
+		pinfo->vesa_dsc.range_bpg_offset2 = (0x94009be >> 16) & 0x3F;
+		pinfo->vesa_dsc.range_min_qp3 = (0x94009be >> 11) & 0x1F;
+		pinfo->vesa_dsc.range_max_qp3 = (0x94009be >> 6) & 0x1F;
+		pinfo->vesa_dsc.range_bpg_offset3 = (0x94009be >> 0) & 0x3F;
+
+		/* DSC_RC_RANGE_PARAM2, 0x19fc19fa */
+		pinfo->vesa_dsc.range_min_qp4 = (0x19fc19fa >> 27) & 0x1F;
+		pinfo->vesa_dsc.range_max_qp4 = (0x19fc19fa >> 22) & 0x1F;
+		pinfo->vesa_dsc.range_bpg_offset4 = (0x19fc19fa >> 16) & 0x3F;
+		pinfo->vesa_dsc.range_min_qp5 = (0x19fc19fa >> 11) & 0x1F;
+		pinfo->vesa_dsc.range_max_qp5 = (0x19fc19fa >> 6) & 0x1F;
+		pinfo->vesa_dsc.range_bpg_offset5 = (0x19fc19fa >> 0) & 0x3F;
+
+		/* DSC_RC_RANGE_PARAM3, 0x19f81a38 */
+		pinfo->vesa_dsc.range_min_qp6 = (0x19f81a38 >> 27) & 0x1F;
+		pinfo->vesa_dsc.range_max_qp6 = (0x19f81a38 >> 22) & 0x1F;
+		pinfo->vesa_dsc.range_bpg_offset6 = (0x19f81a38 >> 16) & 0x3F;
+		pinfo->vesa_dsc.range_min_qp7 = (0x19f81a38 >> 11) & 0x1F;
+		pinfo->vesa_dsc.range_max_qp7 = (0x19f81a38 >> 6) & 0x1F;
+		pinfo->vesa_dsc.range_bpg_offset7 = (0x19f81a38 >> 0) & 0x3F;
+
+		/* DSC_RC_RANGE_PARAM4, 0x1a781ab6 */
+		pinfo->vesa_dsc.range_min_qp8 = (0x1a781ab6 >> 27) & 0x1F;
+		pinfo->vesa_dsc.range_max_qp8 = (0x1a781ab6 >> 22) & 0x1F;
+		pinfo->vesa_dsc.range_bpg_offset8 = (0x1a781ab6 >> 16) & 0x3F;
+		pinfo->vesa_dsc.range_min_qp9 = (0x1a781ab6 >> 11) & 0x1F;
+		pinfo->vesa_dsc.range_max_qp9 = (0x1a781ab6 >> 6) & 0x1F;
+		pinfo->vesa_dsc.range_bpg_offset9 = (0x1a781ab6 >> 0) & 0x3F;
+
+		/* DSC_RC_RANGE_PARAM5, 0x2af62b34 */
+		pinfo->vesa_dsc.range_min_qp10 = (0x2af62b34 >> 27) & 0x1F;
+		pinfo->vesa_dsc.range_max_qp10 = (0x2af62b34 >> 22) & 0x1F;
+		pinfo->vesa_dsc.range_bpg_offset10 = (0x2af62b34 >> 16) & 0x3F;
+		pinfo->vesa_dsc.range_min_qp11 = (0x2af62b34 >> 11) & 0x1F;
+		pinfo->vesa_dsc.range_max_qp11 = (0x2af62b34 >> 6) & 0x1F;
+		pinfo->vesa_dsc.range_bpg_offset11 = (0x2af62b34 >> 0) & 0x3F;
+
+		/* DSC_RC_RANGE_PARAM6, 0x2b743b74 */
+		pinfo->vesa_dsc.range_min_qp12 = (0x2b743b74 >> 27) & 0x1F;
+		pinfo->vesa_dsc.range_max_qp12 = (0x2b743b74 >> 22) & 0x1F;
+		pinfo->vesa_dsc.range_bpg_offset12 = (0x2b743b74 >> 16) & 0x3F;
+		pinfo->vesa_dsc.range_min_qp13 = (0x2b743b74 >> 11) & 0x1F;
+		pinfo->vesa_dsc.range_max_qp13 = (0x2b743b74 >> 6) & 0x1F;
+		pinfo->vesa_dsc.range_bpg_offset13 = (0x2b743b74 >> 0) & 0x3F;
+
+		/* DSC_RC_RANGE_PARAM7, 0x6bf40000 */
+		pinfo->vesa_dsc.range_min_qp14 = (0x6bf40000 >> 27) & 0x1F;
+		pinfo->vesa_dsc.range_max_qp14 = (0x6bf40000 >> 22) & 0x1F;
+		pinfo->vesa_dsc.range_bpg_offset14 = (0x6bf40000 >> 16) & 0x3F;
+	}
+
+	if (g_lcd_fpga_flag == 0) {
+		if (pinfo->pxl_clk_rate_div > 1) {
+			pinfo->ldi.h_back_porch /= pinfo->pxl_clk_rate_div;
+			pinfo->ldi.h_front_porch /= pinfo->pxl_clk_rate_div;
+			pinfo->ldi.h_pulse_width /= pinfo->pxl_clk_rate_div;
+		}
 	}
 	/* IFBC Setting end */
 
 	if (g_lcd_fpga_flag == 0) {
 		// lcd vcc init
+		ret = vcc_cmds_tx(pdev, lcd_vcc_init_cmds,
+			ARRAY_SIZE(lcd_vcc_init_cmds));
+		if (ret != 0) {
+			HISI_FB_ERR("LCD vcc init failed!\n");
+			goto err_return;
+		}
+
+		// lcd pinctrl init
+		ret = pinctrl_cmds_tx(pdev, lcd_pinctrl_init_cmds,
+			ARRAY_SIZE(lcd_pinctrl_init_cmds));
+		if (ret != 0) {
+			HISI_FB_ERR("Init pinctrl failed, defer\n");
+			goto err_return;
+		}
+
+		// lcd vcc enable
+		if (is_fastboot_display_enable()) {
+			vcc_cmds_tx(pdev, lcd_vcc_enable_cmds,
+				ARRAY_SIZE(lcd_vcc_enable_cmds));
+		}
 	}
 
 	// alloc panel device data
@@ -1093,6 +1598,7 @@ err_probe_defer:
 	return ret;
 
 }
+/*lint +e30 +e84 +e514 +e516 +e572 +e732 +e747 +e778 +e845 +e846 +e866*/
 
 static const struct of_device_id hisi_panel_match_table[] = {
 	{

@@ -210,6 +210,8 @@ static int fusb301_host_port_mode(u8 val)
 
 static void fusb301_set_port_state(int value)
 {
+    mdelay(1);
+
     switch (value) {
         case TYPEC_STATE_UNATTACHED_SINK:
             hwlog_info("%s: set to Unattached.SNK\n", __func__);
@@ -498,6 +500,25 @@ static irqreturn_t fusb301_irq_handler(int irq, void *dev_id)
 
 static void fusb301_initialization(void)
 {
+    int ret = 0;
+    u8 val = 0;
+
+    /*reset FUSB301*/
+    ret = fusb301_write_reg(FUSB301_REG_RESET, FUSB301_RESET);
+    if (ret < 0) {
+        hwlog_err("%s: write REG_RESET error ret = %d, val= 0x%x\n", __func__, ret, val );
+    }
+
+    /* MUST Delay 10 MS */
+    mdelay(10);
+
+    /* Check manual register */
+    ret = fusb301_read_reg(FUSB301_REG_MANUAL, &val);
+    if (ret < 0 )
+        hwlog_err("%s: read FUSB301_REG_MANUAL error ret = %d, val = 0x%x\n", __func__, ret, val);
+    else
+        hwlog_info("%s: read FUSB301_REG_MANUAL = 0x%2x\n", __func__, val);
+
     /* read FUSB301_REG_INT register to clear the irq first */
     fusb301_detect_attachment_status();
     fusb301_ctrl_port_mode(TYPEC_HOST_PORT_MODE_DRP);
@@ -512,7 +533,7 @@ static int fusb301_shutdown_prepare(struct notifier_block *nb, unsigned long eve
         case SYS_HALT:
         case SYS_POWER_OFF:
             hwlog_err("fusb301 prepare to shutdown, event = %ld\n",event);
-            fusb301_set_port_state(TYPEC_STATE_UNATTACHED_DISABLED);
+            fusb301_ctrl_port_mode(TYPEC_HOST_PORT_MODE_UFP);
             break;
         default:
             hwlog_err("error event, fusb301 ignore, event = %ld\n",event);
@@ -591,16 +612,16 @@ static int fusb301_probe(
     di->typec_trigger_otg = !!typec_trigger_otg;
     hwlog_info("%s: typec_trigger_otg = %d\n", __func__, typec_trigger_otg);
 
-    pdi = typec_chip_register(di, &fusb301_ops, THIS_MODULE);
-    if (NULL == pdi) {
-        hwlog_err("%s: typec register chip error!\n", __func__);
+    di->gpio_intb = of_get_named_gpio(node, "fusb301_typec,gpio_intb", 0);
+    if (!gpio_is_valid(di->gpio_intb)) {
+        hwlog_err("%s: of_get_named_gpio-intb error!!! ret=%d, gpio_intb=%d.\n", __func__, ret, di->gpio_intb);
         ret = -EINVAL;
         goto err_gpio_enb_request_1;
     }
 
-    di->gpio_intb = of_get_named_gpio(node, "fusb301_typec,gpio_intb", 0);
-    if (!gpio_is_valid(di->gpio_intb)) {
-        hwlog_err("%s: of_get_named_gpio-intb error!!! ret=%d, gpio_intb=%d.\n", __func__, ret, di->gpio_intb);
+    pdi = typec_chip_register(di, &fusb301_ops, THIS_MODULE);
+    if (NULL == pdi) {
+        hwlog_err("%s: typec register chip error!\n", __func__);
         ret = -EINVAL;
         goto err_gpio_enb_request_1;
     }
@@ -623,7 +644,13 @@ static int fusb301_probe(
         hwlog_err("%s: gpio_direction_input error!!! ret=%d. gpio_intb=%d.\n", __func__, ret, di->gpio_intb);
         goto err_gpio_intb_request_2;
     }
+    ret = fusb301_create_sysfs();
+    if (ret < 0) {
+        hwlog_err("%s: create sysfs error %d\n", __func__, ret);
+        goto err_create_sysfs_3;
+    }
 
+    fusb301_initialization();
     ret = request_irq(di->irq_intb,
                fusb301_irq_handler,
                IRQF_NO_SUSPEND | IRQF_TRIGGER_FALLING,
@@ -631,16 +658,8 @@ static int fusb301_probe(
     if (ret) {
         hwlog_err("%s: request_irq error!!! ret=%d.\n", __func__, ret);
         di->irq_intb = -1;
-        goto err_gpio_intb_request_2;
+        goto err_create_sysfs_3;
     }
-
-    ret = fusb301_create_sysfs();
-    if (ret < 0) {
-        hwlog_err("%s: create sysfs error %d\n", __func__, ret);
-        goto err_irq_request_3;
-    }
-
-    fusb301_initialization();
 
 #ifdef CONFIG_HUAWEI_HW_DEV_DCT
     /* detect current device successful, set the flag as present */
@@ -655,9 +674,8 @@ static int fusb301_probe(
     hwlog_info("%s: ------end.\n", __func__);
     return ret;
 
-err_irq_request_3:
+err_create_sysfs_3:
     fusb301_remove_sysfs(di);
-    free_irq(di->gpio_intb, di);
 err_gpio_intb_request_2:
     gpio_free(di->gpio_intb);
 err_gpio_enb_request_1:

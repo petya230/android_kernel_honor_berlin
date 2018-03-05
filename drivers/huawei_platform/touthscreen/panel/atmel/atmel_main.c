@@ -25,12 +25,18 @@ extern struct ts_data g_ts_data;
 extern atomic_t g_data_report_over;
 int update_sd_mode;
 int featurefile_read_success;
+#define SELFCAPMAX 5000
 #define T38COVERCUT 58
 #define T38COVERSUPWIDL 59
 #define T38COVERSUPWIDH 60
 #define T38COVERGLASSFL 61
 #define T38GLOVESUPWIDL 62
 #define T38GLOVESUPWIDH 63
+
+#define REPORT_RATE_PASS "-4P"
+#define REPORT_RATE_FAIL "-4F"
+#define SHORT_TEST_PASS "-8P"
+#define SHORT_TEST_FAIL "-8F"
 
 #ifdef ROI
 int gMxtT6Cmd58Flag = MXT_T6_CMD58_ON;
@@ -44,6 +50,10 @@ atomic_t atmel_mxt_moisture_flag = ATOMIC_INIT(0);
 atomic_t atmel_mxt_vnoise_flag = ATOMIC_INIT(0);
 
 static void mxt_parse_module_dts(struct ts_device_data *chip_data);
+static int test_rawdata_normalizing_flag = 0;
+static int atmel_rawdata_size_point_to_point;
+static int atmel_tx_delta_size_point_to_point;
+static int atmel_rx_delta_size_point_to_point;
 static int atmel_chip_detect(struct device_node *device,
 			     struct ts_device_data *chip_data,
 			     struct platform_device *ts_dev);
@@ -1756,11 +1766,19 @@ static int mxt_read_t100_config(struct mxt_data *data)
 static int mxt_initialize_t100_input_device(struct mxt_data *data)
 {
 	int error;
+	int x_absolute_size = 0;
+	int y_absolute_size = 0;
 
 	error = mxt_read_t100_config(data);
 	if (error)
 		TS_LOG_ERR("Failed to initialize T100 resolution\n");
 
+	x_absolute_size = data->x_size - data->x_origin;
+	y_absolute_size = data->y_size - data->y_origin;
+	atmel_rawdata_size_point_to_point = x_absolute_size * y_absolute_size;
+	atmel_tx_delta_size_point_to_point = (x_absolute_size - 1) * y_absolute_size;
+	atmel_rx_delta_size_point_to_point = x_absolute_size * (y_absolute_size - 1);
+	TS_LOG_INFO("atmel_rawdata_size_point_to_point = %d\n", atmel_rawdata_size_point_to_point);
 	return 0;
 }
 
@@ -1891,10 +1909,68 @@ static void mxt_parse_module_dts(struct ts_device_data *chip_data)
 	if (!retval) {
 		TS_LOG_INFO("get chip specific test_rawdata_normalizing = %d\n",
 			chip_data->test_rawdata_normalizing);
+		test_rawdata_normalizing_flag = 1;
 	} else {
 		TS_LOG_INFO("get chip specific test_rawdata_normalizing null, use default\n");
 		chip_data->test_rawdata_normalizing = 0;
 	}
+	if(test_rawdata_normalizing_flag) {
+		retval = of_property_read_u32(device, "duke_self_cap_max",
+					&chip_data->self_cap_max);
+		if (!retval) {
+			TS_LOG_INFO("duke_self_cap_max = %d\n", chip_data->self_cap_max);
+		} else {
+			TS_LOG_INFO("get duke_self_cap_max null, use default\n");
+			chip_data->self_cap_max = SELFCAPMAX;
+		}
+		chip_data->upper = (int *)kzalloc(atmel_rawdata_size_point_to_point * sizeof(int), GFP_KERNEL);
+		chip_data->lower = (int *)kzalloc(atmel_rawdata_size_point_to_point * sizeof(int), GFP_KERNEL);
+		if(!chip_data->upper || !chip_data->lower) {
+			TS_LOG_ERR("Memory was out\n");
+			chip_data->test_rawdata_normalizing = 0;
+			if(chip_data->upper) {
+				kfree(chip_data->upper);
+				chip_data->upper = NULL;
+			}
+			if(chip_data->lower) {
+				kfree(chip_data->lower);
+				chip_data->lower = NULL;
+			}
+		} else {
+			retval = of_property_read_u32_array(device, "huawei,enhance_rawdata_upperlimit", chip_data->upper, atmel_rawdata_size_point_to_point);
+			if(retval) {
+				TS_LOG_ERR("get device test_enhance_raw_data error\n");
+				memset(chip_data->upper, 1, atmel_rawdata_size_point_to_point*sizeof(int));
+				retval = 0;
+			}
+			retval = of_property_read_u32_array(device, "huawei,enhance_rawdata_lowerlimit", chip_data->lower, atmel_rawdata_size_point_to_point);
+			if(retval){
+				TS_LOG_ERR("get device test_enhance_raw_data error\n");
+				memset(chip_data->lower, 0, atmel_rawdata_size_point_to_point*sizeof(int));
+				retval = 0;
+			}
+		}
+		chip_data->tx_delta = (int *)kzalloc(atmel_tx_delta_size_point_to_point * sizeof(int), GFP_KERNEL);
+		chip_data->rx_delta = (int *)kzalloc(atmel_rx_delta_size_point_to_point * sizeof(int), GFP_KERNEL);
+		if(!chip_data->tx_delta|| !chip_data->rx_delta) {
+			TS_LOG_ERR("Memory was out\n");
+			chip_data->test_rawdata_normalizing = 0;
+		} else {
+			retval = of_property_read_u32_array(device, "huawei,tx_delta_abslimit", chip_data->tx_delta, atmel_tx_delta_size_point_to_point);
+			if(retval) {
+				TS_LOG_ERR("get device test_enhance_tx delta_data error\n");
+				memset(chip_data->tx_delta, 1, atmel_tx_delta_size_point_to_point*sizeof(int));
+				retval = 0;
+			}
+			retval = of_property_read_u32_array(device, "huawei,rx_delta_abslimit", chip_data->rx_delta, atmel_rx_delta_size_point_to_point);
+			if(retval){
+				TS_LOG_ERR("get device test_enhance_rx delta_data error\n");
+				memset(chip_data->rx_delta, 0, atmel_rx_delta_size_point_to_point*sizeof(int));
+				retval = 0;
+			}
+		}
+	}
+	test_rawdata_normalizing_flag = 0;
 	retval = of_property_read_u32(device, "x_max", &read_val);
 	if (!retval) {
 		TS_LOG_INFO("get chip specific x_max = %d\n", read_val);
@@ -2495,7 +2571,7 @@ static void mxt_proc_t100_message(struct mxt_data *data, u8 *message)
 
 	id = message[0] - data->T100_reportid_min - 2;
 	/* ignore SCRSTATUS events */
-	if (id < 0) {
+	if (id < 0 || id >= TS_MAX_FINGER) {
 		TS_LOG_DEBUG("T100 [%d] SCRSTATUS : 0x%x\n", id, message[1]);
 		return;
 	}
@@ -3388,6 +3464,7 @@ static int atmel_print_chip_info(void)
 	struct mxt_data *data = mxt_g_data;
 	struct mxt_object *t38;
 	u8 version_byte[8];
+	u8 i = 0;
 	int ret = 0;
 
 	if (!data) {
@@ -3412,6 +3489,9 @@ static int atmel_print_chip_info(void)
 		    version_byte[1], version_byte[2], version_byte[3],
 		    version_byte[4], version_byte[5], version_byte[6],
 		    version_byte[7]);
+	for(i = 1; i < VERSION_NAME_LEN; i++) {
+		mxt_g_data->ver_bytes[i] = version_byte[i];
+	}
 	return ret;
 }
 
@@ -3527,6 +3607,7 @@ static int atmel_chip_get_info(struct ts_chip_info_param *info)
 	struct mxt_data *data = mxt_g_data;
 	struct mxt_object *t38;
 	u8 version_byte[8];
+	u8 i = 1;
 	int ret = 0;
 
 	if (!data) {
@@ -3540,20 +3621,27 @@ static int atmel_chip_get_info(struct ts_chip_info_param *info)
 		return -EINVAL;
 	}
 
-	ret =
-	    __mxt_read_reg(data, t38->start_address, sizeof(version_byte),
-			   version_byte);
-	if (ret) {
-		TS_LOG_ERR("%s failed to read t38\n", __func__);
-		return ret;
-	}
+	if (unlikely(
+		(atomic_read(&g_ts_data.state) == TS_SLEEP)
+		|| (atomic_read(&g_ts_data.state) == TS_WORK_IN_SLEEP))) {
+		for(i = 1; i < VERSION_NAME_LEN; i++) {
+			version_byte[i] = mxt_g_data->ver_bytes[i];
+		}
+	} else {
+		ret =
+			__mxt_read_reg(data, t38->start_address, sizeof(version_byte),
+				   version_byte);
+		if (ret) {
+			TS_LOG_ERR("%s failed to read t38\n", __func__);
+			return ret;
+		}
 
-	ret = mxt_get_module_name();
-	if (ret) {
-		TS_LOG_ERR("%s failed to get module name\n", __func__);
-		return ret;
+		ret = mxt_get_module_name();
+		if (ret) {
+			TS_LOG_ERR("%s failed to get module name\n", __func__);
+			return ret;
+		}
 	}
-
 	/*snprintf(info->chip_name, sizeof(info->chip_name), "%s", "Touch");*/
 	snprintf(info->ic_vendor, sizeof(info->ic_vendor), "Atmel-%s",
 		 mxt_g_data->module_id);
@@ -3993,6 +4081,28 @@ static int atmel_get_rawdata(struct ts_rawdata_info *info,
 	info->buff[1] = data->x_size - data->x_origin;	/*tx*/
 	cmd = MXT_T6_DEBUG_REF;
 
+	if(mxt_g_data->chip_data->test_rawdata_normalizing) {
+		retval +=
+				mxt_write_object(data, MXT_SPT_CTECONFIG_T46,
+								MXT_T46_CONTROL_BIT,
+								MXT_NORMAL_REF_MODE);
+		retval +=
+				mxt_write_object(data, MXT_TOUCH_MULTITOUCHSCREEN_T100,
+								MXT_T100_GAIN,
+								MXT_T100_NORMAL_GAIN_VALUE);
+		if (retval) {
+			TS_LOG_ERR("mxt_write_normal_ref_mode error\n");
+			goto out;
+		}
+		msleep(20); /*delay 20ms*/
+		retval = mxt_t6_command(data, MXT_COMMAND_CALIBRATE, true, false);
+		if (retval) {
+			TS_LOG_ERR("mxt_write_normal_ref_send_command error\n");
+			goto out;
+		}
+		msleep(50); /*delay 50ms*/
+	}
+
 	TS_LOG_DEBUG
 	    ("\n\n\n%s: x = %d , y = %d\n Read del*********************************\n",
 	     __func__, (data->info->matrix_xsize), (data->info->matrix_ysize));
@@ -4013,9 +4123,14 @@ static int atmel_get_rawdata(struct ts_rawdata_info *info,
 	}
 
 	cmd_T25 = MXT_SELF_TEST_AVDD_POWER;
-	ret1 =
-	    get_refs_or_deltas_data_test(data, refs_data_uplimit,
+	if(mxt_g_data->chip_data->test_rawdata_normalizing) {
+		ret1 =
+			get_enhance_refs_or_deltas_data_test(data);
+	} else {
+		ret1 =
+			get_refs_or_deltas_data_test(data, refs_data_uplimit,
 					 refs_data_lowlimit);
+	}
 	ret2 = mxt_t25_selftest(data, cmd_T25);
 	if (ret1 & ret2) {
 		strncat(info->result, "-1P", strlen("-1P"));
@@ -4029,12 +4144,17 @@ static int atmel_get_rawdata(struct ts_rawdata_info *info,
 
 	memcpy(&info->buff[2], data->T37_buf, data->T37_buf_size);
 
-	ret1 =
-	    get_refs_rx2rx_delta_test(data, refs_rx2rx_uplimit,
-				      refs_rx2rx_lowlimit);
-	ret2 =
-	    get_refs_tx2tx_delta_test(data, refs_tx2tx_uplimit,
-				      refs_tx2tx_lowlimit);
+	if(mxt_g_data->chip_data->test_rawdata_normalizing) {
+		ret1 = get_enhance_refs_rx2rx_delta_test(data);
+		ret2 = get_enhance_refs_tx2tx_delta_test(data);
+	} else {
+		ret1 =
+			get_refs_rx2rx_delta_test(data, refs_rx2rx_uplimit,
+				refs_rx2rx_lowlimit);
+		ret2 =
+			get_refs_tx2tx_delta_test(data, refs_tx2tx_uplimit,
+				refs_tx2tx_lowlimit);
+	}
 	ret3 = get_refs_max_minus_min_test(data, max_minus_min_limit);
 	if (ret1 & ret2 & ret3) {
 		strncat(info->result, "-2P", strlen("-2P"));
@@ -4084,13 +4204,14 @@ static int atmel_get_rawdata(struct ts_rawdata_info *info,
 
 	if(mxt_g_data->chip_data->test_rawdata_normalizing)
 	{
+		strncat(info->result, REPORT_RATE_PASS, strlen(REPORT_RATE_PASS));
 		cmd_T25 = MXT_SELF_TEST_PIN_FAULT;
 		ret1 = mxt_t25_selftest(data, cmd_T25);
 		if (ret1) {
-			strncat(info->result, "-4P", strlen("-4P"));
+			strncat(info->result, SHORT_TEST_PASS, strlen(SHORT_TEST_PASS));
 		} else {
 			TS_LOG_ERR("pin fault short test failed\n");
-			strncat(info->result, "-4F", strlen("-4F"));
+			strncat(info->result, SHORT_TEST_FAIL, strlen(SHORT_TEST_FAIL));
 		}
 		cmd = MXT_T6_DEBUG_DELTA_SC;
 		do {
@@ -4102,7 +4223,12 @@ static int atmel_get_rawdata(struct ts_rawdata_info *info,
 			mdelay(5);
 			TS_LOG_INFO("try remainning %d times\n", retry_count3 - 1);
 		} while (retry_count3--);
-		strncat(info->result, "-6P", strlen("-6P"));
+		retval = get_self_cap_data_test(data);
+		if (retval) {
+			strncat(info->result, "-6P", strlen("-6P"));
+		} else {
+			strncat(info->result, "-6F", strlen("-6F"));
+		}
 	} else {
 		strncat(info->result, "-4P", strlen("-4P"));
 	}

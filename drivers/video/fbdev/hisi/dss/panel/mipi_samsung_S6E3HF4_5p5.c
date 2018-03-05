@@ -34,11 +34,30 @@ static struct hisi_fb_panel_data g_panel_data;
 
 static bool g_display_on = false;
 static int g_support_mode = 0;
+static int g_acl_ctrl = 0;
 
 static int enable_lcd_sleep_in = 0;
 #ifdef CONFIG_HUAWEI_TS
 extern bool g_lcd_control_tp_power;
 #endif
+
+/*acl*/
+enum {
+	ACL_DEBUG = 0,
+	ACL_SETTING = 1,
+};
+
+enum {
+	ACL_OFF = 0,
+	ACL_OFFSET1_ON = 1,
+	ACL_OFFSET2_ON = 2,
+	ACL_OFFSET3_ON = 3,
+};
+
+enum {
+	VR_MODE_OFF = 0,
+	VR_MODE_ON = 1,
+};
 
 /*vr mode setting*/
 extern void mipi_dsi_reset(struct hisi_fb_data_type *hisifd);
@@ -536,12 +555,15 @@ static struct gpio_desc lcd_all_gpio_free_cmds[] = {
 		GPIO_LCD_ERR_FLAG_NAME, &gpio_lcd_err_flag, 0},
 };
 
-static struct gpio_desc lcd_all_gpio_normal_cmds[] = {
+static struct gpio_desc lcd_gpio_vddio_enable_cmds[] = {
 	/* vddio enable */
 	{DTYPE_GPIO_OUTPUT, WAIT_TYPE_MS, 12,
 		GPIO_LCD_VDDIO_ENABLE_NAME, &gpio_lcd_vddio_enable, 1},
+};
+
+static struct gpio_desc lcd_all_gpio_normal_cmds[] = {
 	/* reset */
-	{DTYPE_GPIO_OUTPUT, WAIT_TYPE_MS, 2,
+	{DTYPE_GPIO_OUTPUT, WAIT_TYPE_MS, 5,
 		GPIO_LCD_RESET_NAME, &gpio_lcd_reset, 0},
 	{DTYPE_GPIO_OUTPUT, WAIT_TYPE_MS, 12,
 		GPIO_LCD_RESET_NAME, &gpio_lcd_reset, 1},
@@ -590,6 +612,8 @@ static struct gpio_desc lcd_part_gpio_lowpower_cmds[] = {
 		GPIO_LCD_RESET_NAME, &gpio_lcd_reset, 0},
 };
 
+#define MAX_READ_BUF 4
+
 /*******************************************************************************
 **
 */
@@ -598,8 +622,8 @@ static void vr_mode_request(struct hisi_fb_data_type *hisifd, int cmd)
 	int ret = 0;
 	char lcd_reg_0a[] = {0x0a};
 	uint32_t expected_value_power_mode[1] = {0x9c};
-	uint32_t read_value[4] = {0};
-	char bl_level_adjust[2] = {0x51, 0xA8}; /* 110 nit */
+	uint32_t read_value[MAX_READ_BUF] = {0};
+	char bl_level_adjust[2] = {0x51, 0x78}; /* 110 nit */
 	struct dsi_cmd_desc lcd_check_reg[] = {
 		{DTYPE_DCS_READ, 0, 10, WAIT_TYPE_MS,
 			sizeof(lcd_reg_0a), lcd_reg_0a},
@@ -610,8 +634,13 @@ static void vr_mode_request(struct hisi_fb_data_type *hisifd, int cmd)
 	};
 
 	if (cmd) {
-		hisifd->vr_mode = 1;
+		hisifd->vr_mode = VR_MODE_ON;
 		msleep(300);
+
+		if(!g_display_on) {
+			HISI_FB_INFO("set cmd display_cmd(0x29)!");
+			mipi_dsi_cmds_tx(display_on_cmd, ARRAY_SIZE(display_on_cmd), hisifd->mipi_dsi0_base);
+		}
 
 		HISI_FB_INFO("vr mode enter +++\n");
 		/*1. Normal Display On Status*/
@@ -670,7 +699,7 @@ static void vr_mode_request(struct hisi_fb_data_type *hisifd, int cmd)
 			mipi_dsi_cmds_tx(lcd_bl_level_adjust,
 				ARRAY_SIZE(lcd_bl_level_adjust), hisifd->mipi_dsi0_base);
 
-			hisifd->vr_mode = 0;
+			hisifd->vr_mode = VR_MODE_OFF;
 			HISI_FB_INFO("vr mode exit ---\n");
 
 			return;
@@ -689,7 +718,7 @@ static void vr_mode_request(struct hisi_fb_data_type *hisifd, int cmd)
 		}
 
 		/*5 VR Off status*/
-		hisifd->vr_mode = 0;
+		hisifd->vr_mode = VR_MODE_OFF;
 		HISI_FB_INFO("vr mode exit ---\n");
 	}
 
@@ -842,9 +871,10 @@ static int mipi_samsung_s6e3hf4_on(struct platform_device *pdev)
 			if (hisifd->aod_function){
 				HISI_FB_INFO("Init power on:AOD mode.\n");
 			} else {
-				HISI_FB_INFO("Init power on:Normal mode.\n");
+				HISI_FB_INFO("Init power on:Normal mode, enable vcc and vddio!!!\n");
 				// vcc enable
 				vcc_cmds_tx(pdev, lcd_vcc_enable_cmds, ARRAY_SIZE(lcd_vcc_enable_cmds));
+				gpio_cmds_tx(lcd_gpio_vddio_enable_cmds, ARRAY_SIZE(lcd_gpio_vddio_enable_cmds));//vddio enable
 			}
 		} else {
 			HISI_FB_INFO("Init power on(regulator has enabled).\n");
@@ -866,7 +896,7 @@ static int mipi_samsung_s6e3hf4_on(struct platform_device *pdev)
 #endif
 			} else {
 				pinctrl_cmds_tx(pdev, lcd_pinctrl_normal_cmds,ARRAY_SIZE(lcd_pinctrl_normal_cmds));// pinctrl normal
-				gpio_cmds_tx(lcd_all_gpio_normal_cmds, ARRAY_SIZE(lcd_all_gpio_normal_cmds));//vddio enable, reset, ER, ID normal
+				gpio_cmds_tx(lcd_all_gpio_normal_cmds, ARRAY_SIZE(lcd_all_gpio_normal_cmds));//reset, ER, ID normal
 				mipi_dsi_cmds_tx(display_on_cmds, ARRAY_SIZE(display_on_cmds), mipi_dsi0_base);
 #if defined (CONFIG_HUAWEI_DSM)
 				panel_check_status_and_report_by_dsm(lcd_status_reg_normal, \
@@ -1688,6 +1718,126 @@ static int mipi_samsung_panel_set_display_region(struct platform_device *pdev,
 	return 0;
 }
 
+static ssize_t mipi_samsung_S6E3HF4_acl_ctrl_show(struct platform_device *pdev,
+	char *buf)
+{
+	struct hisi_fb_data_type *hisifd = NULL;
+	ssize_t ret = 0;
+
+	if (NULL == pdev) {
+		HISI_FB_ERR("NULL Pointer!\n");
+		return -EINVAL;
+	}
+
+	hisifd = platform_get_drvdata(pdev);
+	if (NULL == hisifd) {
+		HISI_FB_ERR("NULL Pointer!\n");
+		return -EINVAL;
+	}
+
+	HISI_FB_DEBUG("fb%d, +.\n", hisifd->index);
+
+	ret = snprintf(buf, PAGE_SIZE, "%d\n", g_acl_ctrl);
+
+	HISI_FB_DEBUG("fb%d, -.\n", hisifd->index);
+
+	return ret;
+}
+
+#define ACL_CMD_BUF_SIZE 10
+static ssize_t mipi_samsung_S6E3HF4_acl_ctrl_store(struct platform_device *pdev,
+	const char *buf, size_t count)
+{
+	int ret = 0;
+	struct hisi_fb_data_type *hisifd = NULL;
+	char __iomem *mipi_dsi0_base = NULL;
+	unsigned long value[ACL_CMD_BUF_SIZE] = {0};
+	char *token = NULL;
+	char *cur = NULL;
+	int i = 0;
+	char payload_acl_switch[2] = {0x55, 0x00,};
+	char payload_acl_para[2] = {0xB4, 0x00};
+
+	struct dsi_cmd_desc acl_setting_cmd[] = {
+		{DTYPE_GEN_LWRITE, 0, 10, WAIT_TYPE_US,
+			sizeof(test_key_enable_0), test_key_enable_0},
+		{DTYPE_DCS_WRITE1, 0, 10, WAIT_TYPE_US,
+			sizeof(payload_acl_para), payload_acl_para},
+		{DTYPE_GEN_LWRITE, 0, 10, WAIT_TYPE_US,
+			sizeof(test_key_disable_0), test_key_disable_0},
+	};
+
+	struct dsi_cmd_desc acl_switch_cmd[] = {
+		{DTYPE_DCS_WRITE1, 0, 10, WAIT_TYPE_US,
+			sizeof(payload_acl_switch), payload_acl_switch},
+	};
+
+	if (NULL == pdev) {
+		HISI_FB_ERR("NULL Pointer!\n");
+		return count;
+	}
+
+	if (NULL == buf) {
+		HISI_FB_ERR("NULL Pointer!\n");
+		return count;
+	}
+
+	hisifd = platform_get_drvdata(pdev);
+	if (NULL == hisifd) {
+		HISI_FB_ERR("NULL Pointer!\n");
+		return count;
+	}
+	mipi_dsi0_base = hisifd->mipi_dsi0_base;
+
+	HISI_FB_INFO("fb%d, input is %s.\n", hisifd->index, buf);
+
+	cur = buf;
+	while (token = strsep(&cur, ",")) {
+		value[i++] = simple_strtoul(token, NULL, 0);
+		if(i >= ACL_CMD_BUF_SIZE) {
+			HISI_FB_ERR("out of range of value[10] buf!\n");
+			return count;
+		}
+	}
+
+/*acl frame setting*/
+	HISI_FB_INFO("ACL setting is 0x00(frame:0)\n");
+	mipi_dsi_cmds_tx(acl_setting_cmd, ARRAY_SIZE(acl_setting_cmd), mipi_dsi0_base);
+
+/*acl on/off setting*/
+	if (ACL_DEBUG == value[0]) { /* debug */
+
+	} else if (ACL_SETTING == value[0]) {
+		if (ACL_OFF == value[1]) {//off
+			payload_acl_switch[1] = ACL_OFF;
+			mipi_dsi_cmds_tx(acl_switch_cmd, ARRAY_SIZE(acl_switch_cmd), mipi_dsi0_base);
+			g_acl_ctrl = ACL_OFF;
+			HISI_FB_INFO("ACL OFF\n");
+		} else if (ACL_OFFSET1_ON == value[1]) {//50%
+			payload_acl_switch[1] = ACL_OFFSET1_ON;
+			mipi_dsi_cmds_tx(acl_switch_cmd, ARRAY_SIZE(acl_switch_cmd), mipi_dsi0_base);
+			g_acl_ctrl = ACL_OFFSET1_ON;
+			HISI_FB_INFO("ACL OFFSET 1 ON(50%)\n");
+		} else if (ACL_OFFSET2_ON == value[1]) {//40%
+			payload_acl_switch[1] = ACL_OFFSET2_ON;
+			mipi_dsi_cmds_tx(acl_switch_cmd, ARRAY_SIZE(acl_switch_cmd), mipi_dsi0_base);
+			g_acl_ctrl = ACL_OFFSET2_ON;
+			HISI_FB_INFO("ACL OFFSET 2 ON(40%)\n");
+		} else if (ACL_OFFSET3_ON == value[1]) {//30%
+			payload_acl_switch[1] = ACL_OFFSET3_ON;
+			mipi_dsi_cmds_tx(acl_switch_cmd, ARRAY_SIZE(acl_switch_cmd), mipi_dsi0_base);
+			g_acl_ctrl = ACL_OFFSET3_ON;
+			HISI_FB_INFO("ACL OFFSET 3 ON(30%)\n");
+		} else {
+			HISI_FB_INFO("invalid parm!\n");
+		}
+	} else {
+		HISI_FB_INFO("invalid parm!\n");
+	}
+	HISI_FB_INFO("fb%d, -.\n", hisifd->index);
+	return count;
+}
+
 static struct hisi_panel_info g_panel_info = {0};
 static struct hisi_fb_panel_data g_panel_data = {
 	.panel_info = &g_panel_info,
@@ -1714,6 +1864,8 @@ static struct hisi_fb_panel_data g_panel_data = {
 	.lcd_ce_mode_store = mipi_samsung_panel_lcd_ce_mode_store,
 	.lcd_amoled_vr_mode_show = mipi_samsung_vr_mode_show,
 	.lcd_amoled_vr_mode_store = mipi_samsung_vr_mode_store,
+	.lcd_acl_ctrl_show = mipi_samsung_S6E3HF4_acl_ctrl_show,
+	.lcd_acl_ctrl_store = mipi_samsung_S6E3HF4_acl_ctrl_store,
 };
 
 /*******************************************************************************

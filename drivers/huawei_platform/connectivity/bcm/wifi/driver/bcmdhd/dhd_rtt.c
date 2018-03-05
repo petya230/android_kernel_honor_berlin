@@ -826,7 +826,8 @@ dhd_rtt_common_set_handler(dhd_pub_t *dhd, const ftm_subcmd_info_t *p_subcmd_inf
 		return BCME_NOMEM;
 
 	/* no TLV to pack, simply issue a set-proxd iovar */
-	ret = dhd_iovar(dhd, 0, "proxd", (void *) p_proxd_iov, proxd_iovsize, 1);
+	ret = dhd_iovar(dhd, 0, "proxd", (char *)p_proxd_iov, proxd_iovsize,
+			NULL, 0, TRUE);
 #ifdef RTT_DEBUG
 	if (ret != BCME_OK) {
 		DHD_RTT(("error: IOVAR failed, status=%d\n", ret));
@@ -1077,7 +1078,8 @@ dhd_rtt_ftm_config(dhd_pub_t *dhd, wl_proxd_session_id_t session_id,
 		all_tlvsize = (bufsize - buf_space_left);
 		p_proxd_iov->len = htol16(all_tlvsize + WL_PROXD_IOV_HDR_SIZE);
 		ret = dhd_iovar(dhd, 0, "proxd", (char *)p_proxd_iov,
-			all_tlvsize + WL_PROXD_IOV_HDR_SIZE, 1);
+				all_tlvsize + WL_PROXD_IOV_HDR_SIZE, NULL, 0,
+				TRUE);
 		if (ret != BCME_OK) {
 			DHD_ERROR(("%s : failed to set config\n", __FUNCTION__));
 		}
@@ -1277,7 +1279,8 @@ dhd_rtt_start(dhd_pub_t *dhd)
 #else
 	if (!dhd_is_associated(dhd, 0, NULL)) {
 #endif
-		err = dhd_iovar(dhd, 0, "mpc", (char *)&mpc, sizeof(mpc), 1);
+		err = dhd_iovar(dhd, 0, "mpc", (char *)&mpc, sizeof(mpc), NULL,
+				0, TRUE);
 		if (err) {
 			DHD_ERROR(("%s : failed to set mpc\n", __FUNCTION__));
 			goto exit;
@@ -1436,7 +1439,8 @@ exit:
 			/* enable mpc again in case of error */
 			mpc = 1;
 			rtt_status->mpc = 0;
-			err = dhd_iovar(dhd, 0, "mpc", (char *)&mpc, sizeof(mpc), 1);
+			err = dhd_iovar(dhd, 0, "mpc", (char *)&mpc,
+					sizeof(mpc), NULL, 0, TRUE);
 		}
 	}
 	return err;
@@ -1663,7 +1667,7 @@ dhd_rtt_event_handler(dhd_pub_t *dhd, wl_event_msg_t *event, void *event_data)
 	NULL_CHECK(dhd, "dhd is NULL", ret);
 	rtt_status = GET_RTTSTATE(dhd);
 	NULL_CHECK(rtt_status, "rtt_status is NULL", ret);
-
+#ifndef BCM_PATCH_SECURITY_2017_07
 	event_type = ntoh32_ua((void *)&event->event_type);
 
 	if (event_type != WLC_E_PROXD) {
@@ -1673,6 +1677,26 @@ dhd_rtt_event_handler(dhd_pub_t *dhd, wl_event_msg_t *event, void *event_data)
 		/* Ignore the Proxd event */
 		return ret;
 	}
+#else
+	if (RTT_IS_STOPPED(rtt_status)) {
+		/* Ignore the Proxd event */
+		return ret;
+	}
+	if (ntoh32_ua((void *)&event->datalen) < OFFSETOF(wl_proxd_event_t, tlvs)) {
+		DHD_RTT(("%s: wrong datalen:%d\n", __FUNCTION__,
+			ntoh32_ua((void *)&event->datalen)));
+		return -EINVAL;
+	}
+	event_type = ntoh32_ua((void *)&event->event_type);
+	if (event_type != WLC_E_PROXD) {
+		return -EINVAL;
+	}
+
+	if (!event_data) {
+		DHD_ERROR(("%s: event_data:NULL\n", __FUNCTION__));
+		return -EINVAL;
+	}
+#endif
 	p_event = (wl_proxd_event_t *) event_data;
 	version = ltoh16(p_event->version);
 	if (version < WL_PROXD_API_VERSION) {

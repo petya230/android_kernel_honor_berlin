@@ -8,6 +8,7 @@
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  */
+#include <linux/init.h>
 #include <linux/module.h>
 #include <linux/types.h>
 #include <linux/semaphore.h>
@@ -68,7 +69,7 @@ static __inline__ unsigned int  timer_get_value(void)
 
 static void start_hard_timer(unsigned int ulvalue)
 {
-    unsigned int ret = 0;
+    unsigned int ret;
     printk(KERN_INFO "softtimer:start_hard_timer enter [%d] \n", ulvalue);
     timer_control.softtimer_start_value = ulvalue;
     ret = readl(timer_control.hard_timer_addr + TIMERCTRL(0));
@@ -80,7 +81,7 @@ static void start_hard_timer(unsigned int ulvalue)
 
 static void stop_hard_timer(void)
 {
-    unsigned int ret = 0;
+    unsigned int ret;
     ret = readl(timer_control.hard_timer_addr+TIMERCTRL(0));
     writel(ret&(~0x80), timer_control.hard_timer_addr+TIMERCTRL(0));
     timer_control.softtimer_start_value = ELAPESD_TIME_INVAILD;
@@ -335,13 +336,13 @@ EXPORT_SYMBOL_GPL(hisi_softtimer_uninit);
 
 int hisi_softtimer_init (struct platform_device *pdev)
 {
-    unsigned int ret = 0;
+    int ret;
     struct device_node *node = pdev->dev.of_node;
     timer_control.irqnum = irq_of_parse_and_map(node, 0);
     timer_control.clk = devm_clk_get(&pdev->dev, NULL);
     if (IS_ERR(timer_control.clk)) {
         printk(KERN_ERR "softtimer: devm_clk_get ERROR\n");
-        return PTR_ERR(timer_control.clk);
+        return (int)PTR_ERR(timer_control.clk);
     }
     ret = clk_prepare_enable(timer_control.clk);
     if (ret) {
@@ -360,8 +361,8 @@ int hisi_softtimer_init (struct platform_device *pdev)
 
     /*in default state ,clk is opened*/
     spin_lock_init(&timer_control.soft_timer_lock);
-    tasklet_init(&timer_control.softtimer_tasklet, thread_softtimer_fun, 0);
-    ret = request_irq(timer_control.irqnum, IntTimerHandler, IRQF_TIMER,
+    tasklet_init(&timer_control.softtimer_tasklet, thread_softtimer_fun, (unsigned long)0);
+    ret = request_irq(timer_control.irqnum, IntTimerHandler, (unsigned long)IRQF_TIMER,
                     "softtimer", NULL);
     if (ret) {
         goto error;
@@ -389,12 +390,12 @@ void hisi_softtimer_test(int timeout)
 {
     static int  flag;
     if (0 == flag)    {
-        hisi_softtimer_create(&timer , hisi_softtimer_timeout , 0, 0);
+        hisi_softtimer_create(&timer , hisi_softtimer_timeout , (unsigned long)0, 0);
         flag = 1;
     }
     printk(KERN_INFO "hisi_softtimer_test enter\n");
     hisi_softtimer_delete(&timer);
-    hisi_softtimer_modify(&timer, timeout);
+    hisi_softtimer_modify(&timer, (unsigned int)timeout);
     hisi_softtimer_add(&timer);
 }
 /*lint +e727*/
@@ -414,8 +415,3 @@ int hisi_softtimer_resume(struct platform_device *dev)
     return 0;
 }
 EXPORT_SYMBOL_GPL(hisi_softtimer_resume);
-
-MODULE_AUTHOR(" hisi<hisi@huawei.com>");
-MODULE_DESCRIPTION("Generic huawei softtimer driver ");
-MODULE_LICENSE("GPL");
-

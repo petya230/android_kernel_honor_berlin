@@ -8,6 +8,7 @@
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  */
+ #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/pm.h>
@@ -75,8 +76,10 @@ static int hisi_flp_pm_resume(struct device *dev)
 }
 /*lint -e785*/
 struct dev_pm_ops hisi_flp_pm_ops = {
+#ifdef  CONFIG_PM_SLEEP
     .suspend = hisi_flp_pm_suspend ,
     .resume  = hisi_flp_pm_resume ,
+#endif
 };
 
 static const struct of_device_id generic_flp[] = {
@@ -102,6 +105,12 @@ static int generic_flp_probe(struct platform_device *pdev)
     int ret;
     dev_info(&pdev->dev, "generic_flp_probe \n");
     hisi_softtimer_init(pdev);
+#ifdef    CONFIG_HISI_DEBUG_FS
+    ret = driver_create_file(&generic_flp_platdrv.driver,
+                            &driver_attr_debug_level);
+    if (ret)
+        dev_info(&pdev->dev, "%s %d create file error: \n", __func__, __LINE__);
+#endif
     ret = hisi_flp_register();
     return ret;
 }

@@ -127,8 +127,10 @@ void socp_debug_sendCmd(char* cmd)
     cpu_id = (u32)ICC_CPU_APP;
 #endif
 
-    Socp_Memset(icc_req.OpsCmd,0,sizeof(icc_req.OpsCmd));
-    Socp_Memcpy(icc_req.OpsCmd, cmd, strlen(cmd));/*lint !e666*/
+    //Socp_Memset(icc_req.OpsCmd,0,sizeof(icc_req.OpsCmd));
+	memset_s(icc_req.OpsCmd, 32*sizeof(char), 0, sizeof(icc_req.OpsCmd));
+    //Socp_Memcpy(icc_req.OpsCmd, cmd, strlen(cmd));/*lint !e666*/
+	memcpy_s(icc_req.OpsCmd, 32, cmd, strlen(cmd));
     socp_printf("enter here %s  %d\n",__FUNCTION__,__LINE__);
     ret = bsp_icc_send(cpu_id,channel_id, (u8*)&icc_req,sizeof(icc_req));
     if(ret != (int)sizeof(icc_req))
@@ -140,7 +142,8 @@ void socp_debug_sendCmd(char* cmd)
 void socp_debug_ApCountclean(void)
 {
 #ifdef __KERNEL__
-    Socp_Memset(&g_stSocpDebugInfo,0x00,sizeof(g_stSocpDebugInfo));
+    //Socp_Memset(&g_stSocpDebugInfo,0x00,sizeof(g_stSocpDebugInfo));
+	memset_s(&g_stSocpDebugInfo, sizeof(g_stSocpDebugInfo), 0x00, sizeof(SOCP_DEBUG_INFO_S));
 #else
     socp_debug_sendCmd("ap_count_clean");
 #endif
@@ -156,7 +159,8 @@ void socp_debug_CountStore(char* p,int len)
     int ret;
 
 
-    Socp_Memset(path,0,sizeof(path));
+    //Socp_Memset(path,0,sizeof(path));
+	memset_s(path, 128*sizeof(char), 0, sizeof(path));
 
 #ifdef __KERNEL__
     snprintf(path,128,"%s%s%d.bin",SOCP_ROOT_PATH,p,bsp_get_slice_value());
@@ -202,7 +206,8 @@ void socp_debug_RegStore(void)
     int ret;
 
 
-    Socp_Memset(path,0,sizeof(path));
+    //Socp_Memset(path,0,sizeof(path));
+	memset_s(path, 128*sizeof(char), 0, sizeof(path));
 
 #ifdef __KERNEL__
     snprintf(path,128,"%s%s%d.bin",SOCP_ROOT_PATH,p,bsp_get_slice_value());
@@ -239,7 +244,8 @@ void socp_debug_CpCountStore(void)
 void socp_debug_CpCountClean(void)
 {
 #ifndef __KERNEL__
-    Socp_Memset(&g_stSocpDebugInfo,0x00,sizeof(g_stSocpDebugInfo));
+    //Socp_Memset(&g_stSocpDebugInfo,0x00,sizeof(g_stSocpDebugInfo));
+	memset_s(&g_stSocpDebugInfo, sizeof(g_stSocpDebugInfo), 0x00, sizeof(SOCP_DEBUG_INFO_S));
 #else
     socp_debug_sendCmd("cp_count_clean");
 #endif
@@ -312,8 +318,8 @@ int socp_debug_icc_task(void* para)
 }
 
 #if defined(__KERNEL__)
-#if 0
 /*lint -save -e26*/
+/*
 int socp_debug_open(struct inode *inode, struct file *filp)
 {
 	return 0;
@@ -376,8 +382,8 @@ static const struct file_operations socp_debug_fops = {
     .write	        = socp_debug_write,
     .unlocked_ioctl = socp_debug_ioctl,
 };
+*/
 /*lint -restore*/
-#endif
 
 #endif
 
@@ -387,7 +393,7 @@ __init int socp_debug_init(void)
     u32 channel_id = ICC_CHN_ACORE_CCORE_MIN <<16 | IFC_RECV_FUNC_SOCP_DEBUG;
 
 #if defined(__KERNEL__)
-#if 0
+/*
     struct dentry * d_file;
 
     d_file = debugfs_create_dir("modem_socp", NULL);
@@ -400,7 +406,7 @@ __init int socp_debug_init(void)
     {
         socp_printf("create debugfs file modem_socp/socp file\n");
     }
-#endif
+*/
 #endif
     osl_sem_init(0, &g_stSocpDebugCtrl.task_sem);
 

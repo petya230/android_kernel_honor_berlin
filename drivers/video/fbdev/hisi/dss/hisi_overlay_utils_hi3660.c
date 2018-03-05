@@ -527,9 +527,20 @@ void hisi_dss_aif_init(char __iomem *aif_ch_base,
 void hisi_dss_aif_ch_set_reg(struct hisi_fb_data_type *hisifd,
 	char __iomem *aif_ch_base, dss_aif_t *s_aif)
 {
-	BUG_ON(hisifd == NULL);
-	BUG_ON(aif_ch_base == NULL);
-	BUG_ON(s_aif == NULL);
+	if (hisifd == NULL) {
+		HISI_FB_ERR("hisifd is null");
+		return;
+	}
+
+	if (aif_ch_base == NULL) {
+		HISI_FB_ERR("aif_ch_base is null");
+		return;
+	}
+
+	if (s_aif == NULL) {
+		HISI_FB_ERR("s_aif is null");
+		return;
+	}
 
 	hisifd->set_reg(hisifd, aif_ch_base + AIF_CH_CTL,
 		s_aif->aif_ch_ctl, 32, 0);
@@ -551,10 +562,22 @@ int hisi_dss_aif_ch_config(struct hisi_fb_data_type *hisifd, dss_overlay_t *pov_
 	uint32_t scfd_v = 0;
 	uint32_t online_offline_rate = 1;
 
-	BUG_ON(hisifd == NULL);
-	BUG_ON(pov_req == NULL);
-	BUG_ON((layer == NULL) && (wb_layer == NULL));
-	BUG_ON((ovl_idx < DSS_OVL0) || (ovl_idx >= DSS_OVL_IDX_MAX));
+	if (hisifd == NULL) {
+		HISI_FB_ERR("hisifd is NULL Point!");
+		return -EINVAL;
+	}
+	if (pov_req == NULL){
+		HISI_FB_ERR("pov_req is NULL Point!");
+		return -EINVAL;
+	}
+	if ((layer == NULL) && (wb_layer == NULL)){
+		HISI_FB_ERR("layer & wb_layer is NULL Point!");
+		return -EINVAL;
+	}
+	if ((ovl_idx < DSS_OVL0) || (ovl_idx >= DSS_OVL_IDX_MAX)){
+		HISI_FB_ERR("ovl_idx(%d) is invalid!\n", ovl_idx);
+		return -EINVAL;
+	}
 
 	if (wb_layer) {
 		chn_idx = wb_layer->chn_idx;
@@ -566,10 +589,16 @@ int hisi_dss_aif_ch_config(struct hisi_fb_data_type *hisifd, dss_overlay_t *pov_
 	hisifd->dss_module.aif_ch_used[chn_idx] = 1;
 
 	aif_bw = &(hisifd->dss_module.aif_bw[chn_idx]);
-	BUG_ON(aif_bw->is_used != 1);
+	if (aif_bw->is_used != 1) {
+		HISI_FB_ERR("fb%d, aif_bw->is_used(%d) is invalid!", hisifd->index, aif_bw->is_used);
+		return -EINVAL;
+	}
 
 	mid = mid_array[chn_idx];
-	BUG_ON(mid < 0 || mid > 0xb);
+	if (mid < 0 || mid > 0xb) {
+		HISI_FB_ERR("fb%d, mid(%d) is invalid!", hisifd->index, mid);
+		return -EINVAL;
+	}
 
 	aif->aif_ch_ctl = set_bits32(aif->aif_ch_ctl, aif_bw->axi_sel, 1, 0);
 	aif->aif_ch_ctl = set_bits32(aif->aif_ch_ctl, mid, 4, 4);
@@ -718,10 +747,22 @@ int hisi_dss_aif1_ch_config(struct hisi_fb_data_type *hisifd, dss_overlay_t *pov
 	uint32_t scfd_h = 0;
 	uint32_t scfd_v = 0;
 
-	BUG_ON(hisifd == NULL);
-	BUG_ON(pov_req == NULL);
-	BUG_ON((layer == NULL) && (wb_layer == NULL));
-	BUG_ON((ovl_idx < DSS_OVL0) || (ovl_idx >= DSS_OVL_IDX_MAX));
+	if (hisifd == NULL) {
+		HISI_FB_ERR("hisifd is NULL Point!");
+		return -EINVAL;
+	}
+	if (pov_req == NULL){
+		HISI_FB_ERR("pov_req is NULL Point!");
+		return -EINVAL;
+	}
+	if ((layer == NULL) && (wb_layer == NULL)){
+		HISI_FB_ERR("layer & wb_layer is NULL Point!");
+		return -EINVAL;
+	}
+	if ((ovl_idx < DSS_OVL0) || (ovl_idx >= DSS_OVL_IDX_MAX)){
+		HISI_FB_ERR("ovl_idx(%d) is invalid!\n", ovl_idx);
+		return -EINVAL;
+	}
 
 	if (wb_layer) {
 		chn_idx = wb_layer->chn_idx;
@@ -738,10 +779,16 @@ int hisi_dss_aif1_ch_config(struct hisi_fb_data_type *hisifd, dss_overlay_t *pov
 	hisifd->dss_module.aif1_ch_used[chn_idx] = 1;
 
 	aif1_bw = &(hisifd->dss_module.aif1_bw[chn_idx]);
-	BUG_ON(aif1_bw->is_used != 1);
+	if (aif1_bw->is_used != 1) {
+		HISI_FB_ERR("fb%d, aif1_bw->is_used=%d no equal to 1 is err!", hisifd->index, aif1_bw->is_used);
+		return 0;
+	}
 
 	mid = mid_array[chn_idx];
-	BUG_ON(mid < 0 || mid > 0xb);
+	if (mid < 0 || mid > 0xb) {
+		HISI_FB_ERR("fb%d, mid=%d is invalid!", hisifd->index, mid);
+		return 0;
+	}
 
 	aif1->aif_ch_ctl = set_bits32(aif1->aif_ch_ctl, aif1_bw->axi_sel, 1, 0);
 	aif1->aif_ch_ctl = set_bits32(aif1->aif_ch_ctl, mid, 4, 4);
@@ -949,9 +996,20 @@ void hisi_dss_smmu_ch_set_reg(struct hisi_fb_data_type *hisifd,
 	uint32_t idx = 0;
 	uint32_t i = 0;
 
-	BUG_ON(hisifd == NULL);
-	BUG_ON(smmu_base == NULL);
-	BUG_ON(s_smmu == NULL);
+	if (hisifd == NULL) {
+		HISI_FB_ERR("hisifd is null");
+		return;
+	}
+
+	if (smmu_base == NULL) {
+		HISI_FB_ERR("smmu_baseis null");
+		return;
+	}
+
+	if (s_smmu == NULL) {
+		HISI_FB_ERR("s_smmu is null");
+		return;
+	}
 
 	if (s_smmu->smmu_smrx_ns_used[chn_idx] == 0)
 		return;
@@ -1122,9 +1180,20 @@ void hisi_dss_csc_init(char __iomem *csc_base, dss_csc_t *s_csc)
 void hisi_dss_csc_set_reg(struct hisi_fb_data_type *hisifd,
 	char __iomem *csc_base, dss_csc_t *s_csc)
 {
-	BUG_ON(hisifd == NULL);
-	BUG_ON(csc_base == NULL);
-	BUG_ON(s_csc == NULL);
+	if (hisifd == NULL) {
+		HISI_FB_ERR("hisifd is null");
+		return;
+	}
+
+	if (csc_base == NULL) {
+		HISI_FB_ERR("csc_base is null");
+		return;
+	}
+
+	if (s_csc == NULL) {
+		HISI_FB_ERR("s_csc is null");
+		return;
+	}
 
 	hisifd->set_reg(hisifd, csc_base + CSC_IDC0, s_csc->idc0, 32, 0);
 	hisifd->set_reg(hisifd, csc_base + CSC_IDC2, s_csc->idc2, 32, 0);
@@ -1165,16 +1234,21 @@ int hisi_dss_csc_config(struct hisi_fb_data_type *hisifd,
 	int (*csc_coe_yuv2rgb)[CSC_COL];
 	int (*csc_coe_rgb2yuv)[CSC_COL];
 
-	BUG_ON(hisifd == NULL);
+	if (hisifd == NULL) {
+		HISI_FB_ERR("hisifd is NULL Point!");
+		return -EINVAL;
+	}
 
 	if (wb_layer) {
 		chn_idx = wb_layer->chn_idx;
 		format = wb_layer->dst.format;
 		csc_mode = wb_layer->dst.csc_mode;
 	} else {
-		chn_idx = layer->chn_idx;
-		format = layer->img.format;
-		csc_mode = layer->img.csc_mode;
+		if (layer) {
+			chn_idx = layer->chn_idx;
+			format = layer->img.format;
+			csc_mode = layer->img.csc_mode;
+		}
 	}
 
 	if (chn_idx != DSS_RCHN_V0) {
@@ -1182,8 +1256,11 @@ int hisi_dss_csc_config(struct hisi_fb_data_type *hisifd,
 			return 0;
 		hisifd->dss_module.csc_used[chn_idx] = 1;
 	} else if ((chn_idx == DSS_RCHN_V0) && (!isYUV(format))){ //v0, rgb format
-		if (!is_pcsc_needed(layer))
-			return 0;
+		if (layer) {
+			if (!is_pcsc_needed(layer)) {
+				return 0;
+			}
+		}
 
 		hisifd->dss_module.csc_used[DSS_RCHN_V0] = 1;
 		hisifd->dss_module.pcsc_used[DSS_RCHN_V0] = 1;
@@ -1376,9 +1453,20 @@ void hisi_dss_ovl_set_reg(struct hisi_fb_data_type *hisifd,
 {
 	int i = 0;
 
-	BUG_ON(hisifd == NULL);
-	BUG_ON(ovl_base == NULL);
-	BUG_ON(s_ovl == NULL);
+	if (hisifd == NULL) {
+		HISI_FB_ERR("hisifd is null");
+		return;
+	}
+
+	if (ovl_base == NULL) {
+		HISI_FB_ERR("ovl_base is null");
+		return;
+	}
+
+	if (s_ovl == NULL) {
+		HISI_FB_ERR("s_ovl is null");
+		return;
+	}
 
 	if ((ovl_idx == DSS_OVL1) || (ovl_idx == DSS_OVL3)) {
 		hisifd->set_reg(hisifd, ovl_base + OVL2_REG_DEFAULT, 0x1, 32, 0);
@@ -1426,27 +1514,27 @@ void hisi_dss_ovl_set_reg(struct hisi_fb_data_type *hisifd,
 	} else {
 		for (i = 0; i < OVL_6LAYER_NUM; i++) {
 			if (s_ovl->ovl_layer_used[i] == 1) {
-				hisifd->set_reg(hisifd, ovl_base + OVL_LAYER0_POS + i * 0x3C,
+				hisifd->set_reg(hisifd, ovl_base + OVL_LAYER0_POS + i * 60,
 					s_ovl->ovl_layer[i].layer_pos, 32, 0);
-				hisifd->set_reg(hisifd, ovl_base + OVL_LAYER0_SIZE + i * 0x3C,
+				hisifd->set_reg(hisifd, ovl_base + OVL_LAYER0_SIZE + i * 60,
 					s_ovl->ovl_layer[i].layer_size, 32, 0);
-				hisifd->set_reg(hisifd, ovl_base + OVL_LAYER0_PATTERN + i * 0x3C,
+				hisifd->set_reg(hisifd, ovl_base + OVL_LAYER0_PATTERN + i * 60,
 					s_ovl->ovl_layer[i].layer_pattern, 32, 0);
-				hisifd->set_reg(hisifd, ovl_base + OVL_LAYER0_ALPHA + i * 0x3C,
+				hisifd->set_reg(hisifd, ovl_base + OVL_LAYER0_ALPHA + i * 60,
 					s_ovl->ovl_layer[i].layer_alpha, 32, 0);
-				hisifd->set_reg(hisifd, ovl_base + OVL_LAYER0_CFG + i * 0x3C,
+				hisifd->set_reg(hisifd, ovl_base + OVL_LAYER0_CFG + i * 60,
 					s_ovl->ovl_layer[i].layer_cfg, 32, 0);
 
-				hisifd->set_reg(hisifd, ovl_base + OVL_LAYER0_PSPOS + i * 0x3C,
+				hisifd->set_reg(hisifd, ovl_base + OVL_LAYER0_PSPOS + i * 60,
 					s_ovl->ovl_layer_pos[i].layer_pspos, 32, 0);
-				hisifd->set_reg(hisifd, ovl_base + OVL_LAYER0_PEPOS + i * 0x3C,
+				hisifd->set_reg(hisifd, ovl_base + OVL_LAYER0_PEPOS + i * 60,
 					s_ovl->ovl_layer_pos[i].layer_pepos, 32, 0);
 			} else {
-				hisifd->set_reg(hisifd, ovl_base + OVL_LAYER0_POS + i * 0x3C,
+				hisifd->set_reg(hisifd, ovl_base + OVL_LAYER0_POS + i * 60,
 					s_ovl->ovl_layer[i].layer_pos, 32, 0);
-				hisifd->set_reg(hisifd, ovl_base + OVL_LAYER0_SIZE + i * 0x3C,
+				hisifd->set_reg(hisifd, ovl_base + OVL_LAYER0_SIZE + i * 60,
 					s_ovl->ovl_layer[i].layer_size, 32, 0);
-				hisifd->set_reg(hisifd, ovl_base + OVL_LAYER0_CFG + i * 0x3C,
+				hisifd->set_reg(hisifd, ovl_base + OVL_LAYER0_CFG + i * 60,
 					s_ovl->ovl_layer[i].layer_cfg, 32, 0);
 			}
 		}
@@ -1459,6 +1547,16 @@ void hisi_dss_ovl_set_reg(struct hisi_fb_data_type *hisifd,
 void hisi_dss_ov_set_reg_default_value(struct hisi_fb_data_type *hisifd,
 	char __iomem *ovl_base, int ovl_idx)
 {
+	if (hisifd == NULL) {
+		HISI_FB_ERR("hisifd is null");
+		return;
+	}
+
+	if (ovl_base == NULL) {
+		HISI_FB_ERR("ovl_base is null");
+		return;
+	}
+
 	if ((ovl_idx == DSS_OVL1) || (ovl_idx == DSS_OVL3)) {
 		hisifd->set_reg(hisifd, ovl_base + OVL2_REG_DEFAULT, 0x1, 32, 0);
 		hisifd->set_reg(hisifd, ovl_base + OVL2_REG_DEFAULT, 0x0, 32, 0);
@@ -1902,8 +2000,20 @@ void hisi_dss_arsr2p_init(char __iomem * arsr2p_base, dss_arsr2p_t *s_arsr2p)
 void hisi_dss_arsr2p_set_reg(struct hisi_fb_data_type *hisifd,
 	char __iomem * arsr2p_base, dss_arsr2p_t *s_arsr2p)
 {
-	BUG_ON(arsr2p_base == NULL);
-	BUG_ON(s_arsr2p == NULL);
+	if (hisifd == NULL) {
+		HISI_FB_ERR("hisifd is null");
+		return;
+	}
+
+	if (arsr2p_base == NULL) {
+		HISI_FB_ERR("arsr2p_base is null");
+		return;
+	}
+
+	if (s_arsr2p == NULL) {
+		HISI_FB_ERR("s_arsr2p is null");
+		return;
+	}
 
 	hisifd->set_reg(hisifd, arsr2p_base + ARSR2P_INPUT_WIDTH_HEIGHT, s_arsr2p->arsr_input_width_height, 32, 0);
 	hisifd->set_reg(hisifd, arsr2p_base + ARSR2P_OUTPUT_WIDTH_HEIGHT, s_arsr2p->arsr_output_width_height, 32, 0);
@@ -2061,15 +2171,15 @@ int hisi_dss_arsr2p_config(struct hisi_fb_data_type *hisifd, dss_layer_t *layer,
 			dst_rect.y = dst_rect.y - pblock_info->arsr2p_dst_y;
 
 			if (pblock_info->both_vscfh_arsr2p_used) {
-                 		hscldown_flag = true; //horizental scaling down
+				hscldown_flag = true; //horizental scaling down
 			}
 
 			if (rdma_stretch_enable) {
-             			en_hscl = true;
+				en_hscl = true;
 			}
 
 			if (ih_inc && ih_inc != ARSR2P_INC_FACTOR) {
-                 		en_hscl = true;
+				en_hscl = true;
 			}
 		} else {
 			/* horizental scaling down is not supported by arsr2p, set src_rect.w = dst_rect.w */
@@ -2086,7 +2196,7 @@ int hisi_dss_arsr2p_config(struct hisi_fb_data_type *hisifd, dss_layer_t *layer,
 			dst_rect.x = 0;  //set dst rect to zero, in case
 			dst_rect.y = 0;
 
-                	if (src_width != dst_rect.w)
+			if (src_width != dst_rect.w)
 				en_hscl = true;
 
 			//ihinc=(arsr_input_width*65536+65536-ihleft)/(arsr_output_width+1)
@@ -2167,9 +2277,10 @@ int hisi_dss_arsr2p_config(struct hisi_fb_data_type *hisifd, dss_layer_t *layer,
 	if ((src_width < ARSR2P_MIN_INPUT) || (dst_rect.w < ARSR2P_MIN_INPUT) ||
 		(src_width > ARSR2P_MAX_WIDTH) || (dst_rect.w > ARSR2P_MAX_WIDTH)) {
 		if ((!en_hscl) && (!en_vscl) && sharpen_en) {
-			sharpen_en = false;
-			HISI_FB_INFO("src_rect.w(%d) or dst_rect.w(%d) is smaller than 16 or larger than 2560, sharpen_en bypass!\n",
+			//sharpen_en = false;
+			HISI_FB_INFO("src_rect.w(%d) or dst_rect.w(%d) is smaller than 16 or larger than 2560, arsr2p bypass!\n",
 				src_width, dst_rect.w);
+			return 0;
 		} else {
 			HISI_FB_ERR("src_rect.w(%d) or dst_rect.w(%d) is smaller than 16 or larger than 2560!\n",
 				src_width, dst_rect.w);
@@ -2323,6 +2434,11 @@ void hisi_dss_mctl_ov_set_ctl_dbg_reg(struct hisi_fb_data_type *hisifd, char __i
 		return;
 	}
 
+	if (mctl_base == NULL) {
+		HISI_FB_ERR("mctl_base is null");
+		return;
+	}
+
 	if (enable_cmdlist) {
 		set_reg(mctl_base + MCTL_CTL_DBG, 0xB03A20, 32, 0);
 		set_reg(mctl_base + MCTL_CTL_TOP, 0x1, 32, 0);
@@ -2337,7 +2453,21 @@ void hisi_dss_mctl_ov_set_ctl_dbg_reg(struct hisi_fb_data_type *hisifd, char __i
 		}
 	}
 }
+/*lint -e715*/
+void hisi_dss_post_clip_set_reg(struct hisi_fb_data_type *hisifd,
+	char __iomem *post_clip_base, dss_post_clip_t *s_post_clip, int chn_idx)
+{
+	if (NULL == hisifd || NULL == post_clip_base || NULL == s_post_clip) {
+		HISI_FB_ERR("NULL ptr.\n");
+		return;
+	}
 
+	hisifd->set_reg(hisifd, post_clip_base + POST_CLIP_DISP_SIZE, s_post_clip->disp_size, 32, 0);
+	hisifd->set_reg(hisifd, post_clip_base + POST_CLIP_CTL_HRZ, s_post_clip->clip_ctl_hrz, 32, 0);
+	hisifd->set_reg(hisifd, post_clip_base + POST_CLIP_CTL_VRZ, s_post_clip->clip_ctl_vrz, 32, 0);
+	hisifd->set_reg(hisifd, post_clip_base + POST_CLIP_EN, s_post_clip->ctl_clip_en, 32, 0);
+}
+/*lint +e715*/
 int hisi_dss_check_userdata(struct hisi_fb_data_type *hisifd,
 	dss_overlay_t *pov_req, dss_overlay_block_t *pov_h_block_infos)
 {
@@ -2367,7 +2497,7 @@ int hisi_dss_check_userdata(struct hisi_fb_data_type *hisifd,
 	}
 
 	if ((pov_h_block_infos->layer_nums <= 0)
-		|| (pov_h_block_infos->layer_nums > MAX_DSS_SRC_NUM)) {
+		|| (pov_h_block_infos->layer_nums > OVL_LAYER_NUM_MAX)) {
 		HISI_FB_ERR("fb%d, invalid layer_nums=%d!",
 			hisifd->index, pov_h_block_infos->layer_nums);
 		return -EINVAL;
@@ -2518,7 +2648,7 @@ int hisi_dss_check_layer_par(struct hisi_fb_data_type *hisifd, dss_layer_t *laye
 		return -EINVAL;
 	}
 
-	if (layer->layer_idx < 0 || layer->layer_idx >= MAX_DSS_SRC_NUM) {
+	if (layer->layer_idx < 0 || layer->layer_idx >= OVL_LAYER_NUM_MAX) {
 		HISI_FB_ERR("fb%d, layer_idx=%d is invalid!", hisifd->index, layer->layer_idx);
 		return -EINVAL;
 	}
@@ -2644,3 +2774,501 @@ int hisi_dss_check_layer_par(struct hisi_fb_data_type *hisifd, dss_layer_t *laye
 void hisifb_dss_disreset(struct hisi_fb_data_type *hisifd)
 {
 }
+void hisi_dss_mctl_sys_init(char __iomem *mctl_sys_base, dss_mctl_sys_t *s_mctl_sys)
+{
+	int i;
+
+	if (NULL == mctl_sys_base || NULL == s_mctl_sys) {
+		HISI_FB_ERR("NULL ptr.\n");
+		return;
+	}
+
+	memset(s_mctl_sys, 0, sizeof(dss_mctl_sys_t));
+
+	for (i= 0; i < DSS_OVL_IDX_MAX; i++) {
+		s_mctl_sys->chn_ov_sel[i] = inp32(mctl_sys_base + MCTL_RCH_OV0_SEL + i * 0x4);//lint !e732
+	}
+
+	for (i= 0; i < DSS_WCH_MAX; i++) {
+		s_mctl_sys->wchn_ov_sel[i] = inp32(mctl_sys_base + MCTL_WCH_OV2_SEL + i * 0x4);//lint !e732
+	}
+}
+//lint -e438 -e550
+void hisi_dss_dpp_acm_gm_set_reg(struct hisi_fb_data_type *hisifd) {
+	struct hisi_panel_info *pinfo = NULL;
+	char __iomem *dpp_base = NULL;
+	char __iomem *lcp_base = NULL;
+	char __iomem *acm_base = NULL;
+	char __iomem *gamma_base = NULL;
+	char __iomem *gamma_lut_base = NULL;
+	char __iomem *acm_lut_base = NULL;
+	static uint8_t last_gamma_type=0;
+	static uint32_t gamma_config_flag = 0;
+	uint32_t index = 0;
+	uint32_t i = 0;
+
+	uint32_t *local_gamma_lut_table_R = NULL;
+	uint32_t *local_gamma_lut_table_G = NULL;
+	uint32_t *local_gamma_lut_table_B = NULL;
+
+	uint32_t *local_acm_lut_hue_table = NULL;
+	uint32_t *local_acm_lut_sata_table = NULL;
+	uint32_t *local_acm_lut_satr0_table = NULL;
+	uint32_t *local_acm_lut_satr1_table = NULL;
+	uint32_t *local_acm_lut_satr2_table = NULL;
+	uint32_t *local_acm_lut_satr3_table = NULL;
+	uint32_t *local_acm_lut_satr4_table = NULL;
+	uint32_t *local_acm_lut_satr5_table = NULL;
+	uint32_t *local_acm_lut_satr6_table = NULL;
+	uint32_t *local_acm_lut_satr7_table = NULL;
+
+	if (NULL == hisifd) {
+		HISI_FB_ERR("hisifd, NUll pointer warning.\n");
+		goto func_exit;
+	}
+
+	pinfo = &(hisifd->panel_info);
+
+	if (0 == pinfo->gamma_support || 0 == pinfo->acm_support) {
+		goto func_exit;
+	}
+
+	if (!HISI_DSS_SUPPORT_DPP_MODULE_BIT(DPP_MODULE_GAMA) || !HISI_DSS_SUPPORT_DPP_MODULE_BIT(DPP_MODULE_ACM)) {//lint !e845  !e774
+		HISI_FB_DEBUG("gamma or acm are not suppportted in this platform.\n");
+		goto func_exit;
+	}
+
+	if (PRIMARY_PANEL_IDX == hisifd->index) {
+		dpp_base = hisifd->dss_base + DSS_DPP_OFFSET;
+		lcp_base = hisifd->dss_base + DSS_DPP_LCP_OFFSET;
+		acm_base = hisifd->dss_base + DSS_DPP_ACM_OFFSET;
+		gamma_base = hisifd->dss_base + DSS_DPP_GAMA_OFFSET;
+		gamma_lut_base = hisifd->dss_base + DSS_DPP_GAMA_LUT_OFFSET;
+		acm_lut_base = hisifd->dss_base + DSS_DPP_ACM_LUT_OFFSET;
+	} else {
+		HISI_FB_ERR("fb%d, not support!\n", hisifd->index);
+		goto func_exit;
+	}
+
+	if (0 == gamma_config_flag) {
+		if (last_gamma_type != hisifd->panel_info.gamma_type) {
+			//disable acm
+			set_reg(acm_base + ACM_EN, 0x0, 1, 0);
+			//disable gamma
+			set_reg(gamma_base + GAMA_EN, 0x0, 1, 0);
+			//disable gmp
+			set_reg(lcp_base + LCP_GMP_BYPASS_EN, 0x1, 1, 0);
+			//disable xcc
+			set_reg(lcp_base + LCP_XCC_BYPASS_EN, 0x1, 1, 0);
+			gamma_config_flag = 1;
+			last_gamma_type = hisifd->panel_info.gamma_type;
+		}
+		goto func_exit;
+	}
+
+	if (1 == gamma_config_flag) {
+		if (1 == last_gamma_type) {
+			//set gamma cinema parameter
+			if (pinfo->cinema_gamma_lut_table_len > 0 && pinfo->cinema_gamma_lut_table_R
+				&& pinfo->cinema_gamma_lut_table_G && pinfo->cinema_gamma_lut_table_B) {
+					local_gamma_lut_table_R = pinfo->cinema_gamma_lut_table_R;
+					local_gamma_lut_table_G = pinfo->cinema_gamma_lut_table_G;
+					local_gamma_lut_table_B = pinfo->cinema_gamma_lut_table_B;
+			} else {
+				HISI_FB_ERR("can't get gamma cinema paramter from pinfo.\n");
+				goto func_exit;
+			}
+
+			//set acm cinema parameter
+			if (pinfo->acm_lut_hue_table_len > 0 && pinfo->cinema_acm_lut_hue_table
+				&& pinfo->acm_lut_sata_table_len > 0 && pinfo->cinema_acm_lut_sata_table
+				&& pinfo->acm_lut_satr0_table_len > 0 && pinfo->cinema_acm_lut_satr0_table
+				&& pinfo->acm_lut_satr1_table_len > 0 && pinfo->cinema_acm_lut_satr1_table
+				&& pinfo->acm_lut_satr2_table_len > 0 && pinfo->cinema_acm_lut_satr2_table
+				&& pinfo->acm_lut_satr3_table_len > 0 && pinfo->cinema_acm_lut_satr3_table
+				&& pinfo->acm_lut_satr4_table_len > 0 && pinfo->cinema_acm_lut_satr4_table
+				&& pinfo->acm_lut_satr5_table_len > 0 && pinfo->cinema_acm_lut_satr5_table
+				&& pinfo->acm_lut_satr7_table_len > 0 && pinfo->cinema_acm_lut_satr6_table
+				&& pinfo->acm_lut_satr6_table_len > 0 && pinfo->cinema_acm_lut_satr7_table) {
+				local_acm_lut_hue_table = pinfo->cinema_acm_lut_hue_table;
+				local_acm_lut_sata_table = pinfo->cinema_acm_lut_sata_table;
+				local_acm_lut_satr0_table = pinfo->cinema_acm_lut_satr0_table;
+				local_acm_lut_satr1_table = pinfo->cinema_acm_lut_satr1_table;
+				local_acm_lut_satr2_table = pinfo->cinema_acm_lut_satr2_table;
+				local_acm_lut_satr3_table = pinfo->cinema_acm_lut_satr3_table;
+				local_acm_lut_satr4_table = pinfo->cinema_acm_lut_satr4_table;
+				local_acm_lut_satr5_table = pinfo->cinema_acm_lut_satr5_table;
+				local_acm_lut_satr6_table = pinfo->cinema_acm_lut_satr6_table;
+				local_acm_lut_satr7_table = pinfo->cinema_acm_lut_satr7_table;
+			} else {
+				HISI_FB_ERR("can't get acm cinema paramter from pinfo.\n");
+				goto func_exit;
+			}
+		} else {
+			if (pinfo->gamma_lut_table_len > 0 && pinfo->gamma_lut_table_R
+				&& pinfo->gamma_lut_table_G && pinfo->gamma_lut_table_B) {
+				local_gamma_lut_table_R = pinfo->gamma_lut_table_R;
+				local_gamma_lut_table_G = pinfo->gamma_lut_table_G;
+				local_gamma_lut_table_B = pinfo->gamma_lut_table_B;
+			} else {
+				HISI_FB_ERR("can't get gamma normal parameter from pinfo.\n");
+				goto func_exit;
+			}
+
+			if (pinfo->acm_lut_hue_table_len > 0 && pinfo->acm_lut_hue_table
+				&& pinfo->acm_lut_sata_table_len > 0 && pinfo->acm_lut_sata_table
+				&& pinfo->acm_lut_satr0_table_len > 0 && pinfo->acm_lut_satr0_table
+				&& pinfo->acm_lut_satr1_table_len > 0 && pinfo->acm_lut_satr1_table
+				&& pinfo->acm_lut_satr2_table_len > 0 && pinfo->acm_lut_satr2_table
+				&& pinfo->acm_lut_satr3_table_len > 0 && pinfo->acm_lut_satr3_table
+				&& pinfo->acm_lut_satr4_table_len > 0 && pinfo->acm_lut_satr4_table
+				&& pinfo->acm_lut_satr5_table_len > 0 && pinfo->acm_lut_satr5_table
+				&& pinfo->acm_lut_satr6_table_len > 0 && pinfo->acm_lut_satr6_table
+				&& pinfo->acm_lut_satr7_table_len > 0 && pinfo->acm_lut_satr7_table) {
+				local_acm_lut_hue_table = pinfo->acm_lut_hue_table;
+				local_acm_lut_sata_table = pinfo->acm_lut_sata_table;
+				local_acm_lut_satr0_table = pinfo->acm_lut_satr0_table;
+				local_acm_lut_satr1_table = pinfo->acm_lut_satr1_table;
+				local_acm_lut_satr2_table = pinfo->acm_lut_satr2_table;
+				local_acm_lut_satr3_table = pinfo->acm_lut_satr3_table;
+				local_acm_lut_satr4_table = pinfo->acm_lut_satr4_table;
+				local_acm_lut_satr5_table = pinfo->acm_lut_satr5_table;
+				local_acm_lut_satr6_table = pinfo->acm_lut_satr6_table;
+				local_acm_lut_satr7_table = pinfo->acm_lut_satr7_table;
+			} else {
+				HISI_FB_ERR("can't get acm normal parameter from pinfo.\n");
+				goto func_exit;
+			}
+		}
+		//config regsiter use default or cinema parameter
+		for (index = 0; index < pinfo->gamma_lut_table_len / 2; index++) {
+			i = index << 1;
+			outp32(gamma_lut_base + (U_GAMA_R_COEF + index * 4), (local_gamma_lut_table_R[i] | (local_gamma_lut_table_R[i+1] << 16)));
+			outp32(gamma_lut_base + (U_GAMA_G_COEF + index * 4), (local_gamma_lut_table_G[i] | (local_gamma_lut_table_G[i+1] << 16)));
+			outp32(gamma_lut_base + (U_GAMA_B_COEF + index * 4), (local_gamma_lut_table_B[i] | (local_gamma_lut_table_B[i+1] << 16)));
+		}
+		outp32(gamma_lut_base + U_GAMA_R_LAST_COEF, local_gamma_lut_table_R[pinfo->gamma_lut_table_len - 1]);
+		outp32(gamma_lut_base + U_GAMA_G_LAST_COEF, local_gamma_lut_table_G[pinfo->gamma_lut_table_len - 1]);
+		outp32(gamma_lut_base + U_GAMA_B_LAST_COEF, local_gamma_lut_table_B[pinfo->gamma_lut_table_len - 1]);
+
+		acm_set_lut_hue(acm_lut_base + ACM_U_H_COEF, local_acm_lut_hue_table, pinfo->acm_lut_hue_table_len);
+		acm_set_lut(acm_lut_base + ACM_U_SATA_COEF, local_acm_lut_sata_table, pinfo->acm_lut_sata_table_len);
+		acm_set_lut(acm_lut_base + ACM_U_SATR0_COEF, local_acm_lut_satr0_table, pinfo->acm_lut_satr0_table_len);
+		acm_set_lut(acm_lut_base + ACM_U_SATR1_COEF, local_acm_lut_satr1_table, pinfo->acm_lut_satr1_table_len);
+		acm_set_lut(acm_lut_base + ACM_U_SATR2_COEF, local_acm_lut_satr2_table, pinfo->acm_lut_satr2_table_len);
+		acm_set_lut(acm_lut_base + ACM_U_SATR3_COEF, local_acm_lut_satr3_table, pinfo->acm_lut_satr3_table_len);
+		acm_set_lut(acm_lut_base + ACM_U_SATR4_COEF, local_acm_lut_satr4_table, pinfo->acm_lut_satr4_table_len);
+		acm_set_lut(acm_lut_base + ACM_U_SATR5_COEF, local_acm_lut_satr5_table, pinfo->acm_lut_satr5_table_len);
+		acm_set_lut(acm_lut_base + ACM_U_SATR6_COEF, local_acm_lut_satr6_table, pinfo->acm_lut_satr6_table_len);
+		acm_set_lut(acm_lut_base + ACM_U_SATR7_COEF, local_acm_lut_satr7_table, pinfo->acm_lut_satr7_table_len);
+	}
+	//enable gamma
+	set_reg(gamma_base + GAMA_EN, 0x0, 1, 0);
+	//enable gmp
+	set_reg(dpp_base + LCP_GMP_BYPASS_EN, 0x0, 1, 0);
+	//enable xcc
+	set_reg(lcp_base + LCP_XCC_BYPASS_EN, 0x0, 1, 0);
+
+	//enable acm
+	set_reg(acm_base + ACM_EN, 0x1, 1, 0);
+	gamma_config_flag = 0;
+func_exit:
+	return;
+}
+void hisi_dss_post_scf_init(char __iomem * dss_base, char __iomem *post_scf_base, dss_arsr1p_t *s_post_scf)
+{
+	BUG_ON(post_scf_base == NULL);//lint !e730
+	BUG_ON(s_post_scf == NULL);//lint !e730
+	BUG_ON(dss_base == NULL); //lint !e730
+
+	memset(s_post_scf, 0, sizeof(dss_arsr1p_t));
+
+	s_post_scf->dbuf_frm_size = (uint32_t)inp32(dss_base + DSS_DBUF0_OFFSET + DBUF_FRM_SIZE);
+	s_post_scf->dbuf_frm_hsize = (uint32_t)inp32(dss_base + DSS_DBUF0_OFFSET + DBUF_FRM_HSIZE);
+	s_post_scf->dpp_img_size_bef_sr = (uint32_t)inp32(dss_base + DSS_DPP_OFFSET + DPP_IMG_SIZE_BEF_SR);
+	s_post_scf->dpp_img_size_aft_sr = (uint32_t)inp32(dss_base + DSS_DPP_OFFSET + DPP_IMG_SIZE_AFT_SR);
+
+	s_post_scf->ihleft = (uint32_t)inp32(post_scf_base + ARSR1P_IHLEFT);
+	s_post_scf->ihright = (uint32_t)inp32(post_scf_base + ARSR1P_IHRIGHT);
+	s_post_scf->ihleft1 = (uint32_t)inp32(post_scf_base + ARSR1P_IHLEFT1);
+	s_post_scf->ihright1 = (uint32_t)inp32(post_scf_base + ARSR1P_IHRIGHT1);
+	s_post_scf->ivtop = (uint32_t)inp32(post_scf_base + ARSR1P_IVTOP);
+	s_post_scf->ivbottom = (uint32_t)inp32(post_scf_base + ARSR1P_IVBOTTOM);
+	s_post_scf->uv_offset = (uint32_t)inp32(post_scf_base + ARSR1P_UV_OFFSET);
+	s_post_scf->ihinc = (uint32_t)inp32(post_scf_base + ARSR1P_IHINC);
+	s_post_scf->ivinc = (uint32_t)inp32(post_scf_base + ARSR1P_IVINC);
+	s_post_scf->mode = (uint32_t)inp32(post_scf_base + ARSR1P_MODE);
+	s_post_scf->format = (uint32_t)inp32(post_scf_base + ARSR1P_FORMAT);
+
+	s_post_scf->skin_thres_y = 512<<16 | 83<<8 | 75;
+	s_post_scf->skin_thres_u = 819<<16 | 10<<8 | 5;
+	s_post_scf->skin_thres_v = 682<<16 | 12<<8 | 6;
+	s_post_scf->skin_expected = 145<<16 | 113<<8 | 150;
+	s_post_scf->skin_cfg = 3<<16 | 10<<8 | 6;
+	s_post_scf->shoot_cfg1 = 2<<24 | 20;
+	s_post_scf->shoot_cfg2 = 512<<18 | (-16 & 0x1ff);
+	s_post_scf->sharp_cfg1 = 64<<24 | 48<<16 | 7<<8 | 3;
+	s_post_scf->sharp_cfg2 = 64<<24 | 48<<16 | 7<<8 | 3;
+	s_post_scf->sharp_cfg3 = 40<<16 | 0;
+	s_post_scf->sharp_cfg4 = 0<<16 | 0;
+	s_post_scf->sharp_cfg5 = 80<<16 | 0;
+	s_post_scf->sharp_cfg6 = 40<<24 | 24<<16 | 16<<8 | 6;
+	s_post_scf->sharp_cfg7 = 1<<24 | 80<<16 | 1<<9 | 16;
+	s_post_scf->sharp_cfg8 = 4<<21 | 640;
+	s_post_scf->sharp_cfg9 = 1<<24 | 5120;
+	s_post_scf->sharp_cfg10 = 0;
+	s_post_scf->sharp_cfg11 = 0;
+	s_post_scf->diff_ctrl = 20<<8 | 15;
+	s_post_scf->lsc_cfg1 = 15<<26 | 780<<13 | 1040;
+	s_post_scf->lsc_cfg2 = 0;
+	s_post_scf->lsc_cfg3 = 128<<16 | 1536;
+	s_post_scf->force_clk_on_cfg = 0;
+}
+
+int hisi_dss_post_scf_config(struct hisi_fb_data_type *hisifd, dss_overlay_t *pov_req)
+{
+	struct hisi_panel_info *pinfo = NULL;
+	dss_rect_t src_rect = {0};
+	dss_rect_t dst_rect = {0};
+	dss_arsr1p_t *post_scf = NULL;
+
+	int32_t ihinc = 0;
+	int32_t ivinc = 0;
+	int32_t ihleft = 0;
+	int32_t ihright = 0;
+	int32_t ihleft1 = 0;
+	int32_t ihright1 = 0;
+	int32_t ivtop = 0;
+	int32_t ivbottom = 0;
+	int32_t extraw = 0;
+	int32_t extraw_left = 0;
+	int32_t extraw_right = 0;
+	/*lint -e730 -e838 -e774 -e713 -e838 -e732*/
+	BUG_ON(hisifd == NULL);
+	pinfo = &(hisifd->panel_info);
+
+	if (!HISI_DSS_SUPPORT_DPP_MODULE_BIT(DPP_MODULE_POST_SCF)) {
+		return 0;
+	}
+
+	if (pov_req) {
+		if ((pov_req->res_updt_rect.w <= 0) || (pov_req->res_updt_rect.h <= 0)) {
+			HISI_FB_DEBUG("fb%d, res_updt_rect[%d,%d, %d,%d] is invalid!\n", hisifd->index,
+				pov_req->res_updt_rect.x, pov_req->res_updt_rect.y,
+				pov_req->res_updt_rect.w, pov_req->res_updt_rect.h);
+			return  0;
+		}
+
+		if ((pov_req->res_updt_rect.w == hisifd->ov_req_prev.res_updt_rect.w)
+			&& (pov_req->res_updt_rect.h == hisifd->ov_req_prev.res_updt_rect.h)) {
+			return 0;
+		}
+		src_rect = pov_req->res_updt_rect;
+
+		HISI_FB_DEBUG("fb%d, post scf res_updt_rect[%d, %d]->lcd_rect[%d, %d]\n",
+			hisifd->index,
+			pov_req->res_updt_rect.w, pov_req->res_updt_rect.h,
+			pinfo->xres, pinfo->yres);
+	} else {
+		src_rect.x = 0;
+		src_rect.y = 0;
+		src_rect.w = pinfo->xres;
+		src_rect.h = pinfo->yres;
+	}
+
+	dst_rect.x = 0;
+	dst_rect.y = 0;
+	dst_rect.w = pinfo->xres;
+	dst_rect.h = pinfo->yres;
+
+	post_scf = &(hisifd->dss_module.post_scf);
+	hisifd->dss_module.post_scf_used = 1;
+
+	post_scf->dbuf_frm_size = set_bits32(post_scf->dbuf_frm_size, src_rect.w * src_rect.h, 27, 0);
+	post_scf->dbuf_frm_hsize = set_bits32(post_scf->dbuf_frm_hsize, DSS_WIDTH(src_rect.w), 13, 0);
+	post_scf->dbuf_used = 1;
+
+	post_scf->dpp_img_size_bef_sr = set_bits32(post_scf->dpp_img_size_bef_sr,
+		(DSS_HEIGHT((uint32_t)src_rect.h) << 16) | DSS_WIDTH((uint32_t)src_rect.w), 32, 0);
+	post_scf->dpp_img_size_aft_sr = set_bits32(post_scf->dpp_img_size_aft_sr,
+		(DSS_HEIGHT((uint32_t)dst_rect.h) << 16) | DSS_WIDTH((uint32_t)dst_rect.w), 32, 0);
+	post_scf->dpp_used = 1;
+
+	if ((src_rect.w < 16) || (src_rect.h < 16)
+		|| (src_rect.w > 3840) || (src_rect.h > 8192)
+		|| (dst_rect.w > 8192) || (dst_rect.h > 8192)) {
+		HISI_FB_ERR("invalid input size: src_rect(%d,%d,%d,%d) should be larger than 16*16, less than 3840*8192!\n"
+			"invalid output size: dst_rect(%d,%d,%d,%d) should be less than 8192*8192!\n",
+			src_rect.x, src_rect.y, src_rect.w, src_rect.h,
+			dst_rect.x, dst_rect.y, dst_rect.w, dst_rect.h);
+		//ARSR1P bypass
+		post_scf->mode = 0x1;
+		return 0;
+	}
+
+	ihinc = ARSR1P_INC_FACTOR * src_rect.w / dst_rect.w;
+	ivinc = ARSR1P_INC_FACTOR * src_rect.h / dst_rect.h;
+
+	if ((ihinc == ARSR1P_INC_FACTOR)
+		&& (ivinc == ARSR1P_INC_FACTOR)
+		&& (pinfo->arsr1p_sharpness_support != 1)) {
+		//ARSR1P bypass
+		post_scf->mode = 0x1;
+		return 0;
+	}
+
+	/* 0x2000<=ihinc<=0x80000; 0x2000<=ivinc<=0x80000; */
+	if ((ihinc < 0x2000) || (ihinc > ARSR1P_INC_FACTOR)
+		|| (ivinc < 0x2000) || (ivinc > ARSR1P_INC_FACTOR)) {
+		HISI_FB_ERR("invalid ihinc(0x%x), ivinc(0x%x)!\n", ihinc, ivinc);
+		//ARSR1P bypass
+		post_scf->mode = 0x1;
+		return -1;
+	}
+
+	if ((ihinc > ARSR1P_INC_FACTOR) ||  (ivinc > ARSR1P_INC_FACTOR)) {
+		//scaler down, not supported
+		HISI_FB_ERR("scaling down is not supported by ARSR1P, ihinc = 0x%x, ivinc = 0x%x\n", ihinc, ivinc);
+		//ARSR1P bypass
+		post_scf->mode = 0x1;
+		return -1;
+	}
+
+	//enable arsr1p
+	post_scf->mode = 0x0;
+
+	if (pinfo->arsr1p_sharpness_support) {
+		//enable sharp  skinctrl, shootdetect
+		post_scf->mode |= 0xe;
+	}
+
+	//enable direction
+	post_scf->mode |= 0x20;
+
+	if ((ihinc < ARSR1P_INC_FACTOR) ||  (ivinc < ARSR1P_INC_FACTOR)) {
+		//enable diintplen
+		post_scf->mode |= 0x10;
+	} else {
+		//only sharp, enable nointplen
+		post_scf->mode |= 0x40;
+	}
+
+	extraw = (8 * ARSR1P_INC_FACTOR) / ihinc;
+	extraw_left = (extraw % 2) ? (extraw + 1) : (extraw);
+	extraw = (2 * ARSR1P_INC_FACTOR) / ihinc;
+	extraw_right = (extraw % 2) ? (extraw + 1) : (extraw);
+
+	//ihleft1 = (startX_o * ihinc) - (ov_startX0 << 16)
+	ihleft1 = dst_rect.x * ihinc - src_rect.x * ARSR1P_INC_FACTOR;
+	if (ihleft1 < 0){
+		ihleft1 = 0;
+	}
+	//ihleft = ihleft1 - even(8 * 65536 / ihinc) * ihinc;
+	ihleft = ihleft1 - extraw_left * ihinc;
+	if (ihleft < 0){
+		ihleft = 0;
+	}
+	//ihright1 = ihleft1 + (oww-1) * ihinc
+	ihright1 = ihleft1 + (dst_rect.w - 1) * ihinc;
+	//ihright = ihright1 + even(2 * 65536/ihinc) * ihinc
+	ihright = ihright1 + extraw_right * ihinc;
+	//ihright >= img_width * ihinc
+	if (ihright >= src_rect.w * ARSR1P_INC_FACTOR){
+		ihright = src_rect.w * ARSR1P_INC_FACTOR - 1;
+	}
+	//ivtop = (startY_o * ivinc) - (ov_startY0<<16)
+	ivtop = dst_rect.y * ivinc - src_rect.y * ARSR1P_INC_FACTOR;
+	if (ivtop < 0){
+		ivtop = 0;
+	}
+	//ivbottom = ivtop + (ohh - 1) * ivinc
+	ivbottom = ivtop + (dst_rect.h - 1) * ivinc;
+	//ivbottom >= img_height * ivinc
+	if (ivbottom >= src_rect.h * ARSR1P_INC_FACTOR){
+		ivbottom = src_rect.h * ARSR1P_INC_FACTOR - 1;
+	}
+	//(ihleft1 - ihleft) % (ihinc) == 0;
+	if ((ihleft1 - ihleft) % (ihinc)) {
+		HISI_FB_ERR("(ihleft1(%d)-ihleft(%d))  ihinc(%d) != 0, invalid!\n",
+			ihleft1, ihleft, ihinc);
+		post_scf->mode = 0x1;
+		return -1;
+	}
+
+	//(ihright1 - ihleft1) % ihinc == 0;
+	if ((ihright1 - ihleft1) % ihinc) {
+		HISI_FB_ERR("(ihright1(%d)-ihleft1(%d))  ihinc(%d) != 0, invalid!\n",
+			ihright1, ihleft1, ihinc);
+		post_scf->mode = 0x1;
+		return -1;
+	}
+
+	post_scf->ihleft = set_bits32(post_scf->ihleft, ihleft, 32, 0);
+	post_scf->ihright = set_bits32(post_scf->ihright, ihright, 32, 0);
+	post_scf->ihleft1 = set_bits32(post_scf->ihleft1, ihleft1, 32, 0);
+	post_scf->ihright1 = set_bits32(post_scf->ihright1, ihright1, 32, 0);
+	post_scf->ivtop = set_bits32(post_scf->ivtop, ivtop, 32, 0);
+	post_scf->ivbottom = set_bits32(post_scf->ivbottom, ivbottom, 32, 0);
+	//post_scf->uv_offset = set_bits32(post_scf->uv_offset, , 32, 0);
+	post_scf->ihinc = set_bits32(post_scf->ihinc, ihinc, 32, 0);
+	post_scf->ivinc = set_bits32(post_scf->ivinc, ivinc, 32, 0);
+	/*lint +e730 +e838 +e774 +e713 +e838 +e732*/
+	return 0;
+}
+void hisi_dss_post_scf_set_reg(struct hisi_fb_data_type *hisifd,
+	char __iomem *post_scf_base, dss_arsr1p_t *s_post_scf)
+{
+	BUG_ON(hisifd == NULL);//lint !e730
+	BUG_ON(post_scf_base == NULL);//lint !e730
+	BUG_ON(s_post_scf == NULL);//lint !e730
+
+	if (s_post_scf->dbuf_used == 1) {
+		hisifd->set_reg(hisifd, hisifd->dss_base + DSS_DBUF0_OFFSET + DBUF_FRM_SIZE,
+			s_post_scf->dbuf_frm_size, 32, 0);
+		hisifd->set_reg(hisifd, hisifd->dss_base + DSS_DBUF0_OFFSET + DBUF_FRM_HSIZE,
+			s_post_scf->dbuf_frm_hsize, 32, 0);
+	}
+	if (s_post_scf->dpp_used == 1) {
+		hisifd->set_reg(hisifd, hisifd->dss_base + DSS_DPP_OFFSET + DPP_IMG_SIZE_BEF_SR,
+			s_post_scf->dpp_img_size_bef_sr, 32, 0);
+		hisifd->set_reg(hisifd, hisifd->dss_base + DSS_DPP_OFFSET + DPP_IMG_SIZE_AFT_SR,
+			s_post_scf->dpp_img_size_aft_sr, 32, 0);
+	}
+
+	hisifd->set_reg(hisifd, post_scf_base + ARSR1P_IHLEFT, s_post_scf->ihleft, 32, 0);
+	hisifd->set_reg(hisifd, post_scf_base + ARSR1P_IHRIGHT, s_post_scf->ihright, 32, 0);
+	hisifd->set_reg(hisifd, post_scf_base + ARSR1P_IHLEFT1, s_post_scf->ihleft1, 32, 0);
+	hisifd->set_reg(hisifd, post_scf_base + ARSR1P_IHRIGHT1, s_post_scf->ihright1, 32, 0);
+	hisifd->set_reg(hisifd, post_scf_base + ARSR1P_IVTOP, s_post_scf->ivtop, 32, 0);
+	hisifd->set_reg(hisifd, post_scf_base + ARSR1P_IVBOTTOM, s_post_scf->ivbottom, 32, 0);
+	hisifd->set_reg(hisifd, post_scf_base + ARSR1P_UV_OFFSET, s_post_scf->uv_offset, 32, 0);
+	hisifd->set_reg(hisifd, post_scf_base + ARSR1P_IHINC, s_post_scf->ihinc, 32, 0);
+	hisifd->set_reg(hisifd, post_scf_base + ARSR1P_IVINC, s_post_scf->ivinc, 32, 0);
+	hisifd->set_reg(hisifd, post_scf_base + ARSR1P_MODE, s_post_scf->mode, 32, 0);
+	hisifd->set_reg(hisifd, post_scf_base + ARSR1P_FORMAT, s_post_scf->format, 32, 0);
+
+	hisifd->set_reg(hisifd, post_scf_base + ARSR1P_SKIN_THRES_Y, s_post_scf->skin_thres_y, 32, 0);
+	hisifd->set_reg(hisifd, post_scf_base + ARSR1P_SKIN_THRES_U, s_post_scf->skin_thres_u, 32, 0);
+	hisifd->set_reg(hisifd, post_scf_base + ARSR1P_SKIN_THRES_V, s_post_scf->skin_thres_v, 32, 0);
+	hisifd->set_reg(hisifd, post_scf_base + ARSR1P_SKIN_EXPECTED, s_post_scf->skin_expected, 32, 0);
+	hisifd->set_reg(hisifd, post_scf_base + ARSR1P_SKIN_CFG, s_post_scf->skin_cfg, 32, 0);
+	hisifd->set_reg(hisifd, post_scf_base + ARSR1P_SHOOT_CFG1, s_post_scf->shoot_cfg1, 32, 0);
+	hisifd->set_reg(hisifd, post_scf_base + ARSR1P_SHOOT_CFG2, s_post_scf->shoot_cfg2, 32, 0);
+	hisifd->set_reg(hisifd, post_scf_base + ARSR1P_SHARP_CFG1, s_post_scf->sharp_cfg1, 32, 0);
+	hisifd->set_reg(hisifd, post_scf_base + ARSR1P_SHARP_CFG2, s_post_scf->sharp_cfg2, 32, 0);
+	hisifd->set_reg(hisifd, post_scf_base + ARSR1P_SHARP_CFG3, s_post_scf->sharp_cfg3, 32, 0);
+	hisifd->set_reg(hisifd, post_scf_base + ARSR1P_SHARP_CFG4, s_post_scf->sharp_cfg4, 32, 0);
+	hisifd->set_reg(hisifd, post_scf_base + ARSR1P_SHARP_CFG5, s_post_scf->sharp_cfg5, 32, 0);
+	hisifd->set_reg(hisifd, post_scf_base + ARSR1P_SHARP_CFG6, s_post_scf->sharp_cfg6, 32, 0);
+	hisifd->set_reg(hisifd, post_scf_base + ARSR1P_SHARP_CFG7, s_post_scf->sharp_cfg7, 32, 0);
+	hisifd->set_reg(hisifd, post_scf_base + ARSR1P_SHARP_CFG8, s_post_scf->sharp_cfg8, 32, 0);
+	hisifd->set_reg(hisifd, post_scf_base + ARSR1P_SHARP_CFG9, s_post_scf->sharp_cfg9, 32, 0);
+	hisifd->set_reg(hisifd, post_scf_base + ARSR1P_SHARP_CFG10, s_post_scf->sharp_cfg10, 32, 0);
+	hisifd->set_reg(hisifd, post_scf_base + ARSR1P_SHARP_CFG11, s_post_scf->sharp_cfg11, 32, 0);
+	hisifd->set_reg(hisifd, post_scf_base + ARSR1P_DIFF_CTRL, s_post_scf->diff_ctrl, 32, 0);
+	hisifd->set_reg(hisifd, post_scf_base + ARSR1P_LSC_CFG1, s_post_scf->lsc_cfg1, 32, 0);
+	hisifd->set_reg(hisifd, post_scf_base + ARSR1P_LSC_CFG2, s_post_scf->lsc_cfg2, 32, 0);
+	hisifd->set_reg(hisifd, post_scf_base + ARSR1P_LSC_CFG3, s_post_scf->lsc_cfg3, 32, 0);
+	hisifd->set_reg(hisifd, post_scf_base + ARSR1P_FORCE_CLK_ON_CFG, s_post_scf->force_clk_on_cfg, 32, 0);
+}
+//lint +e438 +e550

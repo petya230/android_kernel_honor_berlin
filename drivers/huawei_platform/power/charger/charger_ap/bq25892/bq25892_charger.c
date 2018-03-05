@@ -251,6 +251,7 @@ struct bq25892_sysfs_field_info {
 	u8 shift;
 };
 
+/*lint -save -e* */
 static struct bq25892_sysfs_field_info bq25892_sysfs_field_tbl[] = {
 	/* sysfs name reg field in reg */
 	BQ25892_SYSFS_FIELD_RW(en_hiz, 00, EN_HIZ),
@@ -309,6 +310,7 @@ static struct bq25892_sysfs_field_info bq25892_sysfs_field_tbl[] = {
 	BQ25892_SYSFS_FIELD_RW(reg_value, NONE, NONE),
 };
 
+/*lint -restore*/
 static struct attribute *bq25892_sysfs_attrs[ARRAY_SIZE(bq25892_sysfs_field_tbl) + 1];
 
 static const struct attribute_group bq25892_sysfs_attr_group = {
@@ -337,6 +339,8 @@ static void bq25892_sysfs_init_attrs(void)
 *  Parameters:   name:evice attribute name
 *  return value:  bq25892_sysfs_field_tbl[]
 **********************************************************/
+
+/*lint -save -e* */
 static struct bq25892_sysfs_field_info *bq25892_sysfs_field_lookup(const char *name)
 {
 	int i, limit = ARRAY_SIZE(bq25892_sysfs_field_tbl);
@@ -350,6 +354,8 @@ static struct bq25892_sysfs_field_info *bq25892_sysfs_field_lookup(const char *n
 
 	return &bq25892_sysfs_field_tbl[i];
 }
+/*lint -restore*/
+
 
 /**********************************************************
 *  Function:       bq25892_sysfs_show
@@ -398,6 +404,8 @@ static ssize_t bq25892_sysfs_show(struct device *dev,
 *                      count:unused
 *  return value:  0-sucess or others-fail
 **********************************************************/
+
+/*lint -save -e* */
 static ssize_t bq25892_sysfs_store(struct device *dev,
 				   struct device_attribute *attr,
 				   const char *buf, size_t count)
@@ -435,6 +443,7 @@ static ssize_t bq25892_sysfs_store(struct device *dev,
 
 	return count;
 }
+/*lint -restore*/
 
 /**********************************************************
 *  Function:       bq25892_sysfs_create_group
@@ -503,7 +512,7 @@ static int bq25892_device_check(void)
 **********************************************************/
 static int bq25892_set_bat_comp(int value)
 {
-	unsigned int bat_comp = 0;
+	int bat_comp = 0;
 	u8 bat_comp_reg = 0;
 	bat_comp = value;
 
@@ -532,7 +541,7 @@ static int bq25892_set_bat_comp(int value)
 **********************************************************/
 static int bq25892_set_vclamp(int value)
 {
-	unsigned int vclamp = 0;
+	int vclamp = 0;
 	u8 vclamp_reg = 0;
 	vclamp = value;
 	if (vclamp < VCLAMP_MIN_0) {
@@ -756,7 +765,7 @@ static int bq25892_set_input_current(int value)
 **********************************************************/
 static int bq25892_set_charge_current(int value)
 {
-	unsigned int currentmA = 0;
+	int currentmA = 0;
 	u8 ichg = 0;
 	currentmA = value;
 	if (currentmA < 0) {
@@ -1075,7 +1084,7 @@ static int bq25892_get_ilim(void)
 		msleep(delay_times);
 	}
 	if (cnt > 0) {
-		return ((10 * sum * Kilim) / (8 * rilim * cnt));	/*I =(K* Vlim)/(rilim*0.8) new spec from TI */
+		return ((10 * sum * Kilim) / (8 * (int)(rilim) * cnt));	/*I =(K* Vlim)/(rilim*0.8) new spec from TI */
 	} else {
 		hwlog_err("use 0 as default Vilim!\n");
 		return 0;
@@ -1281,9 +1290,9 @@ static int bq25892_get_ico_current(struct ico_output *output)
 			switch (ico_current_mode) {
 			case 0:
 				output->input_current =
-					idpm_limit > output->input_current ? idpm_limit : output->input_current;
+					idpm_limit > (int)(output->input_current) ? idpm_limit : (int)(output->input_current);
 				output->charge_current =
-					idpm_limit > output->charge_current ? idpm_limit : output->input_current;
+					idpm_limit > (int)(output->charge_current) ? idpm_limit : (int)(output->input_current);
 			break;
 			case 1:
 				output->input_current = idpm_limit;
@@ -1463,6 +1472,9 @@ static struct charge_device_ops bq25892_ops = {
 	.turn_on_ico = bq25892_turn_on_ico,
 	.set_force_term_enable = bq25892_force_set_term_enable,
 	.get_charger_state = bq25892_get_charger_state,
+	.soft_vbatt_ovp_protect = NULL,
+	.rboost_buck_limit = NULL,
+	.get_charge_current = NULL,
 };
 
 /**********************************************************
@@ -1471,6 +1483,8 @@ static struct charge_device_ops bq25892_ops = {
 *  Parameters:   work:chargerIC fault interrupt workqueue
 *  return value:  NULL
 **********************************************************/
+
+/*lint -save -e* */
 static void bq25892_irq_work(struct work_struct *work)
 {
 	struct bq25892_device_info *di =
@@ -1496,6 +1510,7 @@ static void bq25892_irq_work(struct work_struct *work)
 	}
 
 }
+/*lint -restore*/
 
 /**********************************************************
 *  Function:       bq25892_interrupt
@@ -1504,6 +1519,8 @@ static void bq25892_irq_work(struct work_struct *work)
 *                      _di:bq25892_device_info
 *  return value:  IRQ_HANDLED-sucess or others
 **********************************************************/
+
+/*lint -save -e* */
 static irqreturn_t bq25892_interrupt(int irq, void *_di)
 {
 	struct bq25892_device_info *di = _di;
@@ -1518,7 +1535,9 @@ static irqreturn_t bq25892_interrupt(int irq, void *_di)
 	}
 	return IRQ_HANDLED;
 }
+/*lint -restore*/
 
+/*lint -save -e* */
 void prase_dts(struct device_node *np, struct bq25892_device_info *di)
 {
 	struct device_node *batt_node;
@@ -1573,6 +1592,7 @@ void prase_dts(struct device_node *np, struct bq25892_device_info *di)
 	}
 	return;
 }
+/*lint -restore*/
 
 /**********************************************************
 *  Function:       bq25892_probe
@@ -1581,6 +1601,8 @@ void prase_dts(struct device_node *np, struct bq25892_device_info *di)
 *                      id:i2c_device_id
 *  return value:  0-sucess or others-fail
 **********************************************************/
+
+/*lint -save -e* */
 static int bq25892_probe(struct i2c_client *client,
 			 const struct i2c_device_id *id)
 {
@@ -1686,6 +1708,7 @@ bq25892_fail_0:
 
 	return ret;
 }
+/*lint -restore*/
 
 /**********************************************************
 *  Function:       bq25892_remove
@@ -1779,10 +1802,13 @@ static int __init bq25892_init(void)
 *  Parameters:   NULL
 *  return value:  NULL
 **********************************************************/
+
+/*lint -save -e* */
 static void __exit bq25892_exit(void)
 {
 	i2c_del_driver(&bq25892_driver);
 }
+/*lint -restore*/
 
 module_init(bq25892_init);
 module_exit(bq25892_exit);

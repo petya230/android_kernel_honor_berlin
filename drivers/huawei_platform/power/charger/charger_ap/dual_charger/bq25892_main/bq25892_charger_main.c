@@ -286,6 +286,7 @@ struct bq25892_main_sysfs_field_info {
 	u8 shift;
 };
 
+/*lint -save -e* */
 static struct bq25892_main_sysfs_field_info bq25892_main_sysfs_field_tbl[] = {
 	/* sysfs name reg field in reg */
 	BQ25892_MAIN_SYSFS_FIELD_RW(en_hiz, 00, EN_HIZ),
@@ -349,6 +350,7 @@ static struct attribute *bq25892_main_sysfs_attrs[ARRAY_SIZE(bq25892_main_sysfs_
 static const struct attribute_group bq25892_main_sysfs_attr_group = {
 	.attrs = bq25892_main_sysfs_attrs,
 };
+/*lint -restore*/
 
 /**********************************************************
 *  Function:       bq25892_main_sysfs_init_attrs
@@ -356,6 +358,7 @@ static const struct attribute_group bq25892_main_sysfs_attr_group = {
 *  Parameters:   NULL
 *  return value:  NULL
 **********************************************************/
+/*lint -save -e* */
 static void bq25892_main_sysfs_init_attrs(void)
 {
 	int i, limit = ARRAY_SIZE(bq25892_main_sysfs_field_tbl);
@@ -388,6 +391,7 @@ static struct bq25892_main_sysfs_field_info
 
 	return &bq25892_main_sysfs_field_tbl[i];
 }
+/*lint -restore*/
 
 /**********************************************************
 *  Function:       bq25892_main_sysfs_show
@@ -436,6 +440,8 @@ static ssize_t bq25892_main_sysfs_show(struct device *dev,
 *                      count:unused
 *  return value:  0-sucess or others-fail
 **********************************************************/
+
+/*lint -save -e* */
 static ssize_t bq25892_main_sysfs_store(struct device *dev,
 					struct device_attribute *attr,
 					const char *buf, size_t count)
@@ -473,6 +479,7 @@ static ssize_t bq25892_main_sysfs_store(struct device *dev,
 
 	return count;
 }
+/*lint -restore*/
 
 /**********************************************************
 *  Function:       bq25892_main_sysfs_create_group
@@ -537,7 +544,7 @@ static int bq25892_main_device_check(void)
 **********************************************************/
 static int bq25892_main_set_bat_comp(int value)
 {
-	unsigned int bat_comp = 0;
+	int bat_comp = 0;
 	u8 bat_comp_reg = 0;
 	bat_comp = value;
 
@@ -568,7 +575,7 @@ static int bq25892_main_set_bat_comp(int value)
 **********************************************************/
 static int bq25892_main_set_vclamp(int value)
 {
-	unsigned int vclamp = 0;
+	int vclamp = 0;
 	u8 vclamp_reg = 0;
 	vclamp = value;
 	if (vclamp < VCLAMP_MIN_0) {
@@ -804,7 +811,7 @@ static int bq25892_main_set_input_current(int value)
 **********************************************************/
 static int bq25892_main_set_charge_current(int value)
 {
-	unsigned int currentmA = 0;
+	int currentmA = 0;
 	u8 ichg = 0;
 
 	currentmA = value;
@@ -1141,7 +1148,7 @@ static int bq25892_main_get_ilim(void)
 		msleep(delay_times);
 	}
 	if (cnt > 0) {
-		return ((10 * sum * Kilim) / (8 * rilim * cnt));	/*I =(K* Vlim)/(rilim*0.8) new spec from TI */
+		return ((10 * sum * Kilim) / (8 * (int)(rilim) * cnt));	/*I =(K* Vlim)/(rilim*0.8) new spec from TI */
 	} else {
 		hwlog_err("use 0 as default Vilim!\n");
 		return 0;
@@ -1426,6 +1433,8 @@ struct charge_device_ops bq25892_main_ops = {
 *  Parameters:   work:chargerIC fault interrupt workqueue
 *  return value:  NULL
 **********************************************************/
+
+/*lint -save -e* */
 static void bq25892_main_irq_work(struct work_struct *work)
 {
 	struct bq25892_main_device_info *di =
@@ -1685,6 +1694,7 @@ static struct i2c_driver bq25892_main_driver = {
 		   .of_match_table = of_match_ptr(bq25892_main_of_match),
 		   },
 };
+/*lint -restore*/
 
 /**********************************************************
 *  Function:       bq25892_main_init
@@ -1692,6 +1702,8 @@ static struct i2c_driver bq25892_main_driver = {
 *  Parameters:   NULL
 *  return value:  0-sucess or others-fail
 **********************************************************/
+
+/*lint -save -e* */
 static int __init bq25892_main_init(void)
 {
 	int ret = 0;
@@ -1716,6 +1728,8 @@ static void __exit bq25892_main_exit(void)
 
 rootfs_initcall(bq25892_main_init);
 module_exit(bq25892_main_exit);
+/*lint -restore*/
+
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("bq25892_main charger module driver");
 MODULE_AUTHOR("HW Inc");

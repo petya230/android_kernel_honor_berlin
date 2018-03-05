@@ -193,7 +193,7 @@ static int bfm_capture_and_save_framework_bootfail_log(bfmr_log_dst_t *pdst,
 static bool bfm_is_log_existed(unsigned long long rtc_time, unsigned int bootfaiL_errno);
 static int bfm_capture_and_save_bootfail_log(bfm_process_bootfail_param_t *pparam);
 static void bfm_process_after_save_bootfail_log(void);
-static char* bfm_get_boot_stage_name(unsigned int boot_fail_no, unsigned int boot_stage);
+static char* bfm_get_boot_stage_name(unsigned int boot_stage);
 static char* bfm_get_boot_fail_no_desc(bfmr_bootfail_errno_e bootfail_errno);
 static int bfm_save_bootfail_info_txt(bfmr_log_dst_t *pdst,
     bfmr_log_src_t *psrc,
@@ -218,6 +218,8 @@ static int bfmr_capture_and_save_bottom_layer_boot_fail_log(void);
 */
 static int bfmr_capture_and_save_log(bfmr_log_src_t *src, bfmr_log_dst_t *dst);
 static unsigned long long bfm_get_system_time(void);
+static ssize_t bfm_ctl_show(struct device *dev, struct device_attribute *attr, char *buf);
+static ssize_t bfm_ctl_store(struct kobject *kobj, struct kobj_attribute *attr,const char *buf, size_t count);
 
 
 /*----local variables-----------------------------------------------------------------*/
@@ -396,6 +398,8 @@ static bfm_boot_fail_no_desc_t s_bootfail_errno_desc[] =
     {PACKAGE_MANAGER_SETTING_FILE_DAMAGED, "package manager setting file damaged"},
 };
 
+static DEVICE_ATTR(bfm_ctl, (S_IRUGO | S_IWUSR), bfm_ctl_show, bfm_ctl_store);
+
 
 /*----function definitions--------------------------------------------------------------*/
 
@@ -416,36 +420,33 @@ static char* bfm_get_boot_fail_no_desc(bfmr_bootfail_errno_e bootfail_errno)
 }
 
 
-static char* bfm_get_boot_stage_name(unsigned int boot_fail_no, unsigned int boot_stage)
+static char* bfm_get_boot_stage_name(unsigned int boot_stage)
 {
     char *boot_stage_name = NULL;
 
-    if (bfmr_is_bl1_errno(boot_fail_no))
+    if (bfmr_is_bl1_stage(boot_stage))
     {
         boot_stage_name = "BL1";
     }
-    else if (bfmr_is_bl2_errno(boot_fail_no))
+    else if (bfmr_is_bl2_stage(boot_stage))
     {
         boot_stage_name = "BL2";
     }
-    else if (bfmr_is_kernel_errno(boot_fail_no))
+    else if (bfmr_is_kernel_stage(boot_stage))
     {
         boot_stage_name = "kernel";
     }
-    else if (bfmr_is_native_errno(boot_fail_no))
+    else if (bfmr_is_native_stage(boot_stage))
     {
-        if (bfmr_is_boot_success(boot_stage))
-        {
-            boot_stage_name = "native(error occurred after boot success)";
-        }
-        else
-        {
             boot_stage_name = "native";
-        }
     }
-    else if (bfmr_is_android_framework_errno(boot_fail_no))
+    else if (bfmr_is_android_framework_stage(boot_stage))
     {
         boot_stage_name = "framework";
+    }
+    else if (bfmr_is_boot_success(boot_stage))
+    {
+        boot_stage_name = "boot-success";
     }
     else
     {
@@ -478,10 +479,10 @@ static int bfm_save_bootfail_info_txt(bfmr_log_dst_t *pdst, bfmr_log_src_t *psrc
     (void)snprintf(pdata, BFMR_TEMP_BUF_LEN - 1, BFM_BFI_FILE_CONTENT_FORMAT,
         bfmr_convert_rtc_time_to_asctime(pparam->bootfail_time),
         bfm_get_platform_name(),
-        bfm_get_boot_stage_name((unsigned int)pparam->bootfail_errno, (unsigned int)pparam->boot_stage),
+        bfm_get_boot_stage_name((unsigned int)pparam->boot_stage),
         bfm_get_boot_fail_no_desc(pparam->bootfail_errno),
         bfm_get_platform_name(),
-        bfm_get_boot_stage_name((unsigned int)pparam->bootfail_errno, (unsigned int)pparam->boot_stage),
+        bfm_get_boot_stage_name((unsigned int)pparam->boot_stage),
         pparam->is_system_rooted,
         pparam->is_user_sensible,
         pparam->bootfail_time,
@@ -646,7 +647,7 @@ static int bfm_get_log_count(char *bfmr_log_root_path)
     {
         while (num > 0)
         {
-            struct stat st;
+            bfm_stat_t st;
             int ret;
 
             memset(full_path, 0, BFMR_MAX_PATH);
@@ -658,8 +659,8 @@ static int bfm_get_log_count(char *bfmr_log_root_path)
                 continue;
             }
 
-            memset((void *)&st, 0, sizeof(struct stat));
-            ret = sys_newlstat(full_path, &st);
+            memset((void *)&st, 0, sizeof(bfm_stat_t));
+            ret = bfm_sys_lstat(full_path, &st);
             if ((0 == ret)
                 && (S_ISDIR(st.st_mode))
                 && (0 != strcmp(dirp->d_name, BFM_UPLOADING_DIR_NAME)))
@@ -732,14 +733,15 @@ static void bfm_delete_dir(char *log_path)
     {
         while (num > 0)
         {
-            struct stat st;
+            bfm_stat_t st;
             int ret;
 
             memset(full_path, 0, BFMR_MAX_PATH);
+            memset((void *)&st, 0, sizeof(bfm_stat_t));
             snprintf(full_path, BFMR_MAX_PATH - 1, "%s/%s", log_path, dirp->d_name);
             if ((0 != strcmp(dirp->d_name, ".")) && (0 != strcmp(dirp->d_name, "..")))
             {
-                ret = sys_newlstat(full_path, &st);
+                ret = bfm_sys_lstat(full_path, &st);
                 if (0 == ret)
                 {
                     if (S_ISDIR(st.st_mode))
@@ -1245,7 +1247,11 @@ static int bfm_capture_and_save_bootfail_log(bfm_process_bootfail_param_t *ppara
     default:
         {
             BFMR_PRINT_KEY_INFO("Boot fail @ Unknown stage, bootfail_errno: 0x%x\n", (unsigned int)pparam->bootfail_errno);
-            return -1;
+            bfm_capture_and_save_bl1_bootfail_log(&dst, &src, pparam);
+            bfm_capture_and_save_bl2_bootfail_log(&dst, &src, pparam);
+            bfm_capture_and_save_kernel_bootfail_log(&dst, &src, pparam);
+            bfm_capture_and_save_ramoops_bootfail_log(&dst, &src, pparam);
+            break;
         }
     }
 
@@ -1344,8 +1350,14 @@ int boot_fail_err(bfmr_bootfail_errno_e bootfail_errno,
     static bool s_is_comp_init = false;
 
     BFMR_PRINT_ENTER();
+    if (!bfmr_has_been_enabled())
+    {
+        BFMR_PRINT_KEY_INFO("BFMR is disabled!\n");
+        return 0;
+    }
+
     mutex_lock(&s_process_boot_fail_mutex);
-    if(!s_is_comp_init)
+    if (!s_is_comp_init)
     {
         complete(&s_process_boot_fail_comp);
         s_is_comp_init = true;
@@ -1364,7 +1376,7 @@ int boot_fail_err(bfmr_bootfail_errno_e bootfail_errno,
 
     if (DO_NOTHING == suggested_recovery_method)
     {
-        if(wait_for_completion_timeout(&s_process_boot_fail_comp, msecs_to_jiffies(BFM_SAVE_LOG_MAX_TIME)) == 0)
+        if (wait_for_completion_timeout(&s_process_boot_fail_comp, msecs_to_jiffies(BFM_SAVE_LOG_MAX_TIME)) == 0)
         {
             BFMR_PRINT_KEY_INFO("last boot_err is in processing, this error skip for DO_NOTHING!\n");
             goto __out;
@@ -1517,7 +1529,7 @@ static int bfm_create_done_file_for_each_log(void)
     {
         while (num > 0)
         {
-            struct stat st;
+            bfm_stat_t st;
             int ret;
 
             memset(full_path, 0, BFMR_MAX_PATH);
@@ -1529,8 +1541,8 @@ static int bfm_create_done_file_for_each_log(void)
                 continue;
             }
 
-            memset((void *)&st, 0, sizeof(struct stat));
-            ret = sys_newlstat(full_path, &st);
+            memset((void *)&st, 0, sizeof(bfm_stat_t));
+            ret = bfm_sys_lstat(full_path, &st);
             if (0 != ret)
             {
                 num -= dirp->d_reclen;
@@ -1637,7 +1649,7 @@ static int bfm_lookup_dir_by_create_time(const char *root,
     {
         while (num > 0)
         {
-            struct stat st;
+            bfm_stat_t st;
             int ret;
 
             memset(full_path, 0, BFMR_MAX_PATH);
@@ -1649,8 +1661,8 @@ static int bfm_lookup_dir_by_create_time(const char *root,
                 continue;
             }
 
-            memset((void *)&st, 0, sizeof(struct stat));
-            ret = sys_newlstat(full_path, &st);
+            memset((void *)&st, 0, sizeof(bfm_stat_t));
+            ret = bfm_sys_lstat(full_path, &st);
             if (0 != ret)
             {
                 num -= dirp->d_reclen;
@@ -1799,31 +1811,6 @@ __out:
 }
 
 
-static char* bfm_reverse_find_string(const char *psrc, const char *pstr_to_be_found)
-{
-    char *ptemp = (char *)psrc;
-    char *pprev = NULL;
-    unsigned int len = 0;
-
-    if (unlikely((NULL == psrc) || (NULL == pstr_to_be_found)))
-    {
-        BFMR_PRINT_INVALID_PARAMS("psrc: %p pstr_to_be_found: %p\n", psrc, pstr_to_be_found);
-        return NULL;
-    }
-
-    len = strlen(pstr_to_be_found);
-    ptemp = strstr(ptemp, pstr_to_be_found);
-    while (NULL != ptemp)
-    {
-        pprev = ptemp;
-        ptemp += len;
-        ptemp = strstr(ptemp, pstr_to_be_found);
-    }
-
-    return pprev;
-}
-
-
 static int bfm_update_recovery_result(void)
 {
     int fd = -1;
@@ -1900,7 +1887,7 @@ static int bfm_update_recovery_result(void)
     }
     memset(ppart_file_data, 0, BFMR_TEMP_BUF_LEN);
 
-    ptemp = bfm_reverse_find_string(pfile_data, BFM_RECOVERY_METHOD_FIELD);
+    ptemp = bfmr_reverse_find_string(pfile_data, BFM_RECOVERY_METHOD_FIELD);
     if (NULL == ptemp)
     {
         BFMR_PRINT_ERR("Invalid file data:\n%s\n in file [%s]!\n", pfile_data, precovery_info_file_path);
@@ -1912,7 +1899,7 @@ static int bfm_update_recovery_result(void)
         recovery_method, BFM_RECOVERY_SUCCESS_INT_VALUE);
 
     /* 5. find the last fileld "rcvResult:" */
-    ptemp = bfm_reverse_find_string(pfile_data, BFM_RECOVERY_RESULT_FIELD);
+    ptemp = bfmr_reverse_find_string(pfile_data, BFM_RECOVERY_RESULT_FIELD);
     if (NULL == ptemp)
     {
         BFMR_PRINT_ERR("Invalid file data:\n%s\n in file [%s]!\n", pfile_data, precovery_info_file_path);
@@ -2147,10 +2134,17 @@ static int bfmr_capture_and_save_log(bfmr_log_src_t *src, bfmr_log_dst_t *dst)
         }
     case DST_RAW_PART:
         {
-            bfmr_save_log_to_raw_part(dst->dst_info.raw_part.raw_part_name,
-                                      dst->dst_info.raw_part.offset,
-                                      s_log_type_buffer_info[i].buf, bytes_read);
-            bfmr_update_raw_log_info(src, dst, bytes_read);
+            if (dst->dst_info.raw_part.offset >=0) 
+            {
+                bfmr_save_log_to_raw_part(dst->dst_info.raw_part.raw_part_name,
+                    (unsigned long long)dst->dst_info.raw_part.offset,
+                    s_log_type_buffer_info[i].buf, bytes_read);
+                bfmr_update_raw_log_info(src, dst, bytes_read);
+            }
+            else
+            {
+                BFMR_PRINT_ERR("dst->dst_info.raw_part.offset is negative [%d]\n", dst->dst_info.raw_part.offset);
+            }
             break;
         }
     case DST_MEMORY_BUFFER:
@@ -2180,6 +2174,12 @@ static long bfmr_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
     {
         BFMR_PRINT_KEY_INFO("BFMR is disabled!\n");
         return -EPERM;
+    }
+
+    if (NULL == (void *)arg)
+    {
+        BFMR_PRINT_INVALID_PARAMS("arg: %p\n", (void *)arg);
+        return -EINVAL;
     }
 
     switch (cmd)
@@ -2230,11 +2230,8 @@ static long bfmr_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
             bfmr_get_boot_stage(&old_boot_stage);
             copy_from_user(&boot_stage, (int *)arg, sizeof(boot_stage));
-            if ((unsigned int)old_boot_stage < (unsigned int)(boot_stage))
-            {
-                BFMR_PRINT_KEY_INFO("set bfmr_bootstage to: 0x%08x\n", (unsigned int)boot_stage);
-                bfmr_set_boot_stage(boot_stage);
-            }
+            BFMR_PRINT_KEY_INFO("set bfmr_bootstage to: 0x%08x\n", (unsigned int)boot_stage);
+            bfmr_set_boot_stage(boot_stage);
 
             break;
         }
@@ -2249,11 +2246,12 @@ static long bfmr_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
             }
             memset((void *)pboot_fail_info, 0, sizeof(struct bfmr_boot_fail_info));
             copy_from_user(pboot_fail_info, ((struct bfmr_boot_fail_info *)arg), sizeof(struct bfmr_boot_fail_info));
+            pboot_fail_info->log_path[sizeof(pboot_fail_info->log_path) - 1] = '\0';
             BFMR_PRINT_KEY_INFO("bootfail_errno: 0x%08x, suggested_recovery_method: %d, log_file [%s]'s lenth:%ld\n",
                 (unsigned int)pboot_fail_info->boot_fail_no, (int)pboot_fail_info->suggested_recovery_method,
                 pboot_fail_info->log_path, bfmr_get_file_length(pboot_fail_info->log_path));
             (void)boot_fail_err(pboot_fail_info->boot_fail_no, pboot_fail_info->suggested_recovery_method, pboot_fail_info->log_path);
-            bfmr_free(dev_path);
+            bfmr_free(pboot_fail_info);
             break;
         }
     case BFMR_GET_DEV_PATH:
@@ -2267,11 +2265,36 @@ static long bfmr_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
             }
             memset((void *)dev_path, 0, sizeof(struct bfmr_dev_path));
 
-            copy_from_user(dev_path->dev_name, ((struct bfmr_dev_path *)arg)->dev_name, sizeof(dev_path->dev_name) - 1);
-            bfmr_get_device_full_path(dev_path->dev_name, dev_path->dev_path, sizeof(dev_path->dev_path));
-            copy_to_user((struct bfmr_dev_path *)arg, dev_path, sizeof(struct bfmr_dev_path));
+            if (0 != copy_from_user(dev_path->dev_name, ((struct bfmr_dev_path *)arg)->dev_name, sizeof(dev_path->dev_name) - 1))
+            {
+                BFMR_PRINT_KEY_INFO("Failed to copy dev_name from user buffer!\n");
+                bfmr_free(dev_path);
+                ret = -EFAULT;
+                break;
+            }
+            (void)bfmr_get_device_full_path(dev_path->dev_name, dev_path->dev_path, sizeof(dev_path->dev_path));
+            if (0 != copy_to_user((struct bfmr_dev_path *)arg, dev_path, sizeof(struct bfmr_dev_path)))
+            {
+                BFMR_PRINT_KEY_INFO("Failed to copy device full path to user buffer!\n");
+                bfmr_free(dev_path);
+                ret = -EFAULT;
+                break;
+            }
             BFMR_PRINT_KEY_INFO("The full path of part [%s] is [%s]\n", dev_path->dev_name, dev_path->dev_path);
             bfmr_free(dev_path);
+            break;
+        }
+    case BFMR_ENABLE_CTRL:
+        {
+            int bfmr_enbale_flag;
+            if (0 != copy_from_user(&bfmr_enbale_flag, (int *)arg, sizeof(int)))
+            {
+                BFMR_PRINT_KEY_INFO("Failed to copy bfmr enable flag from user!\n");
+                ret = -EFAULT;
+                break;
+            }
+            BFMR_PRINT_KEY_INFO("set bfmr enable flag: 0x%08x\n", (unsigned int)bfmr_enbale_flag);
+            bfmr_enable_ctl(bfmr_enbale_flag);  
             break;
         }
     default:
@@ -2317,6 +2340,7 @@ static int bfm_process_bottom_layer_boot_fail(void *param)
     int ret = -1;
     int count = sizeof(s_log_type_buffer_info) / sizeof(s_log_type_buffer_info[0]);
     unsigned int bytes_read = 0U;
+    bool find_log_type_buffer_info = false;
 
     mutex_lock(&s_process_boot_fail_mutex);
     memset((void *)&src, 0, sizeof(src));
@@ -2337,7 +2361,13 @@ static int bfm_process_bottom_layer_boot_fail(void *param)
             goto __out;
         }
         memset(s_log_type_buffer_info[i].buf, 0, s_log_type_buffer_info[i].buf_len + 1);
+        find_log_type_buffer_info = true;
         break;
+    }
+    if (!find_log_type_buffer_info)
+    {
+        BFMR_PRINT_ERR("Can not find log buffer info for \"LOG_TYPE_BFMR_TEMP_BUF\"\n");
+        goto __out;
     }
 
     bytes_read = bfmr_capture_log_from_system(s_log_type_buffer_info[i].buf,
@@ -2438,7 +2468,8 @@ static ssize_t bfm_ctl_store(struct kobject *kobj, struct kobj_attribute *attr,c
     int value;
     int sugRcvMethod = 0;
     int field_count = 0;
-    char logFilePath[BFMR_SIZE_1K] = {0};
+    char logFilePath[BFMR_SIZE_512] = {0};
+    char input_format[BFMR_SIZE_INPUT_FORMAT];
     int result = -1;
     bool need_up_bfm_file_sem = true; /* It must be true for default */
     enum BFM_BOOT_STAGE_CODE boot_stage = BL1_STAGE_START;
@@ -2468,7 +2499,8 @@ static ssize_t bfm_ctl_store(struct kobject *kobj, struct kobj_attribute *attr,c
     down(&s_bfm_file_sem);
     printk(KERN_ERR "func: %s Line: %d input buf: [%s] count: %u\n", __func__, __LINE__, buf, (unsigned int)count);
     memset(logFilePath, 0, sizeof(logFilePath));
-    field_count = sscanf(buf,"0x%x 0x%x %d %s", &cmd, &value, &sugRcvMethod, logFilePath);
+    snprintf(input_format,sizeof(input_format),"%s%d%s","0x%x 0x%x %d %",sizeof(logFilePath)-1,"s");
+    field_count = sscanf(buf, input_format, &cmd, &value, &sugRcvMethod, logFilePath);
     printk(KERN_ERR "func: %s Line: %d parsed param: field_count: %d (cmd: %08x value: %08x sugRcvMethod: %d logFilePath: %s)\n",
         __func__, __LINE__, field_count, cmd, value, sugRcvMethod, logFilePath);
     if (0 != strlen(logFilePath))
@@ -2590,9 +2622,17 @@ static ssize_t bfm_ctl_store(struct kobject *kobj, struct kobj_attribute *attr,c
 
     return result;
 }
+#else
+static ssize_t bfm_ctl_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+    return -EINVAL;
+}
 
 
-static DEVICE_ATTR(bfm_ctl, (S_IRUGO | S_IWUSR), bfm_ctl_show, bfm_ctl_store);
+static ssize_t bfm_ctl_store(struct kobject *kobj, struct kobj_attribute *attr,const char *buf, size_t count)
+{
+    return -EINVAL;
+}
 #endif
 
 
@@ -2624,13 +2664,13 @@ int bfm_init(void)
         return ret;
     }
 
-#if USE_OLD_BFM
     ret = device_create_file(s_bfmr_miscdev.this_device, &dev_attr_bfm_ctl);
     if (0 != ret)
     {
         BFMR_PRINT_ERR("Failed to create device file for BFMR\n");
         return ret;
     }
+#if USE_OLD_BFM
     sema_init(&s_bfm_file_sem, 1);
 #endif
 
@@ -2639,7 +2679,6 @@ int bfm_init(void)
     chipsets_init_param.log_saving_param.capture_and_save_bootfail_log = bfm_capture_and_save_bootfail_log;
     bfm_chipsets_init(&chipsets_init_param);
     bfmr_capture_and_save_bottom_layer_boot_fail_log();
-    bfmr_change_own_mode(BFMR_DEV_PATH, BFMR_AID_SYSTEM, BFMR_AID_SYSTEM, 0660);
 
     return 0;
 }

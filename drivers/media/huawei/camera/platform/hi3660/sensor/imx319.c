@@ -13,7 +13,9 @@
 #include <linux/pinctrl/consumer.h>
 #include "../pmic/hw_pmic.h"
 
-//lint -save -e846 -e866 -e826 -e785 -e838 -e715 -e747 -e774 -e778 -e732 -e731
+//lint -save -e846 -e866 -e826 -e785 -e838 -e715 -e747 -e774 -e778 -e732 -e731 -e569 -e650
+//lint -save -e31
+
 #define I2S(i) container_of((i), sensor_t, intf)
 static hwsensor_vtbl_t s_imx319_vtbl;
 static bool power_on_status = false;//false: power off, true:power on
@@ -69,6 +71,47 @@ static struct sensor_power_setting imx319_power_setting[] = {
     },
 };
 
+/* imx319 A&B project */
+static struct sensor_power_setting imx319_power_setting_ab[] = {
+    //SENSOR IOVDD 1.8V VOUT21
+    {
+        .seq_type = SENSOR_IOVDD,
+        .config_val = LDO_VOLTAGE_1P8V,
+        .sensor_index = SENSOR_INDEX_INVALID,
+        .delay = 0,
+    },
+
+    //MCAM1 AVDD 2.85V
+    {
+        .seq_type = SENSOR_AVDD,
+        .data = (void*)"front-sensor-avdd",
+        .config_val = LDO_VOLTAGE_V2P85V,
+        .sensor_index = SENSOR_INDEX_INVALID,
+        .delay = 0,
+    },
+
+    //MCAM1 DVDD 1.1V
+    {
+        .seq_type = SENSOR_DVDD,
+        .config_val = LDO_VOLTAGE_V1P1V,
+        .sensor_index = SENSOR_INDEX_INVALID,
+        .delay = 0,
+    },
+
+    {
+        .seq_type = SENSOR_MCLK,
+        .sensor_index = SENSOR_INDEX_INVALID,
+        .delay = 1,
+    },
+
+    {
+        .seq_type = SENSOR_RST,
+        .config_val = SENSOR_GPIO_LOW,
+        .sensor_index = SENSOR_INDEX_INVALID,
+        .delay = 1,
+    },
+};
+
 static sensor_t s_imx319 =
 {
     .intf = { .vtbl = &s_imx319_vtbl, },
@@ -78,11 +121,24 @@ static sensor_t s_imx319 =
      },
 };
 
+static sensor_t s_imx319_ab =
+{
+    .intf = { .vtbl = &s_imx319_vtbl, },
+    .power_setting_array = {
+        .size = ARRAY_SIZE(imx319_power_setting_ab),
+        .power_setting = imx319_power_setting_ab,
+    },
+};
+
 static const struct of_device_id s_imx319_dt_match[] =
 {
     {
         .compatible = "huawei,imx319",
         .data = &s_imx319.intf,
+    },
+    {
+        .compatible = "huawei,imx319_ab",
+        .data = &s_imx319_ab.intf,
     },
     {
 

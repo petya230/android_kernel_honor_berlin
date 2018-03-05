@@ -260,6 +260,9 @@ IMG_RESULT PVDECSEC_Initialise(
 #ifdef PVDECSEC_FAKE_SECURITY
     pvdecsec_disableFakeSecurity(psPvdecContext);
 #endif
+    ui32Result = PVDECIO_PrepareFirmware(psPvdecContext->hDev,
+                                         IMG_NULL);
+    IMG_ASSERT(ui32Result == IMG_SUCCESS);
 
     sPowerOnArgs.ui64Ptd = psPtdInfo->ui32PtdPhysAddr;
 #ifdef PVDEC_REG_FW_UPLOAD
@@ -382,6 +385,16 @@ PVDECSEC_DeInitialise(
 #ifdef PVDECSEC_FAKE_SECURITY
     pvdecsec_enableFakeSecurity(psPvdecContext);
 #endif
+
+    {
+    IMG_UINT32 ui32i;
+    /* Clear comms header in VLR */
+    for (ui32i=0; ui32i<COMMS_HEADER_SIZE; ui32i++)
+    {
+        PVDECIO_WriteRegister(psPvdecContext->hDev, REGION_PVDEC_VLR_REGSPACE,
+                              ui32i*sizeof(IMG_UINT32), 0, -1, 0xFF);
+    }
+    }
 
     psPvdecContext->bInitialised = IMG_FALSE;
 

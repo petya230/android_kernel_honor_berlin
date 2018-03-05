@@ -240,19 +240,19 @@ static void etm4_enable_hw(void *info)
 	}
 	for (i = 0; i < drvdata->nr_addr_cmp; i++) {
 		writeq_relaxed(drvdata->addr_val[i],
-			       drvdata->base + TRCACVRn(i));
+			       drvdata->base + TRCACVRn(i));/* lint !e679 */
 		writeq_relaxed(drvdata->addr_acc[i],
-			       drvdata->base + TRCACATRn(i));
+			       drvdata->base + TRCACATRn(i));/* lint !e679 */
 	}
 	for (i = 0; i < drvdata->numcidc; i++)
 		writeq_relaxed(drvdata->ctxid_val[i],
-			       drvdata->base + TRCCIDCVRn(i));
+			       drvdata->base + TRCCIDCVRn(i));/* lint !e679 */
 	writel_relaxed(drvdata->ctxid_mask0, drvdata->base + TRCCIDCCTLR0);
 	writel_relaxed(drvdata->ctxid_mask1, drvdata->base + TRCCIDCCTLR1);
 
 	for (i = 0; i < drvdata->numvmidc; i++)
 		writeq_relaxed(drvdata->vmid_val[i],
-			       drvdata->base + TRCVMIDCVRn(i));
+			       drvdata->base + TRCVMIDCVRn(i));/* lint !e679 */
 	writel_relaxed(drvdata->vmid_mask0, drvdata->base + TRCVMIDCCTLR0);
 	writel_relaxed(drvdata->vmid_mask1, drvdata->base + TRCVMIDCCTLR1);
 
@@ -1079,7 +1079,7 @@ static ssize_t s_exlevel_vinst_show(struct device *dev,
 	unsigned long val;
 	struct etmv4_drvdata *drvdata = dev_get_drvdata(dev->parent);
 
-	val = BMVAL(drvdata->vinst_ctrl, 16, 19);
+	val = BMVAL(drvdata->vinst_ctrl, 16, 19);/* lint !e648 */
 	return scnprintf(buf, PAGE_SIZE, "%#lx\n", val);
 }
 
@@ -1112,7 +1112,7 @@ static ssize_t ns_exlevel_vinst_show(struct device *dev,
 	struct etmv4_drvdata *drvdata = dev_get_drvdata(dev->parent);
 
 	/* EXLEVEL_NS, bits[23:20] */
-	val = BMVAL(drvdata->vinst_ctrl, 20, 23);
+	val = BMVAL(drvdata->vinst_ctrl, 20, 23);/* lint !e648 */
 	return scnprintf(buf, PAGE_SIZE, "%#lx\n", val);
 }
 
@@ -1201,12 +1201,13 @@ static ssize_t addr_instdatatype_store(struct device *dev,
 
 	if (strlen(buf) >= 20)
 		return -EINVAL;
+	/* cppcheck-suppress * */
 	if (sscanf(buf, "%s", str) != 1)
 		return -EINVAL;
 
 	spin_lock(&drvdata->spinlock);
 	idx = drvdata->addr_idx;
-	if (!strcmp(str, "instr"))
+	if (!strcmp(str, "instr"))/* lint !e421 */
 		/* TYPE, bits[1:0] */
 		drvdata->addr_acc[idx] &= ~(BIT(0) | BIT(1));
 
@@ -1457,7 +1458,7 @@ static ssize_t addr_ctxtype_show(struct device *dev,
 	spin_lock(&drvdata->spinlock);
 	idx = drvdata->addr_idx;
 	/* CONTEXTTYPE, bits[3:2] */
-	val = BMVAL(drvdata->addr_acc[idx], 2, 3);
+	val = BMVAL(drvdata->addr_acc[idx], 2, 3);/* lint !e648 */
 	len = scnprintf(buf, PAGE_SIZE, "%s\n", val == ETM_CTX_NONE ? "none" :
 			(val == ETM_CTX_CTXID ? "ctxid" :
 			 (val == ETM_CTX_VMID ? "vmid" : "all")));
@@ -1480,22 +1481,22 @@ static ssize_t addr_ctxtype_store(struct device *dev,
 
 	spin_lock(&drvdata->spinlock);
 	idx = drvdata->addr_idx;
-	if (!strcmp(str, "none"))
+	if (!strcmp(str, "none"))/* lint !e421 */
 		/* start by clearing context type bits */
 		drvdata->addr_acc[idx] &= ~(BIT(2) | BIT(3));
-	else if (!strcmp(str, "ctxid")) {
+	else if (!strcmp(str, "ctxid")) {/* lint !e421 */
 		/* 0b01 The trace unit performs a Context ID */
 		if (drvdata->numcidc) {
 			drvdata->addr_acc[idx] |= BIT(2);
 			drvdata->addr_acc[idx] &= ~BIT(3);
 		}
-	} else if (!strcmp(str, "vmid")) {
+	} else if (!strcmp(str, "vmid")) {/* lint !e421 */
 		/* 0b10 The trace unit performs a VMID */
 		if (drvdata->numvmidc) {
 			drvdata->addr_acc[idx] &= ~BIT(2);
 			drvdata->addr_acc[idx] |= BIT(3);
 		}
-	} else if (!strcmp(str, "all")) {
+	} else if (!strcmp(str, "all")) {/* lint !e421 */
 		/*
 		 * 0b11 The trace unit performs a Context ID
 		 * comparison and a VMID
@@ -1521,7 +1522,7 @@ static ssize_t addr_context_show(struct device *dev,
 	spin_lock(&drvdata->spinlock);
 	idx = drvdata->addr_idx;
 	/* context ID comparator bits[6:4] */
-	val = BMVAL(drvdata->addr_acc[idx], 4, 6);
+	val = BMVAL(drvdata->addr_acc[idx], 4, 6);/* lint !e648 */
 	spin_unlock(&drvdata->spinlock);
 	return scnprintf(buf, PAGE_SIZE, "%#lx\n", val);
 }
@@ -1572,7 +1573,7 @@ static ssize_t seq_idx_store(struct device *dev,
 
 	if (kstrtoul(buf, 16, &val))
 		return -EINVAL;
-	if (val >= drvdata->nrseqstate - 1)
+	if (val >= (unsigned long)(drvdata->nrseqstate - 1))
 		return -EINVAL;
 
 	/*
@@ -2058,7 +2059,7 @@ static ssize_t ctxid_masks_store(struct device *dev,
 		 */
 		for (j = 0; j < 8; j++) {
 			if (maskbyte & 1)
-				drvdata->ctxid_val[i] &= ~(0xFF << (j * 8));
+				drvdata->ctxid_val[i] &= ~(0xFF << (j * 8));/* lint !e502 !e647 */
 			maskbyte >>= 1;
 		}
 		/* Select the next ctxid comparator mask value */
@@ -2235,7 +2236,7 @@ static ssize_t vmid_masks_store(struct device *dev,
 		 */
 		for (j = 0; j < 8; j++) {
 			if (maskbyte & 1)
-				drvdata->vmid_val[i] &= ~(0xFF << (j * 8));
+				drvdata->vmid_val[i] &= ~(0xFF << (j * 8));/* lint !e502 !e647 */
 			maskbyte >>= 1;
 		}
 		/* Select the next vmid comparator mask value */
@@ -2314,6 +2315,7 @@ static struct attribute *coresight_etmv4_attrs[] = {
 	NULL,
 };
 
+/* cppcheck-suppress * */
 #define coresight_simple_func(name, offset)				\
 static ssize_t name##_show(struct device *_dev,				\
 			   struct device_attribute *attr, char *buf)	\
@@ -2419,41 +2421,41 @@ static void etm4_init_arch_data(void *info)
 	etmidr0 = readl_relaxed(drvdata->base + TRCIDR0);
 
 	/* INSTP0, bits[2:1] P0 tracing support field */
-	if (BMVAL(etmidr0, 1, 1) && BMVAL(etmidr0, 2, 2))
+	if (BMVAL(etmidr0, 1, 1) && BMVAL(etmidr0, 2, 2))/* lint !e648 */
 		drvdata->instrp0 = true;
 	else
 		drvdata->instrp0 = false;
 
 	/* TRCBB, bit[5] Branch broadcast tracing support bit */
-	if (BMVAL(etmidr0, 5, 5))
+	if (BMVAL(etmidr0, 5, 5))/* lint !e648 */
 		drvdata->trcbb = true;
 	else
 		drvdata->trcbb = false;
 
 	/* TRCCOND, bit[6] Conditional instruction tracing support bit */
-	if (BMVAL(etmidr0, 6, 6))
+	if (BMVAL(etmidr0, 6, 6))/* lint !e648 */
 		drvdata->trccond = true;
 	else
 		drvdata->trccond = false;
 
 	/* TRCCCI, bit[7] Cycle counting instruction bit */
-	if (BMVAL(etmidr0, 7, 7))
+	if (BMVAL(etmidr0, 7, 7))/* lint !e648 */
 		drvdata->trccci = true;
 	else
 		drvdata->trccci = false;
 
 	/* RETSTACK, bit[9] Return stack bit */
-	if (BMVAL(etmidr0, 9, 9))
+	if (BMVAL(etmidr0, 9, 9))/* lint !e648 */
 		drvdata->retstack = true;
 	else
 		drvdata->retstack = false;
 
 	/* NUMEVENT, bits[11:10] Number of events field */
-	drvdata->nr_event = BMVAL(etmidr0, 10, 11);
+	drvdata->nr_event = BMVAL(etmidr0, 10, 11);/* lint !e648 */
 	/* QSUPP, bits[16:15] Q element support field */
-	drvdata->q_support = BMVAL(etmidr0, 15, 16);
+	drvdata->q_support = BMVAL(etmidr0, 15, 16);/* lint !e648 */
 	/* TSSIZE, bits[28:24] Global timestamp size field */
-	drvdata->ts_size = BMVAL(etmidr0, 24, 28);
+	drvdata->ts_size = BMVAL(etmidr0, 24, 28);/* lint !e648 */
 
 	/* base architecture of trace unit */
 	etmidr1 = readl_relaxed(drvdata->base + TRCIDR1);
@@ -2461,57 +2463,57 @@ static void etm4_init_arch_data(void *info)
 	 * TRCARCHMIN, bits[7:4] architecture the minor version number
 	 * TRCARCHMAJ, bits[11:8] architecture major versin number
 	 */
-	drvdata->arch = BMVAL(etmidr1, 4, 11);
+	drvdata->arch = BMVAL(etmidr1, 4, 11);/* lint !e648 */
 
 	/* maximum size of resources */
 	etmidr2 = readl_relaxed(drvdata->base + TRCIDR2);
 	/* CIDSIZE, bits[9:5] Indicates the Context ID size */
-	drvdata->ctxid_size = BMVAL(etmidr2, 5, 9);
+	drvdata->ctxid_size = BMVAL(etmidr2, 5, 9);/* lint !e648 */
 	/* VMIDSIZE, bits[14:10] Indicates the VMID size */
-	drvdata->vmid_size = BMVAL(etmidr2, 10, 14);
+	drvdata->vmid_size = BMVAL(etmidr2, 10, 14);/* lint !e648 */
 	/* CCSIZE, bits[28:25] size of the cycle counter in bits minus 12 */
-	drvdata->ccsize = BMVAL(etmidr2, 25, 28);
+	drvdata->ccsize = BMVAL(etmidr2, 25, 28);/* lint !e648 */
 
 	etmidr3 = readl_relaxed(drvdata->base + TRCIDR3);
 	/* CCITMIN, bits[11:0] minimum threshold value that can be programmed */
-	drvdata->ccitmin = BMVAL(etmidr3, 0, 11);
+	drvdata->ccitmin = BMVAL(etmidr3, 0, 11);/* lint !e648 */
 	/* EXLEVEL_S, bits[19:16] Secure state instruction tracing */
-	drvdata->s_ex_level = BMVAL(etmidr3, 16, 19);
+	drvdata->s_ex_level = BMVAL(etmidr3, 16, 19);/* lint !e648 */
 	/* EXLEVEL_NS, bits[23:20] Non-secure state instruction tracing */
-	drvdata->ns_ex_level = BMVAL(etmidr3, 20, 23);
+	drvdata->ns_ex_level = BMVAL(etmidr3, 20, 23);/* lint !e648 */
 
 	/*
 	 * TRCERR, bit[24] whether a trace unit can trace a
 	 * system error exception.
 	 */
-	if (BMVAL(etmidr3, 24, 24))
+	if (BMVAL(etmidr3, 24, 24))/* lint !e648 */
 		drvdata->trc_error = true;
 	else
 		drvdata->trc_error = false;
 
 	/* SYNCPR, bit[25] implementation has a fixed synchronization period? */
-	if (BMVAL(etmidr3, 25, 25))
+	if (BMVAL(etmidr3, 25, 25))/* lint !e648 */
 		drvdata->syncpr = true;
 	else
 		drvdata->syncpr = false;
 
 	/* STALLCTL, bit[26] is stall control implemented? */
-	if (BMVAL(etmidr3, 26, 26))
+	if (BMVAL(etmidr3, 26, 26))/* lint !e648 */
 		drvdata->stallctl = true;
 	else
 		drvdata->stallctl = false;
 
 	/* SYSSTALL, bit[27] implementation can support stall control? */
-	if (BMVAL(etmidr3, 27, 27))
+	if (BMVAL(etmidr3, 27, 27))/* lint !e648 */
 		drvdata->sysstall = true;
 	else
 		drvdata->sysstall = false;
 
 	/* NUMPROC, bits[30:28] the number of PEs available for tracing */
-	drvdata->nr_pe = BMVAL(etmidr3, 28, 30);
+	drvdata->nr_pe = BMVAL(etmidr3, 28, 30);/* lint !e648 */
 
 	/* NOOVERFLOW, bit[31] is trace overflow prevention supported */
-	if (BMVAL(etmidr3, 31, 31))
+	if (BMVAL(etmidr3, 31, 31))/* lint !e648 */
 		drvdata->nooverflow = true;
 	else
 		drvdata->nooverflow = false;
@@ -2519,28 +2521,28 @@ static void etm4_init_arch_data(void *info)
 	/* number of resources trace unit supports */
 	etmidr4 = readl_relaxed(drvdata->base + TRCIDR4);
 	/* NUMACPAIRS, bits[0:3] number of addr comparator pairs for tracing */
-	drvdata->nr_addr_cmp = BMVAL(etmidr4, 0, 3);
+	drvdata->nr_addr_cmp = BMVAL(etmidr4, 0, 3);/* lint !e648 */
 	/* NUMPC, bits[15:12] number of PE comparator inputs for tracing */
-	drvdata->nr_pe_cmp = BMVAL(etmidr4, 12, 15);
+	drvdata->nr_pe_cmp = BMVAL(etmidr4, 12, 15);/* lint !e648 */
 	/* NUMRSPAIR, bits[19:16] the number of resource pairs for tracing */
-	drvdata->nr_resource = BMVAL(etmidr4, 16, 19);
+	drvdata->nr_resource = BMVAL(etmidr4, 16, 19);/* lint !e648 */
 	/*
 	 * NUMSSCC, bits[23:20] the number of single-shot
 	 * comparator control for tracing
 	 */
-	drvdata->nr_ss_cmp = BMVAL(etmidr4, 20, 23);
+	drvdata->nr_ss_cmp = BMVAL(etmidr4, 20, 23);/* lint !e648 */
 	/* NUMCIDC, bits[27:24] number of Context ID comparators for tracing */
-	drvdata->numcidc = BMVAL(etmidr4, 24, 27);
+	drvdata->numcidc = BMVAL(etmidr4, 24, 27);/* lint !e648 */
 	/* NUMVMIDC, bits[31:28] number of VMID comparators for tracing */
-	drvdata->numvmidc = BMVAL(etmidr4, 28, 31);
+	drvdata->numvmidc = BMVAL(etmidr4, 28, 31);/* lint !e648 */
 
 	etmidr5 = readl_relaxed(drvdata->base + TRCIDR5);
 	/* NUMEXTIN, bits[8:0] number of external inputs implemented */
-	drvdata->nr_ext_inp = BMVAL(etmidr5, 0, 8);
+	drvdata->nr_ext_inp = BMVAL(etmidr5, 0, 8);/* lint !e648 */
 	/* TRACEIDSIZE, bits[21:16] indicates the trace ID width */
-	drvdata->trcid_size = BMVAL(etmidr5, 16, 21);
+	drvdata->trcid_size = BMVAL(etmidr5, 16, 21);/* lint !e648 */
 	/* ATBTRIG, bit[22] implementation can support ATB triggers? */
-	if (BMVAL(etmidr5, 22, 22))
+	if (BMVAL(etmidr5, 22, 22))/* lint !e648 */
 		drvdata->atbtrig = true;
 	else
 		drvdata->atbtrig = false;
@@ -2548,7 +2550,7 @@ static void etm4_init_arch_data(void *info)
 	 * LPOVERRIDE, bit[23] implementation supports
 	 * low-power state override
 	 */
-	if (BMVAL(etmidr5, 23, 23))
+	if (BMVAL(etmidr5, 23, 23))/* lint !e648 */
 		drvdata->lpoverride = true;
 	else
 		drvdata->lpoverride = false;
@@ -3037,7 +3039,7 @@ static int etm4_probe(struct amba_device *adev, const struct amba_id *id)
 		}
 	}
 	dev_info(dev, "ETM4x initialized\n");
-	return 0;
+	return 0;/* lint !e429 */
 
 err_arch_supported:
 	pm_runtime_put(&adev->dev);
@@ -3048,8 +3050,7 @@ err_coresight_register:
 err_next:
 	devm_kfree(dev, desc);
 err_drvdata_kzalloc:
-	devm_kfree(dev, drvdata);
-	return ret;
+	return ret;/* lint !e429 !e593*/
 }
 
 static int etm4_remove(struct amba_device *adev)

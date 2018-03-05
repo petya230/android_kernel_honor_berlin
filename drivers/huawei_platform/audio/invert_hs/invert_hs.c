@@ -7,7 +7,7 @@
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  */
-
+/*lint -e528 -e529 */
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/device.h>
@@ -44,7 +44,7 @@ struct invert_hs_data {
 
 static struct invert_hs_data *pdata;
 
-
+/*lint -save -e* */
 static inline int invert_hs_gpio_get_value(int gpio)
 {
 	if (pdata->gpio_type == INVERT_HS_GPIO_CODEC) {
@@ -53,6 +53,7 @@ static inline int invert_hs_gpio_get_value(int gpio)
 		return gpio_get_value(gpio);
 	}
 }
+/*lint -restore*/
 
 static inline void invert_hs_gpio_set_value(int gpio, int value)
 {
@@ -73,7 +74,9 @@ int invert_hs_control(int connect)
 {
 	/* invert_hs driver not be probed, just return */
 	if (pdata == NULL) {
+		/*lint -save -e* */
 		return -ENODEV;
+		/*lint -restore*/
 	}
 
 	/* connect mic and gnd pin */
@@ -91,14 +94,17 @@ static const struct of_device_id invert_hs_of_match[] = {
 	},
 	{ },
 };
+/*lint -save -e* */
 MODULE_DEVICE_TABLE(of, invert_hs_of_match);
+/*lint -restore*/
 
 /* load dts config for board difference */
 static void load_invert_hs_config(struct device_node *node)
 {
 	int temp;
-
+	/*lint -save -e* */
 	if (!of_property_read_u32(node, "gpio_type", &temp)) {
+	/*lint -restore*/
 		pdata->gpio_type = temp;
 	} else {
 		pdata->gpio_type = INVERT_HS_GPIO_SOC;
@@ -117,7 +123,9 @@ static int invert_hs_probe(struct platform_device *pdev)
 	pdata = devm_kzalloc(dev, sizeof(*pdata), GFP_KERNEL);
 	if (NULL == pdata) {
 		hwlog_err("cannot allocate anc hs dev data\n");
+		/*lint -save -e* */
 		return -ENOMEM;
+		/*lint -restore*/
 	}
 
 	p = devm_pinctrl_get(dev);
@@ -139,13 +147,17 @@ static int invert_hs_probe(struct platform_device *pdev)
 	pdata->gpio_mic_gnd =  of_get_named_gpio(node, "gpios", 0);
 	if (pdata->gpio_mic_gnd < 0) {
 		hwlog_err("gpio_mic_gnd is unvalid!\n");
+		/*lint -save -e* */
 		ret = -ENOENT;
+		/*lint -restore*/
 		goto err_out;
 	}
 
 	if (!gpio_is_valid(pdata->gpio_mic_gnd)) {
 		hwlog_err("gpio is unvalid!\n");
+		/*lint -save -e* */
 		ret = -ENOENT;
+		/*lint -restore*/
 		goto gpio_mic_gnd_err;
 	}
 
@@ -206,8 +218,10 @@ static void __exit invert_hs_exit(void)
 	platform_driver_unregister(&invert_hs_driver);
 }
 
+/*lint -save -e* */
 device_initcall(invert_hs_init);
 module_exit(invert_hs_exit);
+/*lint -restore*/
 
 MODULE_DESCRIPTION("invert headset driver");
 MODULE_LICENSE("GPL");

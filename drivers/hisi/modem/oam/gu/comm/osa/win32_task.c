@@ -193,7 +193,7 @@ VOS_UINT32 VOS_TaskCtrlBlkGet(VOS_VOID)
     }
     else
     {
-        Print("# allocate task control block fail.\r\n");
+        Print1("%s", "# allocate task control block fail.\r\n");
 
         return(VOS_TASK_CTRL_BLK_NULL);
     }
@@ -214,7 +214,7 @@ VOS_UINT32 VOS_TaskCtrlBlkFree(VOS_UINT32 Tid)
     {
         if(vos_TaskCtrlBlk[Tid].Flag == VOS_TASK_CTRL_BLK_IDLE)
         {
-            Print("# VOS_TaskCtrlBlkFree free Idle Task.\r\n");
+            Print1("%s", "# VOS_TaskCtrlBlkFree free Idle Task.\r\n");
 
             return VOS_ERR;
         }
@@ -229,7 +229,7 @@ VOS_UINT32 VOS_TaskCtrlBlkFree(VOS_UINT32 Tid)
     }
     else
     {
-        Print("# VOS_TaskCtrlBlkFree Error.\r\n");
+        Print1("%s", "# VOS_TaskCtrlBlkFree Error.\r\n");
 
         return VOS_ERR;
     }
@@ -265,7 +265,6 @@ VOS_UINT32 VOS_WIN32PriMap( VOS_UINT32 ulTaskPriority )
         case 3:
             ulTaskPriority = (VOS_UINT32) THREAD_PRIORITY_NORMAL;
             break;
-
 
         case 4:
             ulTaskPriority = (VOS_UINT32) THREAD_PRIORITY_ABOVE_NORMAL;
@@ -312,9 +311,8 @@ VOS_VOID VOS_Win32TaskEntry( VOS_VOID * pulArg )
     pstTemp->Function( ulPara1, ulPara2, ulPara3, ulPara4 );
 }
 
-
 /*****************************************************************************
- Function   : VOS_CreateTask
+ Function   : VOS_CreateTaskOnly
  Description: create task with default task mode:
               VOS_T_PREEMPT | VOS_T_NO_TSLICE | VOS_T_SUPV
  Input      : puchName              -- name identify task
@@ -325,7 +323,7 @@ VOS_VOID VOS_Win32TaskEntry( VOS_VOID * pulArg )
  Output     : pulTaskID             -- task id allocated by dopra
  Return     : result of VOS_CreateTaskEx
  *****************************************************************************/
-VOS_UINT32 VOS_CreateTask( VOS_CHAR * puchName,
+VOS_UINT32 VOS_CreateTaskOnly( VOS_CHAR * puchName,
                            VOS_UINT32 * pulTaskID,
                            VOS_TASK_ENTRY_TYPE pfnFunc,
                            VOS_UINT32 ulPriority,
@@ -392,7 +390,7 @@ VOS_UINT32 VOS_CreateTask( VOS_CHAR * puchName,
 
     pulTemp = CreateThread( VOS_NULL_PTR, ulStackSize,
         ( LPTHREAD_START_ROUTINE )VOS_Win32TaskEntry,
-        ( VOS_VOID * )&(vos_TaskCtrlBlk[iTid]), 0,
+        ( VOS_VOID * )&(vos_TaskCtrlBlk[iTid]), CREATE_SUSPENDED,
         &(vos_TaskCtrlBlk[iTid].ulWin32ThreadId)  );
 
     if( VOS_NULL_PTR == pulTemp )
@@ -408,6 +406,49 @@ VOS_UINT32 VOS_CreateTask( VOS_CHAR * puchName,
 
     if ( VOS_NULL == SetThreadPriority( pulTemp, (VOS_INT)ulOsTaskPriority ) )
     {
+        return VOS_ERR;
+    }
+
+    return VOS_OK;
+}
+
+/*****************************************************************************
+ Function   : VOS_CreateTask
+ Description: create task with default task mode:
+              VOS_T_PREEMPT | VOS_T_NO_TSLICE | VOS_T_SUPV
+ Input      : puchName              -- name identify task
+              pfnFunc               -- task entry function
+              ulPriority            -- task priority
+              ulStackSize           -- task stack size
+              aulArgs[VOS_TARG_NUM] -- arguments for task
+ Output     : pulTaskID             -- task id allocated by dopra
+ Return     : result of VOS_CreateTaskEx
+ *****************************************************************************/
+VOS_UINT32 VOS_CreateTask( VOS_CHAR * puchName,
+                           VOS_UINT32 * pulTaskID,
+                           VOS_TASK_ENTRY_TYPE pfnFunc,
+                           VOS_UINT32 ulPriority,
+                           VOS_UINT32 ulStackSize,
+                           VOS_UINT32 aulArgs[VOS_TARG_NUM] )
+{
+    VOS_UINT32                          ulResult;
+    VOS_UINT32                          ulWin32Handle;
+
+    ulResult = VOS_CreateTaskOnly(puchName, pulTaskID, pfnFunc, ulPriority, ulStackSize, aulArgs);
+
+    if (VOS_OK != ulResult)
+    {
+        (VOS_VOID)vos_printf("VOS_CreateTask: createonly error\r\n");
+        return ulResult;
+    }
+
+    ulWin32Handle = vos_TaskCtrlBlk[*pulTaskID].Win32Handle;
+
+    ulResult = ResumeThread(ulWin32Handle);
+
+    if (VOS_NULL_DWORD == ulResult)
+    {
+        (VOS_VOID)vos_printf("VOS_CreateTask: createonly error\r\n");
         return VOS_ERR;
     }
 
@@ -461,7 +502,7 @@ VOS_UINT32 VOS_SuspendTask( VOS_UINT32 ulTaskID )
 
     if ( VOS_NULL_DWORD == SuspendThread( pulTemp ) )
     {
-        Print("# taskSuspend error.\r\n");
+        Print1("%s", "# taskSuspend error.\r\n");
         return(VOS_ERR);
     }
 
@@ -493,7 +534,7 @@ VOS_UINT32 VOS_ResumeTask( VOS_UINT32 ulTaskID )
 
     if ( VOS_NULL_DWORD == ResumeThread( pulTemp ) )
     {
-        Print("# taskSuspend error.\r\n");
+        Print1("%s", "# taskSuspend error.\r\n");
         return(VOS_ERR);
     }
 
@@ -818,7 +859,7 @@ VOS_UINT32 VOS_EventRead( VOS_UINT32 ulEvents,
 
     if( VOS_OK != VOS_SmP( ulTempSem, ulTimeOutInMillSec ) )
     {
-        Print("# VOS_EventRead error.\r\n");
+        Print1("%s", "# VOS_EventRead error.\r\n");
         return VOS_ERR;
     }
 

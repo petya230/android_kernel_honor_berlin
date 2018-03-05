@@ -1,4 +1,21 @@
-
+/* drivers/input/touchscreen/nt36772/nt36772_mp_ctrlram.c
+ *
+ * Copyright (C) 2010 - 2016 Novatek, Inc.
+ *
+ * $Revision: 5629 $
+ * $Date: 2016-07-15 11:24:48 +0800 (星期五, 15 七月 2016) $
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
+ *
+ */
 
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
@@ -30,24 +47,6 @@
 #define FREQ_HOP_DISABLE 0x66
 #define FREQ_HOP_ENABLE 0x65
 
-#define RAW_PIPE0_ADDR  0x10000
-#define RAW_PIPE1_ADDR  0x12000
-#define BASELINE_ADDR   0x10E70
-#define DIFF_PIPE0_ADDR 0x10830
-#define DIFF_PIPE1_ADDR 0x12830
-
-#define RAW_BTN_PIPE0_ADDR  0x10E60
-#define RAW_BTN_PIPE1_ADDR  0x12E60
-#define BASELINE_BTN_ADDR   0x12E70
-#define DIFF_BTN_PIPE0_ADDR 0x10E68
-#define DIFF_BTN_PIPE1_ADDR 0x12E68
-
-static const int32_t TOTAL_AFE_CNT = 32;
-static const int32_t TOTAL_COL_CNT = 18;
-
-static uint8_t AIN_X[IC_X_CFG_SIZE] = {17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0};
-static uint8_t AIN_Y[IC_Y_CFG_SIZE] = {0xFF, 0xFF, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0};
-
 static uint8_t RecordResult_Short[40 * 40] = {0};
 static uint8_t RecordResult_Open[40 * 40] = {0};
 static uint8_t RecordResult_FWMutual[40 * 40] = {0};
@@ -72,6 +71,8 @@ static int32_t RawData_FW_CC[40 * 40] = {0};
 
 #define TP_MMI_RESULT_LEN 80
 static char mmitest_result[80] = {0};/*store mmi test result*/
+
+#define CHANNEL_NUM 2//tx and rx
 
 struct test_cmd {
 	uint32_t addr;
@@ -950,60 +951,6 @@ static void nvt_ASR_FrameMode(void)
 	nvt_set_memory(0x1F691, 0x01);
 }
 
-#if 0
-static void nvt_TCON_PowerOnInit(void)
-{
-	uint8_t tmp_val = 0;
-
-	// Step1
-	nvt_set_memory(0x1F4BD, 0x01);
-	nvt_set_memory(0x1F60F, 0x03);
-	// ASR(Power On Mode)
-	nvt_ASR_PowerOnMode();
-	// Step2
-	// 0x1F5EC,bit1 = 1 bit5 = 1, (| 0x22)
-	tmp_val = 0;
-	nvt_get_memory(0x1F5EC, &tmp_val);
-	tmp_val |= 0x22;
-	nvt_set_memory(0x1F5EC, tmp_val);
-	// 0x1F5EE,bit1 = 1 bit5 = 1, (| 0x22)
-	tmp_val = 0;
-	nvt_get_memory(0x1F5EE, &tmp_val);
-	tmp_val |= 0x22;
-	nvt_set_memory(0x1F5EE, tmp_val);
-	// ASR(Power On Mode)
-	nvt_ASR_PowerOnMode();
-	// Delay 2ms
-	msleep(2);
-	// Step3
-	// 0x1F5F0, bit0 = 1, (| 0x01)
-	tmp_val = 0;
-	nvt_get_memory(0x1F5F0, &tmp_val);
-	tmp_val |= 0x01;
-	nvt_set_memory(0x1F5F0, tmp_val);
-	// 0x1F5F2, bit0 = 1, (| 0x01)
-	tmp_val = 0;
-	nvt_get_memory(0x1F5F2, &tmp_val);
-	tmp_val |= 0x01;
-	nvt_set_memory(0x1F5F2, tmp_val);
-	// ASR(Power On mode)
-	nvt_ASR_PowerOnMode();
-	// Step4
-	// 0x1F5EC, bit2 = 1 bit3 = 1, (| 0x0C)
-	tmp_val = 0;
-	nvt_get_memory(0x1F5EC, &tmp_val);
-	tmp_val |= 0x0C;
-	nvt_set_memory(0x1F5EC, tmp_val);
-	// 0x1F5EE, bit2 = 1 bit3 = 1, (| 0x0C)
-	tmp_val = 0;
-	nvt_get_memory(0x1F5EE, &tmp_val);
-	tmp_val |= 0x0C;
-	nvt_set_memory(0x1F5EE, tmp_val);
-	// ASR(Frame Mode)
-	nvt_ASR_FrameMode();
-	msleep(1);
-}
-#endif
 //---fix high current issue, Taylor 20160908---
 static void nvt_TCON_PowerOnInit(void)
 {
@@ -1339,7 +1286,8 @@ static int32_t OpenRawToCS_pF(int32_t rawdata)
 	Raw = (int64_t)rawdata;
 	Raw = Raw * 1000;
 	//CS = ((Raw / 1228) - 5000) * 16;
-	CS = ((Raw / 1208) - 5083) * 32;
+	//CS = ((Raw / 1208) - 5083) * 32;
+	CS = ((div_s64(Raw, 1208)) - 5083)*32;
 
 	return (int32_t)CS;
 }
@@ -1357,18 +1305,9 @@ static int32_t nvt_read_open(void)
 	int32_t x = 0;
 	int32_t y = 0;
 	uint8_t buf[128] = {0};
-	struct file *fp = NULL;
-	char *fbufp = NULL;
-	mm_segment_t org_fs;
-	char file_path[64];
-	loff_t pos = 0;
-	int32_t write_ret = 0;
-	uint32_t output_len = 0;
 	uint8_t *rawdata_buf = NULL;
 
 	TS_LOG_INFO("%s:++\n", __func__);
-
-	snprintf(file_path, sizeof(file_path), "/data/nvt_data/%s_OpenTest.csv", novatek_kit_project_id);
 
 	rawdata_buf = (uint8_t *) vmalloc(IC_X_CFG_SIZE * IC_Y_CFG_SIZE * 2);
 	if (!rawdata_buf) {
@@ -1379,6 +1318,10 @@ static int32_t nvt_read_open(void)
 	if (nvt_mp_isInitialed == 0) {
 		if (nvt_mp_Initial(E_RawdataType_Open)) {
 			TS_LOG_ERR("%s: MP Initial failed!\n", __func__);
+			if (rawdata_buf) {
+				vfree(rawdata_buf);
+				rawdata_buf = NULL;
+			}
 			return -EAGAIN;
 		}
 	}
@@ -1420,12 +1363,6 @@ static int32_t nvt_read_open(void)
 		rawdata_buf = NULL;
 	}
 
-	fbufp = (char *)vmalloc(8192);
-	if (!fbufp) {
-		TS_LOG_ERR("%s: vmalloc for fbufp failed!\n", __func__);
-		return -ENOMEM;
-	}
-
 	// convert rawdata to CS
 	for (y = 0; y < Y_Channel; y++) {
 		for (x = 0; x < X_Channel; x++) {
@@ -1440,51 +1377,10 @@ static int32_t nvt_read_open(void)
 	for (y = 0; y < Y_Channel; y++) {
 		for (x = 0; x < X_Channel; x++) {
 			printk("%5d, ", RawData_Open[y * X_Channel + x]);
-			sprintf(fbufp + 7 * (y * X_Channel + x) + y * 2, "%5d, ", RawData_Open[y * X_Channel + x]) ;
 		}
 		printk("\n");
-		sprintf(fbufp + 7 * (y * X_Channel + x) + y * 2,"\r\n");
 	}
 	printk("\n");
-
-	org_fs = get_fs();
-	set_fs(KERNEL_DS);
-	fp = filp_open(file_path, O_RDWR | O_CREAT, 0644);
-	if (fp == NULL || IS_ERR(fp)) {
-		TS_LOG_ERR("%s: open %s failed\n", __func__, file_path);
-		set_fs(org_fs);
-		if (fbufp) {
-			vfree(fbufp);
-			fbufp = NULL;
-		}
-		return -1;
-	}
-
-	output_len = Y_Channel * X_Channel * 7 + Y_Channel * 2;
-	write_ret = vfs_write(fp, (char __user *)fbufp, output_len, &pos);
-	if (write_ret <= 0) {
-		TS_LOG_ERR("%s: write %s failed\n", __func__, file_path);
-		set_fs(org_fs);
-		if (fp) {
-			filp_close(fp, NULL);
-			fp = NULL;
-		}
-		if (fbufp) {
-			vfree(fbufp);
-			fbufp = NULL;
-		}
-		return -1;
-	}
-
-	set_fs(org_fs);
-	if (fp) {
-		filp_close(fp, NULL);
-		fp = NULL;
-	}
-	if (fbufp) {
-		vfree(fbufp);
-		fbufp = NULL;
-	}
 
 	TS_LOG_INFO("%s:--\n", __func__);
 
@@ -1499,11 +1395,11 @@ static int8_t nvt_switch_FreqHopEnDis(uint8_t FreqHopEnDis)
 
 	TS_LOG_INFO("%s:++\n", __func__);
 
-	for (retry = 0; retry < 5; retry++) {
+	for (retry = 0; retry < 20; retry++) {
 		//---set xdata index to 0x11E00---
 		buf[0] = 0xFF;
-		buf[1] = 0x01;
-		buf[2] = 0x1E;
+		buf[1] = (nvt_ts->mmap->EVENT_BUF_ADDR >> 16) & 0xFF;
+		buf[2] = (nvt_ts->mmap->EVENT_BUF_ADDR >> 8) & 0xFF;
 		novatek_ts_kit_i2c_write(nvt_ts->client, I2C_FW_Address, buf, 3);
 
 		//---switch FreqHopEnDis---
@@ -1511,7 +1407,7 @@ static int8_t nvt_switch_FreqHopEnDis(uint8_t FreqHopEnDis)
 		buf[1] = FreqHopEnDis;
 		novatek_ts_kit_i2c_write(nvt_ts->client, I2C_FW_Address, buf, 2);
 
-		msleep(20);
+		msleep(35);
 
 		buf[0] = 0x50;
 		buf[1] = 0xFF;
@@ -1519,11 +1415,9 @@ static int8_t nvt_switch_FreqHopEnDis(uint8_t FreqHopEnDis)
 
 		if (buf[1] == 0x00)
 			break;
-
-		msleep(10);
 	}
 
-	if (unlikely(retry == 5)) {
+	if (unlikely(retry == 20)) {
 		TS_LOG_ERR("%s: switch FreqHopEnDis 0x%02X failed, buf[1]=0x%02X\n", __func__, FreqHopEnDis, buf[1]);
 		ret = -1;
 	}
@@ -1540,17 +1434,9 @@ static int32_t nvt_read_raw(int32_t *xdata)
 	uint32_t x = 0;
 	uint32_t y = 0;
 	int32_t iArrayIndex = 0;
-	char *fbufp = NULL;
-	struct file *fp = NULL;
-	mm_segment_t org_fs;
-	char file_path[64];
-	loff_t pos = 0;
-	int32_t write_ret = 0;
-	uint32_t output_len = 0;
 
 	TS_LOG_INFO("%s:++\n", __func__);
 
-	snprintf(file_path, sizeof(file_path), "/data/nvt_data/%s_FWMutualTest.csv", novatek_kit_project_id);
 /*
 	if (nvt_kit_clear_fw_status()) {
 		return -EAGAIN;
@@ -1567,9 +1453,9 @@ static int32_t nvt_read_raw(int32_t *xdata)
 	}
 */
 	if (nvt_kit_get_fw_pipe() == 0)
-		nvt_kit_read_mdata(RAW_PIPE0_ADDR, RAW_BTN_PIPE0_ADDR);
+		nvt_kit_read_mdata(nvt_ts->mmap->RAW_PIPE0_ADDR, nvt_ts->mmap->RAW_BTN_PIPE0_ADDR);
 	else
-		nvt_kit_read_mdata(RAW_PIPE1_ADDR, RAW_BTN_PIPE1_ADDR);
+		nvt_kit_read_mdata(nvt_ts->mmap->RAW_PIPE1_ADDR, nvt_ts->mmap->RAW_BTN_PIPE1_ADDR);
 
 	nvt_kit_get_mdata(xdata, &x_num, &y_num);
 
@@ -1581,62 +1467,15 @@ static int32_t nvt_read_raw(int32_t *xdata)
 
 	//nvt_kit_change_mode(NORMAL_MODE);
 
-	fbufp = (char *)vmalloc(8192);
-	if (!fbufp) {
-		TS_LOG_ERR("%s: vmalloc for fbufp failed!\n", __func__);
-		return -ENOMEM;
-	}
-
 	printk("%s:\n", __func__);
 	for (y = 0; y < Y_Channel; y++) {
 		for (x = 0; x < X_Channel; x++) {
 			iArrayIndex = y * X_Channel + x;
 			printk("%5d ", xdata[iArrayIndex]);
-			sprintf(fbufp + 7 * (y * X_Channel + x) + y * 2, "%5d, ", xdata[y * X_Channel + x]) ;
 		}
 		printk("\n");
-		sprintf(fbufp + 7 * (y * X_Channel + x) + y * 2,"\r\n");
 	}
 	printk("\n");
-
-	org_fs = get_fs();
-	set_fs(KERNEL_DS);
-	fp = filp_open(file_path, O_RDWR | O_CREAT, 0644);
-	if (fp == NULL || IS_ERR(fp)) {
-		TS_LOG_ERR("%s: open %s failed\n", __func__, file_path);
-		set_fs(org_fs);
-		if (fbufp) {
-			vfree(fbufp);
-			fbufp = NULL;
-		}
-		return -1;
-	}
-
-	output_len = (Y_Channel * X_Channel * 7 + Y_Channel * 2);
-	write_ret = vfs_write(fp, (char __user *)fbufp, output_len, &pos);
-	if (write_ret <= 0) {
-		TS_LOG_ERR("%s: write %s failed\n", __func__, file_path);
-		set_fs(org_fs);
-		if (fp) {
-			filp_close(fp, NULL);
-			fp = NULL;
-		}
-		if (fbufp) {
-			vfree(fbufp);
-			fbufp = NULL;
-		}
-		return -1;
-	}
-
-	set_fs(org_fs);
-	if (fp) {
-		filp_close(fp, NULL);
-		fp = NULL;
-	}
-	if (fbufp) {
-		vfree(fbufp);
-		fbufp = NULL;
-	}
 
 	TS_LOG_INFO("%s:--\n", __func__);
 	return 0;
@@ -1649,17 +1488,9 @@ static int32_t nvt_read_CC(int32_t *xdata)
 	uint32_t x = 0;
 	uint32_t y = 0;
 	int32_t iArrayIndex = 0;
-	char *fbufp = NULL;
-	struct file *fp = NULL;
-	mm_segment_t org_fs;
-	char file_path[64];
-	loff_t pos = 0;
-	int32_t write_ret = 0;
-	uint32_t output_len = 0;
 
 	TS_LOG_INFO("%s:++\n", __func__);
 
-	snprintf(file_path, sizeof(file_path), "/data/nvt_data/%s_FWCCTest.csv", novatek_kit_project_id);
 /*
 	if (nvt_kit_clear_fw_status()) {
 		return -EAGAIN;
@@ -1674,9 +1505,9 @@ static int32_t nvt_read_CC(int32_t *xdata)
 	nvt_kit_get_fw_info();
 */
 	if (nvt_kit_get_fw_pipe() == 0)
-		nvt_kit_read_mdata(DIFF_PIPE1_ADDR, DIFF_BTN_PIPE1_ADDR);
+		nvt_kit_read_mdata(nvt_ts->mmap->DIFF_PIPE1_ADDR, nvt_ts->mmap->DIFF_BTN_PIPE1_ADDR);
 	else
-		nvt_kit_read_mdata(DIFF_PIPE0_ADDR, DIFF_BTN_PIPE0_ADDR);
+		nvt_kit_read_mdata(nvt_ts->mmap->DIFF_PIPE0_ADDR, nvt_ts->mmap->DIFF_BTN_PIPE0_ADDR);
 
 	nvt_kit_get_mdata(xdata, &x_num, &y_num);
 
@@ -1688,62 +1519,15 @@ static int32_t nvt_read_CC(int32_t *xdata)
 
 	//nvt_kit_change_mode(NORMAL_MODE);
 
-	fbufp = (char *)vmalloc(8192);
-	if (!fbufp) {
-		TS_LOG_ERR("%s: vmalloc for fbufp failed!\n", __func__);
-		return -ENOMEM;
-	}
-
 	printk("%s:\n", __func__);
 	for (y = 0; y < Y_Channel; y++) {
 		for (x = 0; x < X_Channel; x++) {
 			iArrayIndex = y * X_Channel + x;
 			printk("%5d ", xdata[iArrayIndex]);
-			sprintf(fbufp + 7 * (y * X_Channel + x) + y * 2, "%5d, ", xdata[y * X_Channel + x]) ;
 		}
 		printk("\n");
-		sprintf(fbufp + 7 * (y * X_Channel + x) + y * 2,"\r\n");
 	}
 	printk("\n");
-
-	org_fs = get_fs();
-	set_fs(KERNEL_DS);
-	fp = filp_open(file_path, O_RDWR | O_CREAT, 0644);
-	if (fp == NULL || IS_ERR(fp)) {
-		TS_LOG_ERR("%s: open %s failed\n", __func__, file_path);
-		set_fs(org_fs);
-		if (fbufp) {
-			vfree(fbufp);
-			fbufp = NULL;
-		}
-		return -1;
-	}
-
-	output_len = (Y_Channel * X_Channel * 7 + Y_Channel * 2);
-	write_ret = vfs_write(fp, (char __user *)fbufp, output_len, &pos);
-	if (write_ret <= 0) {
-		TS_LOG_ERR("%s: write %s failed\n", __func__, file_path);
-		set_fs(org_fs);
-		if (fp) {
-			filp_close(fp, NULL);
-			fp = NULL;
-		}
-		if (fbufp) {
-			vfree(fbufp);
-			fbufp = NULL;
-		}
-		return -1;
-	}
-
-	set_fs(org_fs);
-	if (fp) {
-		filp_close(fp, NULL);
-		fp = NULL;
-	}
-	if (fbufp) {
-		vfree(fbufp);
-		fbufp = NULL;
-	}
 
 	TS_LOG_INFO("%s:--\n", __func__);
 	return 0;
@@ -1771,9 +1555,9 @@ static int32_t nvt_read_diff(int32_t *xdata)
 	nvt_kit_get_fw_info();
 */
 	if (nvt_kit_get_fw_pipe() == 0)
-		nvt_kit_read_mdata(DIFF_PIPE0_ADDR, DIFF_BTN_PIPE0_ADDR);
+		nvt_kit_read_mdata(nvt_ts->mmap->DIFF_PIPE0_ADDR, nvt_ts->mmap->DIFF_BTN_PIPE0_ADDR);
 	else
-		nvt_kit_read_mdata(DIFF_PIPE1_ADDR, DIFF_BTN_PIPE1_ADDR);
+		nvt_kit_read_mdata(nvt_ts->mmap->DIFF_PIPE1_ADDR, nvt_ts->mmap->DIFF_BTN_PIPE1_ADDR);
 
 	nvt_kit_get_mdata(xdata, &x_num, &y_num);
 
@@ -1795,24 +1579,9 @@ static int32_t nvt_read_noise(void)
 	int32_t x = 0;
 	int32_t y = 0;
 	int32_t iArrayIndex = 0;
-	char *fbufp = NULL;
-	struct file *fp = NULL;
-	mm_segment_t org_fs;
-	char file_path[64];
-	loff_t pos = 0;
-	int32_t write_ret = 0;
-	uint32_t output_len = 0;
-
-	snprintf(file_path, sizeof(file_path), "/data/nvt_data/%s_NoiseTest.csv", novatek_kit_project_id);
 
 	if (nvt_read_diff(RawData_Diff)) {
 		return 1; // read data failed
-	}
-
-	fbufp = (char *)vmalloc(8192);
-	if (!fbufp) {
-		TS_LOG_ERR("%s: vmalloc for fbufp failed!\n", __func__);
-		return -ENOMEM;
 	}
 
 	printk("%s:RawData_Diff:\n", __func__);
@@ -1820,51 +1589,10 @@ static int32_t nvt_read_noise(void)
 		for (x = 0; x < X_Channel; x++) {
 			iArrayIndex = y * X_Channel + x;
 			printk("%5d ", RawData_Diff[iArrayIndex]);
-			sprintf(fbufp + 7 * (y * X_Channel + x) + y * 2, "%5d, ", RawData_Diff[y * X_Channel + x]) ;
 		}
 		printk("\n");
-		sprintf(fbufp + 7 * (y * X_Channel + x) + y * 2,"\r\n");
 	}
 	printk("\n");
-
-	org_fs = get_fs();
-	set_fs(KERNEL_DS);
-	fp = filp_open(file_path, O_RDWR | O_CREAT, 0644);
-	if (fp == NULL || IS_ERR(fp)) {
-		TS_LOG_ERR("%s: open %s failed\n", __func__, file_path);
-		set_fs(org_fs);
-		if (fbufp) {
-			vfree(fbufp);
-			fbufp = NULL;
-		}
-		return -1;
-	}
-
-	output_len = (Y_Channel * X_Channel * 7 + Y_Channel * 2) * 2;
-	write_ret = vfs_write(fp, (char __user *)fbufp, output_len, &pos);
-	if (write_ret <= 0) {
-		TS_LOG_ERR("%s: write %s failed\n", __func__, file_path);
-		set_fs(org_fs);
-		if (fp) {
-			filp_close(fp, NULL);
-			fp = NULL;
-		}
-		if (fbufp) {
-			vfree(fbufp);
-			fbufp = NULL;
-		}
-		return -1;
-	}
-
-	set_fs(org_fs);
-	if (fp) {
-		filp_close(fp, NULL);
-		fp = NULL;
-	}
-	if (fbufp) {
-		vfree(fbufp);
-		fbufp = NULL;
-	}
 
 	return 0;
 }
@@ -1874,8 +1602,8 @@ static void nvt_enable_short_test(void)
 
 	//---set xdata index to 0x11E00---
 	buf[0] = 0xFF;
-	buf[1] = 0x01;
-	buf[2] = 0x1E;
+	buf[1] = (nvt_ts->mmap->EVENT_BUF_ADDR >> 16) & 0xFF;
+	buf[2] = (nvt_ts->mmap->EVENT_BUF_ADDR >> 8) & 0xFF;
 	novatek_ts_kit_i2c_write(nvt_ts->client, I2C_FW_Address, buf, 3);
 
 	//---enable short test---
@@ -1896,8 +1624,8 @@ static int32_t nvt_polling_hand_shake_status(void)
 	for (i = 0; i < retry; i++) {
 		//---set xdata index to 0x11E00---
 		buf[0] = 0xFF;
-		buf[1] = 0x01;
-		buf[2] = 0x1E;
+		buf[1] = (nvt_ts->mmap->EVENT_BUF_ADDR >> 16) & 0xFF;
+		buf[2] = (nvt_ts->mmap->EVENT_BUF_ADDR >> 8) & 0xFF;
 		novatek_ts_kit_i2c_write(nvt_ts->client, I2C_FW_Address, buf, 3);
 
 		//---read fw status---
@@ -1919,6 +1647,114 @@ static int32_t nvt_polling_hand_shake_status(void)
 	}
 }
 
+static void nvt_tddi_enable_noise_collect(int32_t frame_num)
+{
+	uint8_t buf[8] = {0};
+
+	//---set xdata index to 0x11E00---
+	buf[0] = NVTTDDI_DOUBLE_F_CMD;
+	buf[1] = (nvt_ts->mmap->EVENT_BUF_ADDR >> 16) & 0xFF;
+	buf[2] = (nvt_ts->mmap->EVENT_BUF_ADDR >> 8) & 0xFF;
+	novatek_ts_kit_i2c_write(nvt_ts->client, I2C_FW_Address, buf, NVTTDDI_THREE_BYTES_LENGTH);
+
+	//---enable noise collect test---
+	buf[0] = NVTTDDI_FIVE_ZERO_CMD;
+	buf[1] = NVTTDDI_FOUR_SEVEN_CMD;
+	buf[2] = NVTTDDI_DOUBLE_A_CMD;
+	buf[3] = frame_num;
+	buf[4] = NVTTDDI_DOUBLE_ZERO_CMD;
+	novatek_ts_kit_i2c_write(nvt_ts->client, I2C_FW_Address, buf, NVTTDDI_FIVE_BYTES_LENGTH);
+}
+
+static void nvt_tddi_enable_open_test(void)
+{
+	uint8_t buf[8] = {0};
+
+	//---set xdata index to 0x11E00---
+	buf[0] = NVTTDDI_DOUBLE_F_CMD;
+	buf[1] = (nvt_ts->mmap->EVENT_BUF_ADDR >> 16) & 0xFF;
+	buf[2] = (nvt_ts->mmap->EVENT_BUF_ADDR >> 8) & 0xFF;
+	novatek_ts_kit_i2c_write(nvt_ts->client, I2C_FW_Address, buf, NVTTDDI_THREE_BYTES_LENGTH);
+
+	//---enable open test---
+	buf[0] = NVTTDDI_FIVE_ZERO_CMD;
+	buf[1] = NVTTDDI_FOUR_FIVE_CMD;
+	buf[2] = NVTTDDI_DOUBLE_A_CMD;
+	buf[3] = NVTTDDI_ZERO_TWO_CMD;
+	buf[4] = NVTTDDI_DOUBLE_ZERO_CMD;
+	novatek_ts_kit_i2c_write(nvt_ts->client, I2C_FW_Address, buf, NVTTDDI_FIVE_BYTES_LENGTH);
+}
+
+#define NVT_TDDI_ABS(x) (x >= 0 ? x : (-x))
+static int32_t nvt_tddi_read_fw_noise(int32_t *xdata)
+{
+	uint8_t x_num = NO_ERR;
+	uint8_t y_num = NO_ERR;
+	uint32_t x = NO_ERR;
+	uint32_t y = NO_ERR;
+	int32_t iArrayIndex = NO_ERR;
+	int32_t frame_num = NO_ERR;
+	int32_t RawData_Diff_Min = NO_ERR;
+	int32_t RawData_Diff_Max = NO_ERR;
+
+	TS_LOG_INFO("%s:++\n", __func__);
+
+	//---Enter Test Mode---
+	if (nvt_kit_clear_fw_status()) {
+		return -EAGAIN;
+	}
+	frame_num = nvt_ts->noise_test_frame / NVTTDDI_TEST_FRAME_DIVIDE_NUM;
+	if (frame_num <= NO_ERR) {
+		frame_num = NVTTDDI_FRAME_NUMBER;
+	}
+	TS_LOG_INFO("%s: frame_num=%d\n", __func__, frame_num);
+	nvt_tddi_enable_noise_collect(frame_num);
+
+	if (nvt_polling_hand_shake_status()) {
+		return -EAGAIN;
+	}
+
+	if (nvt_kit_get_fw_info()) {
+		return -EAGAIN;
+	}
+
+	if (nvt_kit_get_fw_pipe() == NO_ERR) {
+		nvt_kit_read_mdata(nvt_ts->mmap->DIFF_PIPE0_ADDR, nvt_ts->mmap->DIFF_BTN_PIPE0_ADDR);
+	} else {
+		nvt_kit_read_mdata(nvt_ts->mmap->DIFF_PIPE1_ADDR, nvt_ts->mmap->DIFF_BTN_PIPE1_ADDR);
+	}
+	nvt_kit_get_mdata(xdata, &x_num, &y_num);
+	for (y = NO_ERR; y < y_num; y++) {
+		for (x = NO_ERR; x < x_num; x++) {
+			iArrayIndex = y * x_num + x;
+			RawData_Diff_Max = (int8_t)(MIDDLE_EIGHT_BITS(xdata[iArrayIndex]));
+			RawData_Diff_Min = (int8_t)(LOW_EIGHT_BITS(xdata[iArrayIndex]));
+			if (NVT_TDDI_ABS(RawData_Diff_Max) > NVT_TDDI_ABS(RawData_Diff_Min)) {
+				RawData_Diff[iArrayIndex] = RawData_Diff_Max;
+			} else {
+				RawData_Diff[iArrayIndex] = RawData_Diff_Min;
+			}
+		}
+	}
+
+	//---Leave Test Mode---
+	nvt_kit_change_mode(NORMAL_MODE);
+
+	printk("%s:RawData_Diff:\n", __func__);
+	for (y = NO_ERR; y < Y_Channel; y++) {
+		for (x = NO_ERR; x < X_Channel; x++) {
+			iArrayIndex = y * X_Channel + x;
+			printk("%5d ", RawData_Diff[iArrayIndex]);
+		}
+		printk("\n");
+	}
+	printk("\n");
+
+	TS_LOG_INFO("%s:--\n", __func__);
+
+	return NO_ERR;
+}
+
 static int32_t nvt_read_fw_short(int32_t *xdata)
 {
 	uint8_t x_num = 0;
@@ -1926,17 +1762,8 @@ static int32_t nvt_read_fw_short(int32_t *xdata)
 	uint32_t x = 0;
 	uint32_t y = 0;
 	int32_t iArrayIndex = 0;
-	char *fbufp = NULL;
-	struct file *fp = NULL;
-	mm_segment_t org_fs;
-	char file_path[64];
-	loff_t pos = 0;
-	int32_t write_ret = 0;
-	uint32_t output_len = 0;
 
 	TS_LOG_INFO("%s:++\n", __func__);
-
-	snprintf(file_path, sizeof(file_path), "/data/nvt_data/%s_ShortTest.csv", novatek_kit_project_id);
 
 	if (nvt_kit_clear_fw_status()) {
 		return -EAGAIN;
@@ -1953,9 +1780,9 @@ static int32_t nvt_read_fw_short(int32_t *xdata)
 	}
 
 	if (nvt_kit_get_fw_pipe() == 0)
-		nvt_kit_read_mdata(RAW_PIPE0_ADDR, RAW_BTN_PIPE0_ADDR);
+		nvt_kit_read_mdata(nvt_ts->mmap->RAW_PIPE0_ADDR, nvt_ts->mmap->RAW_BTN_PIPE0_ADDR);
 	else
-		nvt_kit_read_mdata(RAW_PIPE1_ADDR, RAW_BTN_PIPE1_ADDR);
+		nvt_kit_read_mdata(nvt_ts->mmap->RAW_PIPE1_ADDR, nvt_ts->mmap->RAW_BTN_PIPE1_ADDR);
 
 	nvt_kit_get_mdata(xdata, &x_num, &y_num);
 
@@ -1967,66 +1794,127 @@ static int32_t nvt_read_fw_short(int32_t *xdata)
 
 	nvt_kit_change_mode(NORMAL_MODE);
 
-	fbufp = (char *)vmalloc(8192);
-	if (!fbufp) {
-		TS_LOG_ERR("%s: vmalloc for fbufp failed!\n", __func__);
-		return -ENOMEM;
-	}
-
 	printk("%s:\n", __func__);
 	for (y = 0; y < Y_Channel; y++) {
 		for (x = 0; x < X_Channel; x++) {
 			iArrayIndex = y * X_Channel + x;
 			printk("%5d ", xdata[iArrayIndex]);
-			sprintf(fbufp + 7 * (y * X_Channel + x) + y * 2, "%5d, ", xdata[y * X_Channel + x]) ;
 		}
 		printk("\n");
-		sprintf(fbufp + 7 * (y * X_Channel + x) + y * 2,"\r\n");
 	}
 	printk("\n");
-
-	org_fs = get_fs();
-	set_fs(KERNEL_DS);
-	fp = filp_open(file_path, O_RDWR | O_CREAT, 0644);
-	if (fp == NULL || IS_ERR(fp)) {
-		TS_LOG_ERR("%s: open %s failed\n", __func__, file_path);
-		set_fs(org_fs);
-		if (fbufp) {
-			vfree(fbufp);
-			fbufp = NULL;
-		}
-		return -1;
-	}
-
-	output_len = (Y_Channel * X_Channel * 7 + Y_Channel * 2);
-	write_ret = vfs_write(fp, (char __user *)fbufp, output_len, &pos);
-	if (write_ret <= 0) {
-		TS_LOG_ERR("%s: write %s failed\n", __func__, file_path);
-		set_fs(org_fs);
-		if (fp) {
-			filp_close(fp, NULL);
-			fp = NULL;
-		}
-		if (fbufp) {
-			vfree(fbufp);
-			fbufp = NULL;
-		}
-		return -1;
-	}
-
-	set_fs(org_fs);
-	if (fp) {
-		filp_close(fp, NULL);
-		fp = NULL;
-	}
-	if (fbufp) {
-		vfree(fbufp);
-		fbufp = NULL;
-	}
 
 	TS_LOG_INFO("%s:--\n", __func__);
 
 	return 0;
+}
+
+/*******************************************************
+Description:
+	Novatek touchscreen read fw open test raw data function.
+
+return:
+	Executive outcomes. 0---succeed. negative---failed.
+*******************************************************/
+static int32_t nvt_tddi_read_fw_open(void)
+{
+	uint32_t raw_pipe_addr = NO_ERR;
+	int32_t x = NO_ERR;
+	int32_t y = NO_ERR;
+	uint8_t buf[128] = {0};
+	uint8_t *rawdata_buf = NULL;
+	uint8_t x_channel_size = 0;
+	uint8_t y_channel_size = 0;
+
+	if (NULL == nvt_ts) {
+		TS_LOG_ERR("%s: param error\n", __FUNCTION__);
+		return -EINVAL;
+	}
+
+	if (NULL == nvt_ts->NvtTddi_X_Channel || NULL == nvt_ts->NvtTddi_Y_Channel) {
+		TS_LOG_ERR("%s: param error\n", __FUNCTION__);
+		return -EINVAL;
+	}
+
+	if (FLAG_EXIST == nvt_ts->nvttddi_channel_flag) {
+		if (*(nvt_ts->NvtTddi_X_Channel) > U8_MAX || *(nvt_ts->NvtTddi_X_Channel) < U8_MIN ||
+			*(nvt_ts->NvtTddi_Y_Channel) > U8_MAX || *(nvt_ts->NvtTddi_Y_Channel) < U8_MIN) {
+			TS_LOG_ERR("%s: data conversion failed!\n", __func__);
+			return -EINVAL;
+		} else {
+			x_channel_size = (uint8_t)*(nvt_ts->NvtTddi_X_Channel);
+			y_channel_size = (uint8_t)*(nvt_ts->NvtTddi_Y_Channel);
+		}
+	} else {
+		x_channel_size = IC_X_CFG_SIZE;
+		y_channel_size = IC_Y_CFG_SIZE;
+	}
+
+	TS_LOG_INFO("%s:++\n", __func__);
+
+	//---Enter Test Mode---
+	if (nvt_kit_clear_fw_status()) {
+		return -EAGAIN;
+	}
+
+	nvt_tddi_enable_open_test();
+
+	if (nvt_polling_hand_shake_status()) {
+		return -EAGAIN;
+	}
+
+	rawdata_buf = (uint8_t *) vmalloc(IC_X_CFG_SIZE * IC_Y_CFG_SIZE * NVTTDDI_MULTIPLY_2_NUM);
+	if (!rawdata_buf) {
+		TS_LOG_ERR("%s: vmalloc for rawdata_buf failed!\n", __func__);
+		return -ENOMEM;
+	}
+
+	if (nvt_kit_get_fw_pipe() == NO_ERR) {
+		raw_pipe_addr = nvt_ts->mmap->RAW_PIPE0_ADDR;
+	} else {
+		raw_pipe_addr = nvt_ts->mmap->RAW_PIPE1_ADDR;
+	}
+
+	for (y = NO_ERR; y < IC_Y_CFG_SIZE; y++) {
+		//---change xdata index---
+		buf[0] = NVTTDDI_DOUBLE_F_CMD;
+		buf[1] = (uint8_t)(HIGHT_EIGHT_BITS(raw_pipe_addr + y * IC_X_CFG_SIZE * NVTTDDI_MULTIPLY_2_NUM));
+		buf[2] = (uint8_t)(MIDDLE_EIGHT_BITS(raw_pipe_addr + y * IC_X_CFG_SIZE * NVTTDDI_MULTIPLY_2_NUM));
+		novatek_ts_kit_i2c_write(nvt_ts->client, I2C_FW_Address, buf, NVTTDDI_THREE_BYTES_LENGTH);
+		//---read data---
+		buf[0] = (uint8_t)(LOW_EIGHT_BITS(raw_pipe_addr + y * IC_X_CFG_SIZE * NVTTDDI_MULTIPLY_2_NUM));
+		novatek_ts_kit_i2c_read(nvt_ts->client, I2C_FW_Address, buf, IC_X_CFG_SIZE * NVTTDDI_MULTIPLY_2_NUM + NVTTDDI_PLUS_ONE);
+		memcpy(rawdata_buf + y * IC_X_CFG_SIZE * NVTTDDI_MULTIPLY_2_NUM, buf + NVTTDDI_PLUS_ONE, IC_X_CFG_SIZE * NVTTDDI_MULTIPLY_2_NUM);
+	}
+
+	for (y = NO_ERR; y < IC_Y_CFG_SIZE; y++) {
+		for (x = NO_ERR; x < IC_X_CFG_SIZE; x++) {
+			if ((AIN_Y[y] != NVTTDDI_DOUBLE_F_CMD) && (AIN_X[x] != NVTTDDI_DOUBLE_F_CMD)) {
+				RawData_Open[AIN_Y[y] * X_Channel + AIN_X[x]] = (int16_t)((rawdata_buf[(y * IC_X_CFG_SIZE + x) * NVTTDDI_MULTIPLY_2_NUM] + NVTTDDI_MULTIPLY_256_NUM * rawdata_buf[(y * IC_X_CFG_SIZE + x) * NVTTDDI_MULTIPLY_2_NUM + NVTTDDI_PLUS_ONE]));
+			}
+		}
+	}
+
+	if (rawdata_buf) {
+		vfree(rawdata_buf);
+		rawdata_buf = NULL;
+	}
+
+	//---Leave Test Mode--
+	nvt_kit_change_mode(NORMAL_MODE);
+
+	printk("%s:\n", __func__);
+	for (y = NO_ERR; y < y_channel_size; y++) {
+		for (x = NO_ERR; x < x_channel_size; x++) {
+			printk("%5d, ", RawData_Open[y * x_channel_size + x]);
+		}
+		printk("\n");
+	}
+	printk("\n");
+
+	TS_LOG_INFO("%s:--\n", __func__);
+
+	return NO_ERR;
 }
 
 /*******************************************************
@@ -2045,6 +1933,7 @@ static int32_t nvt_rawdata_up_low(int32_t rawdata[], uint8_t RecordResult[], uin
 	//---Check Lower & Upper Limit---
 	for (j = 0; j < y_len; j++) {
 		for (i = 0; i < x_len; i++) {		
+			RecordResult[j * x_len + i] = NO_ERR;
 			if(rawdata[j * x_len + i] > Upper_Lmt[j * x_len + i]) {
 				RecordResult[j * x_len + i] |= 0x01;
 				retval = -1;
@@ -2311,12 +2200,37 @@ static void nvt_print_criteria(void)
 
 	//---PS_Config_Lmt_Short_Rawdata---
 	printk("PS_Config_Lmt_Short_Rawdata_P: %5d\n", PS_Config_Lmt_Short_Rawdata_P);
-	printk("PS_Config_Lmt_Short_Rawdata_N: %5d\n", PS_Config_Lmt_Short_Rawdata_N);	
-
+	printk("PS_Config_Lmt_Short_Rawdata_N: %5d\n", PS_Config_Lmt_Short_Rawdata_N);		
 	//---PS_Config_Lmt_Open_Rawdata---
-	printk("PS_Config_Lmt_Open_Rawdata_P: %5d\n", PS_Config_Lmt_Open_Rawdata_P);
-	printk("PS_Config_Lmt_Open_Rawdata_N: %5d\n", PS_Config_Lmt_Open_Rawdata_N);
-
+	if (nvt_ts->open_test_by_fw > NO_ERR) {
+		printk("PS_Config_Lmt_Open_Rawdata_P_A:\n");
+		for (y = NO_ERR; y < IC_Y_CFG_SIZE; y++) {
+			for (x = NO_ERR; x < (IC_X_CFG_SIZE); x++) {
+				iArrayIndex = y * (IC_X_CFG_SIZE) + x;
+				printk("%5d ", PS_Config_Lmt_Open_Rawdata_P_A[iArrayIndex]);
+			}
+			printk("\n");
+		}
+		printk("PS_Config_Lmt_Open_Rawdata_N_A:\n");
+		for (y = NO_ERR; y < IC_Y_CFG_SIZE; y++) {
+			for (x = NO_ERR; x < (IC_X_CFG_SIZE); x++) {
+				iArrayIndex = y * (IC_X_CFG_SIZE) + x;
+				printk("%5d ", PS_Config_Lmt_Open_Rawdata_N_A[iArrayIndex]);
+			}
+			printk("\n");
+		}
+	} else {
+		printk("PS_Config_Lmt_Open_Rawdata_P: %5d\n", PS_Config_Lmt_Open_Rawdata_P);
+		printk("PS_Config_Lmt_Open_Rawdata_N: %5d\n", PS_Config_Lmt_Open_Rawdata_N);
+	}
+	for (y = NO_ERR; y < IC_X_CFG_SIZE; y++) {
+		printk("%5u ", AIN_X[y]);
+	}
+	printk("\n");
+	for (y = NO_ERR; y < IC_Y_CFG_SIZE; y++) {
+		printk("%5u ", AIN_Y[y]);
+	}
+	printk("\n");
 	//---mADCOper_Cnt---
 	printk("mADCOper_Cnt: %5d\n", mADCOper_Cnt);	
 
@@ -2340,19 +2254,47 @@ int32_t nvt_kit_selftest(struct ts_rawdata_info *info)
 	char test_2_result[4]={0};
 	char test_3_result[4]={0};
 	char test_4_result[4]={0};
-	
+	int32_t noise_ret = NO_ERR;
+	int32_t open_ret = NO_ERR;
+	uint8_t x_channel_size = 0;
+	uint8_t y_channel_size = 0;
+
+	if (NULL == info || NULL == nvt_ts) {
+		TS_LOG_ERR("%s: param error\n", __FUNCTION__);
+		return -EINVAL;
+	}
+
+	if (NULL == nvt_ts->NvtTddi_X_Channel || NULL == nvt_ts->NvtTddi_Y_Channel) {
+		TS_LOG_ERR("%s: param error\n", __FUNCTION__);
+		return -EINVAL;
+	}
+
+	TS_LOG_INFO("%s: nvt_ts->nvttddi_channel_flag=%d\n", __func__, nvt_ts->nvttddi_channel_flag);
+	if (FLAG_EXIST == nvt_ts->nvttddi_channel_flag) {
+		if (*(nvt_ts->NvtTddi_X_Channel) > U8_MAX || *(nvt_ts->NvtTddi_X_Channel) < U8_MIN ||
+			*(nvt_ts->NvtTddi_Y_Channel) > U8_MAX || *(nvt_ts->NvtTddi_Y_Channel) < U8_MIN) {
+			TS_LOG_ERR("%s: data conversion failed!\n", __func__);
+			return -EINVAL;
+		}else {
+			x_channel_size = (uint8_t)*(nvt_ts->NvtTddi_X_Channel);
+			y_channel_size = (uint8_t)*(nvt_ts->NvtTddi_Y_Channel);
+		}
+	} else {
+		x_channel_size = IC_X_CFG_SIZE;
+		y_channel_size = IC_Y_CFG_SIZE;
+	}
+
 	//---For Debug : Test Time, Mallon 20160907---
 	unsigned long timer_start=0,timer_end=0;
 	timer_start=jiffies;
 	//---print criteria ,mallon 20161012-----
-	nvt_print_criteria();
-	
+	if(nvt_ts->print_criteria == true) {
+		nvt_print_criteria();
+		nvt_ts->print_criteria = false;
+	}
 	nvt_mp_isInitialed = 0;
 	TestResult_Short = 0;
 	TestResult_Open = 0;
-
-	//---Create Folder for Sample Data Output---
-	sys_mkdir("/data/nvt_data", 0664);
 
 	//---Get ProjectID to match input & output files---
 	//novatek_read_projectid();
@@ -2473,9 +2415,20 @@ int32_t nvt_kit_selftest(struct ts_rawdata_info *info)
 	} else {
 		strcpy(test_2_result, "2P-");
 	}
-	
+	if (nvt_ts->noise_test_frame > NO_ERR) {
+		//---Leave Test Mode before Noise Test---
+		nvt_kit_change_mode(NORMAL_MODE);
+	}
+
+	TS_LOG_INFO("%s: nvt_ts->noise_test_frame = %d\n", __func__, nvt_ts->noise_test_frame);
+
 	//---Noise Test---
-	if (nvt_read_noise() != 0) {
+	if (nvt_ts->noise_test_frame > NO_ERR) {
+		noise_ret = nvt_tddi_read_fw_noise(RawData_Diff);
+	} else {
+		noise_ret = nvt_read_noise();
+	}
+	if (noise_ret != NO_ERR) {
 		TestResult_Noise = 1;	// 1: ERROR
 		TestResult_FW_Diff = 1;
 		TS_LOG_INFO("%s: nvt_read_noise ERROR! TestResult_Noise=%d\n", __func__, TestResult_Noise);
@@ -2500,9 +2453,10 @@ int32_t nvt_kit_selftest(struct ts_rawdata_info *info)
 	} else {
 		strcpy(test_3_result, "3P-");
 	}
+	if (nvt_ts->noise_test_frame == NO_ERR) {
 	//---set FW to Normal Mode for short Test, 20160928----
-	nvt_kit_change_mode(NORMAL_MODE);
-	
+		nvt_kit_change_mode(NORMAL_MODE);
+	}
 	//---Short Test (in FW)---
 	if (nvt_read_fw_short(RawData_Short) != 0) {
 		TestResult_Short = 1; // 1:ERROR
@@ -2524,8 +2478,15 @@ int32_t nvt_kit_selftest(struct ts_rawdata_info *info)
 	//---Enable FW Frequence Hopping---
 	//invt_switch_FreqHopEnDis(FREQ_HOP_ENABLE);
 
+	TS_LOG_INFO("%s: nvt_ts->open_test_by_fw = %d\n", __func__, nvt_ts->open_test_by_fw);
+
+	if (nvt_ts->open_test_by_fw > NO_ERR) {
+		open_ret = nvt_tddi_read_fw_open();
+	} else {
+		open_ret = nvt_read_open();
+	}
 	//---Open Test---
-	if (nvt_read_open() != 0) {
+	if (open_ret != NO_ERR) {
 		TestResult_Open = 1;	// 1:ERROR
 		TS_LOG_INFO("%s: nvt_read_open ERROR! TestResult_Open=%d\n", __func__, TestResult_Open);
 		info->buff[0] = 0;
@@ -2533,8 +2494,13 @@ int32_t nvt_kit_selftest(struct ts_rawdata_info *info)
 		info->used_size = 0;
 	} else {
 		//---Self Test Check --- // 0:PASS, -1:FAIL
-		TestResult_Open = RawDataTest_Sub(RawData_Open, RecordResult_Open, X_Channel, Y_Channel,
+		if (nvt_ts->open_test_by_fw > NO_ERR) {
+			TestResult_Open = nvt_rawdata_up_low(RawData_Open, RecordResult_Open, x_channel_size, y_channel_size,
+											PS_Config_Lmt_Open_Rawdata_P_A, PS_Config_Lmt_Open_Rawdata_N_A);
+		} else {
+			TestResult_Open = RawDataTest_Sub(RawData_Open, RecordResult_Open, X_Channel, Y_Channel,
 											PS_Config_Lmt_Open_Rawdata_P, PS_Config_Lmt_Open_Rawdata_N);
+		}
 		if (TestResult_Open == -1){
 			TS_LOG_INFO("%s: OPEN TEST FAIL! TestResult_Open=%d\n", __func__, TestResult_Open);
 		} else {
@@ -2551,21 +2517,64 @@ int32_t nvt_kit_selftest(struct ts_rawdata_info *info)
 
 	//---Reset IC---
 	nvt_kit_bootloader_reset();
-
-	//---Mutex Unlock---
-	mutex_unlock(&nvt_ts->mp_mutex);
-
+	uint32_t bytes_of_array;
 	//---Copy Data to info->buff---
-	info->buff[0] = X_Channel;
-	info->buff[1] = Y_Channel;
-	info->used_size = X_Channel * Y_Channel * 2  + 2;
-	memcpy(&info->buff[2], RawData_FWMutual, (X_Channel*Y_Channel*4));
-	memcpy(&info->buff[X_Channel * Y_Channel + 2], RawData_Diff, (X_Channel*Y_Channel*4));
+	if(nvt_ts->criteria_threshold_flag){
+
+		info->buff[0] = x_channel_size;
+		info->buff[1] = y_channel_size;
+		info->used_size = x_channel_size * y_channel_size * 5  + CHANNEL_NUM;//4:rawdata+diff+short+open
+
+		if(info->used_size < TS_RAWDATA_BUFF_MAX){//buff is enough for rawdata, diff, short and open
+
+			bytes_of_array = x_channel_size*y_channel_size*sizeof(int);
+			memcpy(&info->buff[CHANNEL_NUM], RawData_FWMutual, bytes_of_array);
+
+			uint32_t start_p = x_channel_size * y_channel_size + CHANNEL_NUM;
+			memcpy(&info->buff[start_p], RawData_Diff, bytes_of_array);
+
+			start_p = x_channel_size * y_channel_size*2 + CHANNEL_NUM;
+			memcpy(&info->buff[start_p],RawData_Short,bytes_of_array);
+
+			start_p = x_channel_size * y_channel_size*3 + CHANNEL_NUM;
+			memcpy(&info->buff[start_p],RawData_Open,bytes_of_array);
+
+			start_p = x_channel_size * y_channel_size*4 + CHANNEL_NUM;
+			memcpy(&info->buff[start_p],RawData_FW_CC,bytes_of_array);
+		} else {
+			TS_LOG_ERR("%s: info->buff's size is not enough for rawdata, diff, short and open\n",__func__);
+		}
+	}else{
+		info->buff[0] = X_Channel;
+		info->buff[1] = Y_Channel;
+		info->used_size = X_Channel * Y_Channel * 5  + CHANNEL_NUM;//2:rawdata + diff
+
+		if(info->used_size < TS_RAWDATA_BUFF_MAX){//buff is enough for rawdata, diff, short and open
+			bytes_of_array = (X_Channel*(uint64_t)Y_Channel*sizeof(int));
+			memcpy(&info->buff[CHANNEL_NUM], RawData_FWMutual, bytes_of_array);
+
+			uint32_t start_p = X_Channel * Y_Channel + CHANNEL_NUM;
+			memcpy(&info->buff[start_p], RawData_Diff, bytes_of_array);
+
+			start_p = X_Channel * Y_Channel*2 + CHANNEL_NUM;
+			memcpy(&info->buff[start_p],RawData_Short,bytes_of_array);
+
+			start_p = X_Channel * Y_Channel*3 + CHANNEL_NUM;
+			memcpy(&info->buff[start_p],RawData_Open,bytes_of_array);
+
+			start_p = X_Channel * Y_Channel*4 + CHANNEL_NUM;
+			memcpy(&info->buff[start_p],RawData_FW_CC,bytes_of_array);
+		} else {
+			TS_LOG_ERR("%s: info->buff's size is not enough for rawdata, diff, short and open\n",__func__);
+		}
+	}
 
 err_nvt_get_fw_info:
 err_nvt_check_fw_status:	
 err_nvt_clear_fw_status:
 err_nvt_check_fw_reset_state:	
+	//---Mutex Unlock---
+	mutex_unlock(&nvt_ts->mp_mutex);
 err_mutex_lock_interruptible:
 err_nvt_i2c_read:
 	//---Check Fail Reason---
@@ -2581,6 +2590,7 @@ err_nvt_i2c_read:
 	strncat(mmitest_result, test_2_result, strlen(test_2_result));
 	strncat(mmitest_result, test_3_result, strlen(test_3_result));
 	strncat(mmitest_result, test_4_result, strlen(test_4_result));
+	//----add static data in SH ,Mallon 20160928---
 	mmi_add_static_data();
 	strncat(mmitest_result, ";", strlen(";"));
 	if (0 == strlen(mmitest_result) || strstr(mmitest_result, "F")) {

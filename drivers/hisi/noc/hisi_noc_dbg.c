@@ -99,6 +99,7 @@ static enum e_noc_dbg_cmd noc_dbg_get_cmd_typ(char *kn_buf,
 		cmd = E_NOC_DBG_CMD_INVALID;
 	else {
 		if (cmd == E_NOC_DBG_CMD_WR_REG) {/*lint !e644*/
+			/* cppcheck-suppress * */
 			if (-1 == sscanf(kn_buf, "set %s %s 0x%x",
 						reg_str[0], reg_str[1], reg_value))
 				cmd = E_NOC_DBG_CMD_INVALID;
@@ -313,6 +314,7 @@ static ssize_t noc_dbg_wr(struct file *file, const char __user *userbuf,
 		return byte_writen;
 	}
 
+	/* add '\0' to make sure, string has an end-char */
 	if (byte_writen < NOC_DBG_STRING_SIZE - 1)
 		kn_buf[byte_writen] = '\0';
 	else

@@ -48,6 +48,7 @@ static unsigned long getopt(const char *str1, const char *str2)
 
 	for (; *p; p++) {
 		if (*p == '=') {
+			/* cppcheck-suppress * */
 			if (sscanf(p + 1, "%x", &value) == 0)
 				value = 0;
 
@@ -120,6 +121,10 @@ static void do_map(struct maptest_info *info, unsigned int len)
 	int i;
 
 	page = alloc_pages(GFP_KERNEL, get_order(len));
+	if(!page){
+		D("page allocation failed.\n");
+		return;
+	}
 	sg_init_table(&info->sg, 1);
 	sg_set_page(&info->sg, page, len, 0);
 
@@ -227,12 +232,14 @@ static ssize_t dump_pgtbl_store(struct device *pdev,
 
 	for (p = buf; *p; p++) {
 		if ((*p == 'a') && (*(p + 1) == '=')) {
+			/* cppcheck-suppress * */
 			if (sscanf(p + 2, "%x", &a) != 0)
 				printk("a: 0x%x\n", a);
 			p += 2;
 		}
 
 		if ((*p == 'l') && (*(p + 1) == '=')) {
+			/* cppcheck-suppress * */
 			if (sscanf(p + 2, "%x", &l) != 0)
 				printk("l: 0x%x\n", l);
 			p += 2;

@@ -566,6 +566,9 @@ void platform_start_timer(TIMER *timer, FSC_U32 timeout)
         case NO_RESPONSE_TIMER:
             fusb_StartTimers(&chip->timer_noresponsetimer, timeout);
             break;
+        case LOOP_RESET_TIMER:
+            fusb_StartTimers(&chip->timer_loopresettimer, timeout);
+            break;
         default:
             break;
 	}
@@ -598,6 +601,9 @@ void platform_stop_timer(TIMER *timer)
             break;
         case NO_RESPONSE_TIMER:
             fusb_StopTimers(&chip->timer_noresponsetimer);
+            break;
+        case LOOP_RESET_TIMER:
+            fusb_StopTimers(&chip->timer_loopresettimer);
             break;
         default:
             break;

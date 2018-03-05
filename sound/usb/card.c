@@ -66,7 +66,8 @@
 #include "format.h"
 #include "power.h"
 #include "stream.h"
-
+#include "hifi/usbaudio_ctrl.h"
+/*lint -e31 -e1058*/
 MODULE_AUTHOR("Takashi Iwai <tiwai@suse.de>");
 MODULE_DESCRIPTION("USB Audio");
 MODULE_LICENSE("GPL");
@@ -476,6 +477,7 @@ static int usb_audio_probe(struct usb_interface *intf,
 	struct usb_host_interface *alts;
 	int ifnum;
 	u32 id;
+	bool switch_result;
 
 	alts = &intf->altsetting[0];
 	ifnum = get_iface_desc(alts)->bInterfaceNumber;
@@ -487,6 +489,12 @@ static int usb_audio_probe(struct usb_interface *intf,
 	err = snd_usb_apply_boot_quirk(dev, intf, quirk);
 	if (err < 0)
 		return err;
+
+	switch_result = usbaudio_ctrl_controller_switch(dev, id, alts, ifnum);
+	if (switch_result) {
+		pr_info("use hifi usb\n");
+		return  -ENXIO;
+	}
 
 	/*
 	 * found a config.  now register to ALSA
@@ -528,7 +536,7 @@ static int usb_audio_probe(struct usb_interface *intf,
 			goto __error;
 		}
 	}
-
+	usbaudio_ctrl_set_chip(chip);
 	/*
 	 * For devices with more than one control interface, we assume the
 	 * first contains the audio controls. We might need a more specific
@@ -592,7 +600,7 @@ static void usb_audio_disconnect(struct usb_interface *intf)
 		return;
 
 	card = chip->card;
-
+	usbaudio_ctrl_disconnect();
 	mutex_lock(&register_mutex);
 	if (atomic_inc_return(&chip->shutdown) == 1) {
 		struct snd_usb_stream *as;

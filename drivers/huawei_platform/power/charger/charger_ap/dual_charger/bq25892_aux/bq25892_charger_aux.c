@@ -283,6 +283,7 @@ struct bq25892_aux_sysfs_field_info {
 	u8 shift;
 };
 
+/*lint -save -e* */
 static struct bq25892_aux_sysfs_field_info bq25892_aux_sysfs_field_tbl[] = {
 	/* sysfs name reg field in reg */
 	BQ25892_AUX_SYSFS_FIELD_RW(en_hiz, 00, EN_HIZ),
@@ -343,6 +344,8 @@ static struct bq25892_aux_sysfs_field_info bq25892_aux_sysfs_field_tbl[] = {
 
 static struct attribute *bq25892_aux_sysfs_attrs[ARRAY_SIZE(bq25892_aux_sysfs_field_tbl) + 1];
 
+/*lint -restore*/
+
 static const struct attribute_group bq25892_aux_sysfs_attr_group = {
 	.attrs = bq25892_aux_sysfs_attrs,
 };
@@ -353,6 +356,8 @@ static const struct attribute_group bq25892_aux_sysfs_attr_group = {
 *  Parameters:   NULL
 *  return value:  NULL
 **********************************************************/
+
+/*lint -save -e* */
 static void bq25892_aux_sysfs_init_attrs(void)
 {
 	int i, limit = ARRAY_SIZE(bq25892_aux_sysfs_field_tbl);
@@ -363,6 +368,7 @@ static void bq25892_aux_sysfs_init_attrs(void)
 
 	bq25892_aux_sysfs_attrs[limit] = NULL;	/* Has additional entry for this */
 }
+/*lint -restore*/
 
 /**********************************************************
 *  Function:       bq25892_aux_sysfs_field_lookup
@@ -370,6 +376,8 @@ static void bq25892_aux_sysfs_init_attrs(void)
 *  Parameters:   name:evice attribute name
 *  return value:  bq25892_aux_sysfs_field_tbl[]
 **********************************************************/
+
+/*lint -save -e* */
 static struct bq25892_aux_sysfs_field_info
 *bq25892_aux_sysfs_field_lookup(const char *name)
 {
@@ -385,6 +393,7 @@ static struct bq25892_aux_sysfs_field_info
 
 	return &bq25892_aux_sysfs_field_tbl[i];
 }
+/*lint -restore*/
 
 /**********************************************************
 *  Function:       bq25892_aux_sysfs_show
@@ -433,6 +442,8 @@ static ssize_t bq25892_aux_sysfs_show(struct device *dev,
 *                      count:unused
 *  return value:  0-sucess or others-fail
 **********************************************************/
+
+/*lint -save -e* */
 static ssize_t bq25892_aux_sysfs_store(struct device *dev,
 				       struct device_attribute *attr,
 				       const char *buf, size_t count)
@@ -470,6 +481,7 @@ static ssize_t bq25892_aux_sysfs_store(struct device *dev,
 
 	return count;
 }
+/*lint -restore*/
 
 /**********************************************************
 *  Function:       bq25892_aux_sysfs_create_group
@@ -534,7 +546,7 @@ static int bq25892_aux_device_check(void)
 **********************************************************/
 static int bq25892_aux_set_bat_comp(int value)
 {
-	unsigned int bat_comp = 0;
+	int bat_comp = 0;
 	u8 bat_comp_reg = 0;
 	bat_comp = value;
 
@@ -565,7 +577,7 @@ static int bq25892_aux_set_bat_comp(int value)
 **********************************************************/
 static int bq25892_aux_set_vclamp(int value)
 {
-	unsigned int vclamp = 0;
+	int vclamp = 0;
 	u8 vclamp_reg = 0;
 	vclamp = value;
 	if (vclamp < VCLAMP_MIN_0) {
@@ -798,7 +810,7 @@ static int bq25892_aux_set_input_current(int value)
 **********************************************************/
 static int bq25892_aux_set_charge_current(int value)
 {
-	unsigned int currentmA = 0;
+	int currentmA = 0;
 	u8 ichg = 0;
 
 	currentmA = value;
@@ -1295,6 +1307,8 @@ struct charge_device_ops bq25892_aux_ops = {
 *  Parameters:   work:chargerIC fault interrupt workqueue
 *  return value:  NULL
 **********************************************************/
+
+/*lint -save -e* */
 static void bq25892_aux_irq_work(struct work_struct *work)
 {
 	struct bq25892_aux_device_info *di =
@@ -1320,6 +1334,7 @@ static void bq25892_aux_irq_work(struct work_struct *work)
 	}
 
 }
+/*lint -restore*/
 
 /**********************************************************
 *  Function:       bq25892_aux_interrupt
@@ -1328,6 +1343,8 @@ static void bq25892_aux_irq_work(struct work_struct *work)
 *                      _di:bq25892_aux_device_info
 *  return value:  IRQ_HANDLED-sucess or others
 **********************************************************/
+
+/*lint -save -e* */
 static irqreturn_t bq25892_aux_interrupt(int irq, void *_di)
 {
 	struct bq25892_aux_device_info *di = _di;
@@ -1342,7 +1359,9 @@ static irqreturn_t bq25892_aux_interrupt(int irq, void *_di)
 	}
 	return IRQ_HANDLED;
 }
+/*lint -restore*/
 
+/*lint -save -e* */
 static void parse_dts(struct device_node *np,
 		      struct bq25892_aux_device_info *di)
 {
@@ -1383,6 +1402,7 @@ static void parse_dts(struct device_node *np,
 	}
 	return;
 }
+/*lint -restore*/
 
 /**********************************************************
 *  Function:       bq25892_aux_probe
@@ -1391,6 +1411,8 @@ static void parse_dts(struct device_node *np,
 *                      id:i2c_device_id
 *  return value:  0-sucess or others-fail
 **********************************************************/
+
+/*lint -save -e* */
 static int bq25892_aux_probe(struct i2c_client *client,
 			     const struct i2c_device_id *id)
 {
@@ -1522,6 +1544,7 @@ static int bq25892_aux_remove(struct i2c_client *client)
 	}
 	return 0;
 }
+/*lint -restore*/
 
 MODULE_DEVICE_TABLE(i2c, bq25892_aux);
 static struct of_device_id bq25892_aux_of_match[] = {
@@ -1554,6 +1577,8 @@ static struct i2c_driver bq25892_aux_driver = {
 *  Parameters:   NULL
 *  return value:  0-sucess or others-fail
 **********************************************************/
+
+/*lint -save -e* */
 static int __init bq25892_aux_init(void)
 {
 	int ret = 0;
@@ -1578,6 +1603,8 @@ static void __exit bq25892_aux_exit(void)
 
 rootfs_initcall(bq25892_aux_init);
 module_exit(bq25892_aux_exit);
+/*lint -restore*/
+
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("bq25892_aux charger module driver");
 MODULE_AUTHOR("HW Inc");

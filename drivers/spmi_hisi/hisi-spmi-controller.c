@@ -21,19 +21,20 @@
 #define SPMI_CHANNEL_OFFSET					0x0300
 #define SPMI_SLAVE_OFFSET						0x20
 
-#define SPMI_APB_SPMI_CMD_BASE_ADDR				0x0100		/* lint !e750 */
+#define SPMI_APB_SPMI_CMD_BASE_ADDR				0x0100
+/*lint -e750 -esym(750,*)*/
+#define SPMI_APB_SPMI_WDATA0_BASE_ADDR			0x0104
+#define SPMI_APB_SPMI_WDATA1_BASE_ADDR			0x0108
+#define SPMI_APB_SPMI_WDATA2_BASE_ADDR			0x010c
+#define SPMI_APB_SPMI_WDATA3_BASE_ADDR			0x0110
 
-#define SPMI_APB_SPMI_WDATA0_BASE_ADDR			0x0104		/* lint !e750 */
-#define SPMI_APB_SPMI_WDATA1_BASE_ADDR			0x0108		/* lint !e750 */
-#define SPMI_APB_SPMI_WDATA2_BASE_ADDR			0x010c		/* lint !e750 */
-#define SPMI_APB_SPMI_WDATA3_BASE_ADDR			0x0110		/* lint !e750 */
+#define SPMI_APB_SPMI_STATUS_BASE_ADDR			0x0200
 
-#define SPMI_APB_SPMI_STATUS_BASE_ADDR			0x0200		/* lint !e750 */
-
-#define SPMI_APB_SPMI_RDATA0_BASE_ADDR			0x0204		/* lint !e750 */
-#define SPMI_APB_SPMI_RDATA1_BASE_ADDR			0x0208		/* lint !e750 */
-#define SPMI_APB_SPMI_RDATA2_BASE_ADDR			0x020c		/* lint !e750 */
-#define SPMI_APB_SPMI_RDATA3_BASE_ADDR			0x0210		/* lint !e750 */
+#define SPMI_APB_SPMI_RDATA0_BASE_ADDR			0x0204
+#define SPMI_APB_SPMI_RDATA1_BASE_ADDR			0x0208
+#define SPMI_APB_SPMI_RDATA2_BASE_ADDR			0x020c
+#define SPMI_APB_SPMI_RDATA3_BASE_ADDR			0x0210
+/*lint +e750 -esym(750,*)*/
 
 #define SPMI_PER_DATAREG_BYTE					4
 /*
@@ -51,6 +52,7 @@
                                                            (((u32)(X) & 0x000000ff) << 24))
 
 /* Command Opcodes */
+/*lint -e749 -esym(749,*)*/
 enum spmi_controller_cmd_op_code {
 	SPMI_CMD_REG_ZERO_WRITE = 0,
 	SPMI_CMD_REG_WRITE = 1,
@@ -64,6 +66,7 @@ enum spmi_controller_cmd_op_code {
 	SPMI_CMD_REG_SHUTDOWN = 9,
 	SPMI_CMD_REG_WAKEUP = 10,
 };
+/*lint +e749 -esym(749,*)*/
 
 /*
  * SPMI status register
@@ -85,11 +88,8 @@ enum spmi_controller_cmd_op_code {
 
 #define  SPMI_READL( dev, reg, addr )	\
 	do { \
-		reg = readl( addr );\
+		reg = readl( addr ); \
 	} while (0)
-void spmi_virt_mem_int(void);
-
-struct spmi_controller_dev;
 
 /*
  * @base base address of the PMIC Arbiter core registers.
@@ -117,7 +117,7 @@ struct spmi_controller_dev {
 	struct device		*dev;
 	void __iomem		*base;
 	spinlock_t		lock;
-	u8			channel;
+	u32			channel;
 };
 
 static int spmi_controller_wait_for_done(struct spmi_controller_dev *ctrl_dev,
@@ -129,7 +129,7 @@ static int spmi_controller_wait_for_done(struct spmi_controller_dev *ctrl_dev,
 		+ SPMI_SLAVE_OFFSET * sid;
 
 	while (timeout--) {
-		SPMI_READL(ctrl_dev->dev, status, base + offset);
+		SPMI_READL(ctrl_dev->dev, status, base + offset);/*lint !e732 */
 
 		if (status & SPMI_APB_TRANS_DONE) {
 			if (status & SPMI_APB_TRANS_FAIL) {
@@ -140,14 +140,14 @@ static int spmi_controller_wait_for_done(struct spmi_controller_dev *ctrl_dev,
 			}
 			return 0;
 		}
-		udelay(1);
+		udelay(1);/*lint !e778 !e774 !e747*/
 	}
 
 	dev_err(ctrl_dev->dev,
 		"%s: timeout, status 0x%x\n",
 		__func__, status);
-	return -ETIMEDOUT;
-}
+	return -ETIMEDOUT;/*lint !e438*/
+}/*lint !e715 !e529*/
 
 static int spmi_read_cmd(struct spmi_controller *ctrl,
 				u8 opc, u8 sid, u16 addr, u8 bc, u8 *buf)
@@ -155,9 +155,9 @@ static int spmi_read_cmd(struct spmi_controller *ctrl,
 	struct spmi_controller_dev *spmi_controller = spmi_get_ctrldata(ctrl);
 	unsigned long flags;
 	u32 cmd, data;
-	int rc, i;
-	int chnl_ofst = SPMI_CHANNEL_OFFSET*spmi_controller->channel;
-	u8 op_code;
+	int rc;
+	u32 chnl_ofst = SPMI_CHANNEL_OFFSET*spmi_controller->channel;
+	u8 op_code, i;
 
 	if (bc > SPMI_CONTROLLER_MAX_TRANS_BYTES) {
 		dev_err(spmi_controller->dev
@@ -178,13 +178,13 @@ static int spmi_read_cmd(struct spmi_controller *ctrl,
 		return -EINVAL;
 	}
 
-	cmd = SPMI_APB_SPMI_CMD_EN |				/* cmd_en */
-		 (op_code << SPMI_APB_SPMI_CMD_TYPE_OFFSET) |			/* cmd_type */
-		 ((bc-1) << SPMI_APB_SPMI_CMD_LENGTH_OFFSET) |			/* byte_cnt */
-		 ((sid & 0xf) << SPMI_APB_SPMI_CMD_SLAVEID_OFFSET) |		/* slvid */
-		 ((addr & 0xffff)  << SPMI_APB_SPMI_CMD_ADDR_OFFSET);	/* slave_addr */
+	cmd = SPMI_APB_SPMI_CMD_EN |/*lint !e648 !e701 */								/* cmd_en */
+		 (op_code << SPMI_APB_SPMI_CMD_TYPE_OFFSET) |/*lint !e648 !e701 */			/* cmd_type */
+		 ((bc-1) << SPMI_APB_SPMI_CMD_LENGTH_OFFSET) |/*lint !e648 !e701 */		/* byte_cnt */
+		 ((sid & 0xf) << SPMI_APB_SPMI_CMD_SLAVEID_OFFSET) |						/* slvid */
+		 ((addr & 0xffff)  << SPMI_APB_SPMI_CMD_ADDR_OFFSET);					/* slave_addr */
 
-	spin_lock_irqsave(&spmi_controller->lock, flags);
+	spin_lock_irqsave(&spmi_controller->lock, flags);/*lint !e550 */
 
 	SPMI_WRITEL(spmi_controller->dev, cmd, spmi_controller->base + chnl_ofst + SPMI_APB_SPMI_CMD_BASE_ADDR);
 
@@ -195,13 +195,13 @@ static int spmi_read_cmd(struct spmi_controller *ctrl,
 
 	i = 0;
 	do {
-		SPMI_READL(spmi_controller->dev, data, spmi_controller->base + chnl_ofst + SPMI_APB_SPMI_RDATA0_BASE_ADDR + i*SPMI_PER_DATAREG_BYTE);
+		SPMI_READL(spmi_controller->dev, data, spmi_controller->base + chnl_ofst + SPMI_SLAVE_OFFSET*sid + SPMI_APB_SPMI_RDATA0_BASE_ADDR + i*SPMI_PER_DATAREG_BYTE);/*lint !e732 */
 		data = Tranverse32(data);
-		if ((bc - i*SPMI_PER_DATAREG_BYTE ) >> 2) {
+		if ((bc - i*SPMI_PER_DATAREG_BYTE ) >> 2) {/*lint !e702 */
 			memcpy(buf, &data, sizeof(data));
 			buf += sizeof(data);
 		} else {
-			memcpy(buf, &data, bc%SPMI_PER_DATAREG_BYTE);
+			memcpy(buf, &data, bc%SPMI_PER_DATAREG_BYTE);/*lint !e747 */
 			buf += (bc%SPMI_PER_DATAREG_BYTE);
 		}
 		i++;
@@ -213,8 +213,9 @@ done:
 		dev_err(spmi_controller->dev, "spmi read wait timeout op:0x%x sid:%d addr:0x%x bc:%d\n",
 							opc, sid, addr, bc + 1);
 	return rc;
-}
+}/*lint !e550 !e529*/
 
+/*lint -e438 -esym(438,*)*/
 static int spmi_write_cmd(struct spmi_controller *ctrl,
 				u8 opc, u8 sid, u16 addr, u8 bc, u8 *buf)
 {
@@ -222,7 +223,7 @@ static int spmi_write_cmd(struct spmi_controller *ctrl,
 	unsigned long flags;
 	u32 cmd, data;
 	int rc;
-	int chnl_ofst = SPMI_CHANNEL_OFFSET*spmi_controller->channel;
+	u32 chnl_ofst = SPMI_CHANNEL_OFFSET*spmi_controller->channel;
 	u8 op_code, i;
 
 
@@ -245,23 +246,23 @@ static int spmi_write_cmd(struct spmi_controller *ctrl,
 		return -EINVAL;
 	}
 
-	cmd = SPMI_APB_SPMI_CMD_EN |				/* cmd_en */
-		 (op_code << SPMI_APB_SPMI_CMD_TYPE_OFFSET) |			/* cmd_type */
-		 ((bc-1) << SPMI_APB_SPMI_CMD_LENGTH_OFFSET) |			/* byte_cnt */
-		 ((sid & 0xf) << SPMI_APB_SPMI_CMD_SLAVEID_OFFSET) |		/* slvid */
-		 ((addr & 0xffff)  << SPMI_APB_SPMI_CMD_ADDR_OFFSET);	/* slave_addr */
+	cmd = SPMI_APB_SPMI_CMD_EN |/*lint !e648 !e701 */								/* cmd_en */
+		 (op_code << SPMI_APB_SPMI_CMD_TYPE_OFFSET) |/*lint !e648 !e701 */			/* cmd_type */
+		 ((bc-1) << SPMI_APB_SPMI_CMD_LENGTH_OFFSET) |/*lint !e648 !e701 */		/* byte_cnt */
+		 ((sid & 0xf) << SPMI_APB_SPMI_CMD_SLAVEID_OFFSET) |						/* slvid */
+		 ((addr & 0xffff)  << SPMI_APB_SPMI_CMD_ADDR_OFFSET);					/* slave_addr */
 
 	/* Write data to FIFOs */
-	spin_lock_irqsave(&spmi_controller->lock, flags);
+	spin_lock_irqsave(&spmi_controller->lock, flags);/*lint !e550 */
 
 	i = 0;
 	do {
 		memset(&data, 0, sizeof(data));
-		if ((bc - i*SPMI_PER_DATAREG_BYTE ) >> 2) {
+		if ((bc - i*SPMI_PER_DATAREG_BYTE ) >> 2) {/*lint !e702 */
 			memcpy(&data, buf, sizeof(data));
 			buf +=sizeof(data);
 		} else {
-			memcpy(&data, buf, bc%SPMI_PER_DATAREG_BYTE);
+			memcpy(&data, buf, bc%SPMI_PER_DATAREG_BYTE);/*lint !e747 */
 			buf +=(bc%SPMI_PER_DATAREG_BYTE);
 		}
 
@@ -281,8 +282,8 @@ static int spmi_write_cmd(struct spmi_controller *ctrl,
 							opc, sid, addr, bc);
 
 	return rc;
-}
-
+}/*lint !e438 !e550 !e529*/
+/*lint +e438 -esym(438,*)*/
 static int spmi_controller_probe(struct platform_device *pdev)
 {
 	struct spmi_controller_dev *spmi_controller;
@@ -311,11 +312,11 @@ static int spmi_controller_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "can not remap base addr! \n");
 		return -EADDRNOTAVAIL;
 	}
-	dev_dbg(&pdev->dev, "spmi_add_controller base addr=0x%lx!\n", spmi_controller->base);
+	dev_dbg(&pdev->dev, "spmi_add_controller base addr=0x%lx!\n", (long unsigned int)spmi_controller->base);/*lint !e774*/
 
 	/* Get properties from the device tree */
-	ret = of_property_read_u8(pdev->dev.of_node, "spmi-channel",
-			&spmi_controller->channel);
+	ret = of_property_read_u32(pdev->dev.of_node, "spmi-channel",
+			&spmi_controller->channel);/*lint !e838*/
 	if (ret) {
 		dev_err(&pdev->dev, "can not get chanel \n");
 		return -ENODEV;
@@ -366,8 +367,8 @@ static int spmi_controller_remove(struct platform_device *pdev)
 
 static struct of_device_id spmi_controller_match_table[] = {
 	{	.compatible = "hisilicon,spmi-controller",
-	},
-	{}
+	},/*lint !e785*/
+	{}/*lint !e785*/
 };
 
 static struct platform_driver spmi_controller_driver = {
@@ -375,13 +376,14 @@ static struct platform_driver spmi_controller_driver = {
 	.remove		= spmi_controller_remove,
 	.driver		= {
 		.name	= SPMI_CONTROLLER_NAME,
-		.owner	= THIS_MODULE,
+		.owner	= THIS_MODULE,/*lint !e64*/
 		.of_match_table = spmi_controller_match_table,
-	},
-};
+	},/*lint !e785*/
+};/*lint !e785*/
+/*lint -e528 -esym(528,*)*/
 static int __init spmi_controller_init(void)
 {
-	return platform_driver_register(&spmi_controller_driver);
+	return platform_driver_register(&spmi_controller_driver);/*lint !e64*/
 }
 postcore_initcall(spmi_controller_init);
 
@@ -390,7 +392,9 @@ static void __exit spmi_controller_exit(void)
 	platform_driver_unregister(&spmi_controller_driver);
 }
 module_exit(spmi_controller_exit);
-
+/*lint -e753 -esym(753,*)*/
 MODULE_LICENSE("GPL v2");
-MODULE_VERSION("1.0");
+MODULE_VERSION("1.0");/*lint !e785 !e64 !e528*/
 MODULE_ALIAS("platform:spmi_controlller");
+/*lint -e753 +esym(753,*)*/
+/*lint -e528 +esym(528,*)*/

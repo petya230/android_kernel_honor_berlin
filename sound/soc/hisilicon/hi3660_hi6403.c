@@ -26,6 +26,8 @@
 #include <sound/soc.h>
 #include <linux/hisi/hilog.h>
 
+#define  EXTERN_HIFI_CODEC_AK4376_NAME  "ak4376"
+
 /*lint -e785*/
 
 static struct snd_soc_dai_link hi3660_hi6403_dai_link[] = {
@@ -129,6 +131,22 @@ static struct snd_soc_dai_link hi3660_hi6403_dai_link[] = {
     },
 };
 
+static struct snd_soc_dai_link ak4376_dai_link[] = {
+	/* RX for headset/headphone with audio mode */
+	{
+		 .name = "AK4376_PB_OUTPUT",
+		 .stream_name = "Audio Playback",
+		 .codec_name = "ak4376-codec",
+		 .cpu_dai_name = "hifi-vir-dai",
+		 .platform_name = "hi6210-hifi",
+		 .codec_dai_name = "ak4376-AIF1",
+	},
+};
+
+static struct snd_soc_dai_link hi3660_hi6403_ak4376_dai_links[
+				ARRAY_SIZE(hi3660_hi6403_dai_link) +
+				ARRAY_SIZE(ak4376_dai_link)];
+
 /* Audio machine driver */
 static struct snd_soc_card hi3660_hi6403_card = {
 	/* sound card name, can see all sound cards in /proc/asound/cards */
@@ -138,12 +156,51 @@ static struct snd_soc_card hi3660_hi6403_card = {
 	.num_links = ARRAY_SIZE(hi3660_hi6403_dai_link),
 };
 
+struct snd_soc_card hi3660_hi6403_ak4376_card = {
+	.name = "hi3660_HI6403_AK4376_CARD",
+	.owner = THIS_MODULE,
+	.dai_link = hi3660_hi6403_ak4376_dai_links,
+	.num_links = ARRAY_SIZE(hi3660_hi6403_ak4376_dai_links),
+};
+
+static int populate_extern_snd_card_dailinks(struct platform_device *pdev)
+{
+	pr_info("%s: Audio : hi3660_hi6403_ak4376_probe \n", __func__);
+
+	memcpy(hi3660_hi6403_ak4376_dai_links, hi3660_hi6403_dai_link,
+				sizeof(hi3660_hi6403_dai_link));
+	memcpy(hi3660_hi6403_ak4376_dai_links + ARRAY_SIZE(hi3660_hi6403_dai_link),
+			ak4376_dai_link, sizeof(ak4376_dai_link));
+
+	return 0;
+}
+
 static int hi3660_hi6403_probe(struct platform_device *pdev)
 {
 	int ret = 0;
 	struct snd_soc_card *card = &hi3660_hi6403_card;
+	const char *extern_codec_type = "huawei,extern_codec_type";
+	const char *ptr = NULL;
+
+	if (NULL == pdev) {
+		pr_err("%s : enter with null pointer, fail!\n", __FUNCTION__);
+		return -EINVAL;
+	}
 
 	pr_info("Audio : hi3660_hi6403_probe \n");
+	ret = of_property_read_string(pdev->dev.of_node, extern_codec_type, &ptr);
+	if (!ret) {
+		pr_info("%s: extern_codec_type: %s in dt node\n", __func__, extern_codec_type);
+		if (!strncmp(ptr, EXTERN_HIFI_CODEC_AK4376_NAME, strlen(EXTERN_HIFI_CODEC_AK4376_NAME))) {
+			populate_extern_snd_card_dailinks(pdev);
+			pr_info("Audio : set hi3660_hi6403_ak4376_card\n");
+			card = &hi3660_hi6403_ak4376_card;
+		} else {
+			card = &hi3660_hi6403_card;
+		}
+	} else {
+		card = &hi3660_hi6403_card;
+	}
 	card->dev = &pdev->dev;
 
 	ret = snd_soc_register_card(card);

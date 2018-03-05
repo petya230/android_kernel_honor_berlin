@@ -21,7 +21,9 @@
 #include <linux/slab.h>
 #include <linux/list.h>
 #include <linux/gpio.h>
+#ifdef CONFIG_HUAWEI_DSM
 #include <dsm/dsm_pub.h>
+#endif
 
 #include <huawei_platform/log/hw_log.h>
 #include <huawei_platform/usb/pd/richtek/tcpci.h>
@@ -361,7 +363,9 @@ static void tcpc_device_release(struct device *dev)
 	pr_info("%s : %s device release\n", __func__, dev_name(dev));
 	if(tcpc_dev == NULL) {
 		snprintf(buf, sizeof(buf), "the tcpc device is NULL\n");
+#ifdef CONFIG_HUAWEI_DSM
 		rt_dsm_report(ERROR_RT_TCPC_DEV_NULL, buf);
+#endif
 	}
 	/* Un-init pe thread */
 #ifdef CONFIG_USB_POWER_DELIVERY

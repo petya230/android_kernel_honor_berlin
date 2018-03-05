@@ -17,6 +17,7 @@
 #include <linux/slab.h>
 #include <linux/sched.h>
 #include <linux/delay.h>
+#include <linux/mutex.h>
 #include <linux/hisi/page_tracker.h>
 #ifdef PGTRACK_TEST
 #include <linux/ktime.h>
@@ -37,6 +38,8 @@ struct page_tracker_shadow {
 };
 
 static bool page_tracker_disabled = true;
+static DEFINE_MUTEX(page_tracker_mutex);
+
 static int page_tracker_watermark[TRACK_MAX] = {
 	1024,	/* SLAB 4M */
 	1024,	/* LSLAB 4M */
@@ -67,7 +70,7 @@ static int early_page_tracker_param(char *buf)
 	if (!buf)
 		return -EINVAL;
 
-	if (strcmp(buf, "on") == 0)
+	if (strcmp(buf, "on") == 0) /*lint !e421*/
 		page_tracker_disabled = false;
 
 	return 0;
@@ -86,7 +89,7 @@ void page_tracker_show(struct page *page, int order)
 
 	page_ext = lookup_page_ext(page);
 	if (page_ext) {
-		unsigned int order = page_ext->page_tracker.order;
+		unsigned int order = page_ext->page_tracker.order; /*lint !e578*/
 		unsigned int head = page_ext->page_tracker.head;
 		unsigned int type = page_ext->page_tracker.type;
 		unsigned int pid = page_ext->page_tracker.pid;
@@ -169,7 +172,7 @@ void page_tracker_change_tracker(struct page *new_page,
 		page_old_ext->page_tracker.head = true;
 		page_old_ext->page_tracker.type = TRACK_PROC;
 		page_old_ext->page_tracker.pid = current->pid;
-		page_old_ext->page_tracker.trace = _RET_IP_;
+		page_old_ext->page_tracker.trace = _RET_IP_; /*lint !e571*/
 	}
 }
 
@@ -272,7 +275,7 @@ static void insert_node
 		rb_link_node(&shadow->node, parent, p);
 		rb_insert_color(&shadow->node, root);
 	}
-}
+} /*lint !e429*/
 
 static void rbtree_kern_show(struct rb_root *root, int type)
 {
@@ -323,12 +326,14 @@ static void rbtree_destroy(struct rb_root *root)
 	if (!root)
 		return;
 
-	for (n = rb_first(root); n; n = rb_next(n)) {
+	n = rb_first(root);
+	while(n) {
 		struct page_tracker_shadow *shadow = rb_entry(n,
 				struct page_tracker_shadow,
 				node);
 		if (!RB_EMPTY_NODE(&shadow->node))
 			rb_erase(&shadow->node, root);
+		n = rb_next(n);
 		kfree(shadow);
 	}
 
@@ -392,13 +397,17 @@ static int page_tracker_info_show(struct seq_file *s, void *unused)
 		/*
 		 * build rb tree for page tracker
 		 */
+		if (!mutex_trylock(&page_tracker_mutex)) {
+			pr_err("try lock failed\n");
+			return 0;
+		}
 		rbtree_init();
 
 		/*
 		 * build rb tree
 		 */
 		pgdat_resize_lock(pgdat, &flags);
-		for (i = 0; i < nd_pg;
+		for (i = 0; i < nd_pg; /*lint !e574*/
 				i += step, pfn += step) {
 			step = 1;
 			if (!pfn_valid(pfn))
@@ -444,6 +453,8 @@ static int page_tracker_info_show(struct seq_file *s, void *unused)
 		for (i = 0; i < TRACK_MAX; i++)
 			rbtree_destroy(&man[i].root);
 
+		mutex_unlock(&page_tracker_mutex);/*lint !e455*/
+
 	}
 
 	return 0;
@@ -467,7 +478,7 @@ static int ktrackerd(void *p)
 	int i;
 	int step;
 	unsigned short nr;
-	DEFINE_WAIT(wait);
+	DEFINE_WAIT(wait); /*lint !e446*/
 	pg_data_t *pgdat = p;
 	unsigned long buddy = 0;
 	unsigned long nd_pg = pgdat->node_spanned_pages;
@@ -490,13 +501,15 @@ static int ktrackerd(void *p)
 		buddy = 0;
 		pfn = pgdat->node_start_pfn;
 
+		mutex_lock(&page_tracker_mutex);
+
 		rbtree_init();
 
 		/*
 		 * build rb tree
 		 */
 		pgdat_resize_lock(pgdat, &flags);
-		for (i = 0; i < nd_pg;
+		for (i = 0; i < nd_pg; /*lint !e574*/
 				i += step, pfn += step) {
 			step = 1;
 			if (!pfn_valid(pfn))
@@ -530,15 +543,18 @@ static int ktrackerd(void *p)
 		for (i = 0; i < TRACK_MAX; i++)
 			rbtree_destroy(&man[i].root);
 
+		mutex_unlock(&page_tracker_mutex);
+
+
 	} while (1);
 
-	return 0;
+	return 0; /*lint !e527*/
 }
 
 #ifdef PGTRACK_TEST
 static int ktrackerd_test_func(void *p)
 {
-	while (0) {
+	while (0) { /*lint !e681*/
 		struct page *pg = NULL;
 		pg = alloc_pages((GFP_USER | __GFP_NOWARN | __GFP_COMP), 4);
 		msleep(1000);
@@ -613,7 +629,7 @@ static void init_page_tracker(void)
 		struct page_ext *page_ext = NULL;
 
 		pgdat_resize_lock(pgdat, &flags);
-		for (i = 0; i < nd_pg; i++,pfn++) {
+		for (i = 0; i < nd_pg; i++,pfn++) { /*lint !e574*/
 			if (!pfn_valid(pfn))
 				continue;
 

@@ -49,8 +49,6 @@ void bl31_panic_ipi_handle(void)
 /*lint -e715 -e838*/
 int bl31_panic_thread(void *arg)
 {
-	pr_err("bl31_panic_happen start\n");
-
 	while (1) {
 		down(&bl31_panic_sem);
 
@@ -160,7 +158,7 @@ static int __init hisi_bl31_panic_init(void)
 		goto err1;
 	}
 
-	pr_err("bl31_ctrl_addr_phys:0x%p,bl31_ctrl_addr:0x%p.\n", bl31_ctrl_addr_phys, bl31_ctrl_addr);
+	pr_err("bl31_ctrl_addr_phys:%pK,bl31_ctrl_addr:%pK.\n", bl31_ctrl_addr_phys, bl31_ctrl_addr);
 	#ifdef BL31_SWITCH
 	/*himntn switch,0 is enable,if disabled,dead loop in atf*/
 	if (check_himntn(HIMNTN_BL31)) {

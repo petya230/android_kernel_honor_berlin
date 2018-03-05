@@ -404,6 +404,7 @@ static ssize_t pmu_latency_config_store(struct device *dev,
 	unsigned int val[NUM_LATENCY_CFG];
 	int i;
 
+	/* cppcheck-suppress * */
 	if (sscanf(buf, "%u %u %u %u %u", &val[0], &val[1],
 			   &val[2], &val[3], &val[4]) != NUM_LATENCY_CFG)
 		return -EINVAL;
@@ -458,6 +459,7 @@ static ssize_t pmu_outstanding_config_store(struct device *dev,
 	unsigned int val[NUM_OUTSTANDING_CFG];
 	int i;
 
+	/* cppcheck-suppress * */
 	if (sscanf(buf, "%u %u %u %u %u", &val[0], &val[1],
 			   &val[2], &val[3], &val[4]) != NUM_OUTSTANDING_CFG)
 		return -EINVAL;
@@ -519,6 +521,7 @@ static ssize_t pmu_address_range_store(struct device *dev,
 	u64 start;
 	u64 end;
 
+	/* cppcheck-suppress * */
 	if (sscanf(buf, "0x%llx 0x%llx", &start, &end) != 2)
 		return -EINVAL;
 
@@ -692,6 +695,7 @@ static ssize_t pmu_type_store(struct device *dev,
 	int i;
 	ssize_t n;
 
+	/* cppcheck-suppress * */
 	n = sscanf(buf, "%u %u %u %u %u %u %u", &val[0], &val[1], &val[2],
 			   &val[3], &val[4], &val[5], &val[6]);
 
@@ -898,7 +902,7 @@ static int cci_extra_pmu_probe(struct platform_device *pdev)
 	spin_lock_init(&pmu->lock);
 	dev_set_drvdata(&pdev->dev, pmu);
 
-	return 0;
+	return 0; /*lint !e429*/
 
 err_scale:
 	sysfs_remove_group(&pdev->dev.kobj, &cci_extra_pmu_attr_group);
@@ -993,14 +997,15 @@ static struct platform_driver cci_extra_pmu_driver = {
 #endif
 };
 
-/*lint -esym(528,cci_extra_pmu_platform_init)*/
+/*lint -e528 -esym(528,*)*/
 static int __init cci_extra_pmu_platform_init(void)
 {
 	return platform_driver_register(&cci_extra_pmu_driver);
 }
 
-module_init(cci_extra_pmu_platform_init);/*lint !e528*/
-module_init(cci_extra_pmu_crg_init);/*lint !e528*/
+module_init(cci_extra_pmu_platform_init);
+module_init(cci_extra_pmu_crg_init);
+/*lint -e528 +esym(528,*)*/
 
 /*lint -e753 -esym(753,__UNIQUE_ID_license0,__UNIQUE_ID_description1)*/
 MODULE_LICENSE("GPL");

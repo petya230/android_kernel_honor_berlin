@@ -74,22 +74,22 @@ ssize_t smmu_alloc_memory_and_map(void)
 				info->order = order;
 				INIT_LIST_HEAD(&info->list);
 				list_add_tail(&info->list, &pages);
-				sum += (1 << info->order) * PAGE_SIZE;
+				sum += (1 << info->order) * PAGE_SIZE; /*lint !e647*/
 				i++;
 			} while (sum < map_size);
 
 			table = kzalloc(sizeof(struct sg_table), GFP_KERNEL);
 			if (!table) {
-				return -ENOMEM;
+				return -ENOMEM; /*lint !e647*/
 			}
 			ret = sg_alloc_table(table, i, GFP_KERNEL);
 			if (ret) {
-				return -ENOMEM;
+				return -ENOMEM; /*lint !e647*/
 			}
 			sg = table->sgl;
 			list_for_each_entry_safe(info, tmp_info, &pages, list) {
-				struct page *page = info->page;
-				sg_set_page(sg, page, (1 << info->order) * PAGE_SIZE, 0);
+				struct page *page = info->page; /*lint !e578*/
+				sg_set_page(sg, page, (1 << info->order) * PAGE_SIZE, 0); /*lint !e647*/
 				sg = sg_next(sg);
 				list_del(&info->list);
 				kfree(info);
@@ -173,6 +173,8 @@ int  smmu_print_pgtable(void)
 	unsigned char buf[128] = {0};
 	static unsigned int num;
 	unsigned long len;
+	struct hisi_domain *hisi_domain;
+	struct list_head *pos_t, *next_t;
 	struct file *smmu_file = NULL;
 	mm_segment_t   fs;
 	loff_t  pos = 0;
@@ -190,32 +192,36 @@ int  smmu_print_pgtable(void)
 		dbg("open file ok \n");
 	}
 	fs = get_fs();
-	set_fs(KERNEL_DS);
+	set_fs(KERNEL_DS); /*lint !e501*/
 
-	buf_len = snprintf(buf, sizeof(buf), "[pgbase=0x%lx] \n", hisi_smmu_dev->va_pgtable_addr);
-	len = vfs_write(smmu_file, (void *)buf, buf_len, &pos);
-	if (!len) {
-		dbg("write file error \n");
+	list_for_each_safe(pos_t, next_t, &hisi_smmu_dev->domain_list) {
+		hisi_domain = list_entry(pos_t, struct hisi_domain, list); /*lint !e826*/
+		buf_len = snprintf(buf, sizeof(buf), "[pgbase=0x%lx] \n", /*lint !e64*/
+					(unsigned long)hisi_domain->va_pgtable_addr);
+		len = vfs_write(smmu_file, (void *)buf, buf_len, &pos);
+		if (!len) {
+			dbg("write file error \n");
+		}
+		for (io_addr=iova_start; io_addr < iova_end; io_addr += SMMU_PAGE_SIZE) {
+			memset(buf,0,sizeof(buf));
+			buf_len = snprintf(buf, sizeof(buf), "pgd[%d]=0x%llx,pmd[%d]=0x%llx, pte[%d]=0x%llx \n", /*lint !e64*/
+					smmu_pgd_index(io_addr), hisi_dbg_show_pgd_lpae(io_addr, (smmu_pgd_t *)hisi_domain->va_pgtable_addr),
+					smmu_pmd_index(io_addr), hisi_dbg_show_pmd_lpae(io_addr, (smmu_pgd_t *)hisi_domain->va_pgtable_addr),
+					smmu_pte_index(io_addr), hisi_dbg_show_ptb_lpae(io_addr, (smmu_pgd_t *)hisi_domain->va_pgtable_addr));
+			len = vfs_write(smmu_file, (void*)buf, buf_len, &pos);
+			if (!len) {
+				dbg("write file error \n");
+			}
+		}
+		filp_close(smmu_file, NULL);
+		set_fs(fs);
 	}
-	for (io_addr=iova_start; io_addr < iova_end; io_addr += SMMU_PAGE_SIZE) {
-		memset(buf,0,sizeof(buf));
-		buf_len = snprintf(buf, sizeof(buf), "pgd[%d]=0x%llx,pmd[%d]=0x%llx, pte[%d]=0x%llx \n",
-				smmu_pgd_index(io_addr), hisi_dbg_show_pgd_lpae(io_addr, (smmu_pgd_t *)hisi_smmu_dev->va_pgtable_addr),
-				smmu_pmd_index(io_addr), hisi_dbg_show_pmd_lpae(io_addr, (smmu_pgd_t *)hisi_smmu_dev->va_pgtable_addr),
-				smmu_pte_index(io_addr), hisi_dbg_show_ptb_lpae(io_addr, (smmu_pgd_t *)hisi_smmu_dev->va_pgtable_addr)); 
-		len = vfs_write(smmu_file, (void*)buf, buf_len, &pos);
-        if (!len) {
-		    dbg("write file error \n");
-	    }
-	}
-	filp_close(smmu_file, NULL);
-	set_fs(fs);
 	return 0;
 }
 
 void set_smmu_param(unsigned int start, unsigned int size)
 {
-   iova_start = start;
+	iova_start = start;
 	map_size = size;
 }
 
@@ -227,6 +233,5 @@ int smmu_lpae_test(unsigned int start, unsigned int size)
 	smmu_print_pgtable();
 	smmu_do_unmap_and_free();
 	smmu_print_pgtable();
-    return 0;
-
+	return 0;
 }

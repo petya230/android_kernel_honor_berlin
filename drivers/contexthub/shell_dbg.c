@@ -13,11 +13,13 @@
 #include <global_ddr_map.h>
 #include "protocol.h"
 #include "inputhub_route.h"
+#include "common.h"
+#include "libhwsecurec/securec.h"
 
 #define MODULE_NAME "shell_dbg"
 #define CHAR_LR 0xA
 #define CHAR_CR 0xD
-#define SHELL_DBG_STRING_SIZE (MAX_PKT_LENGTH - sizeof(pkt_header_t) - 4)
+#define SHELL_DBG_STRING_SIZE ((MAX_PKT_LENGTH - (int)sizeof(pkt_header_t)) - 4)
 enum {
 	pro_resp_none,
 	pro_resp_ipc,
@@ -48,7 +50,7 @@ static int shell_dbg_resp_ope(const pkt_header_t *head)
 {
 	struct SHELL_DBG_RESP *p = (struct SHELL_DBG_RESP*)head;
 	if (p) {
-		pr_info("get resp: addr:%x, len:%x;\n", p->log_addr, p->log_len);
+		pr_info("get resp: tag:%x, addr:%x, len:%x;\n", p->hd.tag, p->log_addr, p->log_len);
 		log_address = p->log_addr;
 		log_length = p->log_len;
 	}
@@ -62,9 +64,9 @@ int shell_dbg_send(const void *buf, unsigned int len)
 	pkt.hd.tag = TAG_SHELL_DBG;
 	pkt.hd.cmd = CMD_SHELL_DBG_REQ;
 	pkt.hd.resp = 0;
-	pkt.hd.length = len;
-	memset(pkt.data, 0, sizeof(pkt.data));
-	memcpy(pkt.data, buf, len);
+	pkt.hd.length = (uint16_t)len;
+	memset_s(pkt.data, sizeof(pkt.data), 0, sizeof(pkt.data));
+	memcpy_s(pkt.data, sizeof(pkt.data), buf, (size_t)len);
 	return inputhub_mcu_write_cmd_adapter(&pkt, len + offsetof(struct sh_dbg_pkt, data), NULL);
 }
 
@@ -74,18 +76,19 @@ static ssize_t shell_dbg_rd(struct file *file, char __user *buf, size_t count, l
 	char *p_save;
 	char s_buf[0x40] = {0};
 
+	pr_info("shell_dbg_rd:%d\n", file->f_flags); /* for clear warning */
 	if (get_resp == pro_resp_ipc) {
 		/* get ipc message */
-		p_save = (char*)ioremap(log_address, count);
-		wr_len = simple_read_from_buffer(buf, count, pos, p_save, log_length);
+		p_save = (char*)ioremap_wc((size_t)log_address, (size_t)count);
+		wr_len = simple_read_from_buffer(buf, count, pos, p_save, (size_t)log_length);
 		iounmap(p_save);
 	} else if (get_resp == pro_resp_wait) {
 		/* return for wait cmd */
-		snprintf(s_buf, sizeof(s_buf), "\nset wait %d(ms) success;\n\n", ipc_tmout);
+		snprintf_s(s_buf, sizeof(s_buf), sizeof(s_buf) - 1, "\nset wait %d(ms) success;\n\n", ipc_tmout);
 		wr_len = simple_read_from_buffer(buf, count, pos, s_buf, strlen(s_buf));
 	} else {
 		/* nothing feedback */
-		snprintf(s_buf, sizeof(s_buf), "\nerror: no msg get!\n\n");
+		snprintf_s(s_buf, sizeof(s_buf), sizeof(s_buf) - 1, "\nerror: no msg get!\n\n");
 		wr_len = simple_read_from_buffer(buf, count, pos, s_buf, strlen(s_buf));
 	}
 	return wr_len;
@@ -94,25 +97,26 @@ static ssize_t shell_dbg_rd(struct file *file, char __user *buf, size_t count, l
 static ssize_t shell_dbg_wr(struct file *file, const char __user *userbuf,
 			  size_t bytes, loff_t *off)
 {
-	char *kn_buf = NULL;
-	ssize_t byte_writen = 0;
+	char *kn_buf;
+	ssize_t byte_writen;
 	int i;
 	long val = 0;
 
+	pr_info("shell_dbg_wr:%d\n", file->f_flags); /* for clear warning */
 	get_resp = pro_resp_none;	/* clear resp flag first */
 
 	if (bytes >= SHELL_DBG_STRING_SIZE) {
 		pr_err("Invalide buffer length\n");
 		return -1;
 	}
-	kn_buf = kzalloc(SHELL_DBG_STRING_SIZE, GFP_KERNEL);
+	kn_buf = kzalloc((ssize_t)SHELL_DBG_STRING_SIZE, GFP_KERNEL);
 	if (NULL == kn_buf) {
 		pr_err("kn_buf is null\n");
 		return -EFAULT;
 	}
 
 	byte_writen = simple_write_to_buffer(kn_buf,
-					SHELL_DBG_STRING_SIZE, off,
+					(unsigned long)SHELL_DBG_STRING_SIZE, off,
 					userbuf, bytes);
 	if (byte_writen <= 0) {
 		pr_err("Invalide buffer data\n");
@@ -125,7 +129,7 @@ static ssize_t shell_dbg_wr(struct file *file, const char __user *userbuf,
 			byte_writen = -EINVAL;
 		} else {
 			get_resp = pro_resp_wait;
-			ipc_tmout = val;
+			ipc_tmout = (uint32_t)val;
 			pr_err("ipc_tmout is %d;\n", ipc_tmout);
 		}
 		goto END;
@@ -136,7 +140,7 @@ static ssize_t shell_dbg_wr(struct file *file, const char __user *userbuf,
 		if (kn_buf[i] == CHAR_LR || kn_buf[i] == CHAR_CR) {
 			kn_buf[i] = '\0';
 STRING_END:
-			byte_writen = i + 1;
+			byte_writen = (ssize_t)(i + 1); /*lint !e776*/
 			break;
 		}
 		if (kn_buf[i] == '\0')
@@ -147,7 +151,7 @@ STRING_END:
 	pr_info("shell dgb send str:%s;\n", kn_buf);
 
 	/* process string */
-	shell_dbg_send(kn_buf, strlen(kn_buf) + 1);
+	shell_dbg_send(kn_buf, (unsigned int)(strlen(kn_buf) + 1));
 
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 13, 0))
 	INIT_COMPLETION(wait_resp);
@@ -169,14 +173,19 @@ END:
 static const struct file_operations shell_dbg_fops = {
 	.write = shell_dbg_wr,
 	.read = shell_dbg_rd,
-};
+}; /*lint !e785*/
+
 
 static int __init shell_dbg_init(void)
 {
-	struct dentry *ch_root = NULL;
+	struct dentry *ch_root;
 	int ret = -1;
 	struct dentry *shell_dbg_file_dentry;
 #ifdef CONFIG_HISI_DEBUG_FS
+	ret = get_contexthub_dts_status();
+	if(ret)
+		return ret;
+
 	init_completion(&wait_resp);
 
 	/*creat this dir first, because multi-platform will use this dir */
@@ -205,6 +214,8 @@ FUNC_END:
 	return ret;
 }
 
+/*lint -e528 -e753*/
 late_initcall_sync(shell_dbg_init);
 MODULE_ALIAS("platform:contexthub"MODULE_NAME);
 MODULE_LICENSE("GPL v2");
+

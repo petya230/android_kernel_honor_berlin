@@ -53,6 +53,7 @@
 #include <drv_comm.h>
 #include "icc_core.h"
 #include <bsp_sec_call.h>
+#include <bsp_icc.h>
 #ifdef CONFIG_TZDRIVER
 #include <teek_client_api.h>
 #include <teek_client_id.h>
@@ -66,7 +67,7 @@ struct ca_icc_ctrl
 };
 
 OSL_TASK_ID  ca_icc_task_id;
-#if 0
+
 /******************************************************************************
 Function:       TEEK_ca_icc_init
 Description:    TEEK³õÊ¼»¯
@@ -202,6 +203,8 @@ static int TEEK_icc_ca_cfg_get(TEEC_Session *session, u32 cmd_id)
     char task_name[32] = "";
     char cmd_id_str[4] = "";
     struct ca_icc_ctrl *ca_cfg_get = NULL;
+    OSL_TASK_ID  ca_cfg_task_id;
+
     operation.started = 1;
     operation.cancel_flag = 0;
     operation.paramTypes = TEEC_PARAM_TYPES(
@@ -238,7 +241,7 @@ static int TEEK_icc_ca_cfg_get(TEEC_Session *session, u32 cmd_id)
     (void)strncat(task_name, cmd_id_str, strlen(cmd_id_str));
     icc_print_error("icc_cfg_task_name: %s\n", task_name);
 
-    if(ERROR == osl_task_init(task_name, ca_cfg_get->task_priority, 0x1000, (OSL_TASK_FUNC)ca_icc_task_func,(void *)ca_cfg_get, &ca_icc_task_id))
+    if(ERROR == osl_task_init(task_name, ca_cfg_get->task_priority, 0x1000, (OSL_TASK_FUNC)ca_icc_task_func,(void *)ca_cfg_get, &ca_cfg_task_id))
     {
         icc_print_error("ca icc task init fail!\n");
         osl_free(ca_cfg_get);
@@ -301,8 +304,8 @@ int __init ca_icc_init(void)
 
     return BSP_OK;
 }
-#endif
 
+#if 0
 int ca_icc_cfg_task_func(void* data)
 {
     osl_task_delay(50000);
@@ -330,6 +333,6 @@ int __init ca_icc_init(void)
 
     return BSP_OK;
 }
-
-//module_init(ca_icc_init);
+#endif
+module_init(ca_icc_init);
 #endif

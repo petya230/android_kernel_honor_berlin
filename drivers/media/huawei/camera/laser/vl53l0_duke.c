@@ -3,6 +3,7 @@
 
 #include "vl53l0.h"
 #include "../pmic/hw_pmic.h"
+#include "laser_common.h"
 #ifdef CONFIG_HUAWEI_HW_DEV_DCT
 #include <huawei_platform/devdetect/hw_dev_dec.h>
 #endif
@@ -13,9 +14,18 @@ static hw_vl53l0_t *s_laser = NULL;
 
 #define SD2Laser(sd) container_of((sd), hw_vl53l0_t, subdev)
 #define VAL_IOVDD             1800000
+#define POWER_SETTINGS_LENGTH (3)
+#define DT_LDO_NAME           "huawei,ldo-names"
+static const laser_power_settings_t laser_power_supply_checklist[POWER_SETTINGS_LENGTH] =
+{
+	{LDO_AVDD,	 "avdd",	LDO_AVDD_2P8V },
+	{LDO_IOVDD,	"iovdd",	LDO_IOVDD_1P8V},
+	{LDO_XSHUT,	"xshut",	LDO_XSHUT_1P8V},
+};
 
 extern struct hisi_pmic_ctrl_t ncp6925_ctrl;
 extern void hw_camdrv_msleep(unsigned int ms);
+
 
 int vl53l0_duke_get_dt_data(struct platform_device *pdev, hw_vl53l0_t *laser)
 {
@@ -58,6 +68,39 @@ int vl53l0_duke_get_dt_data(struct platform_device *pdev, hw_vl53l0_t *laser)
 	if (rc < 0) {
 		cam_err("%s failed %d", __func__, __LINE__);
 		goto fail;
+	}
+
+	//check ldo supply
+	laser_info->ldo_num = of_property_count_strings(of_node, DT_LDO_NAME);
+	if(LASER_SUPPLY_LDO_NO_USE < laser_info->ldo_num) {
+		cam_info("%s use ldo to supply laser ldo num %d", __func__, laser_info->ldo_num);
+		if(LDO_MAX < laser_info->ldo_num) {
+			cam_err("%s failed %d, LDO_MAX(%d) < ldo_num(%d)", __func__, __LINE__,
+				LDO_MAX, laser_info->ldo_num);
+			laser_info->ldo_num = LASER_SUPPLY_LDO_NO_USE; //set default ldo num 0, before error handling
+			rc = -EINVAL;
+			goto fail;
+		}
+
+		for (i = 0; i < laser_info->ldo_num; i++) {
+			rc = of_property_read_string_index(of_node, DT_LDO_NAME,
+						i, &laser_info->ldo[i].supply);
+			cam_info("%s huawei,ldo-names index:%d, ldo_name:%s, rc:%d", __func__,
+						i, laser_info->ldo[i].supply, rc);
+			if(rc < 0) {
+				cam_err("%s failed %d index %d", __func__, __LINE__, i);
+				goto fail;
+			}
+		}
+
+		rc = devm_regulator_bulk_get(&(pdev->dev), laser_info->ldo_num, laser_info->ldo);
+		if (rc < 0) {
+			cam_err("%s failed %d\n", __func__, __LINE__);
+			goto fail;
+		}
+	} else {
+		laser_info->ldo_num = LASER_SUPPLY_LDO_NO_USE;
+		cam_info("%s not use ldo to supply laser",__func__);
 	}
 
 	laser_info->gpio_num = of_gpio_count(of_node);
@@ -107,6 +150,7 @@ fail:
 	cam_err("%s can not read laser info exit.", __func__);
 	kfree(laser_info);
 	laser_info = NULL;
+	laser->laser_info = NULL;
 	return rc;
 }
 
@@ -119,6 +163,10 @@ hwlaser_subdev_config(
 
 	if ((NULL == s) || (NULL == data)) {
 		cam_err("%s s or data is NULL", __func__);
+		return -EINVAL;
+	}
+	if (NULL == s->laser_info) {
+		cam_err("%s s->laser_info is NULL", __func__);
 		return -EINVAL;
 	}
 	switch (data->cfgtype)
@@ -134,16 +182,28 @@ hwlaser_subdev_config(
 					cam_err("could not set default pins");
 				}
 			}
-
 			mutex_lock(&s->lock);
+			if (LASER_SUPPLY_LDO_NO_USE != s->laser_info->ldo_num) {
+				rc = laser_ldo_config(s, LDO_AVDD, LDO_POWER_ON,
+					laser_power_supply_checklist,
+					POWER_SETTINGS_LENGTH);
+				if(rc < 0) {
+					cam_err("laser ldo config fail");
+					mutex_unlock(&s->lock);
+					return rc;
+				}
+			}
+
 			HWCAM_CFG_INFO("laser xshut power up");
 			rc = gpio_direction_output(s->laser_info->laser_gpio[XSHUT].gpio, HIGH);
 			mutex_unlock(&s->lock);
+
 			if (rc < 0) {
 				cam_err("%s failed output pin. gpio = %x", __func__,
 						s->laser_info->laser_gpio[XSHUT].gpio);
 				return rc;
 			}
+
 			hw_camdrv_msleep(1);
 			break;
 
@@ -151,19 +211,32 @@ hwlaser_subdev_config(
 			mutex_lock(&s->lock);
 			HWCAM_CFG_INFO("laser xshut power down");
 			rc = gpio_direction_output(s->laser_info->laser_gpio[XSHUT].gpio, LOW);
-			mutex_unlock(&s->lock);
+
 			if (rc < 0) {
 				cam_err("%s failed output pin. gpio = %x", __func__,
 						s->laser_info->laser_gpio[XSHUT].gpio);
+				mutex_unlock(&s->lock);
 				return rc;
 			}
 
+			if (LASER_SUPPLY_LDO_NO_USE != s->laser_info->ldo_num) {
+				rc = laser_ldo_config(s, LDO_AVDD, LDO_POWER_OFF,
+					laser_power_supply_checklist,
+					POWER_SETTINGS_LENGTH);
+				if(rc < 0) {
+					cam_err("laser ldo config fail");
+					mutex_unlock(&s->lock);
+					return rc;
+				}
+			}
+			mutex_unlock(&s->lock);
 			if (!IS_ERR(s->laser_info->pins_idle)) {
 				rc = pinctrl_select_state(s->laser_info->pinctrl, s->laser_info->pins_idle);
 				if (rc < 0) {
 					cam_err("could not set idle pins");
 				}
 			}
+
 			break;
 
 		case HWCAM_LASER_POWERON_EXT:

@@ -13,7 +13,8 @@
 #include <linux/pinctrl/consumer.h>
 #include "../pmic/hw_pmic.h"
 
-//lint -save -e846 -e866 -e826 -e785 -e838 -e715 -e747 -e774 -e778 -e732 -e731
+//lint -save -e846 -e866 -e826 -e785 -e838 -e715 -e747 -e774 -e778 -e732 -e731 -e569 -e650
+//lint -save -e31
 #define I2S(i) container_of((i), sensor_t, intf)
 static hwsensor_vtbl_t s_imx219_vic_vtbl;
 static bool power_on_status = false;//false: power off, true:power on

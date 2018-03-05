@@ -26,6 +26,7 @@ unsigned int g_led_rg_para2 = 30983;
 
 #define OFFSET_FRACTIONAL_BITS	(11)
 #define ROUND1(x,y)	((x) / (y) + ((x) % (y)  ? 1 : 0))
+#define gmp_cnt_cofe (729)
 
 static uint32_t sbl_al_calib_lut[33] = {/*lint -save -e* */
 	0x0000, 0x0800, 0x1000, 0x1800, 0x2000, 0x2800, 0x3000, 0x3800, 0x4000, 0x4800,
@@ -53,13 +54,23 @@ struct dss_clk_rate * get_dss_clk_rate(struct hisi_fb_data_type *hisifd)
 	struct hisi_panel_info *pinfo = NULL;
 	struct dss_clk_rate *pdss_clk_rate = NULL;
 	int frame_rate = 0;
+	uint64_t default_dss_pri_clk_rate;
 
-	BUG_ON(hisifd == NULL);
+	if (hisifd == NULL) {
+		HISI_FB_ERR("hisifd is null.\n");
+		return pdss_clk_rate;
+	}
 
 	pinfo = &(hisifd->panel_info);
 	pdss_clk_rate = &(hisifd->dss_clk_rate);
 
 	frame_rate = get_lcd_frame_rate(pinfo);
+
+	if (g_dss_version_tag == FB_ACCEL_KIRIN970) {
+		default_dss_pri_clk_rate = DEFAULT_DSS_CORE_CLK_RATE_L1;
+	} else {
+		default_dss_pri_clk_rate = DEFAULT_DSS_CORE_CLK_RATE_ES;
+	}
 
 	/* FIXME: TBD  */
 	if (g_fpga_flag == 1) {
@@ -71,32 +82,47 @@ struct dss_clk_rate * get_dss_clk_rate(struct hisi_fb_data_type *hisifd)
 	} else {
 		if (pdss_clk_rate->dss_pclk_dss_rate == 0) {
 			if ((pinfo->xres * pinfo->yres) >= (RES_4K_PHONE)) {
-				pdss_clk_rate->dss_pri_clk_rate = DEFAULT_DSS_CORE_CLK_08V_RATE;
+				pdss_clk_rate->dss_pri_clk_rate = DEFAULT_DSS_CORE_CLK_RATE_L3;
+				pdss_clk_rate->dss_mmbuf_rate = DEFAULT_DSS_MMBUF_CLK_RATE_L3;
 				pdss_clk_rate->dss_pclk_dss_rate = DEFAULT_PCLK_DSS_RATE;
 				pdss_clk_rate->dss_pclk_pctrl_rate = DEFAULT_PCLK_PCTRL_RATE;
 				hisifd->core_clk_upt_support = 0;
 			} else if ((pinfo->xres * pinfo->yres) >= (RES_1440P)) {
 				if (frame_rate >= 110) {
-					pdss_clk_rate->dss_pri_clk_rate = DEFAULT_DSS_CORE_CLK_08V_RATE;
+					pdss_clk_rate->dss_pri_clk_rate = DEFAULT_DSS_CORE_CLK_RATE_L3;
+					pdss_clk_rate->dss_mmbuf_rate = DEFAULT_DSS_MMBUF_CLK_RATE_L3;
 					pdss_clk_rate->dss_pclk_dss_rate = DEFAULT_PCLK_DSS_RATE;
 					pdss_clk_rate->dss_pclk_pctrl_rate = DEFAULT_PCLK_PCTRL_RATE;
 					hisifd->core_clk_upt_support = 0;
 				} else {
-					pdss_clk_rate->dss_pri_clk_rate = DEFAULT_DSS_CORE_CLK_07V_RATE;
+					pdss_clk_rate->dss_pri_clk_rate = default_dss_pri_clk_rate;
+					pdss_clk_rate->dss_mmbuf_rate = DEFAULT_DSS_MMBUF_CLK_RATE_L1;
 					pdss_clk_rate->dss_pclk_dss_rate = DEFAULT_PCLK_DSS_RATE;
 					pdss_clk_rate->dss_pclk_pctrl_rate = DEFAULT_PCLK_PCTRL_RATE;
 					hisifd->core_clk_upt_support = 1;
 				}
 			} else if ((pinfo->xres * pinfo->yres) >= (RES_1080P)) {
-				pdss_clk_rate->dss_pri_clk_rate = DEFAULT_DSS_CORE_CLK_07V_RATE;
+				pdss_clk_rate->dss_pri_clk_rate = default_dss_pri_clk_rate;
+				pdss_clk_rate->dss_mmbuf_rate = DEFAULT_DSS_MMBUF_CLK_RATE_L1;
 				pdss_clk_rate->dss_pclk_dss_rate = DEFAULT_PCLK_DSS_RATE;
 				pdss_clk_rate->dss_pclk_pctrl_rate = DEFAULT_PCLK_PCTRL_RATE;
 				hisifd->core_clk_upt_support = 1;
 			} else {
-				pdss_clk_rate->dss_pri_clk_rate = DEFAULT_DSS_CORE_CLK_07V_RATE;
+				pdss_clk_rate->dss_pri_clk_rate = default_dss_pri_clk_rate;
+				pdss_clk_rate->dss_mmbuf_rate = DEFAULT_DSS_MMBUF_CLK_RATE_L1;
 				pdss_clk_rate->dss_pclk_dss_rate = DEFAULT_PCLK_DSS_RATE;
 				pdss_clk_rate->dss_pclk_pctrl_rate = DEFAULT_PCLK_PCTRL_RATE;
 				hisifd->core_clk_upt_support = 1;
+			}
+		}
+
+		if (hisifd->index == EXTERNAL_PANEL_IDX) {
+			if ((pinfo->xres * pinfo->yres) >= (RES_4K_PHONE)) {
+				pdss_clk_rate->dss_mmbuf_rate = DEFAULT_DSS_MMBUF_CLK_RATE_L3;
+			} else if ((pinfo->xres * pinfo->yres) >= (RES_1440P)) {
+				pdss_clk_rate->dss_mmbuf_rate = DEFAULT_DSS_MMBUF_CLK_RATE_L2;
+			} else {
+				pdss_clk_rate->dss_mmbuf_rate = DEFAULT_DSS_MMBUF_CLK_RATE_L1;
 			}
 		}
 	}
@@ -113,8 +139,9 @@ int set_dss_clk_rate(struct hisi_fb_data_type *hisifd, dss_clk_rate_t dss_clk_ra
 		return -1;
 	}
 
-	if ((dss_clk_rate.dss_pri_clk_rate != DEFAULT_DSS_CORE_CLK_08V_RATE)
-		&& (dss_clk_rate.dss_pri_clk_rate != DEFAULT_DSS_CORE_CLK_07V_RATE)) {
+	if ((dss_clk_rate.dss_pri_clk_rate != DEFAULT_DSS_CORE_CLK_RATE_L1)
+		&& (dss_clk_rate.dss_pri_clk_rate != DEFAULT_DSS_CORE_CLK_RATE_L2)
+		&& (dss_clk_rate.dss_pri_clk_rate != DEFAULT_DSS_CORE_CLK_RATE_L3)) {
 		HISI_FB_ERR("no support set dss_pri_clk_rate(%llu)!\n", dss_clk_rate.dss_pri_clk_rate);
 		return -1;
 	}
@@ -131,117 +158,146 @@ int set_dss_clk_rate(struct hisi_fb_data_type *hisifd, dss_clk_rate_t dss_clk_ra
 
 	hisifd->dss_clk_rate.dss_pri_clk_rate = dss_clk_rate.dss_pri_clk_rate;
 
+	HISI_FB_DEBUG("set dss_pri_clk_rate = %llu.\n", dss_clk_rate.dss_pri_clk_rate);
+
 	return ret;
 }
 
 /*lint -e712 -e838*/
-int dpe_set_common_clk_rate(struct platform_device *pdev)
+int dpe_set_clk_rate(struct platform_device *pdev)
 {
 	struct hisi_fb_data_type *hisifd;
 	struct hisi_panel_info *pinfo;
 	struct dss_clk_rate *pdss_clk_rate;
+	uint64_t dss_mmbuf_rate;
 	int ret = 0;
 
 	if (NULL == pdev) {
 		HISI_FB_ERR("NULL Pointer!\n");
-		return -1;
+		return -EINVAL;
 	}
 
 	hisifd = platform_get_drvdata(pdev);
 	if (NULL == hisifd) {
 		HISI_FB_ERR("NULL Pointer!\n");
-		return -1;
+		return -EINVAL;
 	}
 
 	pinfo = &(hisifd->panel_info);
 	pdss_clk_rate = get_dss_clk_rate(hisifd);
 	if (NULL == pdss_clk_rate) {
 		HISI_FB_ERR("NULL Pointer!\n");
-		return -1;
+		return -EINVAL;
 	}
 
-	hisifd->dss_mmbuf_clk = devm_clk_get(&pdev->dev, hisifd->dss_mmbuf_clk_name);
-	if (IS_ERR(hisifd->dss_mmbuf_clk)) {
-		ret = PTR_ERR(hisifd->dss_mmbuf_clk);
-		HISI_FB_ERR("dss_mmbuf_clk error, ret = %d", ret);
-		return ret;
+	ret = clk_set_rate(hisifd->dss_pri_clk, pdss_clk_rate->dss_pri_clk_rate);
+	if (ret < 0) {
+		HISI_FB_ERR("fb%d dss_pri_clk clk_set_rate(%llu) failed, error=%d!\n",
+			hisifd->index, pdss_clk_rate->dss_pri_clk_rate, ret);
+		return -EINVAL;
 	}
 
-	hisifd->dss_pclk_mmbuf_clk = devm_clk_get(&pdev->dev, hisifd->dss_pclk_mmbuf_name);
-	if (IS_ERR(hisifd->dss_pclk_mmbuf_clk)) {
-		ret = PTR_ERR(hisifd->dss_pclk_mmbuf_clk);
-		HISI_FB_ERR("dss_pclk_mmbuf_clk error, ret = %d", ret);
-		return ret;
-	}
-
-	hisifd->dss_axi_clk = devm_clk_get(&pdev->dev, hisifd->dss_axi_clk_name);
-	if (IS_ERR(hisifd->dss_axi_clk)) {
-		ret = PTR_ERR(hisifd->dss_axi_clk);
-		HISI_FB_ERR("dss_axi_clk error, ret = %d", ret);
-		return ret;
-	}
-
-	hisifd->dss_pclk_dss_clk = devm_clk_get(&pdev->dev, hisifd->dss_pclk_dss_name);
-	if (IS_ERR(hisifd->dss_pclk_dss_clk)) {
-		ret = PTR_ERR(hisifd->dss_pclk_dss_clk);
-		HISI_FB_ERR("dss_pclk_dss_clk error, ret = %d", ret);
-		return ret;
-	}
-
-	hisifd->dss_pri_clk = devm_clk_get(&pdev->dev, hisifd->dss_pri_clk_name);
-	if (IS_ERR(hisifd->dss_pri_clk)) {
-		ret = PTR_ERR(hisifd->dss_pri_clk);
-		HISI_FB_ERR("dss_pri_clk error, ret = %d", ret);
-		return ret;
-	} else {
-		ret = clk_set_rate(hisifd->dss_pri_clk, pdss_clk_rate->dss_pri_clk_rate);
+	if (hisifd->index == PRIMARY_PANEL_IDX) {
+		ret = clk_set_rate(hisifd->dss_pxl0_clk, pinfo->pxl_clk_rate);
 		if (ret < 0) {
-			HISI_FB_ERR("fb%d dss_pri_clk clk_set_rate(%llu) failed, error=%d!\n",
-				hisifd->index, pdss_clk_rate->dss_pri_clk_rate, ret);
-			return -EINVAL;
+			HISI_FB_ERR("fb%d dss_pxl0_clk clk_set_rate(%llu) failed, error=%d!\n",
+				hisifd->index, pinfo->pxl_clk_rate, ret);
+			if (g_fpga_flag == 0) {
+				return -EINVAL;
+			}
 		}
 
+		HISI_FB_INFO("dss_pxl0_clk:[%llu]->[%llu].\n",
+				pinfo->pxl_clk_rate, (uint64_t)clk_get_rate(hisifd->dss_pxl0_clk));
+	} else if ((hisifd->index == EXTERNAL_PANEL_IDX) && !hisifd->panel_info.fake_external) {
+		ret = clk_set_rate(hisifd->dss_pxl1_clk, pinfo->pxl_clk_rate);
+		if (ret < 0) {
+			HISI_FB_ERR("fb%d dss_pxl1_clk clk_set_rate(%llu) failed, error=%d!\n",
+				hisifd->index, pinfo->pxl_clk_rate, ret);
+
+			if (g_fpga_flag == 0) {
+				return -EINVAL;
+			}
+		}
+		HISI_FB_INFO("dss_pxl1_clk:[%llu]->[%llu].\n",
+			pinfo->pxl_clk_rate, (uint64_t)clk_get_rate(hisifd->dss_pxl1_clk));
+	} else {
+		;
+	}
+
+	dss_mmbuf_rate = pdss_clk_rate->dss_mmbuf_rate;
+	if (g_dss_version_tag == FB_ACCEL_KIRIN970) {
+		if (hisifd_list[EXTERNAL_PANEL_IDX]) {
+			if (hisifd_list[EXTERNAL_PANEL_IDX]->dss_clk_rate.dss_mmbuf_rate > dss_mmbuf_rate) {
+				dss_mmbuf_rate = hisifd_list[EXTERNAL_PANEL_IDX]->dss_clk_rate.dss_mmbuf_rate;
+			}
+		}
+		ret = clk_set_rate(hisifd->dss_mmbuf_clk, dss_mmbuf_rate);
+		if (ret < 0) {
+			HISI_FB_ERR("fb%d dss_mmbuf clk_set_rate(%llu) failed, error=%d!\n",
+				hisifd->index, dss_mmbuf_rate, ret);
+			return -EINVAL;
+		}
+	}
+
+	if ((hisifd->index == PRIMARY_PANEL_IDX) || (hisifd->index == EXTERNAL_PANEL_IDX)) {
+		if (g_dss_version_tag == FB_ACCEL_KIRIN970) {
+			HISI_FB_INFO("dss_mmbuf_clk:[%llu]->[%llu].\n",
+				dss_mmbuf_rate, (uint64_t)clk_get_rate(hisifd->dss_mmbuf_clk));
+		}
 		HISI_FB_INFO("dss_pri_clk:[%llu]->[%llu].\n",
 			pdss_clk_rate->dss_pri_clk_rate, (uint64_t)clk_get_rate(hisifd->dss_pri_clk));
 	}
 
+	return ret;
+}
+
+int dpe_set_clk_rate_on_pll0(struct hisi_fb_data_type *hisifd)
+{
+	int ret;
+	uint64_t clk_rate;
+
+	if (NULL == hisifd) {
+		HISI_FB_ERR("hisifd is NULL Pointer!\n");
+		return -EINVAL;
+	}
+
+	if ((g_dss_version_tag == FB_ACCEL_KIRIN970_ES) || (g_fpga_flag == 1)) {
+		return 0;
+	}
+
+	clk_rate = DEFAULT_DSS_MMBUF_CLK_RATE_POWER_OFF;
+	ret = clk_set_rate(hisifd->dss_mmbuf_clk, clk_rate);
+	if (ret < 0) {
+		HISI_FB_ERR("fb%d dss_mmbuf clk_set_rate(%llu) failed, error=%d!\n", hisifd->index, clk_rate, ret);
+		return -EINVAL;
+	}
+	HISI_FB_INFO("dss_mmbuf_clk:[%llu]->[%llu].\n", clk_rate, (uint64_t)clk_get_rate(hisifd->dss_mmbuf_clk));
+
+	clk_rate = DEFAULT_DSS_CORE_CLK_RATE_POWER_OFF;
+	ret = clk_set_rate(hisifd->dss_pri_clk, clk_rate);
+	if (ret < 0) {
+		HISI_FB_ERR("fb%d dss_pri_clk clk_set_rate(%llu) failed, error=%d!\n", hisifd->index, clk_rate, ret);
+		return -EINVAL;
+	}
+	HISI_FB_INFO("dss_pri_clk:[%llu]->[%llu].\n", clk_rate, (uint64_t)clk_get_rate(hisifd->dss_pri_clk));
+
 	if (hisifd->index == PRIMARY_PANEL_IDX) {
-		hisifd->dss_pxl0_clk = devm_clk_get(&pdev->dev, hisifd->dss_pxl0_clk_name);
-		if (IS_ERR(hisifd->dss_pxl0_clk)) {
-			ret = PTR_ERR(hisifd->dss_pxl0_clk);
-			HISI_FB_ERR("dss_pxl0_clk error, ret = %d", ret);
-			return ret;
-		} else {
-			ret = clk_set_rate(hisifd->dss_pxl0_clk, pinfo->pxl_clk_rate);
-			if (ret < 0) {
-				HISI_FB_ERR("fb%d dss_pxl0_clk clk_set_rate(%llu) failed, error=%d!\n",
-					hisifd->index, pinfo->pxl_clk_rate, ret);
-				if (g_fpga_flag == 0)
-					return -EINVAL;
-			}
-
-			HISI_FB_INFO("dss_pxl0_clk:[%llu]->[%llu].\n",
-				pinfo->pxl_clk_rate, (uint64_t)clk_get_rate(hisifd->dss_pxl0_clk));
+		clk_rate = DEFAULT_DSS_PXL0_CLK_RATE_POWER_OFF;
+		ret = clk_set_rate(hisifd->dss_pxl0_clk, clk_rate);
+		if (ret < 0) {
+			HISI_FB_ERR("fb%d dss_pxl0_clk clk_set_rate(%llu) failed, error=%d!\n", hisifd->index, clk_rate, ret);
+			return -EINVAL;
 		}
-	} else if ((hisifd->index == EXTERNAL_PANEL_IDX) && !hisifd->panel_info.fake_hdmi) {
-		hisifd->dss_pxl1_clk = devm_clk_get(&pdev->dev, hisifd->dss_pxl1_clk_name);
-		if (IS_ERR(hisifd->dss_pxl1_clk)) {
-			ret = PTR_ERR(hisifd->dss_pxl1_clk);
-			HISI_FB_ERR("dss_pxl1_clk error, ret = %d, hisifd->dss_pxl1_clk_name=%s, hisifd->panel_info.fake_hdmi=%d", ret, hisifd->dss_pxl1_clk_name, hisifd->panel_info.fake_hdmi);
-			return ret;
-		} else {
-			ret = clk_set_rate(hisifd->dss_pxl1_clk, pinfo->pxl_clk_rate);
-			if (ret < 0) {
-				HISI_FB_ERR("fb%d dss_pxl1_clk clk_set_rate(%llu) failed, error=%d!\n",
-					hisifd->index, pinfo->pxl_clk_rate, ret);
+		HISI_FB_INFO("dss_pxl0_clk:[%llu]->[%llu].\n", clk_rate, (uint64_t)clk_get_rate(hisifd->dss_pxl0_clk));
 
-				if (g_fpga_flag == 0)
-					return -EINVAL;
-			}
-
-			HISI_FB_INFO("dss_pxl1_clk:[%llu]->[%llu].\n",
-				pinfo->pxl_clk_rate, (uint64_t)clk_get_rate(hisifd->dss_pxl1_clk));
+	} else if ((hisifd->index == EXTERNAL_PANEL_IDX) && !hisifd->panel_info.fake_external) {
+		clk_rate = DEFAULT_DSS_PXL1_CLK_RATE_POWER_OFF;
+		ret = clk_set_rate(hisifd->dss_pxl1_clk, clk_rate);
+		if (ret < 0) {
+			HISI_FB_ERR("fb%d dss_pxl1_clk clk_set_rate(%llu) failed, error=%d!\n", hisifd->index, clk_rate, ret);
 		}
+		HISI_FB_INFO("dss_pxl1_clk:[%llu]->[%llu].\n", clk_rate, (uint64_t)clk_get_rate(hisifd->dss_pxl1_clk));
 	} else {
 		;
 	}
@@ -249,12 +305,149 @@ int dpe_set_common_clk_rate(struct platform_device *pdev)
 }
 /*lint +e712 +e838*/
 
+#ifdef CONFIG_DSS_LP_USED
+static void dss_lp_set_reg(char __iomem *dss_base)
+{
+	if (NULL == dss_base) {
+		HISI_FB_ERR("dss_base is null.\n");
+		return;
+	}
+	/*core axi mmbuf*/
+	outp32(dss_base + GLB_MODULE_CLK_SEL, 0x00000000);
+	outp32(dss_base + DSS_VBIF0_AIF + AIF_MODULE_CLK_SEL, 0x00000000);
+	outp32(dss_base + DSS_VBIF1_AIF + AIF_MODULE_CLK_SEL, 0x00000000);
+	/*axi*/
+	outp32(dss_base + DSS_CMDLIST_OFFSET + CMD_CLK_SEL, 0x00000000);
+	outp32(dss_base + DSS_VBIF0_AIF + AIF_CLK_SEL0, 0x00000000);
+	outp32(dss_base + DSS_VBIF0_AIF + AIF_CLK_SEL1, 0x00000000);
+	outp32(dss_base + DSS_SMMU_OFFSET + SMMU_LP_CTRL, 0x00000001);
+	/*mmbuf*/
+	outp32(dss_base + DSS_VBIF1_AIF + AIF_CLK_SEL0, 0x00000000);
+	outp32(dss_base + DSS_VBIF1_AIF + AIF_CLK_SEL1, 0x00000000);
+
+	/*core*/
+	outp32(dss_base + DSS_RCH_VG0_DMA_OFFSET + FBCD_CREG_FBCD_CTRL_GATE,  0x00000000);
+	outp32(dss_base + DSS_RCH_VG1_DMA_OFFSET + FBCD_CREG_FBCD_CTRL_GATE,  0x00000000);
+	outp32(dss_base + DSS_RCH_G0_DMA_OFFSET + FBCD_CREG_FBCD_CTRL_GATE,  0x00000000);
+	outp32(dss_base + DSS_RCH_G1_DMA_OFFSET + FBCD_CREG_FBCD_CTRL_GATE,  0x00000000);
+	outp32(dss_base + DSS_RCH_D0_DMA_OFFSET + FBCD_CREG_FBCD_CTRL_GATE,  0x00000000);
+	outp32(dss_base + DSS_WCH0_FBCE_CREG_CTRL_GATE,  0x00000000);
+	outp32(dss_base + DSS_WCH1_FBCE_CREG_CTRL_GATE,  0x00000000);
+	outp32(dss_base + DSS_MIF_OFFSET + MIF_CLK_CTL,  0x00000001);
+	outp32(dss_base + DSS_MCTRL_CTL0_OFFSET + MCTL_CTL_CLK_SEL, 0x00000000);
+	outp32(dss_base + DSS_MCTRL_CTL1_OFFSET + MCTL_CTL_CLK_SEL, 0x00000000);
+	outp32(dss_base + DSS_MCTRL_CTL2_OFFSET + MCTL_CTL_CLK_SEL, 0x00000000);
+	outp32(dss_base + DSS_MCTRL_CTL3_OFFSET + MCTL_CTL_CLK_SEL, 0x00000000);
+	outp32(dss_base + DSS_MCTRL_CTL4_OFFSET + MCTL_CTL_CLK_SEL, 0x00000000);
+	outp32(dss_base + DSS_MCTRL_CTL5_OFFSET + MCTL_CTL_CLK_SEL, 0x00000000);
+	outp32(dss_base + DSS_MCTRL_SYS_OFFSET + MCTL_MCTL_CLK_SEL, 0x00000000);
+	outp32(dss_base + DSS_MCTRL_SYS_OFFSET + MCTL_MOD_CLK_SEL, 0x00000000);
+
+	outp32(dss_base + DSS_RCH_VG0_DMA_OFFSET + CH_CLK_SEL, 0x00000000);
+	outp32(dss_base + DSS_RCH_VG0_DMA_OFFSET + FBCD_CREG_FBCD_CTRL_GATE,  0x0000000c);
+	outp32(dss_base + DSS_RCH_VG1_DMA_OFFSET + CH_CLK_SEL, 0x00000000);
+	outp32(dss_base + DSS_RCH_VG1_DMA_OFFSET + FBCD_CREG_FBCD_CTRL_GATE,  0x0000000c);
+	outp32(dss_base + DSS_RCH_VG2_DMA_OFFSET + CH_CLK_SEL, 0x00000000);
+	outp32(dss_base + DSS_RCH_G0_DMA_OFFSET + CH_CLK_SEL, 0x00000000);
+	outp32(dss_base + DSS_RCH_G0_DMA_OFFSET + FBCD_CREG_FBCD_CTRL_GATE,  0x0000000c);
+	outp32(dss_base + DSS_RCH_G1_DMA_OFFSET + CH_CLK_SEL, 0x00000000);
+	outp32(dss_base + DSS_RCH_G1_DMA_OFFSET + FBCD_CREG_FBCD_CTRL_GATE,  0x0000000c);
+	outp32(dss_base + DSS_RCH_D2_DMA_OFFSET + CH_CLK_SEL, 0x00000000);
+	outp32(dss_base + DSS_RCH_D3_DMA_OFFSET + CH_CLK_SEL, 0x00000000);
+	outp32(dss_base + DSS_RCH_D0_DMA_OFFSET + CH_CLK_SEL, 0x00000000);
+	outp32(dss_base + DSS_RCH_D0_DMA_OFFSET + FBCD_CREG_FBCD_CTRL_GATE,  0x0000000c);
+	outp32(dss_base + DSS_RCH_D1_DMA_OFFSET + CH_CLK_SEL, 0x00000000);
+	outp32(dss_base + DSS_WCH0_DMA_OFFSET + CH_CLK_SEL, 0x00000000);
+	outp32(dss_base + DSS_WCH0_FBCE_CREG_CTRL_GATE,  0x0000000c);
+	outp32(dss_base + DSS_WCH1_DMA_OFFSET + CH_CLK_SEL, 0x00000000);
+	outp32(dss_base + DSS_WCH1_FBCE_CREG_CTRL_GATE,  0x0000000c);
+	outp32(dss_base + DSS_OVL0_OFFSET + OV8_CLK_SEL, 0x00000000);
+	outp32(dss_base + DSS_OVL2_OFFSET + OV8_CLK_SEL, 0x00000000);
+	outp32(dss_base + DSS_OVL1_OFFSET + OV8_CLK_SEL, 0x00000000);
+	outp32(dss_base + DSS_OVL3_OFFSET + OV2_CLK_SEL, 0x00000000);
+	outp32(dss_base + GLB_DSS_MEM_CTRL, 0x02605550);
+}
+#endif
+
+static void dss_normal_set_reg(char __iomem *dss_base)
+{
+	if (NULL == dss_base) {
+		HISI_FB_ERR("dss_base is null.\n");
+		return;
+	}
+	//core/axi/mmbuf
+	outp32(dss_base + DSS_CMDLIST_OFFSET + CMD_MEM_CTRL, 0x00000008);
+	outp32(dss_base + DSS_RCH_VG0_SCL_OFFSET + SCF_COEF_MEM_CTRL, 0x00000088);
+	outp32(dss_base + DSS_RCH_VG0_SCL_OFFSET + SCF_LB_MEM_CTRL, 0x00000008);
+	if (g_fpga_flag == 1) {
+		outp32(dss_base + DSS_RCH_VG0_ARSR_OFFSET + ARSR2P_LB_MEM_CTRL, 0x00000000);
+	} else {
+		outp32(dss_base + DSS_RCH_VG0_ARSR_OFFSET + ARSR2P_LB_MEM_CTRL, 0x00000008);
+	}
+
+	outp32(dss_base + DSS_RCH_VG0_DMA_OFFSET + VPP_MEM_CTRL, 0x00000008);
+	outp32(dss_base + DSS_RCH_VG0_DMA_OFFSET + DMA_BUF_MEM_CTRL, 0x00000008);
+	outp32(dss_base + DSS_RCH_VG0_DMA_OFFSET + AFBCD_MEM_CTRL, 0x00008888);
+
+	outp32(dss_base + DSS_RCH_VG1_SCL_OFFSET + SCF_COEF_MEM_CTRL, 0x00000088);
+	outp32(dss_base + DSS_RCH_VG1_SCL_OFFSET + SCF_LB_MEM_CTRL, 0x00000008);
+	outp32(dss_base + DSS_RCH_VG1_DMA_OFFSET + DMA_BUF_MEM_CTRL, 0x00000008);
+	outp32(dss_base + DSS_RCH_VG1_DMA_OFFSET + AFBCD_MEM_CTRL, 0x00008888);
+
+	if (g_dss_version_tag == FB_ACCEL_KIRIN970) {
+		outp32(dss_base + DSS_RCH_VG0_DMA_OFFSET + HFBCD_MEM_CTRL, 0x88888888);
+		outp32(dss_base + DSS_RCH_VG0_DMA_OFFSET + HFBCD_MEM_CTRL_1, 0x00000888);
+		outp32(dss_base + DSS_RCH_VG1_DMA_OFFSET + HFBCD_MEM_CTRL, 0x88888888);
+		outp32(dss_base + DSS_RCH_VG1_DMA_OFFSET + HFBCD_MEM_CTRL_1, 0x00000888);
+	} else {
+		outp32(dss_base + DSS_RCH_VG2_SCL_OFFSET + SCF_COEF_MEM_CTRL, 0x00000088);
+		outp32(dss_base + DSS_RCH_VG2_SCL_OFFSET + SCF_LB_MEM_CTRL, 0x00000008);
+	}
+	outp32(dss_base + DSS_RCH_VG2_DMA_OFFSET + DMA_BUF_MEM_CTRL, 0x00000008);
+
+	outp32(dss_base + DSS_RCH_G0_SCL_OFFSET + SCF_COEF_MEM_CTRL, 0x00000088);
+	outp32(dss_base + DSS_RCH_G0_SCL_OFFSET + SCF_LB_MEM_CTRL, 0x0000008);
+	outp32(dss_base + DSS_RCH_G0_DMA_OFFSET + DMA_BUF_MEM_CTRL, 0x00000008);
+	outp32(dss_base + DSS_RCH_G0_DMA_OFFSET + AFBCD_MEM_CTRL, 0x00008888);
+
+	outp32(dss_base + DSS_RCH_G1_SCL_OFFSET + SCF_COEF_MEM_CTRL, 0x00000088);
+	outp32(dss_base + DSS_RCH_G1_SCL_OFFSET + SCF_LB_MEM_CTRL, 0x0000008);
+	outp32(dss_base + DSS_RCH_G1_DMA_OFFSET + DMA_BUF_MEM_CTRL, 0x00000008);
+	outp32(dss_base + DSS_RCH_G1_DMA_OFFSET + AFBCD_MEM_CTRL, 0x00008888);
+
+	outp32(dss_base + DSS_RCH_D0_DMA_OFFSET + DMA_BUF_MEM_CTRL, 0x00000008);
+	outp32(dss_base + DSS_RCH_D0_DMA_OFFSET + AFBCD_MEM_CTRL, 0x00008888);
+	outp32(dss_base + DSS_RCH_D1_DMA_OFFSET + DMA_BUF_MEM_CTRL, 0x00000008);
+	outp32(dss_base + DSS_RCH_D2_DMA_OFFSET + DMA_BUF_MEM_CTRL, 0x00000008);
+	outp32(dss_base + DSS_RCH_D3_DMA_OFFSET + DMA_BUF_MEM_CTRL, 0x00000008);
+
+	outp32(dss_base + DSS_WCH0_DMA_OFFSET + DMA_BUF_MEM_CTRL, 0x00000008);
+	outp32(dss_base + DSS_WCH0_DMA_OFFSET + AFBCE_MEM_CTRL, 0x00000888);
+	outp32(dss_base + DSS_WCH0_DMA_OFFSET + ROT_MEM_CTRL, 0x00000008);
+	outp32(dss_base + DSS_WCH1_DMA_OFFSET + DMA_BUF_MEM_CTRL, 0x00000008);
+	outp32(dss_base + DSS_WCH1_DMA_OFFSET + AFBCE_MEM_CTRL, 0x88888888);
+	outp32(dss_base + DSS_WCH1_DMA_OFFSET + AFBCE_MEM_CTRL_1, 0x00000088);
+	outp32(dss_base + DSS_WCH1_DMA_OFFSET + ROT_MEM_CTRL, 0x00000008);
+
+	if (g_dss_version_tag == FB_ACCEL_KIRIN970) {
+		outp32(dss_base + DSS_WCH1_DMA_OFFSET + WCH_SCF_COEF_MEM_CTRL, 0x00000088);
+		outp32(dss_base + DSS_WCH1_DMA_OFFSET+ WCH_SCF_LB_MEM_CTRL, 0x00000088);
+		outp32(dss_base + GLB_DSS_MEM_CTRL, 0x02605550);
+	} else {
+		outp32(dss_base + DSS_WCH2_DMA_OFFSET + DMA_BUF_MEM_CTRL, 0x00000008);
+		outp32(dss_base + DSS_WCH2_DMA_OFFSET + ROT_MEM_CTRL, 0x00000008);
+	}
+}
+
 void dss_inner_clk_common_enable(struct hisi_fb_data_type *hisifd, bool fastboot_enable)
 {
 	char __iomem *dss_base = NULL;
-	int prev_refcount = 0;
+	int prev_refcount;
 
-	BUG_ON(hisifd == NULL);
+	if (hisifd == NULL) {
+		HISI_FB_ERR("hisifd is NULL point\n.");
+		return;
+	}
 
 	dss_base = hisifd->dss_base;
 
@@ -262,125 +455,15 @@ void dss_inner_clk_common_enable(struct hisi_fb_data_type *hisifd, bool fastboot
 
 	prev_refcount = dss_inner_clk_refcount++;
 	if (!prev_refcount && !fastboot_enable) {
-	#ifdef CONFIG_DSS_LP_USED
-		//first DSS LP
-		outp32(dss_base + GLB_MODULE_CLK_SEL, 0x00000000); //core clk, pclk
-		outp32(dss_base + DSS_VBIF0_AIF + AIF_MODULE_CLK_SEL, 0x00000000);//axi  clk
-		outp32(dss_base + DSS_VBIF1_AIF + AIF_MODULE_CLK_SEL, 0x00000000);//mmbuf  clk
-
-		//second DSS LP  axi
-		//cmd
-		outp32(dss_base + DSS_CMDLIST_OFFSET + CMD_CLK_SEL, 0x00000000);
-		//aif0
-		outp32(dss_base + DSS_VBIF0_AIF + AIF_CLK_SEL0, 0x00000000);
-		//aif0
-		outp32(dss_base + DSS_VBIF0_AIF + AIF_CLK_SEL1, 0x00000000);
-		//mmu
-		outp32(dss_base + DSS_SMMU_OFFSET + SMMU_LP_CTRL, 0x00000001);
-		//aif1
-		outp32(dss_base + DSS_VBIF1_AIF + AIF_CLK_SEL0, 0x00000000);
-		//aif1
-		outp32(dss_base + DSS_VBIF1_AIF + AIF_CLK_SEL1, 0x00000000);
-
-		//third DSS LP core
-		//mif
-		outp32(dss_base + DSS_MIF_OFFSET + MIF_CLK_CTL,  0x00000001);
-		//mctl mutex0
-		outp32(dss_base + DSS_MCTRL_CTL0_OFFSET + MCTL_CTL_CLK_SEL, 0x00000000);
-		//mctl mutex1
-		outp32(dss_base + DSS_MCTRL_CTL1_OFFSET + MCTL_CTL_CLK_SEL, 0x00000000);
-		//mctl mutex2
-		outp32(dss_base + DSS_MCTRL_CTL2_OFFSET + MCTL_CTL_CLK_SEL, 0x00000000);
-		//mctl mutex3
-		outp32(dss_base + DSS_MCTRL_CTL3_OFFSET + MCTL_CTL_CLK_SEL, 0x00000000);
-		//mctl mutex4
-		outp32(dss_base + DSS_MCTRL_CTL4_OFFSET + MCTL_CTL_CLK_SEL, 0x00000000);
-		//mctl mutex5
-		outp32(dss_base + DSS_MCTRL_CTL5_OFFSET + MCTL_CTL_CLK_SEL, 0x00000000);
-		//mctl sys
-		outp32(dss_base + DSS_MCTRL_SYS_OFFSET + MCTL_MCTL_CLK_SEL, 0x00000000);
-		//mctl sys
-		outp32(dss_base + DSS_MCTRL_SYS_OFFSET + MCTL_MOD_CLK_SEL, 0x00000000);
-		//rch_v0
-		outp32(dss_base + DSS_RCH_VG0_DMA_OFFSET + CH_CLK_SEL, 0x00000000);
-		//rch_v1
-		outp32(dss_base + DSS_RCH_VG1_DMA_OFFSET + CH_CLK_SEL, 0x00000000);
-		//rch_v2
-		outp32(dss_base + DSS_RCH_VG2_DMA_OFFSET + CH_CLK_SEL, 0x00000000);
-		//rch_g0
-		outp32(dss_base + DSS_RCH_G0_DMA_OFFSET + CH_CLK_SEL, 0x00000000);
-		//rch_g1
-		outp32(dss_base + DSS_RCH_G1_DMA_OFFSET + CH_CLK_SEL, 0x00000000);
-		//rch_d0
-		outp32(dss_base + DSS_RCH_D0_DMA_OFFSET + CH_CLK_SEL, 0x00000000);
-		//rch_d1
-		outp32(dss_base + DSS_RCH_D1_DMA_OFFSET + CH_CLK_SEL, 0x00000000);
-		//rch_d2
-		outp32(dss_base + DSS_RCH_D2_DMA_OFFSET + CH_CLK_SEL, 0x00000000);
-		//rch_d3
-		outp32(dss_base + DSS_RCH_D3_DMA_OFFSET + CH_CLK_SEL, 0x00000000);
-		//wch0
-		outp32(dss_base + DSS_WCH0_DMA_OFFSET + CH_CLK_SEL, 0x00000000);
-		//wch1
-		outp32(dss_base + DSS_WCH1_DMA_OFFSET + CH_CLK_SEL, 0x00000000);
-		//wch2
-		outp32(dss_base + DSS_WCH2_DMA_OFFSET + CH_CLK_SEL, 0x00000000);
-		//ov0
-		outp32(dss_base + DSS_OVL0_OFFSET + OVL6_OV_CLK_SEL, 0x00000000);
-		//ov2
-		outp32(dss_base + DSS_OVL2_OFFSET + OVL6_OV_CLK_SEL, 0x00000000);
-		//ov1
-		outp32(dss_base + DSS_OVL1_OFFSET + OVL2_OV_CLK_SEL, 0x00000000);
-		//0v3
-		outp32(dss_base + DSS_OVL3_OFFSET + OVL2_OV_CLK_SEL, 0x00000000);
-	#else
-		//core/axi/mmbuf
-		outp32(dss_base + DSS_CMDLIST_OFFSET + CMD_MEM_CTRL, 0x00000008);  //cmd mem
-
-		outp32(dss_base + DSS_RCH_VG0_SCL_OFFSET + SCF_COEF_MEM_CTRL, 0x00000088);//rch_v0 ,scf mem
-		outp32(dss_base + DSS_RCH_VG0_SCL_OFFSET + SCF_LB_MEM_CTRL, 0x00000008);//rch_v0 ,scf mem
-		if (g_fpga_flag == 1)
-			outp32(dss_base + DSS_RCH_VG0_ARSR_OFFSET + ARSR2P_LB_MEM_CTRL, 0x00000000);//rch_v0 ,arsr2p mem
-		else
-			outp32(dss_base + DSS_RCH_VG0_ARSR_OFFSET + ARSR2P_LB_MEM_CTRL, 0x00000008);//rch_v0 ,arsr2p mem
-		outp32(dss_base + DSS_RCH_VG0_DMA_OFFSET + VPP_MEM_CTRL, 0x00000008);//rch_v0 ,vpp mem
-		outp32(dss_base + DSS_RCH_VG0_DMA_OFFSET + DMA_BUF_MEM_CTRL, 0x00000008);//rch_v0 ,dma_buf mem
-		outp32(dss_base + DSS_RCH_VG0_DMA_OFFSET + AFBCD_MEM_CTRL, 0x00008888);//rch_v0 ,afbcd mem
-
-		outp32(dss_base + DSS_RCH_VG1_SCL_OFFSET + SCF_COEF_MEM_CTRL, 0x00000088);//rch_v1 ,scf mem
-		outp32(dss_base + DSS_RCH_VG1_SCL_OFFSET + SCF_LB_MEM_CTRL, 0x00000008);//rch_v1 ,scf mem
-		outp32(dss_base + DSS_RCH_VG1_DMA_OFFSET + DMA_BUF_MEM_CTRL, 0x00000008);//rch_v1 ,dma_buf mem
-		outp32(dss_base + DSS_RCH_VG1_DMA_OFFSET + AFBCD_MEM_CTRL, 0x00008888);//rch_v1 ,afbcd mem
-
-		outp32(dss_base + DSS_RCH_VG2_SCL_OFFSET + SCF_COEF_MEM_CTRL, 0x00000088);//rch_v2 ,scf mem
-		outp32(dss_base + DSS_RCH_VG2_SCL_OFFSET + SCF_LB_MEM_CTRL, 0x00000008);//rch_v2 ,scf mem
-		outp32(dss_base + DSS_RCH_VG2_DMA_OFFSET + DMA_BUF_MEM_CTRL, 0x00000008);//rch_v2 ,dma_buf mem
-
-		outp32(dss_base + DSS_RCH_G0_SCL_OFFSET + SCF_COEF_MEM_CTRL, 0x00000088);//rch_g0 ,scf mem
-		outp32(dss_base + DSS_RCH_G0_SCL_OFFSET + SCF_LB_MEM_CTRL, 0x0000008);//rch_g0 ,scf mem
-		outp32(dss_base + DSS_RCH_G0_DMA_OFFSET + DMA_BUF_MEM_CTRL, 0x00000008);//rch_g0 ,dma_buf mem
-		outp32(dss_base + DSS_RCH_G0_DMA_OFFSET + AFBCD_MEM_CTRL, 0x00008888);//rch_g0 ,afbcd mem
-
-		outp32(dss_base + DSS_RCH_G1_SCL_OFFSET + SCF_COEF_MEM_CTRL, 0x00000088);//rch_g1 ,scf mem
-		outp32(dss_base + DSS_RCH_G1_SCL_OFFSET + SCF_LB_MEM_CTRL, 0x0000008);//rch_g1 ,scf mem
-		outp32(dss_base + DSS_RCH_G1_DMA_OFFSET + DMA_BUF_MEM_CTRL, 0x00000008);//rch_g1 ,dma_buf mem
-		outp32(dss_base + DSS_RCH_G1_DMA_OFFSET + AFBCD_MEM_CTRL, 0x00008888);//rch_g1 ,afbcd mem
-
-		outp32(dss_base + DSS_RCH_D0_DMA_OFFSET + DMA_BUF_MEM_CTRL, 0x00000008);//rch_d0 ,dma_buf mem
-		outp32(dss_base + DSS_RCH_D0_DMA_OFFSET + AFBCD_MEM_CTRL, 0x00008888);//rch_d0 ,afbcd mem
-		outp32(dss_base + DSS_RCH_D1_DMA_OFFSET + DMA_BUF_MEM_CTRL, 0x00000008);//rch_d1 ,dma_buf mem
-		outp32(dss_base + DSS_RCH_D2_DMA_OFFSET + DMA_BUF_MEM_CTRL, 0x00000008);//rch_d2 ,dma_buf mem
-		outp32(dss_base + DSS_RCH_D3_DMA_OFFSET + DMA_BUF_MEM_CTRL, 0x00000008);//rch_d3 ,dma_buf mem
-
-		outp32(dss_base + DSS_WCH0_DMA_OFFSET + DMA_BUF_MEM_CTRL, 0x00000008);//wch0 DMA/AFBCE mem
-		outp32(dss_base + DSS_WCH0_DMA_OFFSET + AFBCE_MEM_CTRL, 0x00000888);//wch0 DMA/AFBCE mem
-		outp32(dss_base + DSS_WCH0_DMA_OFFSET + ROT_MEM_CTRL, 0x00000008);//wch0 rot mem
-		outp32(dss_base + DSS_WCH1_DMA_OFFSET + DMA_BUF_MEM_CTRL, 0x00000008);//wch1 DMA/AFBCE mem
-		outp32(dss_base + DSS_WCH1_DMA_OFFSET + AFBCE_MEM_CTRL, 0x00000888);//wch1 DMA/AFBCE mem
-		outp32(dss_base + DSS_WCH1_DMA_OFFSET + ROT_MEM_CTRL, 0x00000008);//wch1 rot mem
-		outp32(dss_base + DSS_WCH2_DMA_OFFSET + DMA_BUF_MEM_CTRL, 0x00000008);//wch2 DMA/AFBCE mem
-		outp32(dss_base + DSS_WCH2_DMA_OFFSET + ROT_MEM_CTRL, 0x00000008);//wch2 rot mem
-	#endif
+		if ((g_dss_version_tag == FB_ACCEL_KIRIN970_ES) || (g_fpga_flag == 1)) {
+			dss_normal_set_reg(dss_base);
+		} else {
+		#ifdef CONFIG_DSS_LP_USED
+			dss_lp_set_reg(dss_base);
+		#else
+			dss_normal_set_reg(dss_base);
+		#endif
+		}
 	}
 
 	HISI_FB_DEBUG("fb%d, dss_inner_clk_refcount=%d\n",
@@ -391,9 +474,12 @@ void dss_inner_clk_common_enable(struct hisi_fb_data_type *hisifd, bool fastboot
 
 void dss_inner_clk_common_disable(struct hisi_fb_data_type *hisifd)
 {
-	int new_refcount = 0;
+	int new_refcount;
 
-	BUG_ON(hisifd == NULL);
+	if (hisifd == NULL) {
+		HISI_FB_ERR("hisifd is NULL point\n.");
+		return;
+	}
 
 	down(&hisi_fb_dss_inner_clk_sem);
 	new_refcount = --dss_inner_clk_refcount;
@@ -410,30 +496,40 @@ void dss_inner_clk_common_disable(struct hisi_fb_data_type *hisifd)
 void dss_inner_clk_pdp_enable(struct hisi_fb_data_type *hisifd, bool fastboot_enable)
 {
 	char __iomem *dss_base = NULL;
+	if (hisifd == NULL) {
+		HISI_FB_ERR("hisifd is NULL point!");
+		return ;
+	}
 
-	BUG_ON(hisifd == NULL);
+	if (fastboot_enable) {
+		return ;
+	}
 
 	dss_base = hisifd->dss_base;
-
-	if (fastboot_enable)
-		return ;
-
-#ifdef CONFIG_DSS_LP_USED
-	// itf0 clk
-	outp32(dss_base + DSS_LDI0_OFFSET + LDI_MODULE_CLK_SEL, 0x00000006);
-
-	outp32(dss_base + DSS_DPP_OFFSET + DPP_CLK_SEL, 0x00001500);
-	outp32(dss_base + DSS_IFBC_OFFSET + IFBC_CLK_SEL, 0x00000000);
-	outp32(dss_base + DSS_DSC_OFFSET + DSC_CLK_SEL, 0x00000000);
-	outp32(dss_base + DSS_LDI0_OFFSET + LDI_CLK_SEL, 0x00000000);
-	outp32(dss_base + DSS_DBUF0_OFFSET + DBUF_CLK_SEL, 0x00000000);
-#else
-	outp32(dss_base + DSS_IFBC_OFFSET + IFBC_MEM_CTRL, 0x00000088);
-	outp32(dss_base + DSS_DSC_OFFSET + DSC_MEM_CTRL, 0x00000888);
-	outp32(dss_base + DSS_LDI0_OFFSET + LDI_MEM_CTRL, 0x00000008);
-	outp32(dss_base + DSS_DBUF0_OFFSET + DBUF_MEM_CTRL, 0x00000008);
-	outp32(dss_base + DSS_DPP_DITHER_OFFSET + DITHER_MEM_CTRL, 0x00000008);
-#endif
+	if ((g_dss_version_tag == FB_ACCEL_KIRIN970_ES) || (g_fpga_flag == 1)) {
+		outp32(dss_base + DSS_IFBC_OFFSET + IFBC_MEM_CTRL, 0x00000088);
+		outp32(dss_base + DSS_DSC_OFFSET + DSC_MEM_CTRL, 0x00000888);
+		outp32(dss_base + DSS_LDI0_OFFSET + LDI_MEM_CTRL, 0x00000008);
+		outp32(dss_base + DSS_DBUF0_OFFSET + DBUF_MEM_CTRL, 0x00000008);
+		outp32(dss_base + DSS_DPP_DITHER_OFFSET + DITHER_MEM_CTRL_ES, 0x00000008);
+	} else {
+	#ifdef CONFIG_DSS_LP_USED
+		/*pix0 clk*/
+		outp32(dss_base + DSS_LDI0_OFFSET + LDI_MODULE_CLK_SEL, 0xffffff06);
+		outp32(dss_base + DSS_HI_ACE_OFFSET + DPE_RAMCLK_FUNC, 0x00000000);
+		outp32(dss_base + DSS_DPP_OFFSET + DPP_CLK_SEL, 0x00000400);
+		outp32(dss_base + DSS_IFBC_OFFSET + IFBC_CLK_SEL, 0x00000000);
+		outp32(dss_base + DSS_DSC_OFFSET + DSC_CLK_SEL, 0x00000000);
+		outp32(dss_base + DSS_LDI0_OFFSET + LDI_CLK_SEL, 0x00000000);
+		outp32(dss_base + DSS_DBUF0_OFFSET + DBUF_CLK_SEL, 0x00000000);
+	#else
+		outp32(dss_base + DSS_IFBC_OFFSET + IFBC_MEM_CTRL, 0x00000088);
+		outp32(dss_base + DSS_DSC_OFFSET + DSC_MEM_CTRL, 0x00000888);
+		outp32(dss_base + DSS_LDI0_OFFSET + LDI_MEM_CTRL, 0x00000008);
+		outp32(dss_base + DSS_DBUF0_OFFSET + DBUF_MEM_CTRL, 0x00000008);
+		outp32(dss_base + DSS_DPP_DITHER_OFFSET + DITHER_MEM_CTRL, 0x00000008);
+	#endif
+	}
 }
 
 void dss_inner_clk_pdp_disable(struct hisi_fb_data_type *hisifd)
@@ -443,24 +539,51 @@ void dss_inner_clk_pdp_disable(struct hisi_fb_data_type *hisifd)
 void dss_inner_clk_sdp_enable(struct hisi_fb_data_type *hisifd)
 {
 	char __iomem *dss_base = NULL;
-
-	BUG_ON(hisifd == NULL);
+	if (hisifd == NULL) {
+		HISI_FB_ERR("hisifd is NULL point!");
+		return ;
+	}
 
 	dss_base = hisifd->dss_base;
-
-#ifdef CONFIG_DSS_LP_USED
-	// itf1 clk
-	outp32(dss_base + DSS_LDI1_OFFSET + LDI_MODULE_CLK_SEL, 0x00000000);
-	outp32(dss_base + DSS_LDI1_OFFSET + LDI_CLK_SEL, 0x00000000);
-	outp32(dss_base + DSS_DBUF1_OFFSET + DBUF_CLK_SEL, 0x00000000);
-#else
-	outp32(dss_base + DSS_LDI1_OFFSET + LDI_MEM_CTRL, 0x00000008);
-	outp32(dss_base + DSS_DBUF1_OFFSET + DBUF_MEM_CTRL, 0x00000008);
-#endif
+	if ((g_dss_version_tag == FB_ACCEL_KIRIN970_ES) || (g_fpga_flag == 1)) {
+		outp32(dss_base + DSS_LDI1_OFFSET + LDI_MEM_CTRL, 0x00000008);
+		outp32(dss_base + DSS_DBUF1_OFFSET + DBUF_MEM_CTRL, 0x00000008);
+	} else {
+	#ifdef CONFIG_DSS_LP_USED
+		/*pix1 clk*/
+		outp32(dss_base + DSS_LDI1_OFFSET + LDI_MODULE_CLK_SEL, 0x00000000);
+		outp32(dss_base + DSS_LDI1_OFFSET + LDI_CLK_SEL, 0x00000000);
+		outp32(dss_base + DSS_DBUF1_OFFSET + DBUF_CLK_SEL, 0x00000000);
+	#else
+		outp32(dss_base + DSS_LDI1_OFFSET + LDI_MEM_CTRL, 0x00000008);
+		outp32(dss_base + DSS_DBUF1_OFFSET + DBUF_MEM_CTRL, 0x00000008);
+	#endif
+	}
 }
 
 void dss_inner_clk_sdp_disable(struct hisi_fb_data_type *hisifd)
 {
+	int ret;
+	uint64_t dss_mmbuf_rate;
+
+	if (hisifd == NULL) {
+		HISI_FB_ERR("hisifd is NULL point!");
+		return ;
+	}
+
+	hisifd->dss_clk_rate.dss_mmbuf_rate = DEFAULT_DSS_MMBUF_CLK_RATE_L1;
+
+	if (g_dss_version_tag == FB_ACCEL_KIRIN970) {
+		if (hisifd_list[PRIMARY_PANEL_IDX]) {
+			dss_mmbuf_rate = hisifd_list[PRIMARY_PANEL_IDX]->dss_clk_rate.dss_mmbuf_rate;
+			ret = clk_set_rate(hisifd->dss_mmbuf_clk, dss_mmbuf_rate);
+			if (ret < 0) {
+				HISI_FB_ERR("fb%d dss_mmbuf clk_set_rate(%llu) failed, error=%d!\n",
+					hisifd->index, dss_mmbuf_rate, ret);
+				return ;
+			}
+		}
+	}
 }
 
 void init_dpp(struct hisi_fb_data_type *hisifd)
@@ -468,7 +591,10 @@ void init_dpp(struct hisi_fb_data_type *hisifd)
 	char __iomem *dpp_base = NULL;
 	struct hisi_panel_info *pinfo = NULL;
 
-	BUG_ON(hisifd == NULL);
+	if (hisifd == NULL) {
+		HISI_FB_ERR("hisifd is NULL point!");
+		return ;
+	}
 	pinfo = &(hisifd->panel_info);
 
 	if (hisifd->index == PRIMARY_PANEL_IDX) {
@@ -483,9 +609,9 @@ void init_dpp(struct hisi_fb_data_type *hisifd)
 
 #ifdef CONFIG_HISI_FB_DPP_COLORBAR_USED
 	outp32(dpp_base + DPP_CLRBAR_CTRL, (0x30 << 24) |(0 << 1) | 0x1);
-	set_reg(dpp_base + DPP_CLRBAR_1ST_CLR, 0xFF, 8, 16); //Red
-	set_reg(dpp_base + DPP_CLRBAR_2ND_CLR, 0xFF, 8, 8); //Green
-	set_reg(dpp_base + DPP_CLRBAR_3RD_CLR, 0xFF, 8, 0); //Blue
+	set_reg(dpp_base + DPP_CLRBAR_1ST_CLR, 0x3FF00000, 30, 0); //Red
+	set_reg(dpp_base + DPP_CLRBAR_2ND_CLR, 0x000FFC00, 30, 0); //Green
+	set_reg(dpp_base + DPP_CLRBAR_3RD_CLR, 0x000003FF, 30, 0); //Blue
 #endif
 }
 
@@ -513,10 +639,6 @@ void init_sbl(struct hisi_fb_data_type *hisifd)
 		return;
 	}
 
-	if (g_dss_version_tag == FB_ACCEL_KIRIN970) {
-		return;
-	}
-
 	if (hisifd->index == PRIMARY_PANEL_IDX) {
 		dpp_base = hisifd->dss_base + DSS_DPP_OFFSET;
 		sbl_base = hisifd->dss_base + DSS_DPP_SBL_OFFSET;
@@ -524,107 +646,174 @@ void init_sbl(struct hisi_fb_data_type *hisifd)
 		HISI_FB_ERR("fb%d, not support!", hisifd->index);
 		return ;
 	}
+	if (g_dss_version_tag == FB_ACCEL_KIRIN970_ES) {
+		//mode 1
+		//enable cabc, backlight mode 1
+		outp32(sbl_base + SBL_REG_CALC_CONTROL_0_ES, 0x86);
+		outp32(sbl_base + SBL_REG_CALC_CONTROL_1_ES, 0x10);
 
-	//mode 1
-	//enable cabc, backlight mode 1
-	outp32(sbl_base + SBL_REG_CALC_CONTROL_0, 0x86);
-	outp32(sbl_base + SBL_REG_CALC_CONTROL_1, 0x10);
+		//enable ca
+		outp32(sbl_base + SBL_REG_CORE1_VC_CONTROL_0_ES, 0x03);
 
-	//enable ca
-	outp32(sbl_base + SBL_REG_CORE1_VC_CONTROL_0, 0x03);
+		//enable Iridix
+		outp32(sbl_base + SBL_REG_CORE1_IRDX_CONTROL_0_ES, 0x7);
 
-	//enable Iridix
-	outp32(sbl_base + SBL_REG_CORE1_IRDX_CONTROL_0, 0x7);
+		//res
+		tmp = pinfo->xres;
+		outp32(sbl_base + SBL_REG_FRMT_FRAME_WIDTH_7_TO_0_ES, (tmp & 0xff));
+		outp32(sbl_base + SBL_REG_FRMT_FRAME_WIDTH_15_TO_8_ES, ((tmp >> 8) & 0xff));
 
-	//res
-	tmp = pinfo->xres;
-	outp32(sbl_base + SBL_REG_FRMT_FRAME_WIDTH_7_TO_0, (tmp & 0xff));
-	outp32(sbl_base + SBL_REG_FRMT_FRAME_WIDTH_15_TO_8, ((tmp >> 8) & 0xff));
+		tmp = pinfo->yres;
+		outp32(sbl_base + SBL_REG_FRMT_FRAME_HEIGHT_7_TO_0_ES, (tmp & 0xff));
+		outp32(sbl_base + SBL_REG_FRMT_FRAME_HEIGHT_15_TO_8_ES, ((tmp >> 8) & 0xff));
 
-	tmp = pinfo->yres;
-	outp32(sbl_base + SBL_REG_FRMT_FRAME_HEIGHT_7_TO_0, (tmp & 0xff));
-	outp32(sbl_base + SBL_REG_FRMT_FRAME_HEIGHT_15_TO_8, ((tmp >> 8) & 0xff));
+		//ambient light scale
+		outp32(sbl_base + SBL_REG_CALC_AL_SCALE_7_TO_0_ES, 0xff);
+		outp32(sbl_base + SBL_REG_CALC_AL_SCALE_15_TO_8_ES, 0xff);
 
-	//ambient light scale
-	outp32(sbl_base + SBL_REG_CALC_AL_SCALE_7_TO_0, 0xff);
-	outp32(sbl_base + SBL_REG_CALC_AL_SCALE_15_TO_8, 0xff);
+		//back light scale
+		outp32(sbl_base + SBL_REG_CALC_BACKLIGHT_SCALE_7_TO_0_ES, 0xff);
+		outp32(sbl_base + SBL_REG_CALC_BACKLIGHT_SCALE_15_TO_8_ES, 0xff);
 
-	//back light scale
-	outp32(sbl_base + SBL_REG_CALC_BACKLIGHT_SCALE_7_TO_0, 0xff);
-	outp32(sbl_base + SBL_REG_CALC_BACKLIGHT_SCALE_15_TO_8, 0xff);
+		//input bl  scale
+		outp32(sbl_base + SBL_REG_CALC_BL_PANEL_MAX_7_TO_0_ES, 0xff);
+		outp32(sbl_base + SBL_REG_CALC_BL_PANEL_MAX_15_TO_8_ES, 0x00);
 
-	//input bl  scale
-	outp32(sbl_base + SBL_REG_CALC_BL_PANEL_MAX_7_TO_0, 0xff);
-	outp32(sbl_base + SBL_REG_CALC_BL_PANEL_MAX_15_TO_8, 0x00);
+		outp32(sbl_base + SBL_REG_CALC_SBC2_TF_ASYM_ES, 0x01);
 
-	outp32(sbl_base + SBL_REG_CALC_SBC2_TF_ASYM, 0x01);
+		outp32(sbl_base + SBL_REG_CALC_GAIN_AA_MANUAL_7_TO_0_ES, 0x00);
+		outp32(sbl_base + SBL_REG_CALC_GAIN_AA_MANUAL_11_TO_8_ES, 0x06);
 
-	outp32(sbl_base + SBL_REG_CALC_GAIN_AA_MANUAL_7_TO_0, 0x00);
-	outp32(sbl_base + SBL_REG_CALC_GAIN_AA_MANUAL_11_TO_8, 0x06);
+		outp32(sbl_base + SBL_REG_CALC_SBC1_TF_DEPTH_7_TO_0_ES, 0x01);
+		outp32(sbl_base + SBL_REG_CALC_SBC1_TF_DEPTH_15_TO_8_ES, 0x00);
 
-	outp32(sbl_base + SBL_REG_CALC_SBC1_TF_DEPTH_7_TO_0, 0x01);
-	outp32(sbl_base + SBL_REG_CALC_SBC1_TF_DEPTH_15_TO_8, 0x00);
+		outp32(sbl_base + SBL_REG_CALC_SBC1_TF_STEP_7_TO_0_ES, 0xff);
+		outp32(sbl_base + SBL_REG_CALC_SBC1_TF_STEP_15_TO_8_ES, 0xff);
 
-	outp32(sbl_base + SBL_REG_CALC_SBC1_TF_STEP_7_TO_0, 0xff);
-	outp32(sbl_base + SBL_REG_CALC_SBC1_TF_STEP_15_TO_8, 0xff);
+		outp32(sbl_base + SBL_REG_CALC_SBC2_TF_DEPTH_7_TO_0_ES, 0x20);
+		outp32(sbl_base + SBL_REG_CALC_SBC2_TF_DEPTH_15_TO_8_ES, 0x00);
 
-	outp32(sbl_base + SBL_REG_CALC_SBC2_TF_DEPTH_7_TO_0, 0x20);
-	outp32(sbl_base + SBL_REG_CALC_SBC2_TF_DEPTH_15_TO_8, 0x00);
+		outp32(sbl_base + SBL_REG_CALC_SBC2_TF_STEP_7_TO_0_ES, 0xff);
+		outp32(sbl_base + SBL_REG_CALC_SBC2_TF_STEP_15_TO_8_ES, 0xff);
 
-	outp32(sbl_base + SBL_REG_CALC_SBC2_TF_STEP_7_TO_0, 0xff);
-	outp32(sbl_base + SBL_REG_CALC_SBC2_TF_STEP_15_TO_8, 0xff);
+		//calibration
+		outp32(sbl_base + SBL_REG_CALC_CALIBRATION_A_7_TO_0_ES, 0x08);
+		outp32(sbl_base + SBL_REG_CALC_CALIBRATION_A_15_TO_8_ES, 0x00);
 
-	//calibration
-	outp32(sbl_base + SBL_REG_CALC_CALIBRATION_A_7_TO_0, 0x08);
-	outp32(sbl_base + SBL_REG_CALC_CALIBRATION_A_15_TO_8, 0x00);
+		outp32(sbl_base + SBL_REG_CALC_CALIBRATION_B_7_TO_0_ES, 0x5f);
+		outp32(sbl_base + SBL_REG_CALC_CALIBRATION_B_15_TO_8_ES, 0x00);
 
-	outp32(sbl_base + SBL_REG_CALC_CALIBRATION_B_7_TO_0, 0x5f);
-	outp32(sbl_base + SBL_REG_CALC_CALIBRATION_B_15_TO_8, 0x00);
+		outp32(sbl_base + SBL_REG_CALC_CALIBRATION_C_7_TO_0_ES, 0x03);
+		outp32(sbl_base + SBL_REG_CALC_CALIBRATION_C_15_TO_8_ES, 0x00);
 
-	outp32(sbl_base + SBL_REG_CALC_CALIBRATION_C_7_TO_0, 0x03);
-	outp32(sbl_base + SBL_REG_CALC_CALIBRATION_C_15_TO_8, 0x00);
+		outp32(sbl_base + SBL_REG_CALC_CALIBRATION_D_7_TO_0_ES, 0x00);
+		outp32(sbl_base + SBL_REG_CALC_CALIBRATION_D_15_TO_8_ES, 0x00);
 
-	outp32(sbl_base + SBL_REG_CALC_CALIBRATION_D_7_TO_0, 0x00);
-	outp32(sbl_base + SBL_REG_CALC_CALIBRATION_D_15_TO_8, 0x00);
+		outp32(sbl_base + SBL_REG_CALC_CALIBRATION_E_7_TO_0_ES, 0x07);
+		outp32(sbl_base + SBL_REG_CALC_CALIBRATION_E_15_TO_8_ES, 0x00);
 
-	outp32(sbl_base + SBL_REG_CALC_CALIBRATION_E_7_TO_0, 0x07);
-	outp32(sbl_base + SBL_REG_CALC_CALIBRATION_E_15_TO_8, 0x00);
+		//strength limit
+		outp32(sbl_base + SBL_REG_CALC_STRENGTH_LIMIT_7_TO_0_ES, 0xc0);
+		outp32(sbl_base + SBL_REG_CALC_STRENGTH_LIMIT_9_TO_8_ES, 0x02);
 
-	//strength limit
-	outp32(sbl_base + SBL_REG_CALC_STRENGTH_LIMIT_7_TO_0, 0xc0);
-	outp32(sbl_base + SBL_REG_CALC_STRENGTH_LIMIT_9_TO_8, 0x02);
+		//AL temporal filter
+		outp32(sbl_base + SBL_REG_CALC_AL_RTF_FILTER_A_7_TO_0_ES, 0x25);
+		outp32(sbl_base + SBL_REG_CALC_AL_RTF_FILTER_A_15_TO_8_ES, 0x50);
 
-	//AL temporal filter
-	outp32(sbl_base + SBL_REG_CALC_AL_RTF_FILTER_A_7_TO_0, 0x25);
-	outp32(sbl_base + SBL_REG_CALC_AL_RTF_FILTER_A_15_TO_8, 0x50);
+		outp32(sbl_base + SBL_REG_CALC_AL_RTF_FILTER_B_7_TO_0_ES, 0x06);
+		outp32(sbl_base + SBL_REG_CALC_AL_RTF_FILTER_B_15_TO_8_ES, 0x00);
 
-	outp32(sbl_base + SBL_REG_CALC_AL_RTF_FILTER_B_7_TO_0, 0x06);
-	outp32(sbl_base + SBL_REG_CALC_AL_RTF_FILTER_B_15_TO_8, 0x00);
+		outp32(sbl_base + SBL_REG_CALC_AL_RTF_FILTER_C_7_TO_0_ES, 0x22);
+		outp32(sbl_base + SBL_REG_CALC_AL_RTF_FILTER_C_15_TO_8_ES, 0x02);
 
-	outp32(sbl_base + SBL_REG_CALC_AL_RTF_FILTER_C_7_TO_0, 0x22);
-	outp32(sbl_base + SBL_REG_CALC_AL_RTF_FILTER_C_15_TO_8, 0x02);
+		outp32(sbl_base + SBL_REG_CORE1_DTHR_CONTROL_ES, 0x00);
 
-	outp32(sbl_base + SBL_REG_CORE1_DTHR_CONTROL, 0x00);
+		outp32(sbl_base + SBL_REG_CORE1_IRDX_BRIGHTPR_ES, 0x80);
 
-	outp32(sbl_base + SBL_REG_CORE1_IRDX_BRIGHTPR, 0x80);
+		outp32(sbl_base + SBL_REG_CORE1_IRDX_CONTRAST_ES, 0x90);
 
-	outp32(sbl_base + SBL_REG_CORE1_IRDX_CONTRAST, 0x90);
+		outp32(sbl_base + SBL_REG_CORE1_IRDX_DARKENH_7_TO_0_ES, 0x00);
+		outp32(sbl_base + SBL_REG_CORE1_IRDX_DARKENH_15_TO_8_ES, 0x30);
 
-	outp32(sbl_base + SBL_REG_CORE1_IRDX_DARKENH_7_TO_0, 0x00);
-	outp32(sbl_base + SBL_REG_CORE1_IRDX_DARKENH_15_TO_8, 0x30);
+		outp32(sbl_base + SBL_REG_CORE1_LOGO_TOP_ES, 0x0);
+		outp32(sbl_base + SBL_REG_CORE1_LOGO_LEFT_ES, 0x0);
 
-	outp32(sbl_base + SBL_REG_CORE1_LOGO_TOP, 0x0);
-	outp32(sbl_base + SBL_REG_CORE1_LOGO_LEFT, 0x0);
+		for(tmp = 0; tmp < 33; tmp++){
+			outp32(sbl_base + SBL_CALC_AL_CALIB_LUT_ADDR_I_ES, tmp);
+			outp32(sbl_base + SBL_CALC_AL_CALIB_LUT_DATA_W_7_TO_0_ES, (sbl_al_calib_lut[tmp] & 0xff));
+			outp32(sbl_base + SBL_CALC_AL_CALIB_LUT_DATA_W_15_TO_8_ES, ((sbl_al_calib_lut[tmp] >> 8) & 0xff));
+		}
+		for(tmp = 0; tmp < 32; tmp++){
+			outp32(sbl_base + SBL_CALC_AL_CHANGE_LUT_ADDR_I_ES, tmp);
+			outp32(sbl_base + SBL_CALC_AL_CHANGE_LUT_DATA_W_7_TO_0_ES, (s_calc_al_change_lut[tmp] & 0xff));
+			outp32(sbl_base + SBL_CALC_AL_CHANGE_LUT_DATA_W_15_TO_8_ES, ((s_calc_al_change_lut[tmp] >> 8) & 0xff));
+		}
+	} else {
+		//mode 1
+		//enable cabc, backlight mode 1
+		outp32(sbl_base + SBL_REG_CALC_CONTROL, 0x100086);
 
-	for(tmp = 0; tmp < 33; tmp++){
-		outp32(sbl_base + SBL_CALC_AL_CALIB_LUT_ADDR_I, tmp);
-		outp32(sbl_base + SBL_CALC_AL_CALIB_LUT_DATA_W_7_TO_0, (sbl_al_calib_lut[tmp] & 0xff));
-		outp32(sbl_base + SBL_CALC_AL_CALIB_LUT_DATA_W_15_TO_8, ((sbl_al_calib_lut[tmp] >> 8) & 0xff));
-	}
-	for(tmp = 0; tmp < 32; tmp++){
-		outp32(sbl_base + SBL_CALC_AL_CHANGE_LUT_ADDR_I, tmp);
-		outp32(sbl_base + SBL_CALC_AL_CHANGE_LUT_DATA_W_7_TO_0, (s_calc_al_change_lut[tmp] & 0xff));
-		outp32(sbl_base + SBL_CALC_AL_CHANGE_LUT_DATA_W_15_TO_8, ((s_calc_al_change_lut[tmp] >> 8) & 0xff));
+		//enable ca
+		outp32(sbl_base + SBL_REG_VC_VC_CONTROL_0, 0x03);
+
+		//enable Iridix
+		outp32(sbl_base + SBL_REG_VC_IRDX_CONTROL, 0x7);
+
+		//res
+		outp32(sbl_base + SBL_REG_FRMT_FRAME_DIMEN,((pinfo->yres & 0xffff)<< 16)|(pinfo->xres & 0xffff));
+
+		//ambient light scale
+		outp32(sbl_base + SBL_REG_CALC_AL, 0xffff);
+
+		//back light scale
+		outp32(sbl_base + SBL_REG_CALC_CALIBRATION_E_BACKLIGHT_SCALE, 0xffff0000);
+
+		//input bl  scale
+		outp32(sbl_base + SBL_REG_CALC_AB_BL_KNEE2_BL_PANEL_MAX, 0x00ff0000);
+
+		outp32(sbl_base + SBL_REG_CALC_SBC2_TF_STEP_SBC2_TF_ASYM, 0x01ffff);
+
+		outp32(sbl_base + SBL_REG_MANUAL, 0x6000200);
+
+		outp32(sbl_base + SBL_REG_CALC_BL_ATTEN_ALPHA_SBC1_TF_DEPTH, 0x10000);
+
+		outp32(sbl_base + SBL_REG_CALC_SBC1_TF_STEP_SBC1_TF_ASYM, 0x10ffff);
+
+		outp32(sbl_base + SBL_REG_CALC_SBC1_TF_ASYM_LOG_SBC2_TF_DEPTH, 0x00200000);
+
+		//calibration
+		outp32(sbl_base + SBL_REG_CALC_CALIBRATION_A_B, 0x005f0008);
+
+		outp32(sbl_base + SBL_REG_CALC_CALIBRATION_C_D, 0x00000003);
+
+		outp32(sbl_base + SBL_REG_CALC_CALIBRATION_E_BACKLIGHT_SCALE, 0xffff0007);
+
+		//strength limit
+		outp32(sbl_base + SBL_REG_CALC_GAIN_AA_TF_ASYM_STRENGTH_LIMIT, 0x2c00010);
+
+		//AL temporal filter
+		outp32(sbl_base + SBL_REG_CALC_AL_RTF_FILTER_A_7_TO_0, 0x00605025);
+
+		outp32(sbl_base + SBL_REG_CALC_AL_RTF_FILTER_C_AB_AL_KNEE1, 0x012c0222);
+
+		outp32(sbl_base + SBL_REG_VC_DTHR_CONTROL, 0x00);
+
+		outp32(sbl_base + SBL_REG_CALC_GAIN_MIDDLE_CALC_BRIGHTPR, 0x800310);
+
+		outp32(sbl_base + SBL_REG_VC_IRDX_CONTRAST, 0x90);
+
+		outp32(sbl_base + SBL_REG_VC_IRDX_DARKENH, 0x3000);
+
+		outp32(sbl_base + SBL_REG_VC_LOGO_TOP_LEFT, 0x0);
+
+		for(tmp = 0; tmp < 33; tmp++){
+			outp32(sbl_base + SBL_CALC_AL_CALIB_LUT_ADDR_I, tmp);
+			outp32(sbl_base + SBL_CALC_AL_CALIB_LUT_DATA_W, sbl_al_calib_lut[tmp]);
+		}
+		for(tmp = 0; tmp < 32; tmp++){
+			outp32(sbl_base + SBL_CALC_AL_CHANGE_LUT_ADDR_I, tmp);
+			outp32(sbl_base + SBL_CALC_AL_CHANGE_LUT_DATA_W, s_calc_al_change_lut[tmp]);
+		}
 	}
 
 	outp32(dpp_base + DPP_SBL, 0x0);
@@ -856,8 +1045,8 @@ void init_ifbc(struct hisi_fb_data_type *hisifd)
 {
 	char __iomem *ifbc_base = NULL;
 	struct hisi_panel_info *pinfo = NULL;
-	uint32_t mipi_idx = 0;
-	uint32_t comp_mode = 0;
+	uint32_t mipi_idx;
+	uint32_t comp_mode;
 
 	uint32_t ifbc_out_mode = 0;
 	uint32_t dpk_mode_sel = 0;
@@ -867,9 +1056,15 @@ void init_ifbc(struct hisi_fb_data_type *hisifd)
 	uint32_t insert_byte = 0;
 	uint32_t num_pad = 0;
 
-	BUG_ON(hisifd == NULL);
+	if (hisifd == NULL) {
+		HISI_FB_ERR("hisifd is null.\n");
+		return;
+	}
 	pinfo = &(hisifd->panel_info);
-	BUG_ON((pinfo->ifbc_type < IFBC_TYPE_NONE) || (pinfo->ifbc_type >= IFBC_TYPE_MAX));
+	if (pinfo->ifbc_type >= IFBC_TYPE_MAX) {
+		HISI_FB_ERR("ifbc_type is larger than IFBC_TYPE_MAX.\n");
+		return;
+	}
 
 	/* VESA_CLK_SEL is set to 0 for initial, 1 is needed only by vesa dual pipe compress */
 	set_reg(hisifd->dss_base + DSS_LDI0_OFFSET + LDI_VESA_CLK_SEL, 0, 1, 0);
@@ -879,10 +1074,6 @@ void init_ifbc(struct hisi_fb_data_type *hisifd)
 
 	if (!HISI_DSS_SUPPORT_DPP_MODULE_BIT(DPP_MODULE_IFBC))
 		return;
-
-	if (g_dss_version_tag == FB_ACCEL_KIRIN970) {
-		return;
-	}
 
 	if (hisifd->index == PRIMARY_PANEL_IDX) {
 		ifbc_base = hisifd->dss_base + DSS_IFBC_OFFSET;
@@ -903,10 +1094,11 @@ void init_ifbc(struct hisi_fb_data_type *hisifd)
 	}
 
 	// git ifbc_out_mode
-	if (pinfo->bpp == LCD_RGB888)
+	if (pinfo->bpp == LCD_RGB888) {
 		ifbc_out_mode = 1;
-	else if (pinfo->bpp == LCD_RGB565)
+	} else if (pinfo->bpp == LCD_RGB565) {
 		ifbc_out_mode = 0;
+	}
 
 	if (((pinfo->ifbc_type == IFBC_TYPE_ORISE2X) && (pinfo->ifbc_cmp_dat_rev0 == 1)) ||
 		((pinfo->ifbc_type == IFBC_TYPE_RSP3X) &&
@@ -1067,7 +1259,6 @@ void init_ifbc(struct hisi_fb_data_type *hisifd)
 /*lint -e438 -e550*/
 void init_post_scf(struct hisi_fb_data_type *hisifd)
 {
-	char __iomem *dpp_base = NULL;
 	char __iomem *scf_lut_base = NULL;
 	char __iomem *scf_base;
 	int ihright;
@@ -1080,83 +1271,106 @@ void init_post_scf(struct hisi_fb_data_type *hisifd)
 
 	pinfo = &(hisifd->panel_info);
 
-	dpp_base = hisifd->dss_base + DSS_DPP_OFFSET;
-	scf_lut_base = hisifd->dss_base + DSS_POST_SCF_LUT_OFFSET;
+	if (g_dss_version_tag == FB_ACCEL_KIRIN970_ES) {
+		scf_lut_base = hisifd->dss_base + DSS_POST_SCF_LUT_OFFSET_ES;
+	} else {
+		scf_lut_base = hisifd->dss_base + DSS_POST_SCF_LUT_OFFSET;
+	}
 
 	if (!HISI_DSS_SUPPORT_DPP_MODULE_BIT(DPP_MODULE_POST_SCF)) {
 		return;
 	}
-
-	if (g_dss_version_tag == FB_ACCEL_KIRIN970) {
-		return;
-	}
-
-	// ARSR1P memory shutdown
-	//outp32(dpp_base + DPP_ARSR1P_MEM_CTRL, 0X4);
 
 	pinfo->post_scf_support = 1;
 	hisi_dss_post_scl_load_filter_coef(hisifd, false, scf_lut_base, SCL_COEF_RGB_IDX);
 
 	scf_base = hisifd->dss_base + DSS_POST_SCF_OFFSET;
 
-	outp32(scf_base + ARSR1P_SKIN_THRES_Y, 512<<16 | 83<<8 | 75);
-	outp32(scf_base + ARSR1P_SKIN_THRES_U, 819<<16 | 10<<8 | 5);
-	outp32(scf_base + ARSR1P_SKIN_THRES_V, 682<<16 | 12<<8 | 6);
-	outp32(scf_base + ARSR1P_SKIN_EXPECTED, 145<<16 | 113<<8 | 150);
-	outp32(scf_base + ARSR1P_SKIN_CFG, 3<<16 | 10<<8 | 6);
+	if (g_dss_version_tag == FB_ACCEL_KIRIN970_ES) {
+		outp32(scf_base + ARSR1P_SKIN_THRES_Y_ES, 512<<16 | 83<<8 | 75);
+		outp32(scf_base + ARSR1P_SKIN_THRES_U_ES, 819<<16 | 10<<8 | 5);
+		outp32(scf_base + ARSR1P_SKIN_THRES_V_ES, 682<<16 | 12<<8 | 6);
+		outp32(scf_base + ARSR1P_SKIN_EXPECTED_ES, 145<<16 | 113<<8 | 150);
+		outp32(scf_base + ARSR1P_SKIN_CFG_ES, 3<<16 | 10<<8 | 6);
 
-	outp32(scf_base + ARSR1P_SHOOT_CFG1, 2<<24 | 20);
-	outp32(scf_base + ARSR1P_SHOOT_CFG2, 512<<18 | 0<<9 | (-16 & 0x1ff));
+		outp32(scf_base + ARSR1P_SHOOT_CFG1_ES, 2<<24 | 20);
+		outp32(scf_base + ARSR1P_SHOOT_CFG2_ES, 512<<18 | 0<<9 | (-16 & 0x1ff));
 
-	outp32(scf_base + ARSR1P_SHARP_CFG1, 64<<24 | 48<<16 | 7<<8 | 3);
-	outp32(scf_base + ARSR1P_SHARP_CFG2, 64<<24 | 48<<16 | 7<<8 | 3);
-	outp32(scf_base + ARSR1P_SHARP_CFG3, 40<<16 | 0);
-	outp32(scf_base + ARSR1P_SHARP_CFG4, 0<<16 | 0);
-	outp32(scf_base + ARSR1P_SHARP_CFG5, 80<<16 | 0 );
-	outp32(scf_base + ARSR1P_SHARP_CFG6, 40<<24 | 24<<16 | 16<<8 | 6);
+		outp32(scf_base + ARSR1P_SHARP_CFG1_ES, 64<<24 | 48<<16 | 7<<8 | 3);
+		outp32(scf_base + ARSR1P_SHARP_CFG2_ES, 64<<24 | 48<<16 | 7<<8 | 3);
+		outp32(scf_base + ARSR1P_SHARP_CFG3_ES, 40<<16 | 0);
+		outp32(scf_base + ARSR1P_SHARP_CFG4_ES, 0<<16 | 0);
+		outp32(scf_base + ARSR1P_SHARP_CFG5_ES, 80<<16 | 0);
+		outp32(scf_base + ARSR1P_SHARP_CFG6_ES, 40<<24 | 24<<16 | 16<<8 | 6);
 
-	outp32(scf_base + ARSR1P_SHARP_CFG7, 1<<24 | 80<<16 | 1<<9 | 0<<8 | 16);
-	outp32(scf_base + ARSR1P_SHARP_CFG8, 4<<21 | 640);
-	outp32(scf_base + ARSR1P_SHARP_CFG9, 1<<24 | 5120);
-	outp32(scf_base + ARSR1P_SHARP_CFG10, 0);
-	outp32(scf_base + ARSR1P_SHARP_CFG11, 0);
+		outp32(scf_base + ARSR1P_SHARP_CFG7_ES, 1<<24 | 80<<16 | 1<<9 | 0<<8 | 16);
+		outp32(scf_base + ARSR1P_SHARP_CFG8_ES, 4<<21 | 640);
+		outp32(scf_base + ARSR1P_SHARP_CFG9_ES, 1<<24 | 5120);
+		outp32(scf_base + ARSR1P_SHARP_CFG10_ES, 0);
+		outp32(scf_base + ARSR1P_SHARP_CFG11_ES, 0);
 
-	outp32(scf_base + ARSR1P_DIFF_CTRL, 20<<8 | 15);
+		outp32(scf_base + ARSR1P_DIFF_CTRL_ES, 20<<8 | 15);
 
-	outp32(scf_base + ARSR1P_LSC_CFG1, 15<<26 | 780<<13 | 1040);
-	outp32(scf_base + ARSR1P_LSC_CFG2, 0);
-	outp32(scf_base + ARSR1P_LSC_CFG3, 128<<16 | 1536);
-
+		outp32(scf_base + ARSR1P_LSC_CFG1_ES, 15<<26 | 780<<13 | 1040);
+		outp32(scf_base + ARSR1P_LSC_CFG2_ES, 0);
+		outp32(scf_base + ARSR1P_LSC_CFG3_ES, 128<<16 | 1536);
+	} else {
+		outp32(scf_base + ARSR_POST_SKIN_THRES_Y, 332<<10 | 300);//0x5312c
+		outp32(scf_base + ARSR_POST_SKIN_THRES_U, 40<<10 | 20);//0xa014
+		outp32(scf_base + ARSR_POST_SKIN_THRES_V, 48<<10 | 24);//0xc018
+		outp32(scf_base + ARSR_POST_SKIN_EXPECTED, 580<<20 | 452<<10 | 600);//0x24471258
+		outp32(scf_base + ARSR_POST_SKIN_CFG, 12<<16 | 10<<8 | 6);//0xc0a06
+		outp32(scf_base + ARSR_POST_SHOOT_CFG1, 8<<16 | 20);//0x80014
+		outp32(scf_base + ARSR_POST_SHOOT_CFG2, (-64 & 0x1ff));//0x1c0
+		outp32(scf_base + ARSR_POST_SHOOT_CFG3, 512);//0x200
+		outp32(scf_base + ARSR_POST_SHARP_CFG1_H, 256<<16 | 192);//0x10000c0
+		outp32(scf_base + ARSR_POST_SHARP_CFG1_L, 24<<16 | 8);//0x180008
+		outp32(scf_base + ARSR_POST_SHARP_CFG2_H, 256<<16 | 192);//0x10000c0
+		outp32(scf_base + ARSR_POST_SHARP_CFG2_L, 24<<16 | 8);//0x180008
+		outp32(scf_base + ARSR_POST_SHARP_CFG3, 150<<16 | 150);//0x960096
+		outp32(scf_base + ARSR_POST_SHARP_CFG4, 200<<16 | 0);//0xc80000
+		outp32(scf_base + ARSR_POST_SHARP_CFG5, 200<<16 | 0);//0xc80000
+		outp32(scf_base + ARSR_POST_SHARP_CFG6, 16<<16 | 6);//0x100006
+		outp32(scf_base + ARSR_POST_SHARP_CFG6_CUT, 160<<16 | 96);//0xa00060
+		outp32(scf_base + ARSR_POST_SHARP_CFG7, 1<<17 | 4);//0x20004
+		outp32(scf_base + ARSR_POST_SHARP_CFG7_RATIO, 160<<16 | 16);//0xa00010
+		outp32(scf_base + ARSR_POST_SHARP_CFG8, 3<<22 | 800);//0xc00320
+		outp32(scf_base + ARSR_POST_SHARP_CFG9, 8<<22 | 12800);//0x2003200
+		outp32(scf_base + ARSR_POST_SHARP_CFG10, 800);//320
+		outp32(scf_base + ARSR_POST_SHARP_CFG11, 20 << 22 | 12800);//0x5003200
+		outp32(scf_base + ARSR_POST_DIFF_CTRL, 20<<8 | 16);//0x1410
+		outp32(scf_base + ARSR_POST_SKIN_SLOP_Y, 512);//0x200
+		outp32(scf_base + ARSR_POST_SKIN_SLOP_U, 819);//0x333
+		outp32(scf_base + ARSR_POST_SKIN_SLOP_V, 682);//0x2aa
+	}
 	ihright1 = ((int)pinfo->xres - 1) * ARSR1P_INC_FACTOR;
 	ihright = ihright1 + 2 * ARSR1P_INC_FACTOR;
-	if (ihright >= ((int)pinfo->xres) * ARSR1P_INC_FACTOR){
+	if (ihright >= ((int)pinfo->xres) * ARSR1P_INC_FACTOR) {
 	    ihright = ((int)pinfo->xres) * ARSR1P_INC_FACTOR - 1;
 	}
 
 	ivbottom = ((int)pinfo->yres - 1) * ARSR1P_INC_FACTOR;
-	if (ivbottom >= ((int)pinfo->yres) * ARSR1P_INC_FACTOR){
+	if (ivbottom >= ((int)pinfo->yres) * ARSR1P_INC_FACTOR) {
 	    ivbottom = ((int)pinfo->yres) * ARSR1P_INC_FACTOR - 1;
 	}
 
-
-	outp32(scf_base + ARSR1P_IHLEFT, 0x0);
-	outp32(scf_base + ARSR1P_IHRIGHT, ihright);
-	outp32(scf_base + ARSR1P_IHLEFT1, 0x0);
-	outp32(scf_base + ARSR1P_IHRIGHT1, ihright1);
-	outp32(scf_base + ARSR1P_IVTOP, 0x0);
-	outp32(scf_base + ARSR1P_IVBOTTOM, ivbottom);
-	outp32(scf_base + ARSR1P_IHINC, ARSR1P_INC_FACTOR);
-	outp32(scf_base + ARSR1P_IVINC, ARSR1P_INC_FACTOR);
+	outp32(scf_base + ARSR_POST_IHLEFT, 0x0);
+	outp32(scf_base + ARSR_POST_IHRIGHT, ihright);
+	outp32(scf_base + ARSR_POST_IHLEFT1, 0x0);
+	outp32(scf_base + ARSR_POST_IHRIGHT1, ihright1);
+	outp32(scf_base + ARSR_POST_IVTOP, 0x0);
+	outp32(scf_base + ARSR_POST_IVBOTTOM, ivbottom);
+	outp32(scf_base + ARSR_POST_IHINC, ARSR1P_INC_FACTOR);
+	outp32(scf_base + ARSR_POST_IVINC, ARSR1P_INC_FACTOR);
 
 	if (pinfo->arsr1p_sharpness_support) {
-	    outp32(scf_base + ARSR1P_MODE, 0x6e);
+	    outp32(scf_base + ARSR_POST_MODE, 0x6e);
 	} else {
-	    outp32(scf_base + ARSR1P_MODE, 0x1);
+	    outp32(scf_base + ARSR_POST_MODE, 0x1);
 	}
 
 	return;
 }
-/*lint +e438 +e550*/
 
 void init_dbuf(struct hisi_fb_data_type *hisifd)
 {
@@ -1185,6 +1399,7 @@ void init_dbuf(struct hisi_fb_data_type *hisifd)
 	int dfs_time = 0;
 	int dfs_time_min = 0;
 	int depth = 0;
+	int dfs_ram = 0;
 
 	BUG_ON(hisifd == NULL);
 	pinfo = &(hisifd->panel_info);
@@ -1197,8 +1412,10 @@ void init_dbuf(struct hisi_fb_data_type *hisifd)
 
 		if (pinfo->xres * pinfo->yres >= RES_4K_PHONE) {
 			dfs_time_min = DFS_TIME_MIN_4K;
+			dfs_ram = 0x0;
 		} else {
 			dfs_time_min = DFS_TIME_MIN;
+			dfs_ram = 0xF00;
 		}
 
 		dfs_time = DFS_TIME;
@@ -1209,6 +1426,7 @@ void init_dbuf(struct hisi_fb_data_type *hisifd)
 		dfs_time = DFS_TIME;
 		dfs_time_min = DFS_TIME_MIN;
 		depth = DBUF1_DEPTH;
+		dfs_ram = 0x1FF;
 	} else {
 		HISI_FB_ERR("fb%d, not support!", hisifd->index);
 		return ;
@@ -1268,6 +1486,74 @@ void init_dbuf(struct hisi_fb_data_type *hisifd)
 		thd_flux_req_aftdfs_out,
 		thd_dfs_ok);
 
+	if ((g_dss_version_tag == FB_ACCEL_KIRIN970) && (g_fpga_flag==0)) {
+		if (hisifd->index == PRIMARY_PANEL_IDX) {
+			if (pinfo->xres * pinfo->yres >= RES_4K_PHONE) {
+				sram_valid_num = 2;
+				thd_rqos_out = 0x32bf;
+				thd_rqos_in = 0x2b22;
+				thd_cg_out = 0x32bf;
+				thd_cg_in = 0x33bf;
+				thd_flux_req_befdfs_out = 0x2e93;
+				thd_flux_req_befdfs_in = 0x19e0;
+				thd_flux_req_aftdfs_out = 0x124c;
+				thd_flux_req_aftdfs_in = 0x926;
+			} else if (pinfo->xres * pinfo->yres >= RES_1440P) {
+				sram_valid_num = 1;
+				thd_rqos_out = 0x217f;
+				thd_rqos_in = 0x1c78;
+				thd_cg_out = 0x217f;
+				thd_cg_in = 0x227f;
+				thd_flux_req_befdfs_out = 0x1f0c;
+				thd_flux_req_befdfs_in = 0x1140;
+				thd_flux_req_aftdfs_out = 0xfcc;
+				thd_flux_req_aftdfs_in = 0x7e6;
+			} else {
+				sram_valid_num = 1;
+				thd_rqos_out = 0x103f;
+				thd_rqos_in = 0xdcf;
+				thd_cg_out = 0x103f;
+				thd_cg_in = 0x113f;
+				thd_flux_req_befdfs_out = 0xf86;
+				thd_flux_req_befdfs_in = 0x8a0;
+				thd_flux_req_aftdfs_out = 0x773;
+				thd_flux_req_aftdfs_in = 0x3b9;
+			}
+		} else {
+			if (pinfo->xres * pinfo->yres >= RES_4K_PHONE) {
+				sram_valid_num = 0;
+				thd_rqos_out = 0x32bf;
+				thd_rqos_in = 0x2b22;
+				thd_cg_out = 0x32bf;
+				thd_cg_in = 0x33bf;
+				thd_flux_req_befdfs_out = 0x2e93;
+				thd_flux_req_befdfs_in = 0x19e0;
+				thd_flux_req_aftdfs_out = 0x124c;
+				thd_flux_req_aftdfs_in = 0x926;
+			} else if (pinfo->xres * pinfo->yres >= RES_1440P) {
+				sram_valid_num = 0;
+				thd_rqos_out = 0x217f;
+				thd_rqos_in = 0x1c78;
+				thd_cg_out = 0x217f;
+				thd_cg_in = 0x227f;
+				thd_flux_req_befdfs_out = 0x1f0c;
+				thd_flux_req_befdfs_in = 0x1140;
+				thd_flux_req_aftdfs_out = 0xfcc;
+				thd_flux_req_aftdfs_in = 0x7e6;
+			} else {
+				sram_valid_num = 0;
+				thd_rqos_out = 0x103f;
+				thd_rqos_in = 0xdcf;
+				thd_cg_out = 0x103f;
+				thd_cg_in = 0x113f;
+				thd_flux_req_befdfs_out = 0xf86;
+				thd_flux_req_befdfs_in = 0x8a0;
+				thd_flux_req_aftdfs_out = 0x773;
+				thd_flux_req_aftdfs_in = 0x3b9;
+			}
+		}
+	}
+
 	outp32(dbuf_base + DBUF_FRM_SIZE, pinfo->xres * pinfo->yres);
 	outp32(dbuf_base + DBUF_FRM_HSIZE, DSS_WIDTH(pinfo->xres));
 	outp32(dbuf_base + DBUF_SRAM_VALID_NUM, sram_valid_num);
@@ -1283,9 +1569,10 @@ void init_dbuf(struct hisi_fb_data_type *hisifd)
 
 	outp32(dbuf_base + DBUF_DFS_LP_CTRL, 0x1);
 	if (g_dss_version_tag == FB_ACCEL_KIRIN970) {
-		outp32(dbuf_base + DBUF_DFS_RAM_MANAGE, 0x0);
+		outp32(dbuf_base + DBUF_DFS_RAM_MANAGE, dfs_ram);
 	}
 }
+/*lint +e438 +e550*/
 
 static void init_ldi_pxl_div(struct hisi_fb_data_type *hisifd)
 {
@@ -1475,6 +1762,10 @@ void init_ldi(struct hisi_fb_data_type *hisifd, bool fastboot_enable)
 			(hisifd->frame_update_flag == 1) ? 0x0 : 0x1, 1, 0);
 	}
 
+	if (hisifd->index == EXTERNAL_PANEL_IDX && (is_mipi_panel(hisifd))) {
+		set_reg(ldi_base + LDI_DP_DSI_SEL, 0x1, 1, 0);
+	}
+
 	// ldi disable
 	if (!fastboot_enable)
 		set_reg(ldi_base + LDI_CTRL, 0x0, 1, 0);
@@ -1542,7 +1833,8 @@ void disable_ldi(struct hisi_fb_data_type *hisifd)
 int dpe_recover_pxl_clock(struct hisi_fb_data_type *hisifd)
 {
 	if ((hisifd->panel_info.pxl_clk_rate > DSS_MAX_PXL0_CLK_288M)
-		&& (hisifd->index == PRIMARY_PANEL_IDX)) {
+		&& (hisifd->index == PRIMARY_PANEL_IDX)
+		&& (g_dss_version_tag == FB_ACCEL_KIRIN970_ES)) {
 		if (clk_set_rate(hisifd->dss_pxl0_clk, hisifd->panel_info.pxl_clk_rate) < 0) {
 			HISI_FB_ERR("fb%d dss_pxl0_clk clk_set_rate(%llu) failed!\n",
 				hisifd->index, hisifd->panel_info.pxl_clk_rate);
@@ -1638,6 +1930,9 @@ void dpe_interrupt_clear(struct hisi_fb_data_type *hisifd)
 	} else if (hisifd->index == AUXILIARY_PANEL_IDX) {
 		clear = ~0;
 		outp32(dss_base + GLB_CPU_OFF_INTS, clear);
+	} else if (hisifd->index == MEDIACOMMON_PANEL_IDX) {
+		clear = ~0;
+		outp32(hisifd->media_common_base + GLB_CPU_OFF_INTS, clear);
 	} else {
 		HISI_FB_ERR("fb%d, not support this device!\n", hisifd->index);
 	}
@@ -1674,7 +1969,7 @@ void dpe_interrupt_unmask(struct hisi_fb_data_type *hisifd)
 		if ((pinfo->acm_ce_support == 1) && HISI_DSS_SUPPORT_DPP_MODULE_BIT(DPP_MODULE_ACE))
 			unmask &= ~(BIT_CE_END_IND);
 
-		if (pinfo->hiace_support == 1)
+		if (pinfo->hiace_support == 1 && g_dss_version_tag == FB_ACCEL_KIRIN970)
 			unmask &= ~(BIT_HIACE_IND);
 
 		outp32(dss_base + DSS_DPP_OFFSET + DPP_INT_MSK, unmask);
@@ -1703,6 +1998,11 @@ void dpe_interrupt_unmask(struct hisi_fb_data_type *hisifd)
 		unmask = ~0;
 		unmask &= ~(BIT_OFF_CAM_WCH2_FRMEND_INTS);
 		outp32(dss_base + GLB_CPU_OFF_CAM_INT_MSK, unmask);
+	} else if (hisifd->index == MEDIACOMMON_PANEL_IDX) {
+		unmask = ~0;
+		unmask &= ~(BIT_OFF_WCH1_INTS);
+
+		outp32(hisifd->media_common_base + GLB_CPU_OFF_INT_MSK, unmask);
 	} else {
 		HISI_FB_ERR("fb%d, not support this device!\n", hisifd->index);
 	}
@@ -1743,6 +2043,9 @@ void dpe_interrupt_mask(struct hisi_fb_data_type *hisifd)
 		mask = ~0;
 		outp32(dss_base + GLB_CPU_OFF_INT_MSK, mask);
 		outp32(dss_base + GLB_CPU_OFF_CAM_INT_MSK, mask);
+	} else if (hisifd->index == MEDIACOMMON_PANEL_IDX) {
+		mask = ~0;
+		outp32(hisifd->media_common_base + GLB_CPU_OFF_INT_MSK, mask);
 	} else {
 		HISI_FB_ERR("fb%d, not support this device!\n", hisifd->index);
 	}
@@ -1790,6 +2093,18 @@ void ldi_data_gate(struct hisi_fb_data_type *hisifd, bool enble)
 ** [ p10 p11 p12 cscidc1 cscodc1 ]
 ** [ p20 p21 p22 cscidc0 cscodc0 ]
 */
+static int CSC10B_YUV2RGB709_WIDE[CSC_ROW][CSC_COL] = {
+	{0x4000, 0x00000, 0x064ca, 0x000, 0x000},
+	{0x4000, 0x1f403, 0x1e20a, 0x600, 0x000},
+	{0x4000, 0x076c2, 0x00000, 0x600, 0x000},
+};
+
+static int CSC10B_RGB2YUV709_WIDE[CSC_ROW][CSC_COL] = {
+	{0x00d9b, 0x02dc6, 0x0049f, 0x000, 0x000},
+	{0x1f8ab, 0x1e755, 0x02000, 0x000, 0x200},
+	{0x02000, 0x1e2ef, 0x1fd11, 0x000, 0x200},
+};
+
 static int CSC10B_YUV2RGB709_WIDE_MPREC0[CSC_ROW][CSC_COL] = {
 	{0x400, 0x000, 0x64d, 0x000, 0x000},
 	{0x400, 0x1f40, 0x1e21, 0x5fe, 0x000},
@@ -1812,10 +2127,18 @@ static void init_csc10b(struct hisi_fb_data_type *hisifd, char __iomem * dpp_csc
 	}
 
 	if (dpp_csc10b_base == (hisifd->dss_base + DSS_DPP_CSC_RGB2YUV10B_OFFSET)) {
-		csc_coe = CSC10B_RGB2YUV709_WIDE_MPREC2;
+		if (g_dss_version_tag == FB_ACCEL_KIRIN970_ES) {
+			csc_coe = CSC10B_RGB2YUV709_WIDE_MPREC2;
+		} else {
+			csc_coe = CSC10B_RGB2YUV709_WIDE;
+		}
 		outp32(dpp_csc10b_base + CSC10B_MPREC, 0x2);
 	} else if (dpp_csc10b_base == (hisifd->dss_base + DSS_DPP_CSC_YUV2RGB10B_OFFSET)) {
-		csc_coe = CSC10B_YUV2RGB709_WIDE_MPREC0;
+		if (g_dss_version_tag == FB_ACCEL_KIRIN970_ES) {
+			csc_coe = CSC10B_YUV2RGB709_WIDE_MPREC0;
+		} else {
+			csc_coe = CSC10B_YUV2RGB709_WIDE;
+		}
 		outp32(dpp_csc10b_base + CSC10B_MPREC, 0x0);
 	} else {
 		return;
@@ -1851,22 +2174,15 @@ void init_dpp_csc(struct hisi_fb_data_type *hisifd)
 
 	pinfo = &(hisifd->panel_info);
 
-	if (g_dss_version_tag == FB_ACCEL_KIRIN970) {
-		return;
-	}
-
 	if (pinfo->acm_support || pinfo->arsr1p_sharpness_support || pinfo->post_scf_support) {
 		// init csc10b rgb2yuv
 		init_csc10b(hisifd, hisifd->dss_base + DSS_DPP_CSC_RGB2YUV10B_OFFSET);
 		// init csc10b yuv2rgb
 		init_csc10b(hisifd, hisifd->dss_base + DSS_DPP_CSC_YUV2RGB10B_OFFSET);
-
-		//bit ext0 enable
-		set_reg(hisifd->dss_base + DSS_DPP_BITEXT0_OFFSET + BIT_EXT0_CTL, 1, 1, 0);
 	}
 }
 
-inline void acm_set_lut(char __iomem *address, uint32_t table[], uint32_t size)
+void acm_set_lut(char __iomem *address, uint32_t table[], uint32_t size)
 {
 	uint32_t data = 0;
 	uint32_t index = 0;
@@ -1881,21 +2197,301 @@ inline void acm_set_lut(char __iomem *address, uint32_t table[], uint32_t size)
 	}
 }
 
-inline void acm_set_lut_hue(char __iomem *address, uint32_t table[], uint32_t size)
+void acm_set_lut_hue(char __iomem *address, uint32_t table[], uint32_t size)
 {
-	uint32_t data = 0;
-	uint32_t index = 0;
-	uint32_t i = 0;
+	uint32_t data;
+	uint32_t index;
+	uint32_t i;
 
 	size /= 2;
 
 	for (i = 0; i < size; i++) {
 		index = i << 1;
-		data = table[index] + (table[index + 1] << 16);
+		data = table[index] + (table[index + 1] << 16);//lint !e679
 		outp32(address + (i << 2), data);
 	}
-}
+}//lint !e550 !e715
+static void acm_set_lut_lh(char __iomem *address, uint32_t table[], uint32_t size)
+{
+	uint32_t data;
+	uint32_t index;
+	uint32_t i;
 
+	size /= 2;
+
+	for (i = 0; i < size; i++) {
+		index = i << 1;
+		data = (table[index] & 0x1FFF) | ((table[index + 1] & 0x1FFF) << 16);
+		outp32(address + (i << 2), data);
+	}
+}//lint !e550 !e715
+static void acm_set_lut_table(char __iomem *acm_lut_base, struct hisi_panel_info *pinfo, uint32_t index)
+{
+	if (pinfo->acm_lut_hue_table && pinfo->acm_lut_hue_table_len > 0) {
+		acm_set_lut_hue(acm_lut_base + ACM_U_H_COEF, pinfo->acm_lut_hue_table, pinfo->acm_lut_hue_table_len);
+	} else {
+		HISI_FB_ERR("fb%d, acm_lut_hue_table is NULL or hue_table_len less than 0!\n", index);
+		return;
+	}
+
+	if (pinfo->acm_lut_sata_table && pinfo->acm_lut_sata_table_len > 0) {
+		acm_set_lut(acm_lut_base + ACM_U_SATA_COEF, pinfo->acm_lut_sata_table, pinfo->acm_lut_sata_table_len);
+	} else {
+		HISI_FB_ERR("fb%d, acm_lut_sata_table is NULL or sata_table_len less than 0!\n", index);
+		return;
+	}
+
+	if (pinfo->acm_lut_satr0_table && pinfo->acm_lut_satr0_table_len > 0) {
+		acm_set_lut(acm_lut_base + ACM_U_SATR0_COEF, pinfo->acm_lut_satr0_table, pinfo->acm_lut_satr0_table_len);
+	} else {
+		HISI_FB_ERR("fb%d, acm_lut_satr0_table is NULL or satr0_table_len less than 0!\n", index);
+		return;
+	}
+
+	if (pinfo->acm_lut_satr1_table && pinfo->acm_lut_satr1_table_len > 0) {
+		acm_set_lut(acm_lut_base + ACM_U_SATR1_COEF, pinfo->acm_lut_satr1_table, pinfo->acm_lut_satr1_table_len);
+	} else {
+		HISI_FB_ERR("fb%d, acm_lut_satr1_table is NULL or satr1_table_len less than 0!\n", index);
+		return;
+	}
+
+	if (pinfo->acm_lut_satr2_table && pinfo->acm_lut_satr2_table_len > 0) {
+		acm_set_lut(acm_lut_base + ACM_U_SATR2_COEF, pinfo->acm_lut_satr2_table, pinfo->acm_lut_satr2_table_len);
+	} else {
+		HISI_FB_ERR("fb%d, acm_lut_satr2_table is NULL or satr2_table_len less than 0!\n", index);
+		return;
+	}
+
+	if (pinfo->acm_lut_satr3_table && pinfo->acm_lut_satr3_table_len > 0) {
+		acm_set_lut(acm_lut_base + ACM_U_SATR3_COEF, pinfo->acm_lut_satr3_table, pinfo->acm_lut_satr3_table_len);
+	} else {
+		HISI_FB_ERR("fb%d, acm_lut_satr3_table is NULL or satr3_table_len less than 0!\n", index);
+		return;
+	}
+
+	if (pinfo->acm_lut_satr4_table && pinfo->acm_lut_satr4_table_len > 0) {
+		acm_set_lut(acm_lut_base + ACM_U_SATR4_COEF, pinfo->acm_lut_satr4_table, pinfo->acm_lut_satr4_table_len);
+	} else {
+		HISI_FB_ERR("fb%d, acm_lut_satr4_table is NULL or satr4_table_len less than 0!\n", index);
+		return;
+	}
+
+	if (pinfo->acm_lut_satr5_table && pinfo->acm_lut_satr5_table_len > 0) {
+		acm_set_lut(acm_lut_base + ACM_U_SATR5_COEF, pinfo->acm_lut_satr5_table, pinfo->acm_lut_satr5_table_len);
+	} else {
+		HISI_FB_ERR("fb%d, acm_lut_satr5_table is NULL or satr5_table_len less than 0!\n", index);
+		return;
+	}
+
+	if (pinfo->acm_lut_satr6_table && pinfo->acm_lut_satr6_table_len > 0) {
+		acm_set_lut(acm_lut_base + ACM_U_SATR6_COEF, pinfo->acm_lut_satr6_table, pinfo->acm_lut_satr6_table_len);
+	} else {
+		HISI_FB_ERR("fb%d, acm_lut_satr6_table is NULL or satr6_table_len less than 0!\n", index);
+		return;
+	}
+
+	if (pinfo->acm_lut_satr7_table && pinfo->acm_lut_satr7_table_len > 0) {
+		acm_set_lut(acm_lut_base + ACM_U_SATR7_COEF, pinfo->acm_lut_satr7_table, pinfo->acm_lut_satr7_table_len);
+	} else {
+		HISI_FB_ERR("fb%d, acm_lut_satr7_table is NULL or satr7_table_len less than 0!\n", index);
+		return;
+	}
+
+	return;
+}
+static void acm_set_lut_LTx_table(char __iomem *acm_lut_base, struct hisi_panel_info *pinfo, uint32_t index)
+{
+	if (pinfo->acm_lut_satr_face_table && pinfo->acm_lut_satr_face_table_len > 0) {
+		acm_set_lut(acm_lut_base + ACM_U_ACM_SATR_FACE_COEF, pinfo->acm_lut_satr_face_table, pinfo->acm_lut_satr_face_table_len);
+	} else {
+		HISI_FB_ERR("fb%d, acm_lut_satr_face_table is NULL or acm_lut_satr_face_table_len less than 0!\n", index);
+		return;
+	}
+
+	if (pinfo->acm_lut_lta_table && pinfo->acm_lut_lta_table_len > 0) {
+		acm_set_lut(acm_lut_base + ACM_U_ACM_LTA_COEF, pinfo->acm_lut_lta_table, pinfo->acm_lut_lta_table_len);
+	} else {
+		HISI_FB_ERR("fb%d, acm_lut_lta_table is NULL or acm_lut_lta_table_len less than 0!\n", index);
+		return;
+	}
+
+	if (pinfo->acm_lut_ltr0_table && pinfo->acm_lut_ltr0_table_len > 0) {
+		acm_set_lut(acm_lut_base + ACM_U_ACM_LTR0_COEF, pinfo->acm_lut_ltr0_table, pinfo->acm_lut_ltr0_table_len);
+	} else {
+		HISI_FB_ERR("fb%d, acm_lut_ltr0_table is NULL or acm_lut_ltr0_table_len less than 0!\n", index);
+		return;
+	}
+
+	if (pinfo->acm_lut_ltr1_table && pinfo->acm_lut_ltr1_table_len > 0) {
+		acm_set_lut(acm_lut_base + ACM_U_ACM_LTR1_COEF, pinfo->acm_lut_ltr1_table, pinfo->acm_lut_ltr1_table_len);
+	} else {
+		HISI_FB_ERR("fb%d, acm_lut_ltr1_table is NULL or acm_lut_ltr1_table_len less than 0!\n", index);
+		return;
+	}
+
+	if (pinfo->acm_lut_ltr2_table && pinfo->acm_lut_ltr2_table_len> 0) {
+		acm_set_lut(acm_lut_base + ACM_U_ACM_LTR2_COEF, pinfo->acm_lut_ltr2_table, pinfo->acm_lut_ltr2_table_len);
+	} else {
+		HISI_FB_ERR("fb%d, acm_lut_ltr2_table is NULL or acm_lut_ltr2_table_len less than 0!\n", index);
+		return;
+	}
+
+	if (pinfo->acm_lut_ltr3_table && pinfo->acm_lut_ltr3_table_len> 0) {
+		acm_set_lut(acm_lut_base + ACM_U_ACM_LTR3_COEF, pinfo->acm_lut_ltr3_table, pinfo->acm_lut_ltr3_table_len);
+	} else {
+		HISI_FB_ERR("fb%d, acm_lut_ltr3_table is NULL or acm_lut_ltr3_table_len less than 0!\n", index);
+		return;
+	}
+
+	if (pinfo->acm_lut_ltr4_table && pinfo->acm_lut_ltr4_table_len > 0) {
+		acm_set_lut(acm_lut_base + ACM_U_ACM_LTR4_COEF, pinfo->acm_lut_ltr4_table, pinfo->acm_lut_ltr4_table_len);
+	} else {
+		HISI_FB_ERR("fb%d, acm_lut_ltr4_table is NULL or acm_lut_ltr4_table_len less than 0!\n", index);
+		return;
+	}
+
+	if (pinfo->acm_lut_ltr5_table && pinfo->acm_lut_ltr5_table_len > 0) {
+		acm_set_lut(acm_lut_base + ACM_U_ACM_LTR5_COEF, pinfo->acm_lut_ltr5_table, pinfo->acm_lut_ltr5_table_len);
+	} else {
+		HISI_FB_ERR("fb%d, acm_lut_ltr5_table is NULL or acm_lut_ltr5_table_len less than 0!\n", index);
+		return;
+	}
+
+	if (pinfo->acm_lut_ltr6_table && pinfo->acm_lut_ltr6_table_len > 0) {
+		acm_set_lut(acm_lut_base + ACM_U_ACM_LTR6_COEF, pinfo->acm_lut_ltr6_table, pinfo->acm_lut_ltr6_table_len);
+	} else {
+		HISI_FB_ERR("fb%d, acm_lut_ltr6_table is NULL or acm_lut_ltr6_table_len less than 0!\n", index);
+		return;
+	}
+
+	if (pinfo->acm_lut_ltr7_table && pinfo->acm_lut_ltr7_table_len > 0) {
+		acm_set_lut(acm_lut_base + ACM_U_ACM_LTR7_COEF, pinfo->acm_lut_ltr7_table, pinfo->acm_lut_ltr7_table_len);
+	} else {
+		HISI_FB_ERR("fb%d, acm_lut_ltr4_table is NULL or acm_lut_ltr4_table_len less than 0!\n", index);
+		return;
+	}
+
+	return;
+}
+static void acm_set_lut_LHx_table(char __iomem *acm_lut_base, struct hisi_panel_info *pinfo, uint32_t index)
+{
+	if (pinfo->acm_lut_lh0_table && pinfo->acm_lut_lh0_table_len > 0) {
+		acm_set_lut_lh(acm_lut_base + ACM_U_ACM_LH0_COFF, pinfo->acm_lut_lh0_table, pinfo->acm_lut_lh0_table_len);
+	} else {
+		HISI_FB_ERR("fb%d, acm_lut_lh0_table is NULL or acm_lut_lh0_table_lenless than 0!\n", index);
+		return;
+	}
+
+	if (pinfo->acm_lut_lh1_table && pinfo->acm_lut_lh1_table_len > 0) {
+		acm_set_lut_lh(acm_lut_base + ACM_U_ACM_LH1_COFF, pinfo->acm_lut_lh1_table, pinfo->acm_lut_lh1_table_len);
+	} else {
+		HISI_FB_ERR("fb%d, acm_lut_lh1_table is NULL or acm_lut_lh1_table_lenless than 0!\n", index);
+		return;
+	}
+
+	if (pinfo->acm_lut_lh2_table && pinfo->acm_lut_lh2_table_len > 0) {
+		acm_set_lut_lh(acm_lut_base + ACM_U_ACM_LH2_COFF, pinfo->acm_lut_lh2_table, pinfo->acm_lut_lh2_table_len);
+	} else {
+		HISI_FB_ERR("fb%d, acm_lut_lh2_table is NULL or acm_lut_lh2_table_lenless than 0!\n", index);
+		return;
+	}
+
+	if (pinfo->acm_lut_lh3_table && pinfo->acm_lut_lh3_table_len > 0) {
+		acm_set_lut_lh(acm_lut_base + ACM_U_ACM_LH3_COFF, pinfo->acm_lut_lh3_table, pinfo->acm_lut_lh3_table_len);
+	} else {
+		HISI_FB_ERR("fb%d, acm_lut_lh3_table is NULL or acm_lut_lh3_table_lenless than 0!\n", index);
+		return;
+	}
+
+	if (pinfo->acm_lut_lh4_table && pinfo->acm_lut_lh4_table_len > 0) {
+		acm_set_lut_lh(acm_lut_base + ACM_U_ACM_LH4_COFF, pinfo->acm_lut_lh4_table, pinfo->acm_lut_lh4_table_len);
+	} else {
+		HISI_FB_ERR("fb%d, acm_lut_lh4_table is NULL or acm_lut_lh4_table_lenless than 0!\n", index);
+		return;
+	}
+
+	if (pinfo->acm_lut_lh5_table && pinfo->acm_lut_lh5_table_len > 0) {
+		acm_set_lut_lh(acm_lut_base + ACM_U_ACM_LH5_COFF, pinfo->acm_lut_lh5_table, pinfo->acm_lut_lh5_table_len);
+	} else {
+		HISI_FB_ERR("fb%d, acm_lut_lh5_table is NULL or acm_lut_lh5_table_lenless than 0!\n", index);
+		return;
+	}
+
+	if (pinfo->acm_lut_lh6_table && pinfo->acm_lut_lh6_table_len > 0) {
+		acm_set_lut_lh(acm_lut_base + ACM_U_ACM_LH6_COFF, pinfo->acm_lut_lh6_table, pinfo->acm_lut_lh6_table_len);
+	} else {
+		HISI_FB_ERR("fb%d, acm_lut_lh6_table is NULL or acm_lut_lh6_table_lenless than 0!\n", index);
+		return;
+	}
+
+	if (pinfo->acm_lut_lh7_table && pinfo->acm_lut_lh7_table_len > 0) {
+		acm_set_lut_lh(acm_lut_base + ACM_U_ACM_LH7_COFF, pinfo->acm_lut_lh7_table, pinfo->acm_lut_lh7_table_len);
+	} else {
+		HISI_FB_ERR("fb%d, acm_lut_lh7_table is NULL or acm_lut_lh7_table_lenless than 0!\n", index);
+		return;
+	}
+
+	return;
+}
+static void acm_set_lut_CHx_table(char __iomem *acm_lut_base, struct hisi_panel_info *pinfo, uint32_t index)
+{
+	if (pinfo->acm_lut_ch0_table && pinfo->acm_lut_ch0_table_len > 0) {
+		acm_set_lut_lh(acm_lut_base + ACM_U_ACM_CH0_COFF, pinfo->acm_lut_ch0_table, pinfo->acm_lut_ch0_table_len);
+	} else {
+		HISI_FB_ERR("fb%d, acm_lut_ch0_table is NULL or acm_lut_ch0_table_len than 0!\n", index);
+		return;
+	}
+
+	if (pinfo->acm_lut_ch1_table && pinfo->acm_lut_ch1_table_len > 0) {
+		acm_set_lut_lh(acm_lut_base + ACM_U_ACM_CH1_COFF, pinfo->acm_lut_ch1_table, pinfo->acm_lut_ch1_table_len);
+	} else {
+		HISI_FB_ERR("fb%d, acm_lut_ch1_table is NULL or acm_lut_ch1_table_len than 0!\n", index);
+		return;
+	}
+
+	if (pinfo->acm_lut_ch2_table && pinfo->acm_lut_ch2_table_len > 0) {
+		acm_set_lut_lh(acm_lut_base + ACM_U_ACM_CH2_COFF, pinfo->acm_lut_ch2_table, pinfo->acm_lut_ch2_table_len);
+	} else {
+		HISI_FB_ERR("fb%d, acm_lut_ch2_table is NULL or acm_lut_ch2_table_len than 0!\n", index);
+		return;
+	}
+
+	if (pinfo->acm_lut_ch3_table && pinfo->acm_lut_ch3_table_len > 0) {
+		acm_set_lut_lh(acm_lut_base + ACM_U_ACM_CH3_COFF, pinfo->acm_lut_ch3_table, pinfo->acm_lut_ch3_table_len);
+	} else {
+		HISI_FB_ERR("fb%d, acm_lut_ch3_table is NULL or acm_lut_ch3_table_len than 0!\n", index);
+		return;
+	}
+
+	if (pinfo->acm_lut_ch4_table && pinfo->acm_lut_ch4_table_len > 0) {
+		acm_set_lut_lh(acm_lut_base + ACM_U_ACM_CH4_COFF, pinfo->acm_lut_ch4_table, pinfo->acm_lut_ch4_table_len);
+	} else {
+		HISI_FB_ERR("fb%d, acm_lut_ch4_table is NULL or acm_lut_ch4_table_len than 0!\n", index);
+		return;
+	}
+
+	if (pinfo->acm_lut_ch5_table && pinfo->acm_lut_ch5_table_len > 0) {
+		acm_set_lut_lh(acm_lut_base + ACM_U_ACM_CH5_COFF, pinfo->acm_lut_ch5_table, pinfo->acm_lut_ch5_table_len);
+	} else {
+		HISI_FB_ERR("fb%d, acm_lut_ch5_table is NULL or acm_lut_ch5_table_len than 0!\n", index);
+		return;
+	}
+
+	if (pinfo->acm_lut_ch6_table && pinfo->acm_lut_ch6_table_len > 0) {
+		acm_set_lut_lh(acm_lut_base + ACM_U_ACM_CH6_COFF, pinfo->acm_lut_ch6_table, pinfo->acm_lut_ch6_table_len);
+	} else {
+		HISI_FB_ERR("fb%d, acm_lut_ch6_table is NULL or acm_lut_ch6_table_len than 0!\n", index);
+		return;
+	}
+
+	if (pinfo->acm_lut_ch7_table && pinfo->acm_lut_ch7_table_len > 0) {
+		acm_set_lut_lh(acm_lut_base + ACM_U_ACM_CH7_COFF, pinfo->acm_lut_ch7_table, pinfo->acm_lut_ch7_table_len);
+	} else {
+		HISI_FB_ERR("fb%d, acm_lut_ch7_table is NULL or acm_lut_ch7_table_len than 0!\n", index);
+		return;
+	}
+	return;
+}
 void init_acm(struct hisi_fb_data_type *hisifd)
 {
 	char __iomem *acm_base = NULL;
@@ -1911,170 +2507,270 @@ void init_acm(struct hisi_fb_data_type *hisifd)
 	pinfo = &(hisifd->panel_info);
 	acm_base = hisifd->dss_base + DSS_DPP_ACM_OFFSET;
 
-	if (g_dss_version_tag == FB_ACCEL_KIRIN970) {
-		return;
-	}
-
 	if (pinfo->acm_support != 1) {
-		outp32(acm_base + ACM_MEM_CTRL, 0x4);
+		outp32(acm_base + ACM_MEM_CTRL_ES, 0x4);
 		HISI_FB_DEBUG("fb%d, not support acm!\n", hisifd->index);
 		return;
 	}
 
 	acm_lut_base = hisifd->dss_base + DSS_DPP_ACM_LUT_OFFSET;
+	if (g_dss_version_tag == FB_ACCEL_KIRIN970_ES) {
+		set_reg(acm_base + ACM_HUESEL_ES, 0x1, 1, 0);
+		set_reg(acm_base + ACM_SATA_OFFSET_ES, 0x20, 6, 0);
+		//Rec.709(wide):
+		set_reg(acm_base + ACM_CSC_IDC0_ES, 0x5FE, 11, 0);
+		set_reg(acm_base + ACM_CSC_IDC1_ES, 0x5FE, 11, 0);
+		set_reg(acm_base + ACM_CSC_IDC2_ES,  0x0, 11, 0);
 
-	set_reg(acm_base + ACM_HUESEL, 0x1, 1, 0);
-	set_reg(acm_base + ACM_SATA_OFFSET, 0x20, 6, 0);
+		set_reg(acm_base + ACM_CSC_P00_ES, 0x400, 13, 0);
+		set_reg(acm_base + ACM_CSC_P01_ES, 0x0,   13, 0);
+		set_reg(acm_base + ACM_CSC_P02_ES, 0x64D, 13, 0);
+		set_reg(acm_base + ACM_CSC_P10_ES, 0x400, 13, 0);
+		set_reg(acm_base + ACM_CSC_P11_ES, 0x1F40, 13, 0);
+		set_reg(acm_base + ACM_CSC_P12_ES, 0x1E21, 13, 0);
+		set_reg(acm_base + ACM_CSC_P20_ES, 0x400, 13, 0);
+		set_reg(acm_base + ACM_CSC_P21_ES, 0x76C, 13, 0);
+		set_reg(acm_base + ACM_CSC_P22_ES, 0x0,   13, 0);
 
-	set_reg(acm_base + ACM_CSC_IDC0, 0x5FE, 11, 0);
-	set_reg(acm_base + ACM_CSC_IDC1, 0x5FE, 11, 0);
-	set_reg(acm_base + ACM_CSC_IDC2,  0x0, 11, 0);
+		set_reg(acm_base + ACM_CSC_MRREC_ES, 0x0, 3, 0);
 
-	set_reg(acm_base + ACM_CSC_P00, 0x400, 13, 0);
-	set_reg(acm_base + ACM_CSC_P01, 0x0,   13, 0);
-	set_reg(acm_base + ACM_CSC_P02, 0x64D, 13, 0);
-	set_reg(acm_base + ACM_CSC_P10, 0x400, 13, 0);
-	set_reg(acm_base + ACM_CSC_P11, 0x1F40, 13, 0);
-	set_reg(acm_base + ACM_CSC_P12, 0x1E21, 13, 0);
-	set_reg(acm_base + ACM_CSC_P20, 0x400, 13, 0);
-	set_reg(acm_base + ACM_CSC_P21, 0x76C, 13, 0);
-	set_reg(acm_base + ACM_CSC_P22, 0x0,   13, 0);
+		set_reg(acm_base + ACM_R0_H_ES, ((pinfo->r0_hh & 0x3ff) << 16) | (pinfo->r0_lh & 0x3ff), 32, 0);
+		set_reg(acm_base + ACM_R1_H_ES, ((pinfo->r1_hh & 0x3ff) << 16) | (pinfo->r1_lh & 0x3ff), 32, 0);
+		set_reg(acm_base + ACM_R2_H_ES, ((pinfo->r2_hh & 0x3ff) << 16) | (pinfo->r2_lh & 0x3ff), 32, 0);
+		set_reg(acm_base + ACM_R3_H_ES, ((pinfo->r3_hh & 0x3ff) << 16) | (pinfo->r3_lh & 0x3ff), 32, 0);
+		set_reg(acm_base + ACM_R4_H_ES, ((pinfo->r4_hh & 0x3ff) << 16) | (pinfo->r4_lh & 0x3ff), 32, 0);
+		set_reg(acm_base + ACM_R5_H_ES, ((pinfo->r5_hh & 0x3ff) << 16) | (pinfo->r5_lh & 0x3ff), 32, 0);
+		set_reg(acm_base + ACM_R6_H_ES, ((pinfo->r6_hh & 0x3ff) << 16) | (pinfo->r6_lh & 0x3ff), 32, 0);
 
-	set_reg(acm_base + ACM_CSC_MRREC, 0x0, 3, 0);
+		set_reg(acm_base + ACM_LUT_DIS0_ES, 0x80, 10, 0);
+		set_reg(acm_base + ACM_LUT_DIS1_ES, 0x7F, 10, 0);
+		set_reg(acm_base + ACM_LUT_DIS2_ES, 0x80, 10, 0);
+		set_reg(acm_base + ACM_LUT_DIS3_ES, 0x81, 10, 0);
+		set_reg(acm_base + ACM_LUT_DIS4_ES, 0x80, 10, 0);
+		set_reg(acm_base + ACM_LUT_DIS5_ES, 0x7F, 10, 0);
+		set_reg(acm_base + ACM_LUT_DIS6_ES, 0x80, 10, 0);
+		set_reg(acm_base + ACM_LUT_DIS7_ES, 0x80, 10, 0);
 
-	set_reg(acm_base + ACM_R0_H, ((pinfo->r0_hh & 0x3ff) << 16) | (pinfo->r0_lh & 0x3ff), 32, 0);
-	set_reg(acm_base + ACM_R1_H, ((pinfo->r1_hh & 0x3ff) << 16) | (pinfo->r1_lh & 0x3ff), 32, 0);
-	set_reg(acm_base + ACM_R2_H, ((pinfo->r2_hh & 0x3ff) << 16) | (pinfo->r2_lh & 0x3ff), 32, 0);
-	set_reg(acm_base + ACM_R3_H, ((pinfo->r3_hh & 0x3ff) << 16) | (pinfo->r3_lh & 0x3ff), 32, 0);
-	set_reg(acm_base + ACM_R4_H, ((pinfo->r4_hh & 0x3ff) << 16) | (pinfo->r4_lh & 0x3ff), 32, 0);
-	set_reg(acm_base + ACM_R5_H, ((pinfo->r5_hh & 0x3ff) << 16) | (pinfo->r5_lh & 0x3ff), 32, 0);
-	set_reg(acm_base + ACM_R6_H, ((pinfo->r6_hh & 0x3ff) << 16) | (pinfo->r6_lh & 0x3ff), 32, 0);
+		set_reg(acm_base + ACM_LUT_PARAM0_ES, 0x200, 16, 0);
+		set_reg(acm_base + ACM_LUT_PARAM1_ES, 0x204, 16, 0);
+		set_reg(acm_base + ACM_LUT_PARAM2_ES, 0x200, 16, 0);
+		set_reg(acm_base + ACM_LUT_PARAM3_ES, 0x1FC, 16, 0);
+		set_reg(acm_base + ACM_LUT_PARAM4_ES, 0x200, 16, 0);
+		set_reg(acm_base + ACM_LUT_PARAM5_ES, 0x204, 16, 0);
+		set_reg(acm_base + ACM_LUT_PARAM6_ES, 0x200, 16, 0);
+		set_reg(acm_base + ACM_LUT_PARAM7_ES, 0x200, 16, 0);
 
-	set_reg(acm_base + ACM_LUT_DIS0, 0x80, 10, 0);
-	set_reg(acm_base + ACM_LUT_DIS1, 0x7F, 10, 0);
-	set_reg(acm_base + ACM_LUT_DIS2, 0x80, 10, 0);
-	set_reg(acm_base + ACM_LUT_DIS3, 0x81, 10, 0);
-	set_reg(acm_base + ACM_LUT_DIS4, 0x80, 10, 0);
-	set_reg(acm_base + ACM_LUT_DIS5, 0x7F, 10, 0);
-	set_reg(acm_base + ACM_LUT_DIS6, 0x80, 10, 0);
-	set_reg(acm_base + ACM_LUT_DIS7, 0x80, 10, 0);
+		acm_set_lut_table(acm_lut_base, pinfo, hisifd->index);
 
-	set_reg(acm_base + ACM_LUT_PARAM0, 0x200, 16, 0);
-	set_reg(acm_base + ACM_LUT_PARAM1, 0x204, 16, 0);
-	set_reg(acm_base + ACM_LUT_PARAM2, 0x200, 16, 0);
-	set_reg(acm_base + ACM_LUT_PARAM3, 0x1FC, 16, 0);
-	set_reg(acm_base + ACM_LUT_PARAM4, 0x200, 16, 0);
-	set_reg(acm_base + ACM_LUT_PARAM5, 0x204, 16, 0);
-	set_reg(acm_base + ACM_LUT_PARAM6, 0x200, 16, 0);
-	set_reg(acm_base + ACM_LUT_PARAM7, 0x200, 16, 0);
-
-	if (pinfo->acm_lut_hue_table && pinfo->acm_lut_hue_table_len > 0) {
-		acm_set_lut_hue(acm_lut_base + ACM_U_H_COEF, pinfo->acm_lut_hue_table, pinfo->acm_lut_hue_table_len);
+		lut_sel = (uint32_t)inp32(acm_base + ACM_LUT_SEL_ES);
+		set_reg(acm_base + ACM_LUT_SEL_ES, (~lut_sel) & 0x3FF, 10, 0);
+		set_reg(acm_base + ACM_EN_ES, 0x1, 1, 0);
 	} else {
-		HISI_FB_ERR("fb%d, acm_lut_hue_table is NULL or hue_table_len less than 0!\n", hisifd->index);
-		return;
-	}
+		set_reg(acm_base + ACM_SATA_OFFSET, 0x20, 6, 0);
+		//Rec.709(wide):
+		set_reg(acm_base + ACM_CSC_IDC0, 0x600, 11, 0);
+		set_reg(acm_base + ACM_CSC_IDC1, 0x600, 11, 0);
+		set_reg(acm_base + ACM_CSC_IDC2, 0x0, 11, 0);
 
-	if (pinfo->acm_lut_sata_table && pinfo->acm_lut_sata_table_len > 0) {
-		acm_set_lut(acm_lut_base + ACM_U_SATA_COEF, pinfo->acm_lut_sata_table, pinfo->acm_lut_sata_table_len);
-	} else {
-		HISI_FB_ERR("fb%d, acm_lut_sata_table is NULL or sata_table_len less than 0!\n", hisifd->index);
-		return;
-	}
+		set_reg(acm_base + ACM_CSC_P00, 0x4000, 17, 0);
+		set_reg(acm_base + ACM_CSC_P01, 0x0, 17, 0);
+		set_reg(acm_base + ACM_CSC_P02, 0x64CA, 17, 0);
+		set_reg(acm_base + ACM_CSC_P10, 0x4000, 17, 0);
+		set_reg(acm_base + ACM_CSC_P11, 0x1F403, 17, 0);
+		set_reg(acm_base + ACM_CSC_P12, 0x1E20A, 17, 0);
+		set_reg(acm_base + ACM_CSC_P20, 0x4000, 17, 0);
+		set_reg(acm_base + ACM_CSC_P21, 0x76C2, 17, 0);
+		set_reg(acm_base + ACM_CSC_P22, 0x0, 17, 0);
 
-	if (pinfo->acm_lut_satr0_table && pinfo->acm_lut_satr0_table_len > 0) {
-		acm_set_lut(acm_lut_base + ACM_U_SATR0_COEF, pinfo->acm_lut_satr0_table, pinfo->acm_lut_satr0_table_len);
-	} else {
-		HISI_FB_ERR("fb%d, acm_lut_satr0_table is NULL or satr0_table_len less than 0!\n", hisifd->index);
-		return;
-	}
+		set_reg(acm_base + ACM_HUE_RLH01, (((pinfo->r1_lh & 0x3ff) << 16) | (pinfo->r0_lh & 0x3ff)), 26, 0);
+		set_reg(acm_base + ACM_HUE_RLH23, (((pinfo->r3_lh & 0x3ff) << 16) | (pinfo->r2_lh & 0x3ff)), 26, 0);
+		set_reg(acm_base + ACM_HUE_RLH45, (((pinfo->r5_lh & 0x3ff) << 16) | (pinfo->r4_lh & 0x3ff)), 26, 0);
+		set_reg(acm_base + ACM_HUE_RLH67, (((pinfo->r6_hh & 0x3ff) << 16)| (pinfo->r6_lh & 0x3ff)), 26, 0);//needconfirm
+		set_reg(acm_base + ACM_HUE_PARAM01, ((0x200 << 16) | (0x200)), 32, 0);
+		set_reg(acm_base + ACM_HUE_PARAM23, ((0x1FC << 16) | 0x200), 32, 0);
+		set_reg(acm_base + ACM_HUE_PARAM45, ((0x204 << 16) | (0x200)), 32, 0);
+		set_reg(acm_base + ACM_HUE_PARAM67, ((0x200 << 16) | (0x200)), 32, 0);
+		set_reg(acm_base + ACM_HUE_SMOOTH0, 0x0040003F, 26, 0); //needconfirm
+		set_reg(acm_base + ACM_HUE_SMOOTH1, 0x00C000BF, 26, 0); //needconfirm
+		set_reg(acm_base + ACM_HUE_SMOOTH2, 0x0140013F, 26, 0); //needconfirm
+		set_reg(acm_base + ACM_HUE_SMOOTH3, 0x01C001BF, 26, 0); //needconfirm
+		set_reg(acm_base + ACM_HUE_SMOOTH4, 0x02410240, 26, 0); //needconfirm
+		set_reg(acm_base + ACM_HUE_SMOOTH5, 0x02C102C0, 26, 0); //needconfirm
+		set_reg(acm_base + ACM_HUE_SMOOTH6, 0x0340033F, 26, 0); //needconfirm
+		set_reg(acm_base + ACM_HUE_SMOOTH7, 0x03C003BF, 26, 0); //needconfirm
+		set_reg(acm_base + ACM_COLOR_CHOOSE, 1, 1, 0); //needconfirm
+		//ACM RGB2YUV
+		set_reg(acm_base + ACM_RGB2YUV_IDC0, 0x00000200, 11, 0);//needconfirm
+		set_reg(acm_base + ACM_RGB2YUV_IDC1, 0x00000200, 11, 0);//needconfirm
+		set_reg(acm_base + ACM_RGB2YUV_IDC2, 0x00000000, 11, 0);//needconfirm
+		set_reg(acm_base + ACM_RGB2YUV_P00, 0x00000D9B, 17, 0);//needconfirm
+		set_reg(acm_base + ACM_RGB2YUV_P01, 0x00002DC6, 17, 0);//needconfirm
+		set_reg(acm_base + ACM_RGB2YUV_P02, 0x0000049F, 17, 0);//needconfirm
+		set_reg(acm_base + ACM_RGB2YUV_P10, 0x0001F8AB, 17, 0);//needconfirm
+		set_reg(acm_base + ACM_RGB2YUV_P11, 0x0001E755, 17, 0);//needconfirm
+		set_reg(acm_base + ACM_RGB2YUV_P12, 0x00002000, 17, 0);//needconfirm
+		set_reg(acm_base + ACM_RGB2YUV_P20, 0x00002000, 17, 0);//needconfirm
+		set_reg(acm_base + ACM_RGB2YUV_P21, 0x0001E2EF, 17, 0);//needconfirm
+		set_reg(acm_base + ACM_RGB2YUV_P22, 0x0001FD11, 17, 0);//needconfirm
+		//ACM FACE
+		set_reg(acm_base + ACM_FACE_CRTL, 0x01180118, 32, 0);//needconfirm
+		set_reg(acm_base + ACM_FACE_STARTXY, 0x004600DC, 29, 0);//needconfirm
+		set_reg(acm_base + ACM_FACE_SMOOTH_LEN01, 0x00100010, 29, 0);//needconfirm
+		set_reg(acm_base + ACM_FACE_SMOOTH_LEN23, 0x00100010, 29, 0);//needconfirm
+		set_reg(acm_base + ACM_FACE_SMOOTH_PARAM0, 0x00010000, 20, 0);//needconfirm
+		set_reg(acm_base + ACM_FACE_SMOOTH_PARAM1, 0x00010000, 20, 0);//needconfirm
+		set_reg(acm_base + ACM_FACE_SMOOTH_PARAM2, 0x00010000, 20, 0);//needconfirm
+		set_reg(acm_base + ACM_FACE_SMOOTH_PARAM3, 0x00010000, 20, 0);//needconfirm
+		set_reg(acm_base + ACM_FACE_SMOOTH_PARAM4, 0x00001000, 20, 0);//needconfirm
+		set_reg(acm_base + ACM_FACE_SMOOTH_PARAM5, 0x00001000, 20, 0);//needconfirm
+		set_reg(acm_base + ACM_FACE_SMOOTH_PARAM6, 0x00001000, 20, 0);//needconfirm
+		set_reg(acm_base + ACM_FACE_SMOOTH_PARAM7, 0x00001000, 20, 0);//needconfirm
+		set_reg(acm_base + ACM_FACE_AREA_SEL, 0x00000002, 3, 0);//needconfirm
+		set_reg(acm_base + ACM_FACE_SAT_LH, 0x02AE0000, 26, 0);//needconfirm
+		set_reg(acm_base + ACM_FACE_SAT_SMOOTH_LH, 0x02D60000, 26, 0);//needconfirm
+		set_reg(acm_base + ACM_FACE_SAT_SMO_PARAM_LH, 0x06660001, 16, 0);//needconfirm
+		//ACM L CONTRAST
+		set_reg(acm_base + ACM_L_CONT_EN, 0x00000000, 1, 0);//needconfirm
+		set_reg(acm_base + ACM_LC_PARAM01, 0x020401FC, 16, 0);//needconfirm
+		set_reg(acm_base + ACM_LC_PARAM23, 0x02000200, 16, 0);//needconfirm
+		set_reg(acm_base + ACM_LC_PARAM45, 0x020801F8, 16, 0);//needconfirm
+		set_reg(acm_base + ACM_LC_PARAM67, 0x020401FC, 16, 0);//needconfirm
+		//ACM L ADJ
+		set_reg(acm_base + ACM_L_ADJ_CTRL, 0, 9, 0);//needconfirm
+		//ACM CAPTURE
+		set_reg(acm_base + ACM_CAPTURE_CTRL, 0, 32, 0);//needconfirm
+		set_reg(acm_base + ACM_CAPTURE_IN, 0, 30, 0);//needconfirm
+		set_reg(acm_base + ACM_CAPTURE_OUT, 0, 30, 0);//needconfirm
+		//ACM INK
+		set_reg(acm_base + ACM_INK_CTRL, 0, 32, 0);//needconfirm
+		set_reg(acm_base + ACM_INK_OUT, 0, 30, 0);//needconfirm
 
-	if (pinfo->acm_lut_satr1_table && pinfo->acm_lut_satr1_table_len > 0) {
-		acm_set_lut(acm_lut_base + ACM_U_SATR1_COEF, pinfo->acm_lut_satr1_table, pinfo->acm_lut_satr1_table_len);
-	} else {
-		HISI_FB_ERR("fb%d, acm_lut_satr1_table is NULL or satr1_table_len less than 0!\n", hisifd->index);
-		return;
-	}
+		acm_set_lut_table(acm_lut_base, pinfo, hisifd->index);
+		acm_set_lut_LTx_table(acm_lut_base, pinfo, hisifd->index);
+		acm_set_lut_LHx_table(acm_lut_base, pinfo, hisifd->index);
+		acm_set_lut_CHx_table(acm_lut_base, pinfo, hisifd->index);
 
-	if (pinfo->acm_lut_satr2_table && pinfo->acm_lut_satr2_table_len > 0) {
-		acm_set_lut(acm_lut_base + ACM_U_SATR2_COEF, pinfo->acm_lut_satr2_table, pinfo->acm_lut_satr2_table_len);
-	} else {
-		HISI_FB_ERR("fb%d, acm_lut_satr2_table is NULL or satr2_table_len less than 0!\n", hisifd->index);
-		return;
+		lut_sel = inp32(acm_base + ACM_LUT_SEL);
+		set_reg(acm_base + ACM_LUT_SEL, (~lut_sel) & 0x7F80, 8, 7);
+		set_reg(acm_base + ACM_EN, 0x1, 1, 0);
 	}
-
-	if (pinfo->acm_lut_satr3_table && pinfo->acm_lut_satr3_table_len > 0) {
-		acm_set_lut(acm_lut_base + ACM_U_SATR3_COEF, pinfo->acm_lut_satr3_table, pinfo->acm_lut_satr3_table_len);
-	} else {
-		HISI_FB_ERR("fb%d, acm_lut_satr3_table is NULL or satr3_table_len less than 0!\n", hisifd->index);
-		return;
-	}
-
-	if (pinfo->acm_lut_satr4_table && pinfo->acm_lut_satr4_table_len > 0) {
-		acm_set_lut(acm_lut_base + ACM_U_SATR4_COEF, pinfo->acm_lut_satr4_table, pinfo->acm_lut_satr4_table_len);
-	} else {
-		HISI_FB_ERR("fb%d, acm_lut_satr4_table is NULL or satr4_table_len less than 0!\n", hisifd->index);
-		return;
-	}
-
-	if (pinfo->acm_lut_satr5_table && pinfo->acm_lut_satr5_table_len > 0) {
-		acm_set_lut(acm_lut_base + ACM_U_SATR5_COEF, pinfo->acm_lut_satr5_table, pinfo->acm_lut_satr5_table_len);
-	} else {
-		HISI_FB_ERR("fb%d, acm_lut_satr5_table is NULL or satr5_table_len less than 0!\n", hisifd->index);
-		return;
-	}
-
-	if (pinfo->acm_lut_satr6_table && pinfo->acm_lut_satr6_table_len > 0) {
-		acm_set_lut(acm_lut_base + ACM_U_SATR6_COEF, pinfo->acm_lut_satr6_table, pinfo->acm_lut_satr6_table_len);
-	} else {
-		HISI_FB_ERR("fb%d, acm_lut_satr6_table is NULL or satr6_table_len less than 0!\n", hisifd->index);
-		return;
-	}
-
-	if (pinfo->acm_lut_satr7_table && pinfo->acm_lut_satr7_table_len > 0) {
-		acm_set_lut(acm_lut_base + ACM_U_SATR7_COEF, pinfo->acm_lut_satr7_table, pinfo->acm_lut_satr7_table_len);
-	} else {
-		HISI_FB_ERR("fb%d, acm_lut_satr7_table is NULL or satr7_table_len less than 0!\n", hisifd->index);
-		return;
-	}
-
-	lut_sel = inp32(acm_base + ACM_LUT_SEL);
-	set_reg(acm_base + ACM_LUT_SEL, (~lut_sel) & 0x3FF, 10, 0);
-	set_reg(acm_base + ACM_EN, 0x1, 1, 0);
 	g_acm_State = 1;
+	/*acm reg dimming init*/
+	hisi_effect_color_dimming_acm_reg_init(hisifd);
 }
-
-void init_igm_gmp_xcc_gm(struct hisi_fb_data_type *hisifd)
+//lint -e838 -e550 -e438
+static void degamma_set_lut(struct hisi_fb_data_type *hisifd)
 {
 	struct hisi_panel_info *pinfo = NULL;
-	char __iomem *dpp_base = NULL;
-	char __iomem *lcp_base = NULL;
-	char __iomem *lcp_lut_base = NULL;
-	char __iomem *gamma_base = NULL;
-	char __iomem *gamma_lut_base = NULL;
-	uint32_t i = 0, j = 0, k = 0;
-	uint32_t pos0 = 0, pos1 = 0;
+	uint32_t i = 0;
 	uint32_t index = 0;
-	uint32_t color_temp_rectify_R = 32768, color_temp_rectify_G = 32768, color_temp_rectify_B = 32768;
+	char __iomem *degamma_lut_base = NULL;//lint !e838
+
 	if (hisifd == NULL)	{
 		HISI_FB_ERR("init_degmma_xcc_gmp hisifd is NULL!\n");
 		return;
 	}
 
 	pinfo = &(hisifd->panel_info);
+	degamma_lut_base = hisifd->dss_base + DSS_DPP_DEGAMMA_LUT_OFFSET;
 
-	if (hisifd->index == PRIMARY_PANEL_IDX) {
-		dpp_base = hisifd->dss_base + DSS_DPP_OFFSET;
-		lcp_base = hisifd->dss_base + DSS_DPP_LCP_OFFSET;
-		lcp_lut_base = hisifd->dss_base + DSS_DPP_LCP_LUT_OFFSET;
-		gamma_base = hisifd->dss_base + DSS_DPP_GAMA_OFFSET;
-		gamma_lut_base = hisifd->dss_base + DSS_DPP_GAMA_LUT_OFFSET;
-	} else {
-		HISI_FB_ERR("fb%d, not support!\n", hisifd->index);
+	if (!hisifb_use_dynamic_degamma(hisifd, degamma_lut_base)) {
+		if (pinfo->igm_lut_table_len > 0
+			&& pinfo->igm_lut_table_R
+			&& pinfo->igm_lut_table_G
+			&& pinfo->igm_lut_table_B) {
+			for (i = 0; i < pinfo->igm_lut_table_len / 2; i++) {
+				index = i << 1;
+				outp32(degamma_lut_base + (U_DEGAMA_R_COEF +  i * 4), pinfo->igm_lut_table_R[index] | pinfo->igm_lut_table_R[index+1] << 16);
+				outp32(degamma_lut_base + (U_DEGAMA_G_COEF +  i * 4), pinfo->igm_lut_table_G[index] | pinfo->igm_lut_table_G[index+1] << 16);
+				outp32(degamma_lut_base + (U_DEGAMA_B_COEF +  i * 4), pinfo->igm_lut_table_B[index] | pinfo->igm_lut_table_B[index+1] << 16);
+			}
+			outp32(degamma_lut_base + U_DEGAMA_R_LAST_COEF, pinfo->igm_lut_table_R[pinfo->igm_lut_table_len - 1]);
+			outp32(degamma_lut_base + U_DEGAMA_G_LAST_COEF, pinfo->igm_lut_table_G[pinfo->igm_lut_table_len - 1]);
+			outp32(degamma_lut_base + U_DEGAMA_B_LAST_COEF, pinfo->igm_lut_table_B[pinfo->igm_lut_table_len - 1]);
+		}
+	}//lint !e438 !e550
+}
+static void gamma_set_lut(struct hisi_fb_data_type *hisifd)
+{
+	struct hisi_panel_info *pinfo = NULL;
+	uint32_t i = 0;
+	uint32_t index = 0;
+	char __iomem *gamma_lut_base = NULL;
+	char __iomem *gamma_pre_lut_base = NULL;
+
+	if (hisifd == NULL)	{
+		HISI_FB_ERR("init_degmma_xcc_gmp hisifd is NULL!\n");
 		return;
 	}
 
+	pinfo = &(hisifd->panel_info);
+	gamma_lut_base = hisifd->dss_base + DSS_DPP_GAMA_LUT_OFFSET;
 	if (g_dss_version_tag == FB_ACCEL_KIRIN970) {
+		gamma_pre_lut_base = hisifd->dss_base + DSS_DPP_GAMA_PRE_LUT_OFFSET;
+	}
+
+	if (!hisifb_use_dynamic_gamma(hisifd, gamma_lut_base)) {
+		if (pinfo->gamma_lut_table_len > 0
+			&& pinfo->gamma_lut_table_R
+			&& pinfo->gamma_lut_table_G
+			&& pinfo->gamma_lut_table_B) {
+			for (i = 0; i < pinfo->gamma_lut_table_len / 2; i++) {
+				index = i << 1;
+				//GAMA LUT
+				outp32(gamma_lut_base + (U_GAMA_R_COEF + i * 4), pinfo->gamma_lut_table_R[index] | pinfo->gamma_lut_table_R[index+1] << 16 );
+				outp32(gamma_lut_base + (U_GAMA_G_COEF + i * 4), pinfo->gamma_lut_table_G[index] | pinfo->gamma_lut_table_G[index+1] << 16 );
+				outp32(gamma_lut_base + (U_GAMA_B_COEF + i * 4), pinfo->gamma_lut_table_B[index] | pinfo->gamma_lut_table_B[index+1] << 16 );
+				if (g_dss_version_tag == FB_ACCEL_KIRIN970) {
+					//GAMA  PRE LUT
+					outp32(gamma_pre_lut_base + (U_GAMA_PRE_R_COEF + i * 4), pinfo->gamma_lut_table_R[index] | pinfo->gamma_lut_table_R[index+1] << 16 );
+					outp32(gamma_pre_lut_base + (U_GAMA_PRE_G_COEF + i * 4), pinfo->gamma_lut_table_G[index] | pinfo->gamma_lut_table_G[index+1] << 16 );
+					outp32(gamma_pre_lut_base + (U_GAMA_PRE_B_COEF + i * 4), pinfo->gamma_lut_table_B[index] | pinfo->gamma_lut_table_B[index+1] << 16 );
+				}
+			}
+			outp32(gamma_lut_base + U_GAMA_R_LAST_COEF, pinfo->gamma_lut_table_R[pinfo->gamma_lut_table_len - 1]);
+			outp32(gamma_lut_base + U_GAMA_G_LAST_COEF, pinfo->gamma_lut_table_G[pinfo->gamma_lut_table_len - 1]);
+			outp32(gamma_lut_base + U_GAMA_B_LAST_COEF, pinfo->gamma_lut_table_B[pinfo->gamma_lut_table_len - 1]);
+			if (g_dss_version_tag == FB_ACCEL_KIRIN970) {
+				//GAMA  PRE LUT
+				outp32(gamma_pre_lut_base + U_GAMA_PRE_R_LAST_COEF, pinfo->gamma_lut_table_R[pinfo->gamma_lut_table_len - 1]);
+				outp32(gamma_pre_lut_base + U_GAMA_PRE_G_LAST_COEF, pinfo->gamma_lut_table_G[pinfo->gamma_lut_table_len - 1]);
+				outp32(gamma_pre_lut_base + U_GAMA_PRE_B_LAST_COEF, pinfo->gamma_lut_table_B[pinfo->gamma_lut_table_len - 1]);
+			}
+		}
+	}
+}
+void init_igm_gmp_xcc_gm(struct hisi_fb_data_type *hisifd)
+{
+	struct hisi_panel_info *pinfo = NULL;
+	char __iomem *lcp_base = NULL;
+	char __iomem *xcc_base = NULL;
+	char __iomem *gmp_base = NULL;
+	char __iomem *degamma_base = NULL;
+	char __iomem *gmp_lut_base = NULL;
+	char __iomem *gamma_base = NULL;
+	uint32_t i = 0, j = 0, k = 0;
+	uint32_t pos0 = 0, pos1 = 0;
+	uint32_t gama_lut_sel = 0;
+	uint32_t degama_lut_sel = 0;
+	uint32_t color_temp_rectify_R = 32768, color_temp_rectify_G = 32768, color_temp_rectify_B = 32768;
+	uint32_t gmp_lut_sel;
+
+	if (hisifd == NULL)	{
+		HISI_FB_ERR("init_degmma_xcc_gmp hisifd is NULL!\n");
+		return;
+	}
+	pinfo = &(hisifd->panel_info);
+
+	if (hisifd->index == PRIMARY_PANEL_IDX) {
+		lcp_base = hisifd->dss_base + DSS_DPP_LCP_OFFSET_ES;
+		xcc_base = hisifd->dss_base + DSS_DPP_XCC_OFFSET;
+		gmp_base = hisifd->dss_base + DSS_DPP_GMP_OFFSET;
+		degamma_base = hisifd->dss_base + DSS_DPP_DEGAMMA_OFFSET;
+		gmp_lut_base = hisifd->dss_base + DSS_DPP_GMP_LUT_OFFSET;
+		gamma_base = hisifd->dss_base + DSS_DPP_GAMA_OFFSET;
+	} else {
+		HISI_FB_ERR("fb%d, not support!\n", hisifd->index);
 		return;
 	}
 
@@ -2092,110 +2788,127 @@ void init_igm_gmp_xcc_gm(struct hisi_fb_data_type *hisifd)
 	//Degamma
 	if (pinfo->gamma_support == 1) {
 		//disable degamma
-		set_reg(lcp_base + LCP_DEGAMA_EN, 0x0, 1, 0);
+		if (g_dss_version_tag == FB_ACCEL_KIRIN970_ES) {
+			set_reg(lcp_base + LCP_DEGAMA_EN_ES, 0x0, 1, 0);
+		} else {
+			set_reg(degamma_base + DEGAMA_EN, 0x0, 1, 0);
+		}
 
-		if (!hisifb_use_dynamic_degamma(hisifd, lcp_lut_base)) {
-			//degamma
-			if (pinfo->igm_lut_table_len > 0
-				&& pinfo->igm_lut_table_R
-				&& pinfo->igm_lut_table_G
-				&& pinfo->igm_lut_table_B) {
-				for (i = 0; i < pinfo->igm_lut_table_len / 2; i++) {
-					index = i << 1;
-					outp32(lcp_lut_base + (LCP_U_DEGAMA_R_COEF +  i * 4), pinfo->igm_lut_table_R[index] | pinfo->igm_lut_table_R[index+1] << 16);
-					outp32(lcp_lut_base + (LCP_U_DEGAMA_G_COEF +  i * 4), pinfo->igm_lut_table_G[index] | pinfo->igm_lut_table_G[index+1] << 16);
-					outp32(lcp_lut_base + (LCP_U_DEGAMA_B_COEF +  i * 4), pinfo->igm_lut_table_B[index] | pinfo->igm_lut_table_B[index+1] << 16);
-				}
-				outp32(lcp_lut_base + LCP_U_DEGAMA_R_LAST_COEF, pinfo->igm_lut_table_R[pinfo->igm_lut_table_len - 1]);
-				outp32(lcp_lut_base + LCP_U_DEGAMA_G_LAST_COEF, pinfo->igm_lut_table_G[pinfo->igm_lut_table_len - 1]);
-				outp32(lcp_lut_base + LCP_U_DEGAMA_B_LAST_COEF, pinfo->igm_lut_table_B[pinfo->igm_lut_table_len - 1]);
-			}
+		degamma_set_lut(hisifd);
+		if (g_dss_version_tag == FB_ACCEL_KIRIN970) {
+			degama_lut_sel = (uint32_t)inp32(degamma_base + DEGAMA_LUT_SEL);
+			set_reg(degamma_base + DEGAMA_LUT_SEL, (~(degama_lut_sel & 0x1)) & 0x1, 1, 0);
 		}
 
 		//enable degamma
-		set_reg(lcp_base + LCP_DEGAMA_EN, 0x1, 1, 0);
+		if (g_dss_version_tag == FB_ACCEL_KIRIN970_ES) {
+			set_reg(lcp_base + LCP_DEGAMA_EN_ES, 0x1, 1, 0);
+		} else {
+			set_reg(degamma_base + DEGAMA_EN, 0x1, 1, 0);
+		}
 	} else {
 		//degama memory shutdown
-		outp32(lcp_base + LCP_DEGAMA_MEM_CTRL, 0x4);
+		if (g_dss_version_tag == FB_ACCEL_KIRIN970_ES) {
+			outp32(lcp_base + LCP_DEGAMA_MEM_CTRL_ES, 0x4);
+		} else {
+			outp32(degamma_base + DEGAMA_MEM_CTRL, 0x4);
+		}
 	}
 
 	//XCC
 	if (pinfo->xcc_support == 1) {
 		// XCC matrix
 		if (pinfo->xcc_table_len > 0 && pinfo->xcc_table) {
-			outp32(lcp_base + LCP_XCC_COEF_00, pinfo->xcc_table[0]);
-			outp32(lcp_base + LCP_XCC_COEF_01, pinfo->xcc_table[1]
+			outp32(xcc_base + XCC_COEF_00, pinfo->xcc_table[0]);
+			outp32(xcc_base + XCC_COEF_01, pinfo->xcc_table[1]
 				* g_led_rg_csc_value[0] / 32768 * color_temp_rectify_R / 32768);
-			outp32(lcp_base + LCP_XCC_COEF_02, pinfo->xcc_table[2]);
-			outp32(lcp_base + LCP_XCC_COEF_03, pinfo->xcc_table[3]);
-			outp32(lcp_base + LCP_XCC_COEF_10, pinfo->xcc_table[4]);
-			outp32(lcp_base + LCP_XCC_COEF_11, pinfo->xcc_table[5]);
-			outp32(lcp_base + LCP_XCC_COEF_12, pinfo->xcc_table[6]
+			outp32(xcc_base + XCC_COEF_02, pinfo->xcc_table[2]);
+			outp32(xcc_base + XCC_COEF_03, pinfo->xcc_table[3]);
+			outp32(xcc_base + XCC_COEF_10, pinfo->xcc_table[4]);
+			outp32(xcc_base + XCC_COEF_11, pinfo->xcc_table[5]);
+			outp32(xcc_base + XCC_COEF_12, pinfo->xcc_table[6]
 				* g_led_rg_csc_value[4] / 32768 * color_temp_rectify_G / 32768);
-			outp32(lcp_base + LCP_XCC_COEF_13, pinfo->xcc_table[7]);
-			outp32(lcp_base + LCP_XCC_COEF_20, pinfo->xcc_table[8]);
-			outp32(lcp_base + LCP_XCC_COEF_21, pinfo->xcc_table[9]);
-			outp32(lcp_base + LCP_XCC_COEF_22, pinfo->xcc_table[10]);
-			outp32(lcp_base + LCP_XCC_COEF_23, pinfo->xcc_table[11]
+			outp32(xcc_base + XCC_COEF_13, pinfo->xcc_table[7]);
+			outp32(xcc_base + XCC_COEF_20, pinfo->xcc_table[8]);
+			outp32(xcc_base + XCC_COEF_21, pinfo->xcc_table[9]);
+			outp32(xcc_base + XCC_COEF_22, pinfo->xcc_table[10]);
+			outp32(xcc_base + XCC_COEF_23, pinfo->xcc_table[11]
 				* g_led_rg_csc_value[8] / 32768 * DISCOUNT_COEFFICIENT(g_comform_value)
 				* color_temp_rectify_B / 32768);
 
-			//enable xcc
-			set_reg(lcp_base + LCP_XCC_BYPASS_EN, 0x0, 1, 0);
+			if (g_dss_version_tag == FB_ACCEL_KIRIN970_ES) {
+				//enable xcc
+				set_reg(lcp_base + LCP_XCC_BYPASS_EN_ES, 0x0, 1, 0);
+			} else {
+				//enable xcc
+				//set_reg(xcc_base + XCC_EN, 0x1, 1, 0);
+				//enabel xcc pre
+				set_reg(xcc_base + XCC_EN, 0x1, 1, 1);
+			}
 		}
 	}
 
 	//GMP
 	if (pinfo->gmp_support == 1) {
-		//disable gmp
-		set_reg(lcp_base + LCP_GMP_BYPASS_EN, 0x1, 1, 0);
+		if (g_dss_version_tag == FB_ACCEL_KIRIN970_ES) {
+			set_reg(lcp_base + LCP_GMP_BYPASS_EN_ES, 0x1, 1, 0);
+		} else {
+			//disable gmp
+			set_reg(gmp_base + GMP_EN, 0x0, 1, 0);
+		}
 
 		//gmp lut
 		if (pinfo->gmp_lut_table_len > 0
 			&& pinfo->gmp_lut_table_low32bit
 			&& pinfo->gmp_lut_table_high4bit) {
-			for (i = 0; i < pinfo->gmp_lut_table_len; i++) {
-				pos1 = LCP_U_GMP_COEF + i * 0x800;
-				for (j = 0; j < pinfo->gmp_lut_table_len; j++) {
-					pos0 = pos1 + 0x80 * j;
-					for (k = 0; k < pinfo->gmp_lut_table_len; k++) {
-						outp32(lcp_lut_base + pos0 +  k * 8,
-						pinfo->gmp_lut_table_low32bit[(i * pinfo->gmp_lut_table_len + j) * pinfo->gmp_lut_table_len + k]);
-						outp32(lcp_lut_base + pos0 +  k * 8 + 4,
-						pinfo->gmp_lut_table_high4bit[(i * pinfo->gmp_lut_table_len + j) * pinfo->gmp_lut_table_len + k]);
+		    if (g_dss_version_tag == FB_ACCEL_KIRIN970_ES) {
+				for (i = 0; i < pinfo->gmp_lut_table_len; i++) {
+					pos1 = GMP_U_GMP_COEF + i * 0x800;
+					for (j = 0; j < pinfo->gmp_lut_table_len; j++) {
+						pos0 = pos1 + 0x80 * j;
+						for (k = 0; k < pinfo->gmp_lut_table_len; k++) {
+							outp32(gmp_lut_base + pos0 +  k * 8,
+							pinfo->gmp_lut_table_low32bit[(i * pinfo->gmp_lut_table_len + j) * pinfo->gmp_lut_table_len + k]);
+							outp32(gmp_lut_base + pos0 +  k * 8 + 4,
+							pinfo->gmp_lut_table_high4bit[(i * pinfo->gmp_lut_table_len + j) * pinfo->gmp_lut_table_len + k]);
+						}
 					}
+				}
+			} else {
+				for (i = 0; i < gmp_cnt_cofe; i++) {
+					outp32(gmp_lut_base + i * 2 * 4, pinfo->gmp_lut_table_low32bit[i]);
+					outp32(gmp_lut_base + i * 2 * 4 + 4, pinfo->gmp_lut_table_high4bit[i]);
 				}
 			}
 		}
 
-		//enable gmp
-		set_reg(lcp_base + LCP_GMP_BYPASS_EN, 0x0, 1, 0);
+		if (g_dss_version_tag == FB_ACCEL_KIRIN970_ES) {
+			set_reg(lcp_base + LCP_GMP_BYPASS_EN_ES, 0x0, 1, 0);
+		} else {
+			gmp_lut_sel = (uint32_t)inp32(gmp_base + GMP_LUT_SEL);
+			set_reg(gmp_base + GMP_LUT_SEL, (~(gmp_lut_sel & 0x1)) & 0x1, 1, 0);
+			//enable gmp
+			set_reg(gmp_base + GMP_EN, 0x1, 1, 0);
+		}
 		g_gmp_State = 1;
 	} else {
 		//gmp memory shutdown
-		outp32(lcp_base + LCP_GMP_MEM_CTRL, 0x4);
+		if (g_dss_version_tag == FB_ACCEL_KIRIN970_ES) {
+			outp32(lcp_base + LCP_GMP_MEM_CTRL_ES, 0x4);
+		} else {
+			outp32(gmp_base + GMP_MEM_CTRL, 0x4);
+		}
 	}
 
 	//GAMMA
 	if (pinfo->gamma_support == 1) {
 		//disable gamma
 		set_reg(gamma_base + GAMA_EN, 0x0, 1, 0);
-
-		if (!hisifb_use_dynamic_gamma(hisifd, gamma_lut_base)) {
-			if (pinfo->gamma_lut_table_len > 0
-				&& pinfo->gamma_lut_table_R
-				&& pinfo->gamma_lut_table_G
-				&& pinfo->gamma_lut_table_B) {
-				for (i = 0; i < pinfo->gamma_lut_table_len / 2; i++) {
-					index = i << 1;
-					outp32(gamma_lut_base + (U_GAMA_R_COEF + i * 4), pinfo->gamma_lut_table_R[index] | pinfo->gamma_lut_table_R[index+1] << 16 );
-					outp32(gamma_lut_base + (U_GAMA_G_COEF + i * 4), pinfo->gamma_lut_table_G[index] | pinfo->gamma_lut_table_G[index+1] << 16 );
-					outp32(gamma_lut_base + (U_GAMA_B_COEF + i * 4), pinfo->gamma_lut_table_B[index] | pinfo->gamma_lut_table_B[index+1] << 16 );
-				}
-				outp32(gamma_lut_base + U_GAMA_R_LAST_COEF, pinfo->gamma_lut_table_R[pinfo->gamma_lut_table_len - 1]);
-				outp32(gamma_lut_base + U_GAMA_G_LAST_COEF, pinfo->gamma_lut_table_G[pinfo->gamma_lut_table_len - 1]);
-				outp32(gamma_lut_base + U_GAMA_B_LAST_COEF, pinfo->gamma_lut_table_B[pinfo->gamma_lut_table_len - 1]);
-			}
+		//set gama lut
+		gamma_set_lut(hisifd);
+		if (g_dss_version_tag == FB_ACCEL_KIRIN970) {
+			gama_lut_sel = (uint32_t)inp32(gamma_base + GAMA_LUT_SEL);
+			set_reg(gamma_base + GAMA_LUT_SEL, (~(gama_lut_sel & 0x1)) & 0x1, 1, 0);
 		}
 
 		//enable gamma
@@ -2229,22 +2942,68 @@ void init_dither(struct hisi_fb_data_type *hisifd)
 		return ;
 	}
 
-	if (g_dss_version_tag == FB_ACCEL_KIRIN970) {
-		return;
-	}
+	if(g_dss_version_tag == FB_ACCEL_KIRIN970_ES) {
+		set_reg(dither_base + DITHER_CTL_ES, 0x1A86, 28, 0);
+		set_reg(dither_base + DITHER_PARA_ES, 0x0, 3, 0);
+		set_reg(dither_base + DITHER_MATRIX_PART1_ES, 0x5D7F91B3, 32, 0);
+		set_reg(dither_base + DITHER_MATRIX_PART0_ES, 0x6E4CA280, 32, 0);
+		set_reg(dither_base + DITHER_ERRDIFF_WEIGHT_ES, 0x1232134, 28, 0);
+		set_reg(dither_base + DITHER_FRC_01_PART0_ES, 0x0, 32, 0);
+		set_reg(dither_base + DITHER_FRC_01_PART1_ES, 0xFFFF0000, 32, 0);
+		set_reg(dither_base + DITHER_FRC_10_PART0_ES, 0, 32, 0);
+		set_reg(dither_base + DITHER_FRC_10_PART1_ES, 0xFFFFFFFF, 32, 0);
+		set_reg(dither_base + DITHER_FRC_11_PART0_ES, 0xFFFF0000, 32, 0);
+		set_reg(dither_base + DITHER_FRC_11_PART1_ES, 0xFFFFFFFF, 32, 0);
+	} else {/*need confirm*/
+		set_reg(dither_base + DITHER_CTL1, 0x00000024, 6, 0);
+		set_reg(dither_base + DITHER_CTL0, 0x0000001A, 5, 0);
+		set_reg(dither_base + DITHER_TRI_THD12_0, 0x00080080, 24, 0);
+		set_reg(dither_base + DITHER_TRI_THD12_1, 0x00000080, 12, 0);
+		set_reg(dither_base + DITHER_TRI_THD10, 0x02008020, 30, 0);
+		set_reg(dither_base + DITHER_TRI_THD12_UNI_0, 0x00100100, 24, 0);
+		set_reg(dither_base + DITHER_TRI_THD12_UNI_1, 0x00000000, 12, 0);
+		set_reg(dither_base + DITHER_TRI_THD10_UNI, 0x00010040, 30, 0);
+		set_reg(dither_base + DITHER_BAYER_CTL, 0x00000000, 28, 0);
+		set_reg(dither_base + DITHER_BAYER_ALPHA_THD, 0x00000000, 30, 0);
+		set_reg(dither_base + DITHER_MATRIX_PART1, 0x5D7F91B3, 32, 0);
+		set_reg(dither_base + DITHER_MATRIX_PART0, 0x6E4CA280, 32, 0);
 
-	set_reg(dither_base + DITHER_CTL, 0x1A86, 28, 0);
-	set_reg(dither_base + DITHER_PARA, 0x0, 3, 0);
-	set_reg(dither_base + DITHER_MATRIX_PART1, 0x5D7F91B3, 32, 0);
-	set_reg(dither_base + DITHER_MATRIX_PART0, 0x6E4CA280, 32, 0);
-	set_reg(dither_base + DITHER_ERRDIFF_WEIGHT, 0x1232134, 28, 0);
-	set_reg(dither_base + DITHER_FRC_01_PART0, 0x0, 32, 0);
-	set_reg(dither_base + DITHER_FRC_01_PART1, 0xFFFF0000, 32, 0);
-	set_reg(dither_base + DITHER_FRC_10_PART0, 0, 32, 0);
-	set_reg(dither_base + DITHER_FRC_10_PART1, 0xFFFFFFFF, 32, 0);
-	set_reg(dither_base + DITHER_FRC_11_PART0, 0xFFFF0000, 32, 0);
-	set_reg(dither_base + DITHER_FRC_11_PART1, 0xFFFFFFFF, 32, 0);
+		set_reg(dither_base + DITHER_HIFREQ_REG_INI_CFG_EN, 0x00000000, 1, 0);
+		set_reg(dither_base + DITHER_HIFREQ_REG_INI0_0, 0x6495FC13, 32, 0);
+		set_reg(dither_base + DITHER_HIFREQ_REG_INI0_1, 0x27E5DB75, 32, 0);
+		set_reg(dither_base + DITHER_HIFREQ_REG_INI0_2, 0x69036280, 32, 0);
+		set_reg(dither_base + DITHER_HIFREQ_REG_INI0_3, 0x7478D47C, 31, 0);
+		set_reg(dither_base + DITHER_HIFREQ_REG_INI1_0, 0x36F5325D, 32, 0);
+		set_reg(dither_base + DITHER_HIFREQ_REG_INI1_1, 0x90757906, 32, 0);
+		set_reg(dither_base + DITHER_HIFREQ_REG_INI1_2, 0xBBA85F01, 32, 0);
+		set_reg(dither_base + DITHER_HIFREQ_REG_INI1_3, 0x74B34461, 31, 0);
+		set_reg(dither_base + DITHER_HIFREQ_REG_INI2_0, 0x76435C64, 32, 0);
+		set_reg(dither_base + DITHER_HIFREQ_REG_INI2_1, 0x4989003F, 32, 0);
+		set_reg(dither_base + DITHER_HIFREQ_REG_INI2_2, 0xA2EA34C6, 32, 0);
+		set_reg(dither_base + DITHER_HIFREQ_REG_INI2_3, 0x4CAD42CB, 31, 0);
+		set_reg(dither_base + DITHER_HIFREQ_POWER_CTRL, 0x00000009, 4, 0);
+		set_reg(dither_base + DITHER_HIFREQ_FILT_0, 0x00000421, 15, 0);
+		set_reg(dither_base + DITHER_HIFREQ_FILT_1, 0x00000701, 15, 0);
+		set_reg(dither_base + DITHER_HIFREQ_FILT_2, 0x00000421, 15, 0);
+		set_reg(dither_base + DITHER_HIFREQ_THD_R0, 0x6D92B7DB, 32, 0);
+		set_reg(dither_base + DITHER_HIFREQ_THD_R1, 0x00002448, 16, 0);
+		set_reg(dither_base + DITHER_HIFREQ_THD_G0, 0x6D92B7DB, 32, 0);
+		set_reg(dither_base + DITHER_HIFREQ_THD_G1, 0x00002448, 16, 0);
+		set_reg(dither_base + DITHER_HIFREQ_THD_B0, 0x6D92B7DB, 32, 0);
+		set_reg(dither_base + DITHER_HIFREQ_THD_B1, 0x00002448, 16, 0);
+		set_reg(dither_base + DITHER_ERRDIFF_CTL, 0x00000000, 3, 0);
+		set_reg(dither_base + DITHER_ERRDIFF_WEIGHT, 0x01232134, 28, 0);
+
+		set_reg(dither_base + DITHER_FRC_CTL, 0x00000000, 4, 0);
+		set_reg(dither_base + DITHER_FRC_01_PART1, 0xFFFF0000, 32, 0);
+		set_reg(dither_base + DITHER_FRC_01_PART0, 0x00000000, 32, 0);
+		set_reg(dither_base + DITHER_FRC_10_PART1, 0xFFFFFFFF, 32, 0);
+		set_reg(dither_base + DITHER_FRC_10_PART0, 0x00000000, 32, 0);
+		set_reg(dither_base + DITHER_FRC_11_PART1, 0xFFFFFFFF, 32, 0);
+		set_reg(dither_base + DITHER_FRC_11_PART0, 0xFFFF0000, 32, 0);
+	}
 }
+//lint +e838 +e550 +e438
 
 void dpe_store_ct_cscValue(struct hisi_fb_data_type *hisifd, unsigned int csc_value[])
 {
@@ -2279,14 +3038,14 @@ void dpe_update_g_comform_discount(unsigned int value)
 int dpe_set_ct_cscValue(struct hisi_fb_data_type *hisifd)
 {
 	struct hisi_panel_info *pinfo = NULL;
-	char __iomem *lcp_base = NULL;
+	char __iomem *xcc_base = NULL;
 	uint32_t color_temp_rectify_R = 32768, color_temp_rectify_G = 32768, color_temp_rectify_B = 32768;
 
 	BUG_ON(hisifd == NULL);
 	pinfo = &(hisifd->panel_info);
 
 	if (hisifd->index == PRIMARY_PANEL_IDX) {
-		lcp_base = hisifd->dss_base + DSS_DPP_LCP_OFFSET;
+		xcc_base = hisifd->dss_base + DSS_DPP_XCC_OFFSET;
 	} else {
 		HISI_FB_ERR("fb%d, not support!", hisifd->index);
 		return -1;
@@ -2308,20 +3067,20 @@ int dpe_set_ct_cscValue(struct hisi_fb_data_type *hisifd)
 	if (pinfo->xcc_support == 1) {
 		// XCC matrix
 		if (pinfo->xcc_table_len > 0 && pinfo->xcc_table) {
-			outp32(lcp_base + LCP_XCC_COEF_00, pinfo->xcc_table[0]);
-			outp32(lcp_base + LCP_XCC_COEF_01, pinfo->xcc_table[1]
+			outp32(xcc_base + XCC_COEF_00, pinfo->xcc_table[0]);
+			outp32(xcc_base + XCC_COEF_01, pinfo->xcc_table[1]
 				* g_led_rg_csc_value[0] / 32768 * color_temp_rectify_R / 32768);
-			outp32(lcp_base + LCP_XCC_COEF_02, pinfo->xcc_table[2]);
-			outp32(lcp_base + LCP_XCC_COEF_03, pinfo->xcc_table[3]);
-			outp32(lcp_base + LCP_XCC_COEF_10, pinfo->xcc_table[4]);
-			outp32(lcp_base + LCP_XCC_COEF_11, pinfo->xcc_table[5]);
-			outp32(lcp_base + LCP_XCC_COEF_12, pinfo->xcc_table[6]
+			outp32(xcc_base + XCC_COEF_02, pinfo->xcc_table[2]);
+			outp32(xcc_base + XCC_COEF_03, pinfo->xcc_table[3]);
+			outp32(xcc_base + XCC_COEF_10, pinfo->xcc_table[4]);
+			outp32(xcc_base + XCC_COEF_11, pinfo->xcc_table[5]);
+			outp32(xcc_base + XCC_COEF_12, pinfo->xcc_table[6]
 				* g_led_rg_csc_value[4] / 32768 * color_temp_rectify_G / 32768);
-			outp32(lcp_base + LCP_XCC_COEF_13, pinfo->xcc_table[7]);
-			outp32(lcp_base + LCP_XCC_COEF_20, pinfo->xcc_table[8]);
-			outp32(lcp_base + LCP_XCC_COEF_21, pinfo->xcc_table[9]);
-			outp32(lcp_base + LCP_XCC_COEF_22, pinfo->xcc_table[10]);
-			outp32(lcp_base + LCP_XCC_COEF_23, pinfo->xcc_table[11]
+			outp32(xcc_base + XCC_COEF_13, pinfo->xcc_table[7]);
+			outp32(xcc_base + XCC_COEF_20, pinfo->xcc_table[8]);
+			outp32(xcc_base + XCC_COEF_21, pinfo->xcc_table[9]);
+			outp32(xcc_base + XCC_COEF_22, pinfo->xcc_table[10]);
+			outp32(xcc_base + XCC_COEF_23, pinfo->xcc_table[11]
 				* g_led_rg_csc_value[8] / 32768 * DISCOUNT_COEFFICIENT(g_comform_value)
 				* color_temp_rectify_B / 32768);
 			hisifd->color_temperature_flag = 2;
@@ -2356,14 +3115,14 @@ int dpe_set_xcc_cscValue(struct hisi_fb_data_type *hisifd)
 int dpe_set_comform_ct_cscValue(struct hisi_fb_data_type *hisifd)
 {
 	struct hisi_panel_info *pinfo = NULL;
-	char __iomem *lcp_base = NULL;
+	char __iomem *xcc_base = NULL;
 	uint32_t color_temp_rectify_R = 32768, color_temp_rectify_G = 32768, color_temp_rectify_B = 32768;
 
 	BUG_ON(hisifd == NULL);
 	pinfo = &(hisifd->panel_info);
 
 	if (hisifd->index == PRIMARY_PANEL_IDX) {
-		lcp_base = hisifd->dss_base + DSS_DPP_LCP_OFFSET;
+		xcc_base = hisifd->dss_base + DSS_DPP_XCC_OFFSET;
 	} else {
 		HISI_FB_ERR("fb%d, not support!", hisifd->index);
 		return -1;
@@ -2385,20 +3144,20 @@ int dpe_set_comform_ct_cscValue(struct hisi_fb_data_type *hisifd)
 	if (pinfo->xcc_support == 1) {
 		// XCC matrix
 		if (pinfo->xcc_table_len > 0 && pinfo->xcc_table) {
-			outp32(lcp_base + LCP_XCC_COEF_00, pinfo->xcc_table[0]);
-			outp32(lcp_base + LCP_XCC_COEF_01, pinfo->xcc_table[1]
+			outp32(xcc_base + XCC_COEF_00, pinfo->xcc_table[0]);
+			outp32(xcc_base + XCC_COEF_01, pinfo->xcc_table[1]
 				* g_led_rg_csc_value[0] / 32768 * color_temp_rectify_R / 32768);
-			outp32(lcp_base + LCP_XCC_COEF_02, pinfo->xcc_table[2]);
-			outp32(lcp_base + LCP_XCC_COEF_03, pinfo->xcc_table[3]);
-			outp32(lcp_base + LCP_XCC_COEF_10, pinfo->xcc_table[4]);
-			outp32(lcp_base + LCP_XCC_COEF_11, pinfo->xcc_table[5]);
-			outp32(lcp_base + LCP_XCC_COEF_12, pinfo->xcc_table[6]
+			outp32(xcc_base + XCC_COEF_02, pinfo->xcc_table[2]);
+			outp32(xcc_base + XCC_COEF_03, pinfo->xcc_table[3]);
+			outp32(xcc_base + XCC_COEF_10, pinfo->xcc_table[4]);
+			outp32(xcc_base + XCC_COEF_11, pinfo->xcc_table[5]);
+			outp32(xcc_base + XCC_COEF_12, pinfo->xcc_table[6]
 				* g_led_rg_csc_value[4] / 32768 * color_temp_rectify_G / 32768);
-			outp32(lcp_base + LCP_XCC_COEF_13, pinfo->xcc_table[7]);
-			outp32(lcp_base + LCP_XCC_COEF_20, pinfo->xcc_table[8]);
-			outp32(lcp_base + LCP_XCC_COEF_21, pinfo->xcc_table[9]);
-			outp32(lcp_base + LCP_XCC_COEF_22, pinfo->xcc_table[10]);
-			outp32(lcp_base + LCP_XCC_COEF_23, pinfo->xcc_table[11]
+			outp32(xcc_base + XCC_COEF_13, pinfo->xcc_table[7]);
+			outp32(xcc_base + XCC_COEF_20, pinfo->xcc_table[8]);
+			outp32(xcc_base + XCC_COEF_21, pinfo->xcc_table[9]);
+			outp32(xcc_base + XCC_COEF_22, pinfo->xcc_table[10]);
+			outp32(xcc_base + XCC_COEF_23, pinfo->xcc_table[11]
 				* g_led_rg_csc_value[8] / 32768 * DISCOUNT_COEFFICIENT(g_comform_value)
 				* color_temp_rectify_B / 32768);
 		}
@@ -2459,14 +3218,14 @@ void dpe_store_led_rg_ct_cscValue(unsigned int csc_value[])
 int dpe_set_led_rg_ct_cscValue(struct hisi_fb_data_type *hisifd)
 {
 	struct hisi_panel_info *pinfo = NULL;
-	char __iomem *lcp_base = NULL;
+	char __iomem *xcc_base = NULL;
 	uint32_t color_temp_rectify_R = 32768, color_temp_rectify_G = 32768, color_temp_rectify_B = 32768;
 
 	BUG_ON(hisifd == NULL);
 	pinfo = &(hisifd->panel_info);
 
 	if (hisifd->index == PRIMARY_PANEL_IDX) {
-		lcp_base = hisifd->dss_base + DSS_DPP_LCP_OFFSET;
+		xcc_base = hisifd->dss_base + DSS_DPP_XCC_OFFSET;
 	} else {
 		HISI_FB_ERR("fb%d, not support!", hisifd->index);
 		return -1;
@@ -2490,20 +3249,20 @@ int dpe_set_led_rg_ct_cscValue(struct hisi_fb_data_type *hisifd)
 				g_is_led_rg_csc_set, g_led_rg_csc_value[0], g_led_rg_csc_value[4], g_led_rg_csc_value[8]);
 		// XCC matrix
 		if (pinfo->xcc_table_len > 0 && pinfo->xcc_table) {
-			outp32(lcp_base + LCP_XCC_COEF_00, pinfo->xcc_table[0]);
-			outp32(lcp_base + LCP_XCC_COEF_01, pinfo->xcc_table[1]
+			outp32(xcc_base + XCC_COEF_00, pinfo->xcc_table[0]);
+			outp32(xcc_base + XCC_COEF_01, pinfo->xcc_table[1]
 				* g_led_rg_csc_value[0] / 32768 * color_temp_rectify_R / 32768);
-			outp32(lcp_base + LCP_XCC_COEF_02, pinfo->xcc_table[2]);
-			outp32(lcp_base + LCP_XCC_COEF_03, pinfo->xcc_table[3]);
-			outp32(lcp_base + LCP_XCC_COEF_10, pinfo->xcc_table[4]);
-			outp32(lcp_base + LCP_XCC_COEF_11, pinfo->xcc_table[5]);
-			outp32(lcp_base + LCP_XCC_COEF_12, pinfo->xcc_table[6]
+			outp32(xcc_base + XCC_COEF_02, pinfo->xcc_table[2]);
+			outp32(xcc_base + XCC_COEF_03, pinfo->xcc_table[3]);
+			outp32(xcc_base + XCC_COEF_10, pinfo->xcc_table[4]);
+			outp32(xcc_base + XCC_COEF_11, pinfo->xcc_table[5]);
+			outp32(xcc_base + XCC_COEF_12, pinfo->xcc_table[6]
 				* g_led_rg_csc_value[4] / 32768 * color_temp_rectify_G / 32768);
-			outp32(lcp_base + LCP_XCC_COEF_13, pinfo->xcc_table[7]);
-			outp32(lcp_base + LCP_XCC_COEF_20, pinfo->xcc_table[8]);
-			outp32(lcp_base + LCP_XCC_COEF_21, pinfo->xcc_table[9]);
-			outp32(lcp_base + LCP_XCC_COEF_22, pinfo->xcc_table[10]);
-			outp32(lcp_base + LCP_XCC_COEF_23, pinfo->xcc_table[11]
+			outp32(xcc_base + XCC_COEF_13, pinfo->xcc_table[7]);
+			outp32(xcc_base + XCC_COEF_20, pinfo->xcc_table[8]);
+			outp32(xcc_base + XCC_COEF_21, pinfo->xcc_table[9]);
+			outp32(xcc_base + XCC_COEF_22, pinfo->xcc_table[10]);
+			outp32(xcc_base + XCC_COEF_23, pinfo->xcc_table[11]
 				* g_led_rg_csc_value[8] / 32768 * DISCOUNT_COEFFICIENT(g_comform_value)
 				* color_temp_rectify_B / 32768);
 		}
@@ -2589,3 +3348,30 @@ ssize_t dpe_show_gmp_state(char *buf)
 
 	return ret;
 }
+//lint -e838
+void dpe_sbl_set_al_bl(struct hisi_fb_data_type *hisifd)
+{
+	uint32_t temp;
+	char __iomem *sbl_base = NULL;
+
+	if (hisifd == NULL) {
+		HISI_FB_ERR("hisifd, NUll pointer warning.\n");
+		return;
+	}
+
+	sbl_base = hisifd->dss_base + DSS_DPP_SBL_OFFSET;
+
+	if (g_dss_version_tag == FB_ACCEL_KIRIN970_ES) {
+		set_reg(sbl_base + SBL_REG_CALC_BACKLIGHT_7_TO_0_ES, (uint32_t)hisifd->sbl.sbl_backlight_l, 8, 0);
+		set_reg(sbl_base + SBL_REG_CALC_BACKLIGHT_15_TO_8_ES, (uint32_t)hisifd->sbl.sbl_backlight_h, 8, 0);
+		set_reg(sbl_base + SBL_REG_CALC_AMBIENT_LIGHT_7_TO_0_ES, (uint32_t)hisifd->sbl.sbl_ambient_light_l, 8, 0);
+		set_reg(sbl_base + SBL_REG_CALC_AMBIENT_LIGHT_15_TO_8_ES, (uint32_t)hisifd->sbl.sbl_ambient_light_h, 8, 0);
+	} else {
+		temp = ((uint32_t)(hisifd->sbl.sbl_backlight_h & 0xff) << 24) | ((uint32_t)(hisifd->sbl.sbl_backlight_l & 0xff) << 16)\
+			| ((uint32_t)(hisifd->sbl.sbl_ambient_light_h & 0xff) << 8) | (hisifd->sbl.sbl_ambient_light_l & 0xff);
+		set_reg(sbl_base + SBL_REG_AL_BL, temp, 8, 0);
+	}
+
+	return;
+}
+//lint +e838

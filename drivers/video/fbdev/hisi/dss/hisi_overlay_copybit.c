@@ -94,8 +94,15 @@ static void hisi_copybit_clear(struct hisi_fb_data_type *hisifd,
 	dss_overlay_t *pov_req, uint32_t cmdlist_idxs, bool reset, bool debug)
 {
 	dss_overlay_block_t *pov_h_block_infos = NULL;
-	BUG_ON(hisifd == NULL);
-	BUG_ON(pov_req == NULL);
+	if (hisifd == NULL) {
+		HISI_FB_ERR("hisifd is NULL Point!\n");
+		return ;
+	}
+
+	if (pov_req == NULL) {
+		HISI_FB_ERR("pov_req is NULL Point!\n");
+		return ;
+	}
 
 	pov_h_block_infos = (dss_overlay_block_t *)pov_req->ov_block_infos_ptr;
 	if (pov_h_block_infos == NULL) {
@@ -324,7 +331,7 @@ int hisi_ov_copybit_play(struct hisi_fb_data_type *hisifd, void __user *argp)
 	for (m = 0; m < pov_req->ov_block_nums; m++) {
 		pov_h_block = &(pov_h_block_infos[m]);
 
-		ret = get_ov_block_rect(pov_req, pov_h_block, wb_layer4block, &block_num, hisifd->ov_block_rects);
+		ret = get_ov_block_rect(pov_req, pov_h_block, wb_layer4block, &block_num, hisifd->ov_block_rects, false);//lint !e747
 		if ((ret != 0) || (block_num == 0) || (block_num >= HISI_DSS_CMDLIST_BLOCK_MAX)) {
 			HISI_FB_ERR("get_ov_block_rect failed! ret = %d, block_num[%d]\n", ret, block_num);
 			ret = -1;
@@ -459,7 +466,7 @@ REDO:
 		if (g_debug_ovl_copybit_composer_hold || g_debug_ovl_block_composer)
 			debug = true;
 	} else {
-	#if defined(CONFIG_HISI_FB_3660) || defined(CONFIG_HISI_FB_970)
+	#if defined(CONFIG_HISI_FB_3660) || defined(CONFIG_HISI_FB_970) || defined (CONFIG_HISI_FB_660)
 		/* remove mctl ch & ov */
 		hisi_remove_mctl_mutex(hisifd, mctl_idx, cmdlist_idxs);
 	#endif

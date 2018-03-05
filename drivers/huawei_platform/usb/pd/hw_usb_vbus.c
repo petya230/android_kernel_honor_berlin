@@ -3,6 +3,9 @@
 #include <linux/of_irq.h>
 #include <linux/platform_device.h>
 #include <linux/interrupt.h>
+#ifdef CONFIG_CONTEXTHUB_PD
+#include <linux/hisi/contexthub/tca.h>
+#endif
 #include <linux/hisi/usb/hisi_usb.h>
 #include <linux/mfd/hisi_pmic.h>
 #include <pmic_interface.h>
@@ -10,31 +13,37 @@
 #include <huawei_platform/power/direct_charger.h>
 #ifdef CONFIG_TCPC_CLASS
 #include <huawei_platform/usb/hw_pd_dev.h>
-int support_pd;
+int support_pd = 0;
 #endif
 
 struct delayed_work g_disconnect_work;
 extern struct completion pd_get_typec_state_completion;
-
-static int huawei_usb_vbus_value(void)
-{
-	unsigned long base = 0;
-	int pmic_status1 = hisi_pmic_reg_read(PMIC_STATUS1_ADDR(base));
-	return !!(pmic_status1 & (1 << 7));
-}
+#ifdef CONFIG_CONTEXTHUB_PD
+struct delayed_work g_first_connect_work;
+#endif
 
 static irqreturn_t charger_connect_interrupt(int irq, void *p)
 {
 	pr_info("%s: start\n", __func__);
 #ifdef CONFIG_TCPC_CLASS
-	if (support_pd && pd_dpm_get_pd_finish_flag()
-		|| pd_dpm_get_pd_source_vbus()) {
-		pr_info("in pd mode, do not report charger connect_event\n");
+	if (support_pd && pd_dpm_ignore_vbus_event()) {
+		pr_info("%s ignore_vbus_event\n", __func__);
+		pd_dpm_set_ignore_vbus_event(false);
 		return IRQ_HANDLED;
 	}
 #endif
 	LOG_JANK_D(JLID_USBCHARGING_START, "JL_USBCHARGING_START");
+#ifdef CONFIG_CONTEXTHUB_PD
+	struct pd_dpm_combphy_event event;
+	event.dev_type = TCA_CHARGER_CONNECT_EVENT;
+	event.irq_type = TCA_IRQ_HPD_IN;
+	event.mode_type = TCPC_USB31_CONNECTED;
+	event.typec_orien = pd_dpm_get_cc_orientation();
+
+	pd_dpm_handle_combphy_event(event);
+#else
 	hisi_usb_otg_event(CHARGER_CONNECT_EVENT);
+#endif
 	pr_info("%s: end\n", __func__);
 	return IRQ_HANDLED;
 }
@@ -74,18 +83,42 @@ static void vbus_disconnect_work(struct work_struct *w)
 		}
 	}
 
-	if (support_pd && pd_dpm_get_pd_finish_flag()
-		&& !pd_dpm_get_pd_source_vbus) {
-		pr_info("in pd mode, do not report charger disconnect_event\n");
+	if (support_pd && pd_dpm_ignore_vbus_event()) {
+		pr_info("%s ignore_vbus_event\n", __func__);
+		pd_dpm_set_ignore_vbus_event(false);
 		return;
 	}
 #endif
 
 	LOG_JANK_D(JLID_USBCHARGING_END, "JL_USBCHARGING_END");
-        hisi_usb_otg_event(CHARGER_DISCONNECT_EVENT);
+
+#ifdef CONFIG_CONTEXTHUB_PD
+	struct pd_dpm_combphy_event event;
+	event.dev_type = TCA_CHARGER_DISCONNECT_EVENT;
+	event.irq_type = TCA_IRQ_HPD_OUT;
+	event.mode_type = TCPC_NC;
+	event.typec_orien = pd_dpm_get_cc_orientation();
+	pd_dpm_handle_combphy_event(event);
+
+#else
+	hisi_usb_otg_event(CHARGER_DISCONNECT_EVENT);
+#endif
 
 	pr_info("%s: end\n", __func__);
 }
+
+#ifdef CONFIG_CONTEXTHUB_PD
+static void vbus_first_connect_work(struct work_struct *w)
+{
+	msleep(2000);
+	struct pd_dpm_combphy_event event;
+	event.dev_type = TCA_CHARGER_CONNECT_EVENT;
+	event.irq_type = TCA_IRQ_HPD_IN;
+	event.mode_type = TCPC_USB31_CONNECTED;
+	event.typec_orien = pd_dpm_get_cc_orientation();
+	pd_dpm_handle_combphy_event(event);
+}
+#endif
 
 int hw_vbus_connect_irq, hw_vbus_disconnect_irq;
 
@@ -108,12 +141,12 @@ static int hisi_usb_vbus_probe(struct platform_device *pdev)
 	}
 	pr_info("support_pd = %d\n", support_pd);
 #endif
-	hw_vbus_connect_irq = platform_get_irq_byname(pdev, "connect");
+	hw_vbus_connect_irq = hisi_get_pmic_irq_byname(VBUS_CONNECT);
 	if (0 == hw_vbus_connect_irq) {
 		dev_err(&pdev->dev, "failed to get connect irq\n");
 		return -ENOENT;
 	}
-	hw_vbus_disconnect_irq = platform_get_irq_byname(pdev, "disconnect");
+	hw_vbus_disconnect_irq = hisi_get_pmic_irq_byname(VBUS_DISCONNECT);
 	if (0 == hw_vbus_disconnect_irq) {
 		dev_err(&pdev->dev, "failed to get disconnect irq\n");
 		return -ENOENT;
@@ -136,16 +169,33 @@ static int hisi_usb_vbus_probe(struct platform_device *pdev)
 		pr_err("request charger connect irq failed, irq: %d!\n", hw_vbus_disconnect_irq);
 	}
 
+	INIT_DELAYED_WORK(&g_disconnect_work, vbus_disconnect_work);
+#ifdef CONFIG_CONTEXTHUB_PD
+	INIT_DELAYED_WORK(&g_first_connect_work, vbus_first_connect_work);
+#endif
+
 	/* avoid lose intrrupt */
-	if (huawei_usb_vbus_value()) {
+	if (hisi_pmic_get_vbus_status()) {
 		pr_info("%s: vbus high, issue a charger connect event\n", __func__);
+#ifdef CONFIG_CONTEXTHUB_PD
+		schedule_delayed_work(&g_first_connect_work, msecs_to_jiffies(30));
+#else
 		hisi_usb_otg_event(CHARGER_CONNECT_EVENT);
+#endif
 	} else {
 		pr_info("%s: vbus low, issue a charger disconnect event\n", __func__);
-		hisi_usb_otg_event(CHARGER_DISCONNECT_EVENT);
-	}
+#ifdef CONFIG_CONTEXTHUB_PD
+		struct pd_dpm_combphy_event event;
+		event.dev_type = TCA_CHARGER_DISCONNECT_EVENT;
+		event.irq_type = TCA_IRQ_HPD_OUT;
+		event.mode_type = TCPC_NC;
+		event.typec_orien = pd_dpm_get_cc_orientation();
+		pd_dpm_handle_combphy_event(event);
 
-	INIT_DELAYED_WORK(&g_disconnect_work, vbus_disconnect_work);
+#else
+		hisi_usb_otg_event(CHARGER_DISCONNECT_EVENT);
+#endif
+	}
 
 	printk("[%s]-\n", __func__);
 

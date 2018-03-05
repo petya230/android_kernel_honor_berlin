@@ -1497,7 +1497,11 @@ static ssize_t mipi_tianma_R63319_8p4_panel_model_show(struct platform_device *p
 
 	HISI_FB_DEBUG("fb%d, +.\n", hisifd->index);
 
-	ret = snprintf(buf, PAGE_SIZE, "tianma_R63319_8p4 8.4' VIDEO TFT\n");
+	if(runmode_is_factory()) {
+		ret = snprintf(buf, PAGE_SIZE, "tianma_R63319_8p4 8.4' VIDEO TFT\n");
+	} else {
+		ret = snprintf(buf, PAGE_SIZE, "8p4 8.4' VIDEO TFT\n");
+	}
 
 	HISI_FB_DEBUG("fb%d, -.\n", hisifd->index);
 

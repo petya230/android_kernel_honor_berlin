@@ -45,6 +45,7 @@ extern u8 color_temp_cal_buf[32];
 /*******************************************************************************
 ** Partial update setting
 */
+/*lint -e569*/
 static char partial_setting_1[] = {
 	0xFF,
 	0x10,
@@ -165,6 +166,7 @@ static char bl_pwm[] = {
 	0xFF,
 };
 
+//0x07, 0x68-origen;0x06, 0xEA-for autoulps test
 static char te_line[] = {
 	0x44,
 	0x07, 0x68,
@@ -186,7 +188,7 @@ static char display_off[] = {
 static char enter_sleep[] = {
 	0x10,
 };
-
+/*lint +e569*/
 static struct dsi_cmd_desc lcd_display_on_cmds[] = {
 	{DTYPE_DCS_WRITE1, 0,10, WAIT_TYPE_US,
 		sizeof(partial_setting_1), partial_setting_1},
@@ -1143,17 +1145,21 @@ static int mipi_jdi_probe(struct platform_device *pdev)
 
 		//mipi
 		pinfo->mipi.dsi_bit_clk = 120;
-		pinfo->dsi_bit_clk_upt_support = 0;
+		pinfo->mipi.dsi_bit_clk_val1 = 110;
+		pinfo->mipi.dsi_bit_clk_val2 = 130;
+		pinfo->mipi.dsi_bit_clk_val3 = 140;
+		pinfo->mipi.dsi_bit_clk_val4 = 150;
+		pinfo->dsi_bit_clk_upt_support = 1;
 		pinfo->mipi.dsi_bit_clk_upt = pinfo->mipi.dsi_bit_clk;
 		pinfo->pxl_clk_rate = 20* 1000000UL;
 	} else {
 	#ifdef DSI_1_2_VESA3X_VIDEO
-		pinfo->ldi.h_back_porch = 23;
-		pinfo->ldi.h_front_porch = 107;
-		pinfo->ldi.h_pulse_width = 20;
-		pinfo->ldi.v_back_porch = 28;
-		pinfo->ldi.v_front_porch = 14;
-		pinfo->ldi.v_pulse_width = 8;
+		pinfo->ldi.h_back_porch = 10;//23;
+		pinfo->ldi.h_front_porch = 220;//107;
+		pinfo->ldi.h_pulse_width = 8;//20;
+		pinfo->ldi.v_back_porch = 30;//12
+		pinfo->ldi.v_front_porch = 10;//14;
+		pinfo->ldi.v_pulse_width = 10;//4;
 	#else
 		//63fps
 		pinfo->ldi.h_back_porch = 23;

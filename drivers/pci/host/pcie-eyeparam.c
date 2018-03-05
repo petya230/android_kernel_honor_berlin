@@ -14,8 +14,8 @@ int hipcie_get_eyepattern_param(void *dev_data, char *buf, size_t len)
 		eye_diagram_param2 = dtsinfo->pcie_eye_param_ctrl3;
 		ret = scnprintf(buf, len, "0x%x,0x%x\n", eye_diagram_param, eye_diagram_param2);
 	} else {
-		PCIE_PR_INFO("kirin_pcie NULL\n");
-		ret = scnprintf(buf, len, "kirin_pcie NULL\n");
+		PCIE_PR_INFO("Kirin_pcie is null");
+		ret = scnprintf(buf, len, "Kirin_pcie is null\n");
 	}
 
 	return ret;
@@ -30,18 +30,22 @@ void hipcie_set_eyepattern_param(void *dev_data, char *buf)
 	char *buf_ctrl2;
 
 	if (!pcie) {
-		PCIE_PR_ERR("seteye: kirin_pcie is null\n");
+		PCIE_PR_ERR("Kirin_pcie is null");
 		return;
 	}
 	buf_ctrl2 = strsep(&buf, ",");
 	if (!buf_ctrl2 || !buf) {
-		PCIE_PR_ERR("seteye: input param is not correct\n");
+		PCIE_PR_ERR("Input param is not correct");
 		return;
 	}
-	if (sscanf(buf, "%32x", &eye_diagram_param_ctrl3) != 1)
+	if (kstrtou32(buf, 0, &eye_diagram_param_ctrl3)) {
+		PCIE_PR_ERR("seteye: get eye_diagram_param_ctrl3 from input failed\n");
 		return;
-	if (sscanf(buf_ctrl2, "%32x", &eye_diagram_param_ctrl2) != 1)
+	}
+	if (kstrtou32(buf_ctrl2, 0, &eye_diagram_param_ctrl2)) {
+		PCIE_PR_ERR("seteye: get eye_diagram_param_ctrl2 from input failed\n");
 		return;
+	}
 
 	dtsinfo = &pcie->dtsinfo;
 	dtsinfo->pcie_eye_param_ctrl2 = eye_diagram_param_ctrl2;
@@ -55,8 +59,8 @@ static int hipcie_eyepattern_param_show(struct seq_file *s, void *d)
 	struct kirin_pcie_dtsinfo *dtsinfo;
 
 	if (!pcie) {
-		PCIE_PR_INFO("kirin_pcie NULL\n");
-		seq_printf(s, "kirin_pcie NULL\n");
+		PCIE_PR_INFO("Kirin_pcie is null");
+		seq_printf(s, "Kirin_pcie is null\n");
 	} else {
 		dtsinfo = &pcie->dtsinfo;
 		seq_printf(s, "0x%x,0x%x\n", dtsinfo->pcie_eye_param_ctrl2, dtsinfo->pcie_eye_param_ctrl3);
@@ -82,18 +86,18 @@ ssize_t hipcie_debug_eyepattern_param_write(struct file *file, const char __user
 
 	_pcie_param_buf = kzalloc(PAGE_SIZE, GFP_KERNEL);
 	if (!_pcie_param_buf) {
-		PCIE_PR_ERR("alloc for _pcie_param_buf fail!");
+		PCIE_PR_ERR("Failed to alloc _pcie_param_buf!");
 		return -ENOMEM;
 	}
 
 	if (size >= PAGE_SIZE - 1) {
-		PCIE_PR_ERR("set pcie eye param cmd too long!");
+		PCIE_PR_ERR("Set pcie eye param cmd too long!");
 		kfree(_pcie_param_buf);
 		return -ENOMEM;
 	}
 
 	if (copy_from_user(_pcie_param_buf, buf, size)) {
-		PCIE_PR_ERR("[PCIE.ERROR] Can't get user data!");
+		PCIE_PR_ERR("Failed to get user data!");
 		kfree(_pcie_param_buf);
 		return -ENOSPC;
 	}
@@ -127,7 +131,7 @@ void pcie_debug_init(void *dev_data)
 
 	hipcie_debug_root = debugfs_create_dir(dn->full_name + 1, NULL);
 	if (!hipcie_debug_root) {
-		PCIE_PR_ERR("create debugfs dir fail");
+		PCIE_PR_ERR("Failed to create debugfs dir");
 		return;
 	}
 	debugfs_create_file("eyepattern", S_IWUSR | S_IRUSR, hipcie_debug_root, dev_data,

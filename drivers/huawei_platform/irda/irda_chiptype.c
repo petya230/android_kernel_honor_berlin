@@ -5,6 +5,7 @@
 * CONFIG_USE_CAMERA3_ARCH : the camera module build config
 * du to the irda power suplly by camera power chip
 */
+/*lint -e749*/
 
 #define IRDA_DRIVER_COMPATIBLE_ID		"irda,config"
 #define IRDA_CHIP_TYPE		"irda,chiptype"
@@ -24,6 +25,7 @@ enum irda_chiptype {
 	DEFAULT = 0,
 	MAXIM_616,
 	HI1102,
+	HI64XX,
 	OTHERS,
 };
 int g_chip_type;
@@ -52,7 +54,7 @@ static ssize_t chiptype_set(struct device *dev,
 	unsigned long state = 0;
 
 	if (!kstrtol(buf, 10, &state)) {
-		g_chip_type = state;
+		g_chip_type = (int)state;
 	}
 	return ret;
 }

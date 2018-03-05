@@ -153,7 +153,7 @@ struct loadswitch_ops dual_loadswitch_ops = {
 	.get_ls_id = dual_loadswitch_get_ls_id,
 };
 
-#if CONFIG_SYSFS
+#ifdef CONFIG_SYSFS
 #define DUAL_LOADSWITCH_SYSFS_FIELD(_name, n, m, store)                \
 {                                                   \
     .attr = __ATTR(_name, m, dual_loadswitch_sysfs_show, store),    \
@@ -278,6 +278,8 @@ static inline void dual_loadswitch_sysfs_remove_group(void)
 	sysfs_remove_group(&dli->dev->kobj, &dual_loadswitch_sysfs_attr_group);
 }
 #else
+
+/*lint -save -e* */
 static int loadswitch_sysfs_create_group(void)
 {
 	return 0;
@@ -286,6 +288,8 @@ static int loadswitch_sysfs_create_group(void)
 static inline void loadswitch_sysfs_remove_group(void)
 {
 }
+/*lint -restore*/
+
 #endif
 /**********************************************************
 *  Function:       dual_loadswitch_parse_dts
@@ -306,6 +310,8 @@ static int dual_loadswitch_parse_dts(void)
 *  Parameters:   device:platform_device
 *  return value:  0-sucess or others-fail
 **********************************************************/
+
+/*lint -save -e* */
 static int dual_loadswitch_probe(struct platform_device *pdev)
 {
 	int ret;
@@ -358,6 +364,7 @@ dual_loadswitch_fail_0:
 	dli = NULL;
 	return ret;
 }
+/*lint -restore*/
 
 static int dual_loadswitch_remove(struct platform_device *pdev)
 {
@@ -367,6 +374,7 @@ static int dual_loadswitch_remove(struct platform_device *pdev)
 #ifdef CONFIG_LLT_TEST
 #endif
 
+/*lint -save -e* */
 static struct of_device_id dual_loadswitch_match_table[] = {
 	{
 	 .compatible = "dual_loadswitch",
@@ -375,6 +383,7 @@ static struct of_device_id dual_loadswitch_match_table[] = {
 	{
 	 },
 };
+/*lint -restore*/
 
 static struct platform_driver dual_loadswitch_driver = {
 	.probe = dual_loadswitch_probe,
@@ -408,8 +417,11 @@ void __exit dual_loadswitch_exit(void)
 	platform_driver_unregister(&dual_loadswitch_driver);
 }
 
+/*lint -save -e* */
 device_initcall_sync(dual_loadswitch_init);
 module_exit(dual_loadswitch_exit);
+/*lint -restore*/
+
 MODULE_AUTHOR("HUAWEI");
 MODULE_DESCRIPTION("dual_loadswitch module driver");
 MODULE_LICENSE("GPL");

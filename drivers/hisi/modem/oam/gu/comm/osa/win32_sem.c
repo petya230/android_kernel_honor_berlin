@@ -223,7 +223,7 @@ VOS_UINT32 VOS_SemCtrlBlkFree( SEM_CONTROL_BLOCK *Sem_Address )
     }
     else
     {
-        Print("# VOS_FreeSemCtrlBlk free NULL Sem.\r\n");
+        Print1("%s", "# VOS_FreeSemCtrlBlk free NULL Sem.\r\n");
 
         return(VOS_ERR);
     }

@@ -11,14 +11,31 @@
 #include <linux/input/mt.h>
 #include <asm/unaligned.h>
 #include <linux/firmware.h>
+#include <linux/ctype.h>
+#include <linux/atomic.h>
 
 #include <linux/of_gpio.h>
 #include "parade.h"
+#if defined (CONFIG_HUAWEI_DSM)
+#include <dsm/dsm_pub.h>
+extern struct dsm_client *ts_dclient;
+#endif
+#if defined (CONFIG_TEE_TUI)
+#include "tui.h"
+#endif
+#include "../../huawei_ts_kit_api.h"
+#include "../../../lcdkit/include/lcdkit_panel.h"
+
 extern volatile int g_ts_kit_lcd_brightness_info;
 extern struct ts_kit_platform_data g_ts_kit_platform_data;
-
+#if defined (CONFIG_TEE_TUI)
+extern struct ts_tui_data tee_tui_data;
+#endif
 #define PARADE_POWER_ON_ROI_SWITCH 0
 
+#define TP_COLOR_SIZE   15
+#define TP_COLOR_READ_SIZE 5
+#define PARADE_OEMINFO_LEN_PER_LINE 16
 #define PARADE_USE_CMCP_FAILURE_EXPLANATION 0
 #define STATUS_SUCCESS	0
 #define STATUS_FAIL	-1
@@ -53,7 +70,10 @@ static int parade_hid_cmd_set_power_(struct parade_core_data *cd,
 
 /*parade internal declarations end*/
 static int parade_regulator_get(void);
+static void parade_regulator_put(void);
 static int parade_set_voltage(void);
+static int parade_gpio_request(void);
+static void parade_gpio_free(void);
 static int parade_power_on(void);
 static int parade_power_off(void);
 static int parade_read_input(struct parade_core_data *cd);
@@ -102,11 +122,55 @@ static void parade_status_resume_work_fn(struct work_struct *work);
 static int parade_set_glove_switch(u8 glove_switch);
 static int parade_set_holster_switch(u8 in_switch);
 static void parade_chip_touch_switch(void);
+/*tp color function*/
+static int parade_hid_output_read_color_info_(struct parade_core_data *cd,
+		u8 *color_info);
+static int parade_get_color_info(struct parade_core_data *cd);
+extern u8 cypress_ts_kit_color[TP_COLOR_SIZE];
 
+/* esd function */
+static int  parade_watchdog_work_check(void);
+static int parade_esd_reset_function(void);
+extern void ts_start_wd_timer(struct ts_kit_platform_data* cd);
+extern void ts_stop_wd_timer(struct ts_kit_platform_data* cd);
+
+static unsigned int get_panel_name_flag_adapter(void);
+static unsigned int get_panel_name_flag(void);
+static int parade_create_project_id(void);
+static int parade_pinctrl_select_normal(void);
+static int parade_pinctrl_select_lowpower(void);
+static int parade_i2c_read(u8 *reg_addr, u16 reg_len, u8 *buf, u16 len);
+static int parade_i2c_write(u8* buf, u16 length);
+static int parade_chip_wrong_touch(void);
+
+static int parade_wakeup_gesture_switch(struct ts_wakeup_gesture_enable_info* info);
+static void parade_deep_sleep_work_fn(struct work_struct *work);
+DECLARE_WORK(parade_deep_sleep_work,parade_deep_sleep_work_fn);
+static int sleep_resume_flag;
+
+static int already_get_flag = false;
+static unsigned int panel_name_flag;
+#define CMDLINE_PANEL_NAME "boe_nt51017te_9p6_800p_video"
+
+#define POWER_DEEP_SLEEP	1
+#define POWER_WAKEUP	0
+#define PARADE_NO_NEED_DO_AFTER_RESUME	1
+
+static atomic_t parade_reset_pin_status;
+
+enum FW_UPDATA_FLAG
+{
+	NO_UPDATA = 0,
+    NEED_UPDATA = 1,
+};
 static struct parade_core_data *tskit_parade_data;
 static struct delayed_work parade_status_resume_work;
+static volatile bool parade_is_power_on = true;
+static struct delayed_work parade_easy_wakeup_work;
 
 static DECLARE_DELAYED_WORK(parade_status_resume_work, parade_status_resume_work_fn);
+static void parade_enter_easy_wakeup(struct work_struct *work);
+static DECLARE_DELAYED_WORK(parade_easy_wakeup_work, parade_enter_easy_wakeup);
 #ifdef PARADE_ROI_ENABLE
 static unsigned char roi_data[PARADE_ROI_DATA_READ_LENGTH] = { 0 };
 #endif
@@ -115,6 +179,7 @@ static u32 parade_csv_line_count = 1;
 
 #define PARADE_MMI_RESULT_BUF_LEN 80
 #define PARADE_MMI_TEST_FAILED_REASON_LEN 50
+#define PARADE_DELAY_20MS	20
 
 static char tp_test_failed_reason[PARADE_MMI_TEST_FAILED_REASON_LEN] = { "-unknown" };
 static char buf_parademmitest_result[PARADE_MMI_RESULT_BUF_LEN] = { 0 };	/*store mmi test result*/
@@ -151,6 +216,9 @@ struct ts_device_ops ts_kit_parade_ops = {
 #ifdef PARADE_DOZE_ENABLE
 	.chip_touch_switch = parade_chip_touch_switch,
 #endif
+	.chip_check_status = parade_watchdog_work_check,
+	.chip_wakeup_gesture_enable_switch = parade_wakeup_gesture_switch,
+	.chip_wrong_touch = parade_chip_wrong_touch,
  };
 
 static const u16 crc_table[16] = {
@@ -285,6 +353,43 @@ exit:
 	return 0;
 }
 #endif
+/**
+* parse panel_name cmdline which is passed from lk *
+* Format : //new agassi lcd:panel_name_flag = true; *
+* Format : //old agassi lcd:panel_name_flag = false; *
+*/
+
+static int __init early_parse_panel_name_cmdline(char *p)
+{
+	if (p)
+	{
+		if (NULL != strstr(p, CMDLINE_PANEL_NAME))
+			panel_name_flag = true;
+		else
+			panel_name_flag = false;
+		TS_LOG_INFO("panel_name_flag :%u\n", panel_name_flag);
+	}
+	return 0;
+}
+
+early_param("mdss_mdp.panel", early_parse_panel_name_cmdline);
+
+static unsigned int get_panel_name_flag(void)
+{
+	return panel_name_flag;
+}
+
+/**
+* get_panel_name_flag_adapter *
+* Format : //new agassi lcd:panel_flag = true; *
+* Format : //old agassi lcd:panel_flag = false; *
+*/
+static unsigned int get_panel_name_flag_adapter(void)
+{
+	unsigned int panel_flag = 0;
+	panel_flag = get_panel_name_flag();
+	return panel_flag;
+}
 
 static void cyttsp5_pr_buf(u8 *dptr, int size,
 		const char *data_name)
@@ -321,7 +426,12 @@ static int parade_get_capacitance_test_type(struct ts_test_type_info *info)
 		return -1;
 	}
 
-	strncpy(info->tp_test_type, "Normalize_type:judge_different_reslut", TS_CAP_TEST_TYPE_LEN);
+	if(0 !=strlen(tskit_parade_data->parade_chip_data->tp_test_type)){
+		strncpy(info->tp_test_type,tskit_parade_data->parade_chip_data->tp_test_type, TS_CAP_TEST_TYPE_LEN);
+	}else{
+		strncpy(info->tp_test_type, "Normalize_type:judge_different_reslut", TS_CAP_TEST_TYPE_LEN);
+	}
+	TS_LOG_INFO("%s:info->tp_test_type :%s.\n", __func__,info->tp_test_type);
 	return NO_ERR;
 }
 
@@ -788,18 +898,20 @@ static void parade_print_NVstructure(struct ts_oem_info_param *info)
 	int flash_size = parade_get_oem_size();
 	int i = 0;
 
-	if(flash_size <= 0) {
+	if(flash_size <= 0 || flash_size >= (TS_CHIP_BUFF_MAX_SIZE - PARADE_OEMINFO_LEN_PER_LINE + 1)) {
 		TS_LOG_ERR("%s: Could not get TPIC flash size,fail line=%d\n", __func__,
 				__LINE__);
-		return -1;
+		return;
 	}
 
-	for(i = 0; i< flash_size/16; ++i ){
+	for(i = 0; i< flash_size/PARADE_OEMINFO_LEN_PER_LINE; ++i ){
 		TS_LOG_INFO("%s: %2x %2x %2x %2x %2x %2x %2x %2x %2x %2x %2x %2x %2x %2x %2x %2x \n", __func__,
-			 info->buff[0+i*16],info->buff[1+i*16],info->buff[2+i*16],info->buff[3+i*16],
-			 info->buff[4+i*16],info->buff[5+i*16],info->buff[6+i*16],info->buff[7+i*16],
-			 info->buff[8+i*16],info->buff[9+i*16],info->buff[10+i*16],info->buff[11+i*16],
-			 info->buff[12+i*16],info->buff[13+i*16],info->buff[14+i*16],info->buff[15+i*16]
+			 info->buff[0+i*PARADE_OEMINFO_LEN_PER_LINE],info->buff[1+i*PARADE_OEMINFO_LEN_PER_LINE],info->buff[2+i*PARADE_OEMINFO_LEN_PER_LINE],
+			 info->buff[3+i*PARADE_OEMINFO_LEN_PER_LINE], info->buff[4+i*PARADE_OEMINFO_LEN_PER_LINE],info->buff[5+i*PARADE_OEMINFO_LEN_PER_LINE],
+			 info->buff[6+i*PARADE_OEMINFO_LEN_PER_LINE],info->buff[7+i*PARADE_OEMINFO_LEN_PER_LINE],info->buff[8+i*PARADE_OEMINFO_LEN_PER_LINE],
+			 info->buff[9+i*PARADE_OEMINFO_LEN_PER_LINE],info->buff[10+i*PARADE_OEMINFO_LEN_PER_LINE],info->buff[11+i*PARADE_OEMINFO_LEN_PER_LINE],
+			 info->buff[12+i*PARADE_OEMINFO_LEN_PER_LINE],info->buff[13+i*PARADE_OEMINFO_LEN_PER_LINE],info->buff[14+i*PARADE_OEMINFO_LEN_PER_LINE],
+			 info->buff[15+i*PARADE_OEMINFO_LEN_PER_LINE]
 		 );
 	}
 }
@@ -1002,9 +1114,10 @@ static int parade_get_NVstructure_index(struct ts_oem_info_param *info, u8 type)
 		return -1;
 	}
 
-	for (index = 1; index < flash_size/16; ++index) {
+	for (index = 1; index < (TS_NV_STRUCTURE_REPAIR_OFFSET5+1); ++index) {
 		u8 tmp_type = info->buff[index*16];
-		if (tmp_type == type) {
+		u8 tmp_len = info->buff[index*16+1];
+		if (tmp_type == type && ts_oemdata_type_check_legal(tmp_type, tmp_len)) {
 			latest_index = index;
 			count += 1;
 		}
@@ -1163,8 +1276,14 @@ static int parade_get_oem_info(struct ts_oem_info_param *info)
 	latest_index = parade_get_NVstructure_index(info, type);
 	TS_LOG_INFO("%s get type:0x%2x  index = %d\n", __func__, type, latest_index);
 
-	if (latest_index) {
+	if (latest_index > 0) {
 		TS_LOG_INFO("%s type data find. len = %d\n", __func__, info->length);
+		if( info->length*PARADE_OEMINFO_LEN_PER_LINE >= TS_CHIP_TYPE_MAX_SIZE
+				|| (info->length + latest_index )* PARADE_OEMINFO_LEN_PER_LINE > TS_CHIP_BUFF_MAX_SIZE){
+			TS_LOG_ERR("%s invalid index[ %d ].\n", __func__, latest_index);
+			error = EINVAL;
+			goto out;
+		}
 		memcpy(info->data, &(info->buff[latest_index*16]), info->length*16 );
 	} else {
 		info->data[0] = 0x1;
@@ -1301,6 +1420,136 @@ static int validate_diff_result(int diff_threshold)
 		}
 	}
 	return 0;
+}
+
+int parade_hid_output_report_rate_switch_(struct cyttsp5_core_data *cd)
+{
+	if(NULL == cd) {
+		TS_LOG_ERR("%s cd NULL! err!\n", __func__);
+		return -CY_REPORT_RATE_ERR;
+	}
+
+	struct parade_hid_output m_hid_output = {
+		HID_OUTPUT_APP_COMMAND(HID_OUTPUT_REPORT_RATE_SWITCH),
+		.timeout_ms = CY_REPORT_RATE_DELAY,
+	};
+	TS_LOG_INFO("%s HID_OUTPUT_REPORT_RATE_SWITCH is 0x%02x", __func__, HID_OUTPUT_REPORT_RATE_SWITCH);
+
+	return parade_hid_send_output_and_wait_(cd, &m_hid_output);
+}
+
+void parade_change_report_rate(void)
+{
+	int rc = 0;
+	struct parade_core_data *cd = tskit_parade_data;
+	struct result *result = NULL;
+	u8 response_trcrq = 0;
+	u8 response_trcts = 0;
+
+	if(NULL == cd) {
+		TS_LOG_ERR("%s cd NULL err!\n", __func__);
+		return;
+	}
+
+	result = cd->dad.result;
+	if(NULL == result) {
+		TS_LOG_ERR("%s result NULL err!\n", __func__);
+		return;
+	}
+
+	rc = parade_hid_output_suspend_scanning_(cd);
+	if (rc) {
+		TS_LOG_ERR("%s cyttsp5_hid_output_suspend_scanning_ err!\n", __func__);
+		goto change_report_rate_err;
+	}
+
+	TS_LOG_INFO("parade_change_report_rate start\n");
+	rc = parade_hid_output_report_rate_switch_(cd);
+	if(!rc) {
+		response_trcrq = cd->response_buf[CY_REPORT_RATE_TRCRQ];
+		response_trcts = cd->response_buf[CY_REPORT_RATE_TRCTS];
+	} else {
+		TS_LOG_ERR("%s parade_hid_output_report_rate_switch_ back err!", __func__);
+		goto change_report_rate_err;
+	}
+
+	rc = parade_hid_output_resume_scanning_(cd);
+	if (rc) {
+		TS_LOG_ERR("%s parade_hid_output_resume_scanning_ err!\n", __func__);
+		goto change_report_rate_err;
+	} else {
+		if(CY_CORRECT_REPORT_RATE == response_trcrq && CY_CORRECT_REPORT_RATE == response_trcts) {
+			result->change_report_rate_pass = CY_REPORT_RATE_TRUE;
+			TS_LOG_INFO("%s parade_change_report_rate pass!\n", __func__);
+		} else {
+			TS_LOG_ERR("%s parade_change_report_rate fail!\n", __func__);
+			goto change_report_rate_err;
+		}
+	}
+
+	return;
+
+change_report_rate_err:
+	result->change_report_rate_pass = CY_REPORT_RATE_FALSE;
+	return;
+}
+
+static void validate_diff_self_result(int rx_diff_threshold, int tx_diff_threshold)
+{
+	struct parade_core_data *cd = NULL;
+	struct cmcp_data *cmcp_info = NULL;
+	struct result *result = NULL;
+	int32_t rx_num = 0;
+	int32_t tx_num = 0;
+	int i = 0;
+
+	cd = tskit_parade_data;
+	if(NULL == cd) {
+		TS_LOG_ERR("%s:parade_core_data's NULL\n", __func__);
+		return;
+	}
+
+	cmcp_info = cd->dad.cmcp_info;
+	if(NULL == cmcp_info) {
+		TS_LOG_ERR("%s:cmcp_info's NULL\n", __func__);
+		return;
+	}
+	rx_num = cmcp_info->rx_num;
+	tx_num = cmcp_info->tx_num;
+
+	result = cd->dad.result;
+	if(NULL == result) {
+		TS_LOG_ERR("%s:result's NULL\n", __func__);
+		return;
+	}
+
+	TS_LOG_INFO("%s: start, rx_diff_threshold=%d, tx_diff_threshold=%d\n", __func__, rx_diff_threshold, tx_diff_threshold);
+	result->diff_self_rx_test_pass = true;
+	result->diff_self_tx_test_pass = true;
+
+	for(i = 0; i < rx_num; i++)
+	{
+		if(ABS(cmcp_info->diff_self_data[i]) > rx_diff_threshold)
+		{
+			result->diff_self_rx_test_pass= false;
+			TS_LOG_ERR("%s: Rx self noise data-%d=%d breached threshold\n", __func__,
+				(i + CY_SEE_IT_NEXT_ONE), cmcp_info->diff_self_data[i]);
+			return;
+		}
+	}
+
+	for(i = rx_num; i < (rx_num + tx_num); i++)
+	{
+		if(ABS(cmcp_info->diff_self_data[i]) > tx_diff_threshold)
+		{
+			result->diff_self_tx_test_pass= false;
+			TS_LOG_ERR("%s: Tx self noise data-%d=%d breached threshold\n", __func__,
+				(i + CY_SEE_IT_NEXT_ONE - rx_num), cmcp_info->diff_self_data[i]);
+			return;
+		}
+	}
+
+	TS_LOG_INFO("%s: self noise test all pass\n", __func__);
 }
 
 static int parade_get_diff_data(void)
@@ -1500,6 +1749,8 @@ static int parade_get_brightness_info(void)
 	struct ts_oem_info_param *info =NULL;
 	TS_LOG_INFO("%s: Enter\n", __func__);
 
+	if(g_ts_kit_platform_data.chip_data->get_brightness_info_flag == 0)
+		return rc; //some ic (cs448) no this function.
 	rc = parade_check_cmd_status();
 	if(rc)
 		return rc;
@@ -1559,14 +1810,33 @@ out:
 
 }
 
+static void parade_reset_pin_low(void)
+{
+	TS_LOG_INFO("%s:enter\n", __func__);
+	if(tskit_parade_data->core_pdata->change_reset_flag_and_cmd_order){
+		atomic_set(&parade_reset_pin_status,0);
+		gpio_set_value(tskit_parade_data->parade_chip_data->ts_platform_data->reset_gpio, 0);
+	}else{
+		gpio_set_value(tskit_parade_data->parade_chip_data->ts_platform_data->reset_gpio, 0);
+		atomic_set(&parade_reset_pin_status,0);
+	}
+}
+
+static void parade_reset_pin_high(void)
+{
+	TS_LOG_INFO("%s:enter\n", __func__);
+	gpio_set_value(tskit_parade_data->parade_chip_data->ts_platform_data->reset_gpio, 1);
+	atomic_set(&parade_reset_pin_status,1);
+}
+
 static void parade_hw_reset(void)
 {
 	TS_LOG_INFO("%s:reset gpio is %d\n", __func__,tskit_parade_data->parade_chip_data->ts_platform_data->reset_gpio);
-	gpio_set_value(tskit_parade_data->parade_chip_data->ts_platform_data->reset_gpio, 1);
+	parade_reset_pin_high();
 	msleep(2);
-	gpio_set_value(tskit_parade_data->parade_chip_data->ts_platform_data->reset_gpio,  0);
+	parade_reset_pin_low();
 	msleep(2);
-	gpio_set_value(tskit_parade_data->parade_chip_data->ts_platform_data->reset_gpio,  1);
+	parade_reset_pin_high();
 	msleep(CY_HID_RESUME_STARTUP_TIMEOUT);
 	return NO_ERR;
 }
@@ -1587,14 +1857,34 @@ static inline void debug_print_i2c_transfer(bool action, u8 addr, u8 *buf, int s
 static int parade_i2c_read(u8 *reg_addr, u16 reg_len, u8 *buf, u16 len)
 {
 	int rc = 0;
-	rc = tskit_parade_data->parade_chip_data->ts_platform_data->bops->bus_read(reg_addr, reg_len, buf, len);
-	if (rc < 0)
-		 TS_LOG_ERR("%s,fail read	rc=%d\n", __func__, rc);
 
-	debug_print_i2c_transfer(false, *reg_addr, buf, len);
-
+	if(parade_is_power_on){
+		rc = tskit_parade_data->parade_chip_data->ts_platform_data->bops->bus_read(reg_addr, reg_len, buf, len);
+		if (rc < 0)
+			 TS_LOG_ERR("%s,fail read	rc=%d\n", __func__, rc);
+		debug_print_i2c_transfer(false, *reg_addr, buf, len);
+	}else{
+		TS_LOG_ERR("%s,i2c ops is not allow at power off\n",__func__);
+		rc = -EINVAL;
+	}
 	return rc;
  }
+static int parade_i2c_write(u8* buf, u16 length)
+{
+	int rc = 0;
+
+	if(parade_is_power_on){
+		rc = tskit_parade_data->parade_chip_data->ts_platform_data->bops->bus_write(buf,length);
+		if (rc < 0)
+			 TS_LOG_ERR("%s,fail write	rc=%d\n", __func__, rc);
+		debug_print_i2c_transfer(true, 0, buf, length);
+	}else{
+		TS_LOG_ERR("%s,i2c ops is not allow at power off\n",__func__);
+		rc = -EINVAL;
+	}
+	return rc;
+
+}
 
 static int i2c_communicate_check(void)
 {
@@ -1622,14 +1912,13 @@ static int i2c_communicate_check(void)
 static int parade_check_and_deassert_int(struct parade_core_data *cd)
 {
 	u8 reg_addr = PAR_REG_BASE;
-	u16 size;
-	u8 buf[200];
-	u8 *p;
+	u16 size = 0;
+	u8 buf[200] = {0};
+	u8 *p = NULL;
 	u8 retry = 3;
-	int rc;
-	int i;
+	int rc = 0;
 	do {
-		rc = cd->parade_chip_data->ts_platform_data->bops->bus_read(&reg_addr, sizeof(reg_addr), buf, 2);
+		rc = parade_i2c_read(&reg_addr, sizeof(reg_addr), buf, 2);
 		if (rc < 0)
 			return rc;
 		size = get_unaligned_le16(&buf[0]);
@@ -1644,11 +1933,8 @@ static int parade_check_and_deassert_int(struct parade_core_data *cd)
 			return -ENOMEM;
 		}
 
-		rc = cd->parade_chip_data->ts_platform_data->bops->bus_read(&reg_addr, sizeof(reg_addr), p, size);
+		rc = parade_i2c_read(&reg_addr, sizeof(reg_addr), p, size);
 		kfree(p);
-		for (i = 0; i < size; i++) {
-			TS_LOG_ERR("%s second read[%d]=%d\n", __func__, i, buf[i]);
-		}
 		if (rc < 0)
 			return rc;
 		msleep(10);//check every 10ms
@@ -1673,7 +1959,7 @@ static int parade_get_hid_descriptor_(struct parade_core_data *cd,
 	memcpy(cmd, &cd->core_pdata->hid_desc_register,
 		sizeof(cd->hid_core.hid_desc_register));
 
-	rc = cd->parade_chip_data->ts_platform_data->bops->bus_write(cmd, 2);
+	rc = parade_i2c_write(cmd, 2);
 	if (rc) {
 		TS_LOG_DEBUG("%s: failed to get HID descriptor length and version, rc=%d\n",
 			__func__, rc);
@@ -1733,8 +2019,11 @@ static int parade_reset_and_wait(struct parade_core_data *cd)
 	if (rc < 0)
 		goto error;
 
+	/*lint -save -e* */
 	t = wait_event_timeout(cd->wait_q, (cd->hid_reset_cmd_state == 0),
-				   msecs_to_jiffies(CY_HID_RESET_TIMEOUT));
+				   msecs_to_jiffies(cd->cy_hid_reset_timeout));
+	/*lint -restore*/
+
 	if (IS_TMO(t)) {
 		TS_LOG_ERR("%s: reset timed out\n", __func__);
 		rc = -ETIME;
@@ -2287,7 +2576,7 @@ static int parade_get_report_descriptor_(struct parade_core_data *cd)
 	memcpy(cmd, &cd->hid_desc.report_desc_register,
 		sizeof(cd->hid_desc.report_desc_register));
 	TS_LOG_DEBUG("%s report_desc_register :%d\n", __func__, cd->hid_desc.report_desc_register);
-	rc = cd->parade_chip_data->ts_platform_data->bops->bus_write(cmd, 2);
+	rc = parade_i2c_write(cmd, 2);
 	if (rc) {
 		TS_LOG_DEBUG("%s: failed to get HID descriptor length and version, rc=%d\n",
 			__func__, rc);
@@ -2456,7 +2745,7 @@ static int parade_hid_send_output_(struct parade_core_data *cd,
 	}
 
 	cyttsp5_pr_buf(cmd, length + 2, "command");
-	rc = cd->parade_chip_data->ts_platform_data->bops->bus_write(cmd, length + 2);
+	rc = parade_i2c_write(cmd, length + 2);
 	if (rc)
 		TS_LOG_DEBUG("%s: Fail parade_adap_transfer\n", __func__);
 
@@ -2473,7 +2762,7 @@ static int parade_hid_send_output_user_(struct parade_core_data *cd,
 	if (!hid_output->length || !hid_output->write_buf)
 		return -EINVAL;
 
-	rc = cd->parade_chip_data->ts_platform_data->bops->bus_write(hid_output->write_buf, hid_output->length);
+	rc = parade_i2c_write(hid_output->write_buf, hid_output->length);
 	if (rc)
 		TS_LOG_ERR("%s: Fail parade_adap_transfer\n", __func__);
 
@@ -2497,6 +2786,12 @@ static int parade_hid_send_output_user_and_wait_(struct parade_core_data *cd,
 	t = wait_event_timeout(cd->wait_q, (cd->hid_cmd_state == 0),
 			msecs_to_jiffies(CY_HID_OUTPUT_USER_TIMEOUT));
 	if (IS_TMO(t)) {
+#if defined (CONFIG_HUAWEI_DSM)
+		if (!dsm_client_ocuppy(ts_dclient)) {
+			dsm_client_record(ts_dclient, "parade output cmd execution timed out.\n");
+			dsm_client_notify(ts_dclient, DSM_TP_HID_TIMEOUT_ERROR_NO);
+		}
+#endif
 		TS_LOG_ERR("%s: HID output cmd execution timed out\n",
 			__func__);
 		rc = -ETIME;
@@ -2729,20 +3024,25 @@ static ssize_t parade_hw_reset_store(struct device *dev,
 
 static DEVICE_ATTR(hw_reset, S_IWUSR, NULL, parade_hw_reset_store);
 
-
+#define PARADE_BOOTLOADER_COMMAND_RESPONSE_LOW_CRC 3
+#define PARADE_HID_OUTPUT_VALIDATE_BL_RESPONSE_COUNT 7
 static int parade_hid_output_validate_bl_response(
 		struct parade_core_data *cd,
 		struct parade_hid_output *hid_output)
 {
-	u16 size;
-	u16 crc;
-	u8 status;
+	u16 size = 0;
+	u16 crc = 0;
+	u8 status = 0;
 
 	size = get_unaligned_le16(&cd->response_buf[0]);
 
 	if (hid_output->reset_expected && !size)
 		return 0;
 
+	if(size -PARADE_BOOTLOADER_COMMAND_RESPONSE_LOW_CRC >= CY_MAX_INPUT || size <= PARADE_HID_OUTPUT_VALIDATE_BL_RESPONSE_COUNT ){
+		TS_LOG_ERR("%s: HID output response, wrong size\n",__func__);
+		return -EPROTO;
+	}
 	if (cd->response_buf[HID_OUTPUT_RESPONSE_REPORT_OFFSET]
 			!= HID_BL_RESPONSE_REPORT_ID) {
 		TS_LOG_ERR("%s: HID output response, wrong report_id\n",
@@ -2762,8 +3062,8 @@ static int parade_hid_output_validate_bl_response(
 		return -EPROTO;
 	}
 
-	crc = _parade_compute_crc(&cd->response_buf[4], size - 7);
-	if (cd->response_buf[size - 3] != LOW_BYTE(crc)
+	crc = _parade_compute_crc(&cd->response_buf[4], size - PARADE_HID_OUTPUT_VALIDATE_BL_RESPONSE_COUNT);
+	if (cd->response_buf[size - PARADE_BOOTLOADER_COMMAND_RESPONSE_LOW_CRC] != LOW_BYTE(crc)
 			|| cd->response_buf[size - 2] != HI_BYTE(crc)) {
 		TS_LOG_ERR("%s: HID output response, wrong CRC 0x%X\n",
 			__func__, crc);
@@ -2794,8 +3094,8 @@ static int parade_hid_output_validate_app_response(
 
 	if (cd->response_buf[HID_OUTPUT_RESPONSE_REPORT_OFFSET]
 			!= HID_APP_RESPONSE_REPORT_ID) {
-		TS_LOG_ERR("%s: HID output response, wrong report_id\n",
-			__func__);
+		TS_LOG_ERR("%s: HID output response, wrong report_id:%d\n",
+			__func__,cd->response_buf[HID_OUTPUT_RESPONSE_REPORT_OFFSET]);
 		return -EPROTO;
 	}
 
@@ -2925,6 +3225,7 @@ static int parade_hid_send_output_and_wait_(struct parade_core_data *cd, struct 
 	int t;
 	int size;
 	u16 timeout_ms;
+	int retry = 3;
 
 	mutex_lock(&cd->system_lock);
 	cd->hid_cmd_state = hid_output->command_code + 1;
@@ -2933,8 +3234,9 @@ static int parade_hid_send_output_and_wait_(struct parade_core_data *cd, struct 
 	if (hid_output->timeout_ms)
 		timeout_ms = hid_output->timeout_ms;
 	else
-		timeout_ms = CY_HID_OUTPUT_TIMEOUT;
+		timeout_ms = tskit_parade_data->cy_hid_output_timeout;
 
+send_cmd:
 	rc = parade_hid_send_output_(cd, hid_output);
 	if (rc){
 		TS_LOG_ERR("%s parade_hid_send_output_ failed, rc=%d\n", __func__,rc);
@@ -2955,8 +3257,17 @@ static int parade_hid_send_output_and_wait_(struct parade_core_data *cd, struct 
 		}
 	}
 
-	if (!hid_output->novalidate)
+	if (!hid_output->novalidate){
 		rc = parade_hid_output_validate_response(cd, hid_output);
+		if(rc){
+			TS_LOG_ERR("%s: validate response error, code:%d\n",
+				__func__,rc);
+			if(retry--){
+				msleep(PARADE_DELAY_20MS);
+				goto send_cmd;
+			}
+		}
+	}
 
 	size = get_unaligned_le16(&cd->response_buf[0]);
 	cyttsp5_pr_buf(cd->response_buf, size, "return_buf");
@@ -2994,6 +3305,10 @@ static void parade_si_get_cydata(struct parade_core_data *cd)
 
 	memcpy(cydata->mfg_id, cydata_dev->mfg_id, CY_NUM_MFGID);
 
+	memset(tskit_parade_data->parade_chip_data->version_name, 0, MAX_STR_LEN);
+	snprintf(tskit_parade_data->parade_chip_data->version_name, MAX_STR_LEN -1, "0x%04X",
+					cydata->fw_ver_conf);
+
 }
 
 static void parade_si_get_sensing_conf_data(struct parade_core_data *cd)
@@ -3018,6 +3333,7 @@ static void parade_si_get_sensing_conf_data(struct parade_core_data *cd)
 	}
 
 	scd->panel_id = scd_dev->panel_id;
+	tskit_parade_data->panel_id = scd->panel_id;
 	scd->btn = scd_dev->btn;
 	scd->scan_mode = scd_dev->scan_mode;
 	scd->max_tch = scd_dev->max_num_of_tch_per_refresh_cycle;
@@ -3034,7 +3350,7 @@ static void parade_si_get_sensing_conf_data(struct parade_core_data *cd)
 static int parade_si_setup(struct parade_core_data *cd)
 {
 	struct parade_sysinfo *si = &cd->sysinfo;
-	int max_tch = si->sensing_conf_data.max_tch;
+	unsigned int max_tch = si->sensing_conf_data.max_tch;
 
 	if (!si->xy_data)
 		si->xy_data = kzalloc(max_tch * si->desc.tch_record_size,
@@ -3211,9 +3527,17 @@ static int parade_before_suspend(void)
 {
 	int rc = 0;
 	struct parade_core_data *cd = tskit_parade_data;
+	int sleep_in_mode = cd->sleep_in_mode;
 	TS_LOG_INFO("%s Enter", __func__);
-	if(g_ts_kit_platform_data.chip_data->isbootupdate_finish==false) {
+	if(CY_SHOW_BEFORE_SUSPEND == tskit_parade_data->show_before_suspend_flag) {
+		tskit_parade_data->avoid_roi_switch_flag = CY_AVOID_ROI_SWITCH;
+	}
+	if(g_ts_kit_platform_data.chip_data->isbootupdate_finish==false
+		&& CY_CMD_SLEEP_MODE != sleep_in_mode) {
 		enable_irq(tskit_parade_data->parade_chip_data->ts_platform_data->irq_id);
+	}
+	if(1 == sleep_in_mode) { //Power down
+		parade_is_power_on = false;
 	}
 	return rc;
 }
@@ -3286,31 +3610,158 @@ static int parade_core_wake_device_from_deep_sleep_(struct parade_core_data *cd)
 		rc = -EAGAIN;
 	}
 	/* Prevent failure on sequential wake/sleep requests from OS */
+#if defined (CONFIG_HUAWEI_DSM)
+	if(rc < 0) {
+		if (!dsm_client_ocuppy(ts_dclient)) {
+			TS_LOG_ERR("%s: wakeup parade ts failed\n",
+						__func__);
+			dsm_client_record(ts_dclient, "wakeup parade ts failed.\nfailed status is %d.\n\n", TS_WAKEUP_FAIL);
+			dsm_client_notify(ts_dclient, DSM_TP_WAKEUP_ERROR_NO);
+		}
+	}
+#endif
 	msleep(20);
 
 	return rc;
 }
+static int parade_wakeup_gesture_switch(struct ts_wakeup_gesture_enable_info* info)
+{
+	TS_LOG_INFO("%s:done\n", __func__);
+	return NO_ERR;
+}
+
+static int parade_chip_wrong_touch(void)
+{
+	int rc = NO_ERR;
+	mutex_lock(&tskit_parade_data->system_lock);
+	tskit_parade_data->parade_chip_data->easy_wakeup_info.off_motion_on = true;
+	mutex_unlock(&tskit_parade_data->system_lock);
+	TS_LOG_INFO("%s:done\n", __func__);
+	return rc;
+}
+
+#define PARADE_ENTER_EASY_WAKEUP_WRITE_LENS 1
+static void parade_enter_easy_wakeup(struct work_struct *work)
+{
+	struct parade_core_data* cd = tskit_parade_data;
+	int rc;
+	u8 write_buf[PARADE_ENTER_EASY_WAKEUP_WRITE_LENS] = { 0x00 };
+	struct parade_hid_output hid_output = {
+		HID_OUTPUT_APP_COMMAND(HID_OUTPUT_ENTER_EASYWAKE_STATE),
+		.write_length = PARADE_ENTER_EASY_WAKEUP_WRITE_LENS,
+		.write_buf = write_buf,
+	};
+
+	ts_stop_wd_timer(&g_ts_kit_platform_data);
+	
+	rc = parade_check_cmd_status();
+	if(rc)
+		return;
+
+	if(false == g_ts_kit_platform_data.chip_data->isbootupdate_finish) {
+		TS_LOG_INFO("%s MMI/fwupgrade is running, no need easywakeup.\n",__func__);
+		parade_finish_cmd();
+		return;
+	}
+
+	rc = parade_hid_send_output_and_wait_(cd, &hid_output);
+	if (rc || cd->response_buf[CY_APP_RETURN_RESPONSE_STATUS_BIT] == 0){
+		TS_LOG_ERR("%s: Get in easy wakeup mode fail, rc = %d, status = %u",
+			__func__, rc, cd->response_buf[CY_APP_RETURN_RESPONSE_STATUS_BIT]);
+		parade_finish_cmd();
+		return;
+	}
+
+	if (device_may_wakeup(cd->dev)) {
+		rc = enable_irq_wake(g_ts_kit_platform_data.irq_id);
+		if (!rc) {
+			TS_LOG_INFO("%s: Device may wakeup\n", __func__);
+		} else {
+			TS_LOG_ERR("%s: enable irq wake fail, rc = %d\n",
+				   __func__, rc);
+		}
+	} else {
+		TS_LOG_INFO("%s: Device may not wakeup\n", __func__);
+	}
+
+	parade_finish_cmd();
+}
+
+static void parade_deep_sleep_work_fn(struct work_struct *work)
+{
+	struct parade_core_data* cd = tskit_parade_data;
+	int rc = NO_ERR;
+
+	if(false == g_ts_kit_platform_data.chip_data->isbootupdate_finish) {
+		TS_LOG_INFO("%s MMI/fwupgrade is running, no need suspend/resume.\n",__func__);
+		return;
+	}
+	if(sleep_resume_flag == POWER_DEEP_SLEEP) {
+		ts_stop_wd_timer(&g_ts_kit_platform_data);
+		rc = parade_check_cmd_status();
+		if(rc)
+			return;
+		parade_put_device_into_deep_sleep_(cd);
+		parade_finish_cmd();
+		disable_irq(g_ts_kit_platform_data.irq_id);
+	}
+	else {
+		if(cd->parade_chip_data->easy_wakeup_info.sleep_mode != TS_GESTURE_MODE)
+			enable_irq(g_ts_kit_platform_data.irq_id);
+		rc = parade_check_cmd_status();
+		if(rc)
+			return;
+		parade_core_wake_device_from_deep_sleep_(cd);
+		parade_finish_cmd();
+		ts_start_wd_timer(&g_ts_kit_platform_data);
+		if(CY_SHOW_BEFORE_SUSPEND == tskit_parade_data->show_before_suspend_flag) {
+			tskit_parade_data->avoid_roi_switch_flag = 0;
+		}
+	}
+
+}
+
 static int parade_core_suspend(void)
 {
 	int rc = 0;
 	struct parade_core_data* cd = tskit_parade_data;
 	int sleep_in_mode = cd->sleep_in_mode;
+
 	TS_LOG_INFO("%s enter\n", __func__);
-	if(0 == sleep_in_mode){ //Deep Sleep
-		TS_LOG_INFO("%s: put device into sleep--NOT implemented\n", __func__);
-	} else if(1 == sleep_in_mode){ //Power Down
-		TS_LOG_INFO("%s: power off device, current control by LCD\n", __func__);
-		if(g_ts_kit_platform_data.chip_data->isbootupdate_finish) {
-			disable_irq(tskit_parade_data->parade_chip_data->ts_platform_data->irq_id);/*Disable IRQ to avoid the glitch changes of LCD*/
+	switch (cd->parade_chip_data->easy_wakeup_info.sleep_mode) {
+		case TS_POWER_OFF_MODE:
+			if(0 == sleep_in_mode){ //Deep Sleep
+				TS_LOG_INFO("%s: put device into sleep\n", __func__);
+				sleep_resume_flag = POWER_DEEP_SLEEP;
+				schedule_work(&parade_deep_sleep_work);
+			} else if(1 == sleep_in_mode){ //Power Down
+				TS_LOG_INFO("%s: power off device, current control by LCD\n", __func__);
+				if(g_ts_kit_platform_data.chip_data->isbootupdate_finish) {
+					/*Disable IRQ to avoid the glitch changes of LCD*/
+					disable_irq(tskit_parade_data->parade_chip_data->ts_platform_data->irq_id);
+				}
+			}
+			break;
+		case TS_GESTURE_MODE:/*gesture easy_wake_up mode. */
+			if(0 == cd->core_pdata->wakeup_gesture_enable){
+				TS_LOG_ERR("%s: disable easy_wakeup, enter deep sleep!!\n", __func__);
+				sleep_resume_flag = POWER_DEEP_SLEEP;
+				schedule_work(&parade_deep_sleep_work);
+			}else{
+				TS_LOG_INFO("%s: enter easy wakeup mode.\n", __func__);
+				mutex_lock(&cd->system_lock);
+				tskit_parade_data->parade_chip_data->easy_wakeup_info.off_motion_on = true;
+				mutex_unlock(&cd->system_lock);
+				schedule_work(&parade_easy_wakeup_work);
+			}
+			break;
+		default:
+			TS_LOG_ERR("%s error sleep in mode\n", __func__);
+			return -EINVAL;
 	}
-	} else if(2 == sleep_in_mode){ //Easy Wake
-		TS_LOG_ERR("%s easy wake no supported\n", __func__);
-	} else {
-		rc = -1;
-		TS_LOG_ERR("%s error sleep in mode\n", __func__);
-	}
-	if(g_ts_kit_platform_data.chip_data->isbootupdate_finish) {
+	if(0 != sleep_in_mode && g_ts_kit_platform_data.chip_data->isbootupdate_finish) {
 		parade_power_off_gpio_set();
+		parade_pinctrl_select_lowpower();
 	}
 	return rc;
 }
@@ -3321,23 +3772,33 @@ static int parade_core_resume(void)
 	struct parade_core_data* cd = tskit_parade_data;
 	int sleep_in_mode = cd->sleep_in_mode;
 	TS_LOG_INFO("%s enter\n", __func__);
-	parade_power_on_gpio_set();
-	if(0 == sleep_in_mode){ //Deep Sleep
-		TS_LOG_INFO("%s: wake up device by command--NOT implemented\n", __func__);
+	parade_is_power_on = true;
+	if(0 != sleep_in_mode) {
+		parade_power_on_gpio_set();
+		parade_pinctrl_select_normal();
 	}
-	else if(1 == sleep_in_mode){ //Power Down
-		TS_LOG_INFO("%s: power on device by LCD, start i2c seq\n", __func__);
-		parade_hw_reset();
-		msleep(CY_HID_RESUME_STARTUP_TIMEOUT);
-		rc = parade_check_and_deassert_int(cd);
-		enable_irq(tskit_parade_data->parade_chip_data->ts_platform_data->irq_id);
-	}
-	else if(2 == sleep_in_mode){ //Easy Wake
-		TS_LOG_ERR("%s easy wake no supported\n", __func__);
-	}
-	else{
-		rc = -1;
-		TS_LOG_ERR("%s error sleep in mode\n", __func__);
+	switch (cd->parade_chip_data->easy_wakeup_info.sleep_mode) {
+		case TS_POWER_OFF_MODE:
+			if(0 == sleep_in_mode){ //Deep Sleep
+				TS_LOG_INFO("%s: wake up device by command\n", __func__);
+				sleep_resume_flag = POWER_WAKEUP;
+				schedule_work(&parade_deep_sleep_work);
+			}else if(1 == sleep_in_mode){ //Power Down
+				TS_LOG_INFO("%s: power on device by LCD, start i2c seq\n", __func__);
+				parade_hw_reset();
+				rc = parade_check_and_deassert_int(cd);
+				msleep(PARADE_DELAY_20MS);
+				enable_irq(tskit_parade_data->parade_chip_data->ts_platform_data->irq_id);
+			}
+			break;
+		case TS_GESTURE_MODE:/*gesture easy_wake_up mode. */
+			TS_LOG_INFO("%s: exit easy wakeup mode.\n", __func__);
+			sleep_resume_flag = POWER_WAKEUP;
+			schedule_work(&parade_deep_sleep_work);
+			break;
+		default:
+			TS_LOG_ERR("%s error sleep in mode\n", __func__);
+			return -EINVAL;
 	}
 	return rc;
 
@@ -3348,6 +3809,10 @@ static int parade_after_resume(void *feature_info)
 	int retval = NO_ERR;
 	struct parade_sysinfo *si = &tskit_parade_data->sysinfo;
 	TS_LOG_INFO("%s Enter\n", __func__);
+	if(PARADE_NO_NEED_DO_AFTER_RESUME == tskit_parade_data->no_need_after_resume_flag) {
+		TS_LOG_INFO("%s No need doing parade_after_resume\n", __func__);
+		return retval;
+	}
 	if(si->ready){
 		tskit_parade_data->is_need_check_mode_before_status_resume = false;
 		schedule_delayed_work(&parade_status_resume_work,msecs_to_jiffies(PARADE_AFTER_RESUME_TIMEOUT));
@@ -3394,17 +3859,21 @@ static void parade_status_resume_work_fn(struct work_struct *work)
 	}
 #endif
 	/*Glove Mode*/
-	retval = parade_set_glove_switch(info->glove_info.glove_switch);
-	if(retval != NO_ERR){
-		TS_LOG_ERR("%s Set glove switch Fail, status: %d\n", __func__ , retval);
+	if(info->glove_info.glove_supported) {
+		retval = parade_set_glove_switch(info->glove_info.glove_switch);
+		if(retval != NO_ERR){
+			TS_LOG_ERR("%s Set glove switch Fail, status: %d\n", __func__ , retval);
+		}
+		TS_LOG_INFO("%s Set glove switch to %d [OK]\n", __func__ , info->glove_info.glove_switch);
 	}
-	TS_LOG_INFO("%s Set glove switch to %d [OK]\n", __func__ , info->glove_info.glove_switch);
 	/*Holster Switch*/
-	retval = parade_set_holster_switch(info->holster_info.holster_switch);
-	if(retval != NO_ERR){
-		TS_LOG_ERR("%s Set holster switch Fail, status: %d\n", __func__ , retval);
+	if(info->holster_info.holster_supported) {
+		retval = parade_set_holster_switch(info->holster_info.holster_switch);
+		if(retval != NO_ERR){
+			TS_LOG_ERR("%s Set holster switch Fail, status: %d\n", __func__ , retval);
+		}
+		TS_LOG_INFO("%s Set holster switch to %d [OK]\n", __func__ , info->holster_info.holster_switch);
 	}
-	TS_LOG_INFO("%s Set holster switch to %d [OK]\n", __func__ , info->holster_info.holster_switch);
 out:
 	mutex_unlock(&tskit_parade_data->parade_chip_data->device_call_lock);
 	return retval;
@@ -3414,6 +3883,7 @@ static void parade_shutdown(void)
 {
 	TS_LOG_INFO("%s parade_shutdown call power off\n",__func__);
 	parade_power_off();
+	parade_gpio_free();
 	return;
 }
 
@@ -3421,7 +3891,7 @@ static void parade_shutdown(void)
 * this function is only suitable for those
 * parameter IDs that only returns one byte
 */
-static int parade_get_ram_parameter(struct parade_core_data *cd, u8 id, int* parameter_out)
+static int parade_get_ram_parameter(struct parade_core_data *cd, u8 id, int* parameter_out,int timeout)
 {
 	int rc = NO_ERR;
 	int write_length = 1;
@@ -3432,6 +3902,7 @@ static int parade_get_ram_parameter(struct parade_core_data *cd, u8 id, int* par
 		HID_OUTPUT_APP_COMMAND(HID_OUTPUT_GET_PARAM),
 		.write_length = write_length,
 		.write_buf = param,
+		.timeout_ms=timeout,
 	};
 	param[0] = id;
 	rc = parade_hid_send_output_and_wait_(cd, &hid_output);
@@ -3464,7 +3935,7 @@ static int parade_get_ram_parameter(struct parade_core_data *cd, u8 id, int* par
 * this function is only suitable for those
 * parameter IDs that needs one byte data
 */
-static int parade_set_ram_parameter(struct parade_core_data *cd, u8 id, u8 data)
+static int parade_set_ram_parameter(struct parade_core_data *cd, u8 id, u8 data, int timeout)
 {
 	int rc = NO_ERR;
 	u8 write_buf[3];
@@ -3472,6 +3943,7 @@ static int parade_set_ram_parameter(struct parade_core_data *cd, u8 id, u8 data)
 		HID_OUTPUT_APP_COMMAND(HID_OUTPUT_SET_PARAM),
 		.write_buf = write_buf,
 		.write_length = 3,
+		.timeout_ms = timeout,
 	};
 	//ONLY SUPPORT SINGLE PARAMETER(1 BYTE) ONLY
 	write_buf[0] = id;
@@ -3488,9 +3960,27 @@ static int parade_set_ram_parameter(struct parade_core_data *cd, u8 id, u8 data)
 static int parade_set_power_on_flag(struct parade_core_data *cd)
 {
 	int rc = NO_ERR;
-	rc = parade_set_ram_parameter(cd,0x21,0x01);
+
+	TS_LOG_INFO("%s Enter\n",__func__);
+	rc = parade_set_ram_parameter(cd,0x21,0x01,CY_HID_OUTPUT_SET_GET_POWER_ON_FLAG);
 	if (rc)
 		TS_LOG_ERR("%s set power on flag command failed\n", __func__);
+
+	TS_LOG_INFO("%s Exit\n",__func__);
+	return rc;
+}
+static int parade_get_power_on_flag(struct parade_core_data *cd)
+{
+	int rc = NO_ERR;
+	int param_out;
+
+	TS_LOG_INFO("%s Enter\n",__func__);
+	rc = parade_get_ram_parameter(cd,0x21,&param_out,CY_HID_OUTPUT_SET_GET_POWER_ON_FLAG);
+	if (rc)
+		TS_LOG_ERR("%s get power on flag command failed\n", __func__);
+	else
+		TS_LOG_INFO("%s get power on flag value = %d\n",__func__,param_out);
+
 	return rc;
 }
 
@@ -3503,7 +3993,7 @@ static int parade_set_glove_switch(u8 glove_switch)
 		data= FINGER_GLOVE_MODE;
 	else
 		data = FINGER_ONLY_MODE;
-	rc = parade_set_ram_parameter(tskit_parade_data, TOUCH_MODE_RAM_ID , data);
+	rc = parade_set_ram_parameter(tskit_parade_data, TOUCH_MODE_RAM_ID , data,CY_HID_OUTPUT_SET_RAM_NORMAL_PARAM);
 	return rc;
 }
 
@@ -3515,7 +4005,7 @@ static int parade_get_glove_switch(u8 *glove_switch)
 		TS_LOG_ERR("parade_get_glove_switch: glove_switch is Null\n");
 		return -ENOMEM;
 	}
-	rc = parade_get_ram_parameter(tskit_parade_data, TOUCH_MODE_RAM_ID, &touch_mode_enable);
+	rc = parade_get_ram_parameter(tskit_parade_data, TOUCH_MODE_RAM_ID, &touch_mode_enable,CY_HID_OUTPUT_SET_RAM_NORMAL_PARAM);
 	if(rc != NO_ERR){
 		TS_LOG_ERR("%s, Fail to get glove switch,rc = %d\n", __func__,rc);
 		goto out;
@@ -3536,6 +4026,9 @@ static int parade_glove_switch(struct ts_glove_info *info)
 {
 	int retval = NO_ERR;
 	u8 buf = 0;
+
+	if(info->glove_supported == 0) //not support
+		return retval;
 
 	retval = parade_check_cmd_status();
 	if(retval)
@@ -3591,7 +4084,7 @@ static int parade_set_holster_switch(u8 in_switch)
 		data= HOLSTER_ON;
 	else
 		data = HOLSTER_OFF;
-	rc = parade_set_ram_parameter(tskit_parade_data, HOLSTER_RAME_ID , data);
+	rc = parade_set_ram_parameter(tskit_parade_data, HOLSTER_RAME_ID , data,CY_HID_OUTPUT_SET_RAM_NORMAL_PARAM);
 	return rc;
 }
 
@@ -3603,7 +4096,7 @@ static int parade_get_holster_switch(u8 *out_switch)
 		TS_LOG_ERR("parade_get_holster_switch: holster is Null\n");
 		return -ENOMEM;
 	}
-	rc = parade_get_ram_parameter(tskit_parade_data, HOLSTER_RAME_ID, &hoster_mode);
+	rc = parade_get_ram_parameter(tskit_parade_data, HOLSTER_RAME_ID, &hoster_mode,CY_HID_OUTPUT_SET_RAM_NORMAL_PARAM);
 	if(rc != NO_ERR){
 		TS_LOG_ERR("%s, Fail to get holster switch,rc = %d\n", __func__,rc);
 		goto out;
@@ -3617,7 +4110,10 @@ out:
 static int parade_holster_switch(struct ts_holster_info *info)
 {
 	int retval = NO_ERR;
-	u8 uTmp;
+	u8 uTmp = 0;
+	if(info->holster_supported == 0) // not support
+		return retval;
+
 	retval = parade_check_cmd_status();
 	if(retval)
 		return retval;
@@ -3637,7 +4133,7 @@ static int parade_holster_switch(struct ts_holster_info *info)
 				   __func__,retval);
 		}
 		info->holster_switch = uTmp;
-		TS_LOG_INFO("%s, get holster switch: %d\n",info->holster_switch);
+		TS_LOG_INFO("%s, get holster switch: %d\n", __func__, info->holster_switch);
 		break;
 	default:
 		TS_LOG_INFO("invalid holster switch(%d) action: %d\n",
@@ -3668,6 +4164,7 @@ Calibration Data for alternative frequencies
 12h - Attenuator Trim
 13h - Pin index table
 */
+#define PARADE_RETRIEVE_DATA_STRUCTURE_RESPONSE_DATA 10
 static int parade_get_calibration_data(struct ts_calibration_data_info *info, struct ts_cmd_node *out_cmd)
 {
 	int rc = NO_ERR;
@@ -3675,8 +4172,8 @@ static int parade_get_calibration_data(struct ts_calibration_data_info *info, st
 	u8 data_id = 0;
 	u16 read_offset = 0;
 	u16 read_length = 100;
-	u8 status;
-	u16 actual_read_len;
+	u8 status = 0;
+	u16 actual_read_len = 0;
 
 	rc = parade_check_cmd_status();
 
@@ -3714,6 +4211,10 @@ static int parade_get_calibration_data(struct ts_calibration_data_info *info, st
 	}
 
 	actual_read_len = tskit_parade_data->response_buf[7] + 256 * tskit_parade_data->response_buf[8];
+	if((actual_read_len + PARADE_RETRIEVE_DATA_STRUCTURE_RESPONSE_DATA >= CY_MAX_INPUT) || actual_read_len >= CALIBRATION_DATA_SIZE){
+		TS_LOG_ERR("%s invalid index[ %d ].\n", __func__, actual_read_len);
+		goto exit;
+	}
 	memcpy(info->data, &tskit_parade_data->response_buf[10], actual_read_len);
 	info->used_size = actual_read_len;
 	info->tx_num = tskit_parade_data->sysinfo.sensing_conf_data.electrodes_x;
@@ -3821,6 +4322,13 @@ static int parade_roi_switch (struct ts_roi_info *info)
 	int timeout_ms = PARADE_WORK_WAIT_TIMEOUT;
 
 	TS_LOG_INFO("%s enter", __func__);
+	if(CY_SHOW_BEFORE_SUSPEND == tskit_parade_data->show_before_suspend_flag) {
+		if(CY_AVOID_ROI_SWITCH == tskit_parade_data->avoid_roi_switch_flag) {
+			TS_LOG_ERR("%s: avoid_roi_switch_flag is 1, return\n", __func__);
+			return -EINVAL;
+		}
+	}
+
 #ifdef PARADE_ROI_ENABLE
 	rc = parade_check_cmd_status();
 	if(rc)
@@ -3932,26 +4440,18 @@ static void parade_chip_touch_switch(void)
 			TS_LOG_ERR("%s soper unknown:%d, invalid\n", __func__ ,soper);
 			goto out;
 	}
-	rc = parade_set_ram_parameter(tskit_parade_data,TOUCH_SWITCH_RAM_ID,sdatatowrite);
+	rc = parade_set_ram_parameter(tskit_parade_data,TOUCH_SWITCH_RAM_ID,sdatatowrite,CY_HID_OUTPUT_SET_RAM_NORMAL_PARAM);
 	if(rc){
 		TS_LOG_ERR("%s fail to set doze mode to value %d\n", __func__ ,sdatatowrite);
 		goto out;
 	}
-	TS_LOG_INFO("%s set doze mode to value %d [OK]\n",__func__,sdatatowrite);	
+	TS_LOG_INFO("%s set doze mode to value %d [OK]\n",__func__,sdatatowrite);
 out:
 	parade_finish_cmd();
 	return;
 }
 
-/*
-Sense Mode:
-0: Calibrate IDAC for mutual-cap
-1: Calibrate IDAC for buttons
-2: Calibrate IDAC for self-cap
-3: Calibrate IDAC for mutual without calibrating hop frequencies
-4: Calibrate IDAC only, no hop calibration, no attenuator change
-*/
-static int parade_calibrate(void)
+static int parade_calibrate_child(void)
 {
 	int rc = NO_ERR;
 	int write_length = 1;
@@ -3960,10 +4460,6 @@ static int parade_calibrate(void)
 
 	int t = 0;
 	int timeout_ms = PARADE_WORK_WAIT_TIMEOUT;
-
-	rc = parade_check_cmd_status();
-	if(rc)
-		return rc;
 
 	struct parade_hid_output hid_output = {
 		HID_OUTPUT_APP_COMMAND(HID_OUTPUT_CALIBRATE_IDACS),
@@ -4009,7 +4505,29 @@ exit:
 	rc = parade_hid_output_resume_scanning_(tskit_parade_data);
 	if(rc)
 		TS_LOG_ERR("%s parade_resume failed\n", __func__);
+	return rc;
+}
+
+/*
+ * Sense Mode:
+ * 0: Calibrate IDAC for mutual-cap
+ * 1: Calibrate IDAC for buttons
+ * 2: Calibrate IDAC for self-cap
+ * 3: Calibrate IDAC for mutual without calibrating hop frequencies
+ * 4: Calibrate IDAC only, no hop calibration, no attenuator change
+ * */
+static int parade_calibrate(void)
+{
+	int rc = NO_ERR;
+
+	rc = parade_check_cmd_status();
+	if(rc)
+		return rc;
+
+	rc = parade_calibrate_child();
+
 	parade_finish_cmd();
+
 	return rc;
 }
 
@@ -4151,13 +4669,63 @@ error:
 	TS_LOG_DEBUG("%s: CONFIG_VER:%04X\n", __func__, config_ver);
 	return rc;
 }
+
+/*added tp_color*/
+static int parade_hid_output_read_color_info_(struct parade_core_data *cd,
+		u8 *color_info)
+{
+	int rc = NO_ERR;
+	u8 read_buf[TP_COLOR_READ_SIZE] = {0};
+	u16 crc = 0;
+
+	if (cd == NULL ) {
+		pr_err("%s, cd is error\n", __func__);
+		return -EINVAL;
+	}
+
+	rc = parade_hid_output_read_conf_block_(cd, CY_TPCOLOR_ROW,
+		CY_TPCOLOR_READ_SIZE,CY_MDATA_EBID, read_buf, &crc);
+	if (rc)
+		return rc;
+
+	*color_info = read_buf[TP_COLOR_READ_SIZE - 1];
+
+	return NO_ERR;
+}
+static int parade_get_color_info(struct parade_core_data *cd)
+{
+	int rc = NO_ERR;
+	u8 color_info = 0;
+
+	if (cd == NULL ) {
+		pr_err("%s, cd is error\n", __func__);
+		return -EINVAL;
+	}
+
+	rc = parade_hid_output_suspend_scanning_(cd);
+	if (rc)
+		goto error;
+
+	rc = parade_hid_output_read_color_info_(cd, &color_info);
+	if (rc) {
+		TS_LOG_ERR("%s: get color info failed!\n", __func__);
+		goto exit;
+	}
+	 cypress_ts_kit_color[0]= color_info;
+exit:
+	parade_hid_output_resume_scanning_(cd);
+error:
+	TS_LOG_INFO("%s: color_info:%04X\n", __func__, color_info);
+	return rc;
+}
+
 static ssize_t parade_doze_store(struct device *dev,
 			struct device_attribute *attr, const char *buf, size_t size)
 {
 	struct parade_core_data *cd = tskit_parade_data;
 	TS_LOG_INFO("%s : enter, data: %s \n", __func__, buf);
 #ifdef PARADE_DOZE_ENABLE
-	memcpy(tskit_parade_data->parade_chip_data->touch_switch_info, buf, MAX_STR_LEN);
+	memcpy(tskit_parade_data->parade_chip_data->touch_switch_info, buf, MAX_STR_LEN-1);
 #else
 	parade_global_pchar_for_doze = buf;
 #endif
@@ -4205,11 +4773,9 @@ static ssize_t parade_drv_ver_show(struct device *dev,
 {
         return sprintf(buf,
 		"%s: %d.%d\n"
-		"%s: %s\n"
-		"%s: %s_%s\n",
+		"%s: %s\n",
 		"Driver Version", PARADE_DRV_VER_MAJOR,PARADE_DRV_VER_MINOR,
-		"Last Change Date", PARADE_DRV_LAST_CHANGE_DATE,
-		"Build Time", __DATE__,__TIME__);
+		"Last Change Date", PARADE_DRV_LAST_CHANGE_DATE);
 }
 
 static DEVICE_ATTR(drv_ver, S_IRUSR, parade_drv_ver_show, NULL);
@@ -4242,6 +4808,14 @@ static ssize_t parade_drv_debug_store(struct device *dev,
 		else
 			TS_LOG_INFO("%s : tthe_buf not existed\n", __func__);
 		break;
+	case CY_DBG_HID_STOP_WD:
+		TS_LOG_INFO( "%s: stop watchdog (cd=%p)\n", __func__, cd);
+		ts_stop_wd_timer(&g_ts_kit_platform_data);
+		break;
+	case CY_DBG_HID_START_WD:
+		TS_LOG_INFO( "%s: start watchdog (cd=%p)\n", __func__, cd);
+		ts_start_wd_timer(&g_ts_kit_platform_data);
+		break;
 #endif
 	default:
 		TS_LOG_ERR("%s: Invalid value\n", __func__);
@@ -4257,28 +4831,32 @@ static DEVICE_ATTR(drv_debug, S_IWUSR, NULL, parade_drv_debug_store);
 static int tthe_debugfs_open(struct inode *inode, struct file *filp)
 {
 	struct parade_core_data *cd = inode->i_private;
-
+	mutex_lock(&cd->tthe_lock);
 	filp->private_data = inode->i_private;
 
-	if (cd->tthe_buf)
+	if (cd->tthe_buf){
+		mutex_unlock(&cd->tthe_lock);
 		return -EBUSY;
+	}
 
 	cd->tthe_buf = kzalloc(PARADE_MAX_PRBUF_SIZE, GFP_KERNEL);
-	if (!cd->tthe_buf)
+	if (!cd->tthe_buf){
+		mutex_unlock(&cd->tthe_lock);
 		return -ENOMEM;
-
+	}
+	mutex_unlock(&cd->tthe_lock);
 	return 0;
 }
 
 static int tthe_debugfs_close(struct inode *inode, struct file *filp)
 {
 	struct parade_core_data *cd = filp->private_data;
-
+	mutex_lock(&cd->tthe_lock);
 	filp->private_data = NULL;
 
 	kfree(cd->tthe_buf);
 	cd->tthe_buf = NULL;
-
+	mutex_unlock(&cd->tthe_lock);
 	return 0;
 }
 
@@ -4287,14 +4865,14 @@ static ssize_t tthe_debugfs_read(struct file *filp, char __user *buf,
 {
 	struct parade_core_data *cd = filp->private_data;
 	int size;
-	int ret;
+	int ret = 0;
 
 	wait_event_interruptible(cd->wait_q,
 			cd->tthe_buf_len != 0 || cd->tthe_exit);
 	mutex_lock(&cd->tthe_lock);
 	if (cd->tthe_exit) {
 		mutex_unlock(&cd->tthe_lock);
-		return 0;
+		return ret;
 	}
 	if (count > cd->tthe_buf_len)
 		size = cd->tthe_buf_len;
@@ -4302,16 +4880,20 @@ static ssize_t tthe_debugfs_read(struct file *filp, char __user *buf,
 		size = count;
 	if (!size) {
 		mutex_unlock(&cd->tthe_lock);
-		return 0;
+		return ret;
 	}
-
-	ret = copy_to_user(buf, cd->tthe_buf, cd->tthe_buf_len);
-	if (ret == size)
+	if (cd->tthe_buf_len >= count){
+		mutex_unlock(&cd->tthe_lock);
 		return -EFAULT;
+	}
+	ret = copy_to_user(buf, cd->tthe_buf, cd->tthe_buf_len);
+	if (ret == size){
+		mutex_unlock(&cd->tthe_lock);
+		return -EFAULT;}
 	size -= ret;
 	cd->tthe_buf_len -= size;
-	mutex_unlock(&cd->tthe_lock);
 	*ppos += size;
+	mutex_unlock(&cd->tthe_lock);
 	return size;
 }
 
@@ -4687,6 +5269,57 @@ static int parade_hid_output_bl_launch_app_(struct parade_core_data *cd)
 	return parade_hid_send_output_and_wait_(cd, &hid_output);
 }
 
+static int parade_hid_output_null_(struct cyttsp5_core_data *cd)
+{
+	struct parade_hid_output hid_output = {
+		HID_OUTPUT_APP_COMMAND(HID_OUTPUT_NULL),
+	};
+
+	return parade_hid_send_output_and_wait_(cd, &hid_output);
+}
+static int  parade_watchdog_work_check(void)
+{
+	struct parade_core_data *cd = tskit_parade_data;
+	int rc = NO_ERR;
+
+	rc = parade_check_cmd_status();
+	if(rc)
+		return rc;
+	rc = parade_hid_output_null_(cd);
+
+	if (rc) {
+		TS_LOG_ERR(
+			"%s: failed to access device in watchdog timer r=%d\n",
+			__func__, rc);
+#if defined (CONFIG_HUAWEI_DSM)
+		if (!dsm_client_ocuppy(ts_dclient)) {
+			dsm_client_record(ts_dclient, "parade ESD reset.\n");
+			dsm_client_notify(ts_dclient, DSM_TP_ESD_ERROR_NO);
+		}
+#endif
+		parade_esd_reset_function();
+	}
+	parade_finish_cmd();
+	return rc;
+}
+static int parade_esd_reset_function(void)
+{
+	struct parade_core_data *cd =  tskit_parade_data;
+	int rc = NO_ERR;
+
+	/* power on-off */
+	parade_power_off();
+	mdelay(1000);
+	parade_power_on();
+	mdelay(200);
+
+	rc = parade_startup(cd, true);
+	if (rc < 0)
+		TS_LOG_ERR( "%s: Fail queued startup r=%d\n",
+			__func__, rc);
+	return rc;
+}
+
 static int parade_startup(struct parade_core_data *cd, bool is_need_reset)
 {
 	int retry = CY_CORE_STARTUP_RETRY_COUNT;
@@ -4771,12 +5404,21 @@ reset:
 			__func__, rc);
 		RETRY_OR_EXIT(retry--, reset, exit);
 	}
-	/*Set Power On Flag*/
-	rc = parade_set_power_on_flag(cd);
-	if (rc) {
-		TS_LOG_ERR("%s: set power on flag fail r=%d\n",
-			__func__, rc);
-		//Do nothing on this error
+	if(tskit_parade_data->sleep_in_mode != 0) { //deep sleep mode
+		/*Set Power On Flag*/
+		rc = parade_set_power_on_flag(cd);
+		if (rc) {
+			TS_LOG_ERR("%s: set power on flag fail r=%d\n",
+				__func__, rc);
+			rc = NO_ERR;
+		}
+		/*Get Power On Flag After*/
+		rc = parade_get_power_on_flag(cd);
+		if (rc) {
+			TS_LOG_ERR("%s: get power on flag fail rc=%d\n",
+				__func__, rc);
+			rc = NO_ERR;
+		}
 	}
 	TS_LOG_INFO("parade Protocol Version: %d.%d\n",
 			cd->sysinfo.cydata.pip_ver_major,
@@ -4786,10 +5428,8 @@ reset:
 
 	if (!detected)
 		rc = -ENODEV;
-
 exit:
 	TS_LOG_INFO("%s: call startup end\n", __func__);
-
 #ifdef TTHE_TUNER_SUPPORT
 		tthe_print(cd, NULL, 0, "exit startup");
 #endif
@@ -4810,14 +5450,23 @@ static int parade_init_chip(void)
 	int rc = NO_ERR;
 	struct parade_core_data *cd = tskit_parade_data;
 
+#if defined (CONFIG_TEE_TUI)
+	strncpy(tee_tui_data.device_name, "parade", strlen("parade"));
+	tee_tui_data.device_name[strlen("parade")] = '\0';
+#endif
 	cd->force_wait = false;
 	rc = parade_startup(cd, true);
 	if(rc){
 		TS_LOG_DEBUG("%s: startup failed\n", __func__);
 		return rc;
 	}
+	if(tskit_parade_data->support_get_tp_color == true){
+		parade_get_color_info(cd);
+	}
 	parade_device_access_probe(cd);
 	parade_parse_specific_dts(tskit_parade_data->parade_chip_data);
+	/*provide panel_id for sensor*/
+	g_ts_kit_platform_data.panel_id = tskit_parade_data->panel_id;
 	TS_LOG_INFO("%s: call parade_init_chip end\n", __func__);
 	return rc;
 }
@@ -4917,6 +5566,34 @@ static int parade_get_dts_value(struct device_node *core_node,char *name)
 	return value;
 }
 
+static int parade_pinctrl_select_normal(void)
+{
+	int retval = -1;
+
+	if (tskit_parade_data->pctrl == NULL || tskit_parade_data->pins_default == NULL) {
+		TS_LOG_ERR("%s: pctrl or pins_default is NULL.\n", __func__);
+		return retval;
+	}
+	retval = pinctrl_select_state(tskit_parade_data->pctrl, tskit_parade_data->pins_default);
+	if (retval < 0) {
+		TS_LOG_ERR("%s: set pinctrl normal error.\n", __func__);
+	}
+	return retval;
+}
+static int parade_pinctrl_select_lowpower(void)
+{
+	int retval = -1;
+
+	if (tskit_parade_data->pctrl == NULL || tskit_parade_data->pins_idle== NULL) {
+		TS_LOG_ERR("%s: pctrl or pins_idle is NULL.\n", __func__);
+		return retval;
+	}
+	retval = pinctrl_select_state(tskit_parade_data->pctrl, tskit_parade_data->pins_idle);
+	if (retval < 0) {
+		TS_LOG_ERR("%s: set pinctrl pins_idle error.\n", __func__);
+	}
+	return retval;
+}
 
 static int parade_pinctrl_get_init(void)
 {
@@ -4949,16 +5626,272 @@ err_pinctrl_put:
 	devm_pinctrl_put(tskit_parade_data->pctrl);
 	return ret;
 }
+static int parade_get_lcd_panel_info(void)
+{
+	struct device_node *dev_node = NULL;
+	char *lcd_type = NULL;
+	dev_node = of_find_compatible_node(NULL, NULL, LCD_PANEL_TYPE_DEVICE_NODE_NAME);
+	if (!dev_node) {
+		TS_LOG_ERR("%s: NOT found device node[%s]!\n", __func__, LCD_PANEL_TYPE_DEVICE_NODE_NAME);
+		return -EINVAL;
+	}
+	lcd_type = (char*)of_get_property(dev_node, "lcd_panel_type", NULL);
+	if(!lcd_type){
+		TS_LOG_ERR("%s: Get lcd panel type faile!\n", __func__);
+		return -EINVAL ;
+	}
 
- static int parade_parse_dts(struct device_node *device, struct ts_kit_device_data *chip_data)
- {
+	strncpy(tskit_parade_data->lcd_panel_info, lcd_type, LCD_PANEL_INFO_MAX_LEN-1);
+	TS_LOG_INFO("lcd_panel_info = %s.\n", tskit_parade_data->lcd_panel_info);
+	return 0;
+}
+static void get_current_distinguishability(void)
+{
+	char *cur =NULL;
+	int ret ;
+	tskit_parade_data->current_distinguishability = false;//false:default distinguishability
+	ret = parade_get_lcd_panel_info();
+	if(ret){
+		TS_LOG_ERR("%s: get lcd panel info faile!\n ",__func__);
+		return;
+	}
+	cur = strstr(tskit_parade_data->lcd_panel_info, tskit_parade_data->sign_of_second_distinguishability);
+	if(!cur){
+		TS_LOG_INFO("%s:LCD distinguishability is default \n ",__func__);
+		return;
+	}
+	tskit_parade_data->current_distinguishability = true;//true :second distinguishability
+	return;
+}
+static int  get_lcd_module_name(void)
+{
+	char temp[LCD_PANEL_INFO_MAX_LEN] = {0};
+	int i = 0;
+	strncpy(temp, tskit_parade_data->lcd_panel_info, LCD_PANEL_INFO_MAX_LEN-1);
+	for(i=0;i<LCD_PANEL_INFO_MAX_LEN-1;i++)
+	{
+		if(temp[i] == '_')
+		{
+			break;
+		}
+		tskit_parade_data->lcd_module_name[i] = tolower(temp[i]);
+	}
+	TS_LOG_INFO("lcd_module_name = %s.\n", tskit_parade_data->lcd_module_name);
+	return 0;
+}
+int parade_irq_stat(struct ts_kit_device_data *pdata)
+{
+	return gpio_get_value(pdata->ts_platform_data->irq_gpio);
+}
+
+void parse_report_rate_check_support(struct device_node *core_node)
+{
+	int value = 0;
+
+	if(NULL == tskit_parade_data) {
+		TS_LOG_ERR("%s tskit_parade_data NULL\n", __func__);
+		return;
+	}
+	if(NULL == core_node) {
+		tskit_parade_data->report_rate_check_supported = CY_REPORT_RATE_UNSUP;
+		TS_LOG_ERR("%s value or core_node NULL\n", __func__);
+		return;
+	}
+	/*read parade report_rate_check_supported*/
+	value = parade_get_dts_value(core_node, "parade,report_rate_support");
+	if(value <= CY_REPORT_RATE_UNSUP){
+		tskit_parade_data->report_rate_check_supported = CY_REPORT_RATE_UNSUP;
+	} else {
+		tskit_parade_data->report_rate_check_supported = CY_REPORT_RATE_SUP;
+	}
+	TS_LOG_INFO("%s, tskit_parade_data->report_rate_check_supported = %d.\n", __func__, value);
+}
+
+void parse_self_noise_support(struct device_node *core_node)
+{
+	int value = 0;
+
+	if(NULL == tskit_parade_data) {
+		TS_LOG_ERR("%s tskit_parade_data's NULL\n", __func__);
+		return;
+	}
+
+	if(NULL == core_node) {
+		tskit_parade_data->self_noise_supported = CY_SELF_NOISE_UNSUP;
+		TS_LOG_ERR("%s value or core_node's NULL\n", __func__);
+		return;
+	}
+
+	/* read parade self_noise_support */
+	value = parade_get_dts_value(core_node, "parade,self_noise_support");
+	if(value <= CY_SELF_NOISE_UNSUP){
+		tskit_parade_data->self_noise_supported = CY_SELF_NOISE_UNSUP;
+	} else {
+		tskit_parade_data->self_noise_supported = CY_SELF_NOISE_SUP;
+	}
+	TS_LOG_INFO("%s, tskit_parade_data->self_noise_supported = %d.\n", __func__, value);
+}
+
+void parse_check_bulcked(struct device_node *core_node, struct ts_kit_device_data *chip_data)
+{
+	int value = 0;
+
+	if(NULL == core_node || NULL == chip_data) {
+		TS_LOG_ERR("%s, core_node or chip_data is NULL\n", __func__);
+		return;
+	}
+
+	value = parade_get_dts_value(core_node, "parade,check_bulcked");
+	if(value <= CY_CHECK_BULCKED_FALSE){
+		chip_data->check_bulcked = CY_CHECK_BULCKED_FALSE;
+	} else {
+		chip_data->check_bulcked = CY_CHECK_BULCKED_TRUE;
+	}
+	TS_LOG_INFO("%s, is_parade_solution value=%d\n", __func__, value);
+}
+
+void parse_check_irq_state(struct device_node *core_node)
+{
+	int value = 0;
+
+	if(NULL == core_node || NULL == tskit_parade_data) {
+		TS_LOG_ERR("%s, core_node or tskit_parade_data is NULL\n", __func__);
+		return;
+	}
+	if(NULL == tskit_parade_data->core_pdata) {
+		TS_LOG_ERR("%s, tskit_parade_data->core_pdata is NULL\n", __func__);
+		return;
+	}
+
+	value = parade_get_dts_value(core_node, "parade,check_irq_state");
+	if(value <= CY_CHECK_IRQ_STATE_FALSE){
+		tskit_parade_data->core_pdata->check_irq_state= CY_CHECK_IRQ_STATE_FALSE;
+	} else {
+		tskit_parade_data->core_pdata->check_irq_state= CY_CHECK_IRQ_STATE_TRUE;
+	}
+	TS_LOG_INFO("%s, check_irq_state value=%d\n", __func__, value);
+}
+
+
+static void  parade_parse_lcd_parameter(struct device_node *device)
+{
+
+	int value = 0;
+	struct device_node *core_node = device;
+	/*read parade,need_distinguish_lcd*/
+
+	value = parade_get_dts_value(core_node, "parade,need_distinguish_lcd");
+	if(value <=  0){
+		tskit_parade_data->need_distinguish_lcd = false;
+	} else {
+		tskit_parade_data->need_distinguish_lcd = true;
+	}
+	TS_LOG_INFO("%s, need_distinguish_lcd =%d\n", __func__,value);
+
+	value = parade_get_dts_value(core_node, "parade,fw_only_depend_on_lcd");
+	if(value <=  0){
+		tskit_parade_data->fw_only_depend_on_lcd= false;
+	} else {
+		tskit_parade_data->fw_only_depend_on_lcd = true;
+	}
+	TS_LOG_INFO("%s, need_get_lcd_module =%d\n", __func__,value);
+
+	return;
+}
+
+void parade_parse_after_resume(struct device_node *core_node)
+{
+	if(NULL == core_node || NULL == tskit_parade_data) {
+		TS_LOG_ERR("%s: param null, err\n");
+		return;
+	}
+
+	tskit_parade_data->no_need_after_resume_flag = parade_get_dts_value(core_node, "parade,no_need_doing_after_resume");
+	if(tskit_parade_data->no_need_after_resume_flag < 0) {
+		tskit_parade_data->no_need_after_resume_flag = 0;
+	}
+	TS_LOG_INFO("%s, no_need_after_resume_flag = %d\n", __func__, tskit_parade_data->no_need_after_resume_flag);
+}
+
+void parade_parse_calibrate(struct device_node *core_node)
+{
+	if(NULL == core_node || NULL == tskit_parade_data) {
+		TS_LOG_ERR("%s: param null, err\n");
+		return;
+	}
+
+	tskit_parade_data->calibrate_fw_update_and_cmcp = parade_get_dts_value(core_node, "parade,calibrate_fw_update_and_cmcp");
+	if(tskit_parade_data->calibrate_fw_update_and_cmcp < 0) {
+		tskit_parade_data->calibrate_fw_update_and_cmcp = 0;
+	}
+	TS_LOG_INFO("%s, calibrate_fw_update_and_cmcp = %d\n", __func__, tskit_parade_data->calibrate_fw_update_and_cmcp);
+}
+
+void parse_before_suspend_flag(struct device_node *core_node)
+{
+	if(NULL == core_node || NULL == tskit_parade_data) {
+		TS_LOG_ERR("%s: param null, err\n");
+		return;
+	}
+
+	tskit_parade_data->show_before_suspend_flag = parade_get_dts_value(core_node, "parade,show_before_suspend_flag");
+	if(tskit_parade_data->show_before_suspend_flag < 0) {
+		tskit_parade_data->show_before_suspend_flag = 0;
+	}
+	TS_LOG_INFO("%s, show_before_suspend_flag = %d\n", __func__, tskit_parade_data->show_before_suspend_flag);
+}
+
+void parse_check_img_vers(struct device_node *core_node, struct ts_kit_device_data *chip_data)
+{
+	int value = 0;
+
+	if(NULL == core_node || NULL == chip_data) {
+		TS_LOG_ERR("%s, core_node or chip_data is NULL\n", __func__);
+		return;
+	}
+
+	value = parade_get_dts_value(core_node, "check_fw_right_flag");
+	if (value < 0) {
+		TS_LOG_INFO("%s, get device check_fw_right_flag failed\n ", __func__);
+		chip_data->check_fw_right_flag = 0;
+	}else{
+		chip_data->check_fw_right_flag = value;
+	}
+
+	TS_LOG_INFO("%s, check_fw_right_flag = %d \n", __func__, chip_data->check_fw_right_flag);
+}
+
+static int hw_get_dts_value(struct device_node *core_node, char *name)
+{
+	if(NULL == core_node || NULL == name) {
+		TS_LOG_INFO("%s: param NULL\n", __func__);
+		return -EINVAL;
+	}
+
 	int retval = NO_ERR;
-	u32 value;
+
+	retval = parade_get_dts_value(core_node , name);
+	if (retval < 0) {
+		TS_LOG_INFO
+		    ("%s, get device %s failed\n",__func__, name);
+		retval = 0; //default
+	}
+
+	return retval;
+}
+
+ int parade_parse_dts(struct device_node *device, struct ts_kit_device_data *chip_data)
+ {
+	if(NULL == device || NULL == chip_data) {
+		TS_LOG_INFO("%s: param NULL\n", __func__);
+		return -EINVAL;
+	}
+	int retval = NO_ERR;
+	int value;
 	int rc;
 	struct parade_core_platform_data *core_pdata;
 	struct parade_mt_platform_data *mt_pdata;
 	struct parade_loader_platform_data *loader_pdata;
-
 	struct device_node *core_node = device;
 	TS_LOG_INFO("%s, parade parse config called\n", __func__);
 	//memset(tskit_parade_data, 0, sizeof(parade_core_data));
@@ -4981,6 +5914,7 @@ err_pinctrl_put:
 	tskit_parade_data->core_pdata = core_pdata;
 	tskit_parade_data->mt_pdata = mt_pdata;
 	tskit_parade_data->loader_pdata = loader_pdata;
+	tskit_parade_data->core_pdata->irq_stat = parade_irq_stat;
 
 	tskit_parade_data->mt_pdata->flags = 0;
 	tskit_parade_data->md.si = &(tskit_parade_data->sysinfo);
@@ -5006,27 +5940,6 @@ err_pinctrl_put:
 	tskit_parade_data->tthe_debugfs = debugfs_create_file(PARADE_TTHE_TUNER_FILE_NAME,
 		0644, NULL, tskit_parade_data, &tthe_debugfs_fops);
 #endif
-#if 0
-	 /* read irq_gpio */
-    if (of_find_property(core_node, "parade,irq_gpio", NULL)) {
-        core_pdata->irq_gpio = of_get_named_gpio_flags(core_node, "parade,irq_gpio", 0, NULL);
-        TS_LOG_INFO("%s,irq gpio is %d.\n", __func__, core_pdata->irq_gpio);
-    } else {
-        core_pdata->irq_gpio = -1;
-        TS_LOG_ERR("%s,[cy,reset-gpio] read fail.\n", __func__);
-        goto fail_free;
-    }
-
-	/*read rst_gpio */
-    if (of_find_property(core_node, "parade,rst_gpio", NULL)) {
-        core_pdata->rst_gpio = of_get_named_gpio_flags(core_node, "parade,rst_gpio", 0, NULL);
-        TS_LOG_INFO("%s,reset gpio is %d.\n", __func__, core_pdata->rst_gpio);
-    } else {
-        core_pdata->rst_gpio = -1;
-        TS_LOG_ERR("%s,[cy,reset-gpio] read fail.\n", __func__);
-        goto fail_free;
-    }
-#endif
 	tskit_parade_data->parade_chip_data->ts_platform_data->client->addr = parade_get_dts_value(core_node , "slave_address");
 	TS_LOG_INFO("%s,client->addr = %d.\n", __func__, tskit_parade_data->parade_chip_data->ts_platform_data->client->addr);
 	/*hid_desc_register*/
@@ -5036,10 +5949,26 @@ err_pinctrl_put:
 	TS_LOG_INFO("%s,core_pdata->hid_desc_register = %d.\n", __func__, core_pdata->hid_desc_register);
 
 	/*easy_wakeup_supported_gestures*/
-	core_pdata->easy_wakeup_gesture = parade_get_dts_value(core_node, "parade,easy_wakeup_supported_gestures");
-	if(core_pdata->easy_wakeup_gesture < 0)
-		goto fail_free;
-	TS_LOG_INFO("%s,core_pdata->easy_wakeup_gesture = %d.\n", __func__, core_pdata->easy_wakeup_gesture);
+	value = parade_get_dts_value(core_node, "parade,easy_wakeup_supported_gestures");
+	if(value < 0)
+		value = 0;
+	core_pdata->wakeup_gesture_enable = value;
+	TS_LOG_INFO("%s,core_pdata->wakeup_gesture_enable = %d.\n", __func__, core_pdata->wakeup_gesture_enable);
+	tskit_parade_data->parade_chip_data->ts_platform_data->feature_info.wakeup_gesture_enable_info.switch_value = core_pdata->wakeup_gesture_enable;
+
+	/*easy_wakeup_supported_gestures*/
+	value = parade_get_dts_value(core_node, "parade,change_reset_flag_and_cmd_order");
+	if(value < 0)
+		value = 0;
+	core_pdata->change_reset_flag_and_cmd_order = (u8)value;
+	TS_LOG_INFO("%s, change_rest_flag_and_cmd_order = %d.\n", __func__, core_pdata->change_reset_flag_and_cmd_order);
+
+	/*provide panel_id supported for sensor*/
+	value = parade_get_dts_value(core_node, "provide_panel_id_suppot");
+	if (value < 0)
+		value = 0;
+	chip_data->provide_panel_id_support = value;
+	TS_LOG_INFO("%s,provide_panel_id_suppot = %d.\n", __func__, chip_data->provide_panel_id_support);
 
 	/*get roi_supported value*/
 #ifdef PARADE_ROI_ENABLE
@@ -5048,6 +5977,32 @@ err_pinctrl_put:
 #else
 	tskit_parade_data->parade_chip_data->ts_platform_data->feature_info.roi_info.roi_supported = 0;
 #endif
+	/* get holster mode value */
+	value = 0;
+	value = parade_get_dts_value(core_node, "holster_mode_supported");
+	if(value < 0){
+		value = 1; //default support
+	}
+	tskit_parade_data->parade_chip_data->ts_platform_data->feature_info.holster_info.holster_supported = value;
+	TS_LOG_INFO("%s holster_supported = %d\n", __func__, tskit_parade_data->parade_chip_data->ts_platform_data->feature_info.holster_info.holster_supported);
+
+	/* get support cp_delta cap test mode value */
+	value = 0;
+	value = parade_get_dts_value(core_node, "cp_delta_cap_test_supported");
+	if(value < 0){
+		value = 1; //default support
+	}
+	tskit_parade_data->cp_delta_test_supported = value;
+	TS_LOG_INFO("%s,cp_delta_test_supported = %d.\n", __func__, tskit_parade_data->cp_delta_test_supported);
+
+	/* get glove mode value */
+	value = 0;
+	value = parade_get_dts_value(core_node, "glove_mode_supported");
+	if(value < 0){
+		value = 1; //default support
+	}
+	tskit_parade_data->parade_chip_data->ts_platform_data->feature_info.glove_info.glove_supported = value;
+	TS_LOG_INFO("%s glove_supported = %d\n", __func__, tskit_parade_data->parade_chip_data->ts_platform_data->feature_info.glove_info.glove_supported);
 
 	/*get should_check_tp_calibration_info value*/
 	tskit_parade_data->parade_chip_data->should_check_tp_calibration_info =0; //TODO: TEST ONLY//.= parade_get_dts_value(core_node, "should_check_tp_calibration_info");
@@ -5141,7 +6096,6 @@ err_pinctrl_put:
 	tskit_parade_data->md.x_max = parade_get_dts_value(core_node, "parade,abs_max_x");
 	if(tskit_parade_data->md.x_max < 0)
 		goto fail_free;
-	TS_LOG_INFO("%s,tskit_parade_data->md.x_max = %d.\n", __func__, tskit_parade_data->md.x_max);
 
 	/*read abs_min_y*/
 	tskit_parade_data->md.y_min = parade_get_dts_value(core_node, "parade,abs_min_y");
@@ -5153,7 +6107,36 @@ err_pinctrl_put:
 	tskit_parade_data->md.y_max = parade_get_dts_value(core_node, "parade,abs_max_y");
 	if(tskit_parade_data->md.y_max < 0)
 		goto fail_free;
-	TS_LOG_INFO("%s,tskit_parade_data->md.y_max = %d.\n", __func__, tskit_parade_data->md.y_max);
+	/* need_surport_second_distinguishability or not*/
+	value = parade_get_dts_value(core_node, "parade,need_surport_second_distinguishability");
+	if(value == SUPPORT_DIFF_DISTINGUISHABILITY){
+		rc = of_property_read_string(core_node, "parade,sign_of_second_distinguishability", (const char**)&(tskit_parade_data->sign_of_second_distinguishability));
+		if (rc){
+			TS_LOG_ERR("%s, parade,sign_of_second_distinguishability read failed:%d\n",__func__ , rc);
+			goto fail_free;
+		}
+		TS_LOG_INFO("%s,sign_of_second_distinguishability: %s. \n",__func__, tskit_parade_data->sign_of_second_distinguishability);
+		get_current_distinguishability();
+		if(tskit_parade_data->current_distinguishability){
+			tskit_parade_data->md.x_max = parade_get_dts_value(core_node, "parade,abs_max_x_of_second_distinguishability");
+			if(tskit_parade_data->md.x_max < 0){
+				TS_LOG_ERR("%s, tskit_parade_data->md.x_max is illegal\n",__func__);
+				goto fail_free;
+			}
+			tskit_parade_data->md.y_max = parade_get_dts_value(core_node, "parade,abs_max_y_of_second_distinguishability");
+			if(tskit_parade_data->md.y_max < 0){
+				TS_LOG_ERR("%s, tskit_parade_data->md.y_max is illegal\n",__func__);
+				goto fail_free;
+			}
+		}
+	}
+	TS_LOG_INFO("%s,tskit_parade_data->md.x_max = %d.tskit_parade_data->md.y_max = %d.\n", __func__, tskit_parade_data->md.x_max, tskit_parade_data->md.y_max);
+
+	parse_report_rate_check_support(core_node);
+	parse_self_noise_support(core_node);
+	parse_check_bulcked(core_node, chip_data);
+	parse_check_irq_state(core_node);
+	parse_before_suspend_flag(core_node);
 
 	/*read is parade solution*/
 	value = 0;
@@ -5167,6 +6150,15 @@ err_pinctrl_put:
 	}
 	TS_LOG_INFO("%s, is_parade_solution value=%d\n", __func__,value);
 
+	/*read algo_id*/
+	value = parade_get_dts_value(core_node, "algo_id");
+	if(value < 0){
+		TS_LOG_INFO("%s, algo_id read fail, keep intact\n", __func__);
+	} else {
+		chip_data->algo_id = value;
+	}
+	TS_LOG_INFO("%s, algo_id value=%d\n", __func__,value);
+
 	/*read direct_proc_cmd_thread*/
 	value = 0;
 	value = parade_get_dts_value(core_node, "parade,direct_proc_cmd");
@@ -5179,6 +6171,47 @@ err_pinctrl_put:
 	}
 	TS_LOG_INFO("%s, direct_proc_cmd force set to value=%d\n", __func__,value);
 
+	/*read parade,need_upgrade_again*/
+	value = 0;
+	value = parade_get_dts_value(core_node, "parade,need_upgrade_again");
+	if(value <=  0){
+		tskit_parade_data->need_upgrade_again = false;
+	} else {
+		tskit_parade_data->need_upgrade_again = true;
+	}
+	TS_LOG_INFO("%s, need_upgrade_again =%d\n", __func__,value);
+
+	 parade_parse_lcd_parameter(core_node);
+
+	/*for cm test,some waiting is not enough*/
+	value = 0;
+	value = parade_get_dts_value(core_node, "parade,need_wait_after_cm_test");
+	if(value <=  0){
+		tskit_parade_data->need_wait_after_cm_test = false;
+	} else {
+		tskit_parade_data->need_wait_after_cm_test = true;
+	}
+	TS_LOG_INFO("%s, need_wait_after_cm_test = %d\n", __func__,value);
+
+	/*read parade,cy_hid_output_timeout*/
+	value = 0;
+	value = parade_get_dts_value(core_node, "parade,cy_hid_output_timeout");
+	if(value < 0){
+		tskit_parade_data->cy_hid_output_timeout = CY_HID_OUTPUT_TIMEOUT;
+	} else {
+		tskit_parade_data->cy_hid_output_timeout = value;
+	}
+	TS_LOG_INFO("%s, cy_hid_output_timeout =%d\n", __func__,value);
+
+	/*read cy_hid_reset_timeout*/
+	value = 0;
+	value = parade_get_dts_value(core_node, "cy_hid_reset_timeout");
+	if(value < 0){
+		tskit_parade_data->cy_hid_reset_timeout = CY_HID_RESET_TIMEOUT;
+	} else {
+		tskit_parade_data->cy_hid_reset_timeout = value;
+	}
+	TS_LOG_INFO("%s, cy_hid_reset_timeout =%d\n", __func__,value);
 
 	/*read i2c_one_byte*/
 	value = 0;
@@ -5204,11 +6237,18 @@ err_pinctrl_put:
 	}
 	TS_LOG_INFO("%s, se_new_oem_structure value=%d\n", __func__,value);
 
+	/*no need doing something after resume*/
+	parade_parse_after_resume(core_node);
+
+	/*parade_parse_calibrate_for_gff*/
+	parade_parse_calibrate(core_node);
+
 	/*read sleep in mode*/
 	tskit_parade_data->sleep_in_mode = parade_get_dts_value(core_node, "parade,sleep_in_mode");
 	if(tskit_parade_data->sleep_in_mode < 0){
 		goto fail_free;
 	}
+	g_ts_kit_platform_data.chip_data->sleep_in_mode = tskit_parade_data->sleep_in_mode;
 	TS_LOG_INFO("%s, chip sleep in mode %d \n", __func__, tskit_parade_data->sleep_in_mode);
 	/*power_self_ctrl*/
 	tskit_parade_data->self_ctrl_power = parade_get_dts_value(core_node, "power_self_ctrl");
@@ -5216,10 +6256,18 @@ err_pinctrl_put:
 		goto fail_free;
 	}
 	TS_LOG_INFO("%s, power self ctrl = %d \n", __func__, tskit_parade_data->self_ctrl_power);
+	/* need wd check status */
+	value = parade_get_dts_value(core_node, "need_wd_check_status");
+	if(value < 0){
+		value = 0; //defalut
+	}
+	g_ts_kit_platform_data.chip_data->need_wd_check_status	 = value;
+	TS_LOG_INFO("%s, need_wd_check_status %d \n", __func__, g_ts_kit_platform_data.chip_data->need_wd_check_status);
+
 	/*vci_ldo_value*/
 	chip_data->regulator_ctr.vci_value = parade_get_dts_value(core_node, "vci_ldo_value");
 	if (chip_data->regulator_ctr.vci_value < 0) {
-		goto fail_free;
+		TS_LOG_ERR("get vci_ldo_value failed\n");
 	}
 	TS_LOG_INFO("%s, regulator_ctr.vci_value = %d \n", __func__, chip_data->regulator_ctr.vci_value);
 
@@ -5252,6 +6300,75 @@ err_pinctrl_put:
 	chip_data->touch_switch_flag |= value;
 	TS_LOG_INFO("%s, touch_switch_flag = %d \n", __func__, chip_data->touch_switch_flag);
 #endif
+	/* get tp color flag */
+	value = parade_get_dts_value(core_node, "support_get_tp_color");
+	if (value < 0) {
+		TS_LOG_INFO("%s, get device support_get_tp_color failed, will use default value: 0 \n ", __func__);
+		value = 0; //default 0: no need know tp color
+	}
+	tskit_parade_data->support_get_tp_color = value;
+	TS_LOG_INFO("%s, support_get_tp_color = %d \n", __func__, tskit_parade_data->support_get_tp_color);
+
+	/*get brightness info flag*/
+	value = parade_get_dts_value(core_node, "get_brightness_info_flag");
+	if (value < 0) {
+		TS_LOG_INFO("%s, get device get_brightness_info_flag failed, will use default value: 1 \n ", __func__);
+		value = 1;
+	}
+	chip_data->get_brightness_info_flag |= value;
+	TS_LOG_INFO("%s, get_brightness_info_flag = %d \n", __func__, chip_data->get_brightness_info_flag);
+
+	parse_check_img_vers(core_node,chip_data);
+
+	if(tskit_parade_data->self_ctrl_power == 1) { // power by tp will need get power or gpio type
+		/*vddio power type*/
+		retval = of_property_read_u32(device, "vddio_power_type",
+					 &chip_data->vddio_regulator_type);
+		if (retval) {
+			TS_LOG_ERR
+			    ("%s,get device vddio_power_type failed\n",__func__);
+		}
+		/*vddio gpio type*/
+		retval = of_property_read_u32(device, "vddio_gpio_type",
+					 &chip_data->vddio_gpio_type);
+		if (retval) {
+			TS_LOG_ERR
+			    ("%s,get device vddio_gpio_type failed\n",__func__);
+		}
+	}
+	/* pinctrl set */
+	retval = parade_get_dts_value(core_node , "parade,pinctrl_set");
+	if (retval < 0) {
+		TS_LOG_INFO
+		    ("%s, get device pinctrl_set failed\n",__func__);
+		retval = 0; //default
+	}
+	tskit_parade_data->pinctrl_set = retval;
+	TS_LOG_INFO("%s, pinctrl_set = %d \n", __func__, tskit_parade_data->pinctrl_set);
+	/* get module name flag */
+	retval = parade_get_dts_value(core_node , "get_module_name_flag");
+	if (retval < 0) {
+		TS_LOG_INFO
+		    ("%s, get device get_module_name_flag failed\n",__func__);
+		retval = 0; //default
+	}
+	tskit_parade_data->get_module_name_flag = retval;
+	TS_LOG_INFO("%s, get_module_name_flag = %d \n", __func__, tskit_parade_data->get_module_name_flag);
+	/* create project id flag */
+	retval = parade_get_dts_value(core_node , "create_project_id_flag");
+	if (retval < 0) {
+		TS_LOG_INFO
+		    ("%s, get device create_project_id_flag failed\n",__func__);
+		retval = 0; //default
+	}
+	tskit_parade_data->create_project_id_flag = retval;
+	TS_LOG_INFO("%s, create_project_id_flag = %d \n", __func__, tskit_parade_data->create_project_id_flag);
+
+	/* TX/RX delta lattice flag */
+	retval = hw_get_dts_value(core_node , "cm_delta_lattice_flag");
+	tskit_parade_data->cm_delta_lattice_flag = retval;
+	TS_LOG_INFO("%s, cm_delta_lattice_flag = %d \n", __func__, tskit_parade_data->cm_delta_lattice_flag);
+
 	/*0 is power supplied by gpio, 1 is power supplied by ldo */
 	if (0 == chip_data->vci_regulator_type) {
 		chip_data->vci_gpio_ctrl = of_get_named_gpio(device, "vci_gpio_enable", 0);
@@ -5280,8 +6397,16 @@ err_pinctrl_put:
     }
 	if(tmp_buff == NULL)
 		goto fail_free;
-	strcpy(tskit_parade_data->project_id,tmp_buff);
+	strncpy(tskit_parade_data->project_id,tmp_buff,MAX_STR_LEN-1);
 	TS_LOG_INFO("%s, project_id %s\n",__func__ , tskit_parade_data->project_id);
+
+	/*tp_test_type*/
+	rc = of_property_read_string(core_node, "tp_test_type", (const char**)&tmp_buff);
+	if (!rc) {
+		strncpy(tskit_parade_data->parade_chip_data->tp_test_type, tmp_buff, TS_CAP_TEST_TYPE_LEN-1);
+		TS_LOG_INFO("%s:tp_test_type =%s\n",__func__, tskit_parade_data->parade_chip_data->tp_test_type);
+	}
+
 	/*chip name*/
 	rc = of_property_read_string(core_node, "chip_name", (const char**)&tmp_buff);
     if (rc)
@@ -5291,8 +6416,8 @@ err_pinctrl_put:
     }
 	if(tmp_buff == NULL)
 		goto fail_free;
-	strcpy(tskit_parade_data->chip_name,tmp_buff);
-	strcpy(chip_data->chip_name,tmp_buff);
+	strncpy(tskit_parade_data->chip_name,tmp_buff,MAX_STR_LEN-1);
+	strncpy(chip_data->chip_name,tmp_buff,MAX_STR_LEN-1);
 	TS_LOG_INFO("%s, chip_name %s\n",__func__ , tskit_parade_data->chip_name);
 	/*module vendor*/
 	rc = of_property_read_string(core_node, "module_vendor", (const char**)&tmp_buff);
@@ -5303,9 +6428,8 @@ err_pinctrl_put:
     }
 	if(tmp_buff == NULL)
 		goto fail_free;
-	strcpy(tskit_parade_data->module_vendor,tmp_buff);
+	strncpy(tskit_parade_data->module_vendor,tmp_buff,MAX_STR_LEN-1);
 	TS_LOG_INFO("%s, module_vendor %s\n",__func__ , tskit_parade_data->module_vendor);
-
 	tskit_parade_data->parade_chip_data->irq_config = core_pdata->irq_config;
 	parade_pinctrl_get_init();
 	return NO_ERR;
@@ -5328,35 +6452,42 @@ static int parade_irq_top_half(struct ts_cmd_node *cmd)
 	 cmd->command = TS_INT_PROCESS;
 	 return NO_ERR;
 }
-
+/*lint -save -e* */
 static int parade_read_input(struct parade_core_data *cd)
 {
 	u8 reg_addr = PAR_REG_BASE;
 	int rc = 0;
 	u32 size = 0;
 
-	rc = cd->parade_chip_data->ts_platform_data->bops->bus_read(&reg_addr, sizeof(reg_addr), cd->input_buf, 2);
+	rc = parade_i2c_read(&reg_addr, sizeof(reg_addr), cd->input_buf, 2);
 if (rc < 0) {
 		TS_LOG_ERR("%s, fail read  rc=%d\n", __func__, rc);
 		return rc;
 	}
 
 	size = get_unaligned_le16(&cd->input_buf[0]);
-	if (!size || size == 2 || size >= CY_PIP_1P7_EMPTY_BUF)
+	if (!size)
+		return 0;
+	if (size == 2 || size > CY_MAX_INPUT){
 		/* Before PIP 1.7, empty buffer is 0x0002;
 		From PIP 1.7, empty buffer is 0xFFXX */
-		return 0;
-	rc = cd->parade_chip_data->ts_platform_data->bops->bus_read(&reg_addr, sizeof(reg_addr), cd->input_buf, size);
+		TS_LOG_ERR("%s: input_buf is empty, inval size=%d\n",__func__,size);
+		return -EINVAL;
+	}
+	rc = parade_i2c_read(&reg_addr, sizeof(reg_addr), cd->input_buf, size);
 	if (rc < 0) {
 		TS_LOG_ERR("%s, fail read  rc=%d\n", __func__, rc);
 		return rc;
 	}
-	memcpy(cd->response_buf, cd->input_buf, size);
-	cyttsp5_pr_buf(cd->response_buf, size, "response_buf");
+
+	if(cd->force_wait) {
+		memcpy(cd->response_buf, cd->input_buf, size);
+		cyttsp5_pr_buf(cd->response_buf, size, "response_buf");
+	}
 
     return rc;
 }
-
+/*lint -restore*/
 static void parade_get_touch_axis(struct parade_mt_data *md,
     int *axis, int size, int max, u8 *data, int bofs)
 {
@@ -5387,14 +6518,23 @@ static void parade_get_touch_hdr(struct parade_mt_data *md,
 			xy_mode + si->tch_hdr[hdr].ofs,
 			si->tch_hdr[hdr].bofs);
 	}
-
-	TS_LOG_DEBUG("%s: time=%X tch_num=%d lo=%d noise=%d counter=%d\n",
+	if(touch->hdr[CY_TCH_NOISE] > 1){
+		TS_LOG_INFO("%s: time=%X tch_num=%d lo=%d noise=%d counter=%d\n",
 		__func__,
 		touch->hdr[CY_TCH_TIME],
 		touch->hdr[CY_TCH_NUM],
 		touch->hdr[CY_TCH_LO],
 		touch->hdr[CY_TCH_NOISE],
 		touch->hdr[CY_TCH_COUNTER]);
+	} else {
+		TS_LOG_DEBUG("%s: time=%X tch_num=%d lo=%d noise=%d counter=%d\n",
+		__func__,
+		touch->hdr[CY_TCH_TIME],
+		touch->hdr[CY_TCH_NUM],
+		touch->hdr[CY_TCH_LO],
+		touch->hdr[CY_TCH_NOISE],
+		touch->hdr[CY_TCH_COUNTER]);
+	}
 }
 
 static void parade_get_touch_record(struct parade_mt_data *md,
@@ -5476,6 +6616,7 @@ static void parade_get_mt_touches(struct parade_mt_data *md,
 	u8 *tch_addr;
 	u8 touch_id;
 	memset(tch->abs, 0, sizeof(tch->abs));
+	info->cur_finger_number = num_cur_tch;
 	for (i = 0; i < num_cur_tch; i++) {
 		tch_addr = si->xy_data + (i * si->desc.tch_record_size);
 		parade_get_touch_record(md, tch, tch_addr);
@@ -5496,7 +6637,6 @@ static void parade_get_mt_touches(struct parade_mt_data *md,
 		/* Process touch */
 		parade_mt_process_touch(md, tch);
 		touch_id = tch->abs[CY_TCH_T];
-		info->cur_finger_number = num_cur_tch;
 		info->fingers[touch_id].event = tch->abs[CY_TCH_E];
 		switch(tch->abs[CY_TCH_E]){ //PATCH: Huawei does not use our event, they use x=0 or y=0 as this id lift off event
 			case CY_EV_LIFTOFF:
@@ -5582,12 +6722,13 @@ static int parade_xy_worker(struct parade_core_data *cd, struct ts_fingers *info
 	/* extract xy_data for all currently reported touches */
 	TS_LOG_DEBUG("%s: extract data num_cur_tch=%d\n", __func__,
 		num_cur_tch);
-
-	if (num_cur_tch){
-		parade_get_mt_touches(md, &tch, num_cur_tch, info);
-		out_cmd->command = TS_INPUT_ALGO;
-    	out_cmd->cmd_param.pub_params.algo_param.algo_order = TS_ALGO_FUNC_0;
-	}
+	/*2016 12 23 Changes:
+	  1. Fix the report protocol does not report all finger liftoff event
+	  2. This will cause ZhouJin's filter illegal glove does not take effect
+	  */
+	parade_get_mt_touches(md, &tch, num_cur_tch, info);
+	out_cmd->command = TS_INPUT_ALGO;
+	out_cmd->cmd_param.pub_params.algo_param.algo_order = TS_ALGO_FUNC_0;
 
 	rc = 0;
 
@@ -5735,6 +6876,115 @@ static int parade_debug_xy_worker(struct parade_core_data *cd)
 	return 0;
 }
 
+static int parade_set_gesture_key(struct ts_fingers *info, struct ts_cmd_node *out_cmd)
+{
+	if(true == tskit_parade_data->parade_chip_data->easy_wakeup_info.off_motion_on){
+		tskit_parade_data->parade_chip_data->easy_wakeup_info.off_motion_on = false;
+	}
+	
+	info->gesture_wakeup_value = TS_DOUBLE_CLICK;
+	out_cmd->command = TS_INPUT_ALGO;
+	out_cmd->cmd_param.pub_params.algo_param.algo_order =TS_ALGO_FUNC_0;
+	TS_LOG_DEBUG("%s: ts_double_click evevnt report\n", __func__);
+
+	return NO_ERR;
+}
+#define CY_WAKEUP_DOUBLE_TAB_BUF_SIZE 12
+static void parade_double_tap_event(struct parade_core_data *cd, struct ts_fingers *info, struct ts_cmd_node *out_cmd)
+{
+	int i;
+	int event_id = cd->input_buf[3];
+	/*
+	* wakeup event report
+	* 0 ~ 1 : report size
+	*  2  : report id
+	*  3  : event id
+	* 4 ~ 5 : x0
+	* 6 ~ 7 : y0
+	* 8 ~ 9 : x1
+	* 10 ~ 11 : y1
+	*/
+
+	/*get double_tap dirctrion*/
+	for (i = 0; i < CY_DOUBULE_TAB_POINT_NUM; i++) {
+		cd->double_tab_info->postion[i].x = -1;
+		cd->double_tab_info->postion[i].y = -1;
+	}
+	/*double click position*/
+	for (i = 0; i < CY_DOUBULE_TAB_POINT_NUM; i++) {
+		cd->double_tab_info->postion[i].x =
+			get_unaligned_le16(&cd->input_buf[4 + i * 4]);
+		cd->double_tab_info->postion[i].y =
+			get_unaligned_le16(&cd->input_buf[6 + i * 4]);
+	}
+	TS_LOG_DEBUG("%s: event_id=%d\n", __func__, event_id);
+	memset(g_ts_kit_platform_data.chip_data->easy_wakeup_info.easywake_position, 
+			0, MAX_POSITON_NUMS);
+	
+	/*double click easy wakeup area*/
+	for (i = 0; i < CY_DOUBULE_TAB_POINT_NUM; i++) {
+		g_ts_kit_platform_data.chip_data->easy_wakeup_info.easywake_position[i] = 
+				cd->double_tab_info->postion[i].x << 16 |cd->double_tab_info->postion[i].y;
+	}
+
+	mutex_lock(&cd->system_lock);
+	parade_set_gesture_key(info, out_cmd);
+	mutex_unlock(&cd->system_lock);
+
+	return;
+}
+
+static void parade_wakeup_host(struct parade_core_data *cd, struct ts_fingers *info, struct ts_cmd_node *out_cmd)
+{
+	int rc = 0;
+	u8 event_id = cd->input_buf[3];
+	int size = get_unaligned_le16(&cd->input_buf[0]);
+	/*
+	* wakeup event report
+	* 0 ~ 1 : report size
+	*  2  : report id
+	*  3  : event id
+	* 4 ~ 5 : x0
+	* 6 ~ 7 : y0
+	* 8 ~ 9 : x1
+	* 10 ~ 11 : y1
+	*/
+
+	if(false == cd->core_pdata->wakeup_gesture_enable){
+		TS_LOG_ERR("%s: easy_wakeup mode is disable!!\n", __func__);
+		return;
+	}
+	if(false == cd->parade_chip_data->easy_wakeup_info.off_motion_on){
+		TS_LOG_INFO("%s: easy_wakeup no need report!!\n", __func__);
+		return;
+	}	
+	/* Validate report */
+	if (cd->input_buf[2] != HID_WAKEUP_REPORT_ID){
+		TS_LOG_ERR("%s: invalid report !\n", __func__);
+		goto invalid_report;
+	}
+
+	TS_LOG_DEBUG("%s: event_id[0x%x] report !\n", __func__,event_id);
+	switch(event_id){
+		case CY_CORE_EWG_TAP_TAP :
+			TS_LOG_DEBUG("%s: double_tab_event\n", __func__);
+			if (size == CY_WAKEUP_DOUBLE_TAB_BUF_SIZE &&
+					cd->parade_chip_data->easy_wakeup_info.easy_wakeup_gesture & CY_DOUBLE_CLICK_WAKEUP){
+				parade_double_tap_event(cd, info, out_cmd);
+				return;
+			}else{
+				TS_LOG_ERR("%s: invalid size or not support double_tab event!\n", __func__);
+			}
+			break;
+		default :
+			TS_LOG_INFO("%s: Warning : no support wakeup_event class !!\n", __func__);
+			break;
+	}
+	
+invalid_report:
+	parade_core_suspend();
+	return;
+}
 
 static int parse_touch_input(struct parade_core_data *cd, int size, struct ts_fingers *info, struct ts_cmd_node *out_cmd)
 {
@@ -5799,6 +7049,11 @@ static int parade_parse_input(struct ts_cmd_node *in_cmd, struct ts_cmd_node *ou
     int size;
     struct ts_fingers *info = &out_cmd->cmd_param.pub_params.algo_param.info;
 
+	/* report event info
+	* 0 ~ 1 : report size
+	*  2  : report id
+	* ...
+	*/
     size = get_unaligned_le16(&cd->input_buf[0]);
     /* check reset */
     if (size == 0) {
@@ -5825,11 +7080,30 @@ static int parade_parse_input(struct ts_cmd_node *in_cmd, struct ts_cmd_node *ou
             cd->hid_cmd_state = 0;
         mutex_unlock(&cd->system_lock);
         return 0;
-    } else if (size == 2)
+    } else if (size == 2){
         return 0;
-
+    } else if (size > CY_MAX_INPUT){
+	TS_LOG_ERR("%s: Data size error!size = %d\n", __func__, size);
+	cyttsp5_pr_buf(&cd->input_buf[0], CY_MAX_INPUT, "Empty Buffer");
+	return 0;
+    }
     report_id = cd->input_buf[2];
-    TS_LOG_DEBUG("%s: report_id:%X\n", __func__, report_id);
+	TS_LOG_DEBUG("%s: report_id:%X\n", __func__, report_id);
+	TS_LOG_DEBUG("%s: wakeup_gesture_enable:%u\n", __func__, cd->core_pdata->wakeup_gesture_enable);
+	TS_LOG_DEBUG("%s: sleep_mode:%d\n", __func__, cd->parade_chip_data->easy_wakeup_info.sleep_mode);
+	TS_LOG_DEBUG("%s: parade_is_power_on:%d\n", __func__, parade_is_power_on);
+	TS_LOG_DEBUG("%s: ts_kit_gesture_func:%d\n", __func__, ts_kit_gesture_func);
+	TS_LOG_DEBUG("%s: easy_wakeup_gesture:%d\n", __func__, cd->parade_chip_data->easy_wakeup_info.easy_wakeup_gesture);
+	/* Check wake-up report */
+	if (report_id == HID_WAKEUP_REPORT_ID 
+			&& cd->parade_chip_data->easy_wakeup_info.sleep_mode == TS_GESTURE_MODE
+			&& cd->parade_chip_data->easy_wakeup_info.easy_wakeup_gesture != 0
+			&& parade_is_power_on
+			&& ts_kit_gesture_func) {
+		parade_wakeup_host(cd, info, out_cmd);
+		return NO_ERR;
+	}
+
 #ifdef PARADE_ROI_ENABLE
 	if (report_id != cd->sysinfo.desc.tch_report_id
             && report_id != cd->sysinfo.desc.btn_report_id
@@ -5854,15 +7128,37 @@ static int parade_parse_input(struct ts_cmd_node *in_cmd, struct ts_cmd_node *ou
     return 0;
 }
 
+static  bool IS_INT_Glitch(struct parade_core_data *cd)
+{
+	/* bl_launch app creates a glitch in IRQ line */
+	if (cd->hid_cmd_state == HID_OUTPUT_BL_LAUNCH_APP + 1 && cd->core_pdata->irq_stat) {
+		/*
+		the width for the INT glitch is about 4us,the normal INT width
+		of response will last more than 200us, so use 20us delay for
+		distinguish the glitch the normal INT is enough.
+		*/
+		udelay(20);
+		if (cd->core_pdata->irq_stat(cd->parade_chip_data) != CY_IRQ_ASSERTED_VALUE){
+			return true;
+		}
+	}
+	return false;
+}
+
 static int parade_irq_bottom_half(struct ts_cmd_node *in_cmd, struct ts_cmd_node *out_cmd)
 {
 	struct parade_core_data *cd = tskit_parade_data;
 	int rc;
-	out_cmd->command = TS_INVAILD_CMD;
-	rc = parade_read_input(cd);
-	if (!rc)
-		parade_parse_input(in_cmd, out_cmd,cd);
 
+	if(cd->core_pdata->check_irq_state)
+		if (IS_INT_Glitch(cd))
+			return NO_ERR;
+	out_cmd->command = TS_INVAILD_CMD;
+	if(atomic_read(&parade_reset_pin_status) != 0){ /*Do not read i2c during reset is low stage*/
+		rc = parade_read_input(cd);
+		if (!rc)
+			parade_parse_input(in_cmd, out_cmd,cd);
+	}
 	return NO_ERR;
 }
 
@@ -5952,6 +7248,7 @@ static int parade_input_config(struct input_dev *input_dev)
 {
 	TS_LOG_INFO("%s: parade_input_config called\n", __func__);
 	tskit_parade_data->input = input_dev;
+	set_bit(TS_DOUBLE_CLICK, input_dev->keybit);
 	set_bit(EV_SYN, input_dev->evbit);
 	set_bit(EV_ABS, input_dev->evbit);
 	set_bit(INPUT_PROP_DIRECT, input_dev->propbit);
@@ -6183,6 +7480,8 @@ static int parade_load_app_(struct device *dev, const u8 *fw, int fw_size)
 				__func__, rc);
 			goto _parade_load_app_exit;
 		}
+		TS_LOG_INFO("%s: Chip is in bootloader now\n", __func__);
+		tskit_parade_data->mode == CY_MODE_BOOTLOADER;/*2016.12.22: Bug Fix, if we do not do this, the retry will not take effect*/
 	}
 	else{
 		TS_LOG_INFO("%s: In Bootloader mode, no need to enter\n", __func__);
@@ -6192,6 +7491,23 @@ static int parade_load_app_(struct device *dev, const u8 *fw, int fw_size)
 	cyttsp5_get_row_(tskit_parade_data, row_buf, last_row, image_rec_size);
 	cyttsp5_ldr_parse_row_(tskit_parade_data, row_buf, row_image);
 
+	/*will check every row size if overflow*/
+	p = (u8 *)fw;
+	while (p < last_row) {
+		/* Get row */
+		row_count += 1;
+		memset(row_buf, 0, row_buf_size);
+		p = cyttsp5_get_row_(tskit_parade_data, row_buf, p, image_rec_size);
+		/* Parse row */
+		row_image->row_size = get_unaligned_be16(&row_buf[CY_ROW_SIZE_OFFSET]);
+		if (row_image->row_size > ARRAY_SIZE(row_image->row_data)) {
+			TS_LOG_ERR("%s: check row data buffer overflow,not upgrade,read row=%d\n", __func__,row_count);
+			rc = -EOVERFLOW;
+			goto _parade_load_app_exit;
+		}
+	}
+
+	TS_LOG_INFO("%s: read all row=%d\n", __func__, row_count);
 
 	/* initialise bootloader */
 	rc = cyttsp5_ldr_init_(tskit_parade_data, row_image);
@@ -6202,13 +7518,14 @@ static int parade_load_app_(struct device *dev, const u8 *fw, int fw_size)
 	}
 	TS_LOG_INFO("%s: Send BL Loader Blocks\n", __func__);
 
+	row_count = 0;
 	p = (u8 *)fw;
 	while (p < last_row) {
 		/* Get row */
-		TS_LOG_INFO("%s: read row=%d\n", __func__, ++row_count);
+		row_count += 1;
+		TS_LOG_DEBUG("%s: read row=%d\n", __func__, row_count);
 		memset(row_buf, 0, row_buf_size);
 		p = cyttsp5_get_row_(tskit_parade_data, row_buf, p, image_rec_size);
-
 		/* Parse row */
 		TS_LOG_DEBUG("%s: p=%p buf=%p buf[0]=%02X\n", __func__, p, row_buf, row_buf[0]);
 		rc = cyttsp5_ldr_parse_row_(tskit_parade_data, row_buf, row_image);
@@ -6273,6 +7590,7 @@ static int cyttsp5_upgrade_firmware(struct device *dev, const u8 *fw_img,
 {
 	int retry = 5;
 	int rc;
+	struct parade_core_data *cd = tskit_parade_data;
 
 	while (retry--) {
 		rc = parade_load_app_(dev, fw_img, fw_size);
@@ -6281,6 +7599,17 @@ static int cyttsp5_upgrade_firmware(struct device *dev, const u8 *fw_img,
 				__func__, rc, retry);
 		else
 			break;
+		if(retry>0){
+			TS_LOG_INFO("%s: Re-Get Mode Before Retry\n", __func__);
+			rc = parade_get_hid_descriptor_(cd, &cd->hid_desc);
+			if (rc < 0) {
+				TS_LOG_ERR("%s: Error on getting HID descriptor r=%d\n",
+					__func__, rc);
+			} else {
+				cd->mode = parade_get_mode(cd, &cd->hid_desc);
+				TS_LOG_INFO("%s: chip current mode %d\n", __func__,cd->mode);
+			}
+		}
 		msleep(20);
 	}
 	if (rc < 0) {
@@ -6305,11 +7634,17 @@ static int parade_fw_update(const struct firmware *fw)
 
 	if (!fw){
 		rc = -1;
+#if defined (CONFIG_HUAWEI_DSM)
+		tskit_parade_data->parade_chip_data->ts_platform_data->dsm_info.constraints_UPDATE_status = FWU_REQUEST_FW_FAIL;
+#endif
 		goto cyttsp5_firmware_cont_exit;
 	}
 	TS_LOG_INFO("%s fw exit", __func__);
 	if (!fw->data || !fw->size) {
 		TS_LOG_INFO( "%s: No firmware received\n", __func__);
+#if defined (CONFIG_HUAWEI_DSM)
+		tskit_parade_data->parade_chip_data->ts_platform_data->dsm_info.constraints_UPDATE_status = FWU_FW_CONT_ERROR;
+#endif
 		rc = -1;
 		goto cyttsp5_firmware_cont_release_exit;
 	}
@@ -6319,6 +7654,9 @@ static int parade_fw_update(const struct firmware *fw)
 	TS_LOG_INFO("%s header_size = %d", __func__, header_size);
 	if (header_size >= (fw->size + 1)) {
 		TS_LOG_INFO( "%s: Firmware format is invalid\n", __func__);
+#if defined (CONFIG_HUAWEI_DSM)
+		tskit_parade_data->parade_chip_data->ts_platform_data->dsm_info.constraints_UPDATE_status = FWU_FW_CONT_ERROR;
+#endif
 		rc = -1;
 		goto cyttsp5_firmware_cont_release_exit;
 	}
@@ -6399,22 +7737,102 @@ static int upgrade_firmware_from_class(struct device *dev)
 
 	return parade_fw_update(fw_entry);
 
-#if 0
-
-	retval = request_firmware_nowait(THIS_MODULE, FW_ACTION_NOHOTPLUG,
-				CY_FW_MANUAL_UPGRADE_FILE_NAME, dev, GFP_KERNEL, dev,
-				parade_fw_update_cont);
-#endif
-
 	return 0;
 }
-static void parade_get_fw_name(char *file_name){
 
+#define PROJECT_ID_PRODUCT_NAME_LEN 4
+static int parade_create_project_id(void)
+{
+	int retval = NO_ERR;
+	int chip_id = 0;
+	int i = 0;
+	char tmp_buff[PROJECT_ID_PRODUCT_NAME_LEN + 1 ] = {0};
+
+	//AAAABBCCC: AAAA(product_name), BB: chip_ic_id, CCC: module_id
+	if(tskit_parade_data->sysinfo.ready && already_get_flag == false) {
+		/* get chip id */
+		if(!strcmp("cs448", tskit_parade_data->chip_name)) {
+			chip_id = CHIP_CS448_ID;
+		}else if(!strcmp("cytt21403", tskit_parade_data->chip_name)){
+			chip_id = CHIP_CYTT21403_ID;
+		}else {
+			retval =  -EINVAL;
+			TS_LOG_ERR("%s: get chip id failed!\n", __func__);
+			goto out;
+		}
+		for (i = 0; g_ts_kit_platform_data.product_name[i] && i < PROJECT_ID_PRODUCT_NAME_LEN; i++) //exchange name to upper
+		{ tmp_buff[i] = toupper(g_ts_kit_platform_data.product_name[i]); }
+		/* create project id */
+		snprintf(tskit_parade_data->project_id, MAX_STR_LEN, "%s%02d%02d0",
+				tmp_buff, chip_id,  tskit_parade_data->panel_id);
+
+		/* get module name */
+		switch (tskit_parade_data->panel_id) {
+			case MODULE_OFILM_ID:
+				strncpy(tskit_parade_data->module_vendor, "ofilm", MAX_STR_LEN);
+				break;
+			case MODULE_TOPTOUCH_ID:
+				strncpy(tskit_parade_data->module_vendor, "toptouch", MAX_STR_LEN);
+				break;
+			case MODULE_JUNDA_ID:
+				strncpy(tskit_parade_data->module_vendor, "junda", MAX_STR_LEN);
+				break;
+			case MODULE_MUTTO_ID:
+				strncpy(tskit_parade_data->module_vendor, "mutto", MAX_STR_LEN);
+				break;
+			case MODULE_EELY_ID:
+				strncpy(tskit_parade_data->module_vendor, "eely", MAX_STR_LEN);
+				break;
+			case MODULE_TRULY_ID:
+				strncpy(tskit_parade_data->module_vendor, "truly", MAX_STR_LEN);
+				break;
+			default:
+				retval = -EINVAL;
+				break;
+		}
+		if(retval < 0) {
+			TS_LOG_ERR("%s: get module name failed!\n", __func__);
+			goto out;
+		}
+
+		memset(tskit_parade_data->parade_chip_data->module_name, 0, MAX_STR_LEN);
+		snprintf(tskit_parade_data->parade_chip_data->module_name, MAX_STR_LEN -1, "%s",
+					tskit_parade_data->module_vendor);
+		already_get_flag = true;
+		TS_LOG_INFO("%s: create project id successful: %s!\n", __func__, tskit_parade_data->project_id);
+	}
+out:
+	return retval;
+}
+static void parade_get_fw_name(char *file_name)
+{
+	int ret =0;
 	tskit_parade_data->fw_and_config_name = file_name; //Point to the host structure
-	strncat(file_name, tskit_parade_data->project_id, MAX_STR_LEN);
-    strncat(file_name, "_", 1);
-    strncat(file_name, tskit_parade_data->module_vendor, MAX_STR_LEN);
-    TS_LOG_INFO("%s, firmware name: %s\n",__func__,file_name);
+	if(tskit_parade_data->fw_only_depend_on_lcd){ //TP fw only depend on LCD module
+		 ret = get_lcd_module_name();
+		if(!ret){
+			strncat(file_name, tskit_parade_data->lcd_module_name, strlen(tskit_parade_data->lcd_module_name));
+		}
+	}
+	else{
+		strncat(file_name, tskit_parade_data->project_id, MAX_STR_LEN);
+		strncat(file_name, "_", 1);
+		strncat(file_name, tskit_parade_data->module_vendor, MAX_STR_LEN);
+	}
+	if(tskit_parade_data->need_distinguish_lcd){
+		if (get_panel_name_flag_adapter()){
+			strncat(file_name, "_new", strlen("_new"));
+			TS_LOG_INFO("%s, firmware name: %s\n",__func__,file_name);
+			return;
+		}
+		if(tskit_parade_data->current_distinguishability){
+			strncat(file_name,tskit_parade_data->sign_of_second_distinguishability, strlen(tskit_parade_data->sign_of_second_distinguishability));
+			TS_LOG_INFO("%s, firmware name: %s\n",__func__,file_name);
+			return;
+		}
+	}
+	TS_LOG_INFO("%s, firmware name: %s\n",__func__,file_name);
+	return;
 }
 static int parade_fw_update_boot(char *file_name)
 {
@@ -6422,8 +7840,25 @@ static int parade_fw_update_boot(char *file_name)
 	int t = 0;
 	u8 header_size = 0;
 	int timeout_ms = PARADE_WORK_WAIT_TIMEOUT;
-
-	parade_get_fw_name(file_name);
+	tskit_parade_data->firmware_broken_update_flag = false;
+	tskit_parade_data->is_firmware_restore = false;
+	if(tskit_parade_data->create_project_id_flag == 1){
+		rc = parade_create_project_id();
+		if (rc < 0) {
+			TS_LOG_ERR("%s: create project id failed!\n", __func__);
+			return rc;
+		}
+	}
+	if(tskit_parade_data->need_upgrade_again)
+		strncpy(tskit_parade_data->temporary_firmware_name, file_name, MAX_STR_LEN);
+upgrade_firmware_again:
+	if(tskit_parade_data->need_upgrade_again && tskit_parade_data->is_firmware_broken){
+		parade_get_fw_name(tskit_parade_data->temporary_firmware_name);
+		tskit_parade_data->is_firmware_restore = true;
+		tskit_parade_data->is_firmware_broken = false;
+	}else{
+		parade_get_fw_name(file_name);
+	}
 	if(file_name == NULL){
 		return -EINVAL;
 	}
@@ -6431,7 +7866,12 @@ static int parade_fw_update_boot(char *file_name)
 	if(rc)
 		return rc;
 	g_ts_kit_platform_data.chip_data->isbootupdate_finish = false;
-	parade_loader_probe(tskit_parade_data);
+	if(tskit_parade_data->need_upgrade_again &&  tskit_parade_data->is_firmware_restore){
+		tskit_parade_data->firmware_broken_update_flag = true;
+		TS_LOG_INFO("%s, firmware is restore,no need parade_loader_probe\n",__func__);
+	}
+	else
+		parade_loader_probe(tskit_parade_data);
 
 	if (tskit_parade_data->process_state == CY_STATE_INIT) {
 		rc = parade_need_fw_update();
@@ -6447,36 +7887,68 @@ static int parade_fw_update_boot(char *file_name)
 
 	if (fw_entry == NULL) {
 		TS_LOG_ERR("%s: fw_entry == NULL\n", __func__);
+#if defined (CONFIG_HUAWEI_DSM)
+		tskit_parade_data->parade_chip_data->ts_platform_data->dsm_info.constraints_UPDATE_status = FWU_FW_CONT_ERROR;
+#endif
 		rc = -EINVAL;
 		goto entry_null;
 	}
 	if (fw_entry->data == NULL || fw_entry->size == 0) {
 		TS_LOG_ERR("%s: No firmware received\n", __func__);
+#if defined (CONFIG_HUAWEI_DSM)
+		tskit_parade_data->parade_chip_data->ts_platform_data->dsm_info.constraints_UPDATE_status = FWU_FW_CONT_ERROR;
+#endif
 		rc = -EINVAL;
 		goto firmware_release;
 	}
 	header_size = fw_entry->data[0];
 	if (header_size >= (fw_entry->size + 1)) {
 		TS_LOG_ERR("%s: Firmware format is invalid\n", __func__);
+#if defined (CONFIG_HUAWEI_DSM)
+		tskit_parade_data->parade_chip_data->ts_platform_data->dsm_info.constraints_UPDATE_status = FWU_FW_CONT_ERROR;
+#endif
 		rc = -EINVAL;
 		goto firmware_release;
 	}
-
 	rc = parade_fw_update(fw_entry);
 	if(rc == 0){
 		TS_LOG_INFO("%s: FW upgrade done, Restart up after fw upprade\n",
 					__func__);
 		rc = parade_startup(tskit_parade_data,false);
-		if(rc)
+		if(rc){
 			TS_LOG_ERR("%s: Startup Error after FW upgrade\n",
 					__func__);
-		else
+#if defined (CONFIG_HUAWEI_DSM)
+			tskit_parade_data->parade_chip_data->ts_platform_data->dsm_info.constraints_UPDATE_status = FWU_START_UP_FAIL;
+#endif
+		} else {
 			TS_LOG_INFO("%s: Start up successfully after FW upgrade\n",
 					__func__);
+
+			if(tskit_parade_data->calibrate_fw_update_and_cmcp) {
+				rc = parade_calibrate_child();
+				if(!rc) {
+					TS_LOG_INFO("%s calibrate end\n", __func__);
+				}
+			}
+		}
 	}
 	else
 		TS_LOG_ERR("%s: Fail to FW upgrade\n",
 					__func__);
+	if(tskit_parade_data->create_project_id_flag == 1){
+		rc = parade_create_project_id();
+		if (rc < 0) {
+			TS_LOG_ERR("%s: create project id failed!\n", __func__);
+		}
+	}
+	if(tskit_parade_data->need_upgrade_again && tskit_parade_data->is_firmware_broken){
+		if(!tskit_parade_data->firmware_broken_update_flag){
+			tskit_parade_data->process_state = CY_STATE_INIT;
+			parade_finish_cmd();
+			goto upgrade_firmware_again;
+		}
+	}
 exit:
 	parade_finish_cmd();
 	g_ts_kit_platform_data.chip_data->isbootupdate_finish = true;
@@ -6492,6 +7964,17 @@ firmware_release:
 entry_null:
 	tskit_parade_data->process_state = CY_STATE_NORMAL;
 	parade_finish_cmd();
+#if defined (CONFIG_HUAWEI_DSM)
+	if(rc < 0){
+		if (!dsm_client_ocuppy(ts_dclient)) {
+			TS_LOG_ERR("%s: fw update result: failed\n",
+						__func__);
+			dsm_client_record(ts_dclient, "fw update result: failed.\nupdate_status is %d.\n\n",
+				tskit_parade_data->parade_chip_data->ts_platform_data->dsm_info.constraints_UPDATE_status);
+			dsm_client_notify(ts_dclient,DSM_TP_FWUPDATE_ERROR_NO);
+		}
+	}
+#endif
 	return rc;
 }
 
@@ -6499,12 +7982,22 @@ static int parade_check_firmware_version(u32 fw_ver_new, u32 fw_revctrl_new)
 {
 	u32 fw_ver_img;
 	u32 fw_revctrl_img;
-
+	tskit_parade_data->is_firmware_broken = false;
 	if(!tskit_parade_data->sysinfo.ready){
 		TS_LOG_INFO("%s: sysinfo is not ready, fw may be corrupted, FW Upgrade\n",
 				__func__);
 		TS_LOG_INFO("%s: Build in FW Version:0x%04X 0x%04X\n", __func__,
 			fw_revctrl_new, fw_ver_new);
+#if defined (CONFIG_HUAWEI_DSM)
+		if (!dsm_client_ocuppy(ts_dclient)) {
+			dsm_client_record(ts_dclient, "parade ts CRC error.\n");
+			dsm_client_notify(ts_dclient, DSM_TP_FW_CRC_ERROR_NO);
+		}
+#endif
+		if(tskit_parade_data->need_upgrade_again){
+			tskit_parade_data->is_firmware_broken = true;
+			TS_LOG_INFO("%s: Firmware is broken ,is_firmware_broken is %d\n",__func__,tskit_parade_data->is_firmware_broken);
+		}
 		return 1;
 
 	}
@@ -6514,9 +8007,23 @@ static int parade_check_firmware_version(u32 fw_ver_new, u32 fw_revctrl_new)
 			fw_ver_img, fw_ver_new);
 
 	if (fw_ver_new != fw_ver_img) {
-		TS_LOG_INFO("%s: built in fw does not match ic firmware, will upgrade\n",
-				__func__);
-		return 1;
+		if(!tskit_parade_data->parade_chip_data->check_fw_right_flag){
+			TS_LOG_INFO("%s: built in fw does not match ic firmware, will upgrade\n",
+					__func__);
+			return 1;
+		}else{
+			if(tskit_parade_data->parade_chip_data->check_fw_right_flag != fw_ver_new){
+				TS_LOG_ERR("%s: check_fw_right_flag is not valid,will not upgrade\n",
+					__func__);
+#if defined (CONFIG_HUAWEI_DSM)
+				if (!dsm_client_ocuppy(ts_dclient)) {
+					dsm_client_record(ts_dclient, "parade ts check_fw_right_flag error\n");
+					dsm_client_notify(ts_dclient, DSM_TP_FW_CRC_ERROR_NO);
+				}
+#endif
+				return 0;
+			}
+		}
 	}
 
 	fw_revctrl_img = tskit_parade_data->sysinfo.cydata.revctrl;
@@ -6578,22 +8085,24 @@ static int parade_need_fw_update(void)
 	rc = request_firmware(&fw_entry, tmp_filename , dev);
 	if (rc < 0) {
 		TS_LOG_ERR("%s: Fail request firmware\n", __func__);
+#ifdef CONFIG_HUAWEI_DSM
+		tskit_parade_data->parade_chip_data->ts_platform_data->dsm_info.constraints_UPDATE_status = FWU_REQUEST_FW_FAIL;
+#endif/*CONFIG_HUAWEI_DSM*/
 		return rc;
 	}
-
 	if (tskit_parade_data->force_fw_update == true) {
 		TS_LOG_INFO("%s: force to update fw\n", __func__);
-		return 1;
+		return NEED_UPDATA;
 	}
 
 	fw_update = parade_check_firmware_version_builtin(fw_entry);
 
 	if (fw_update == true) {
 		TS_LOG_INFO("%s: need to update fw\n", __func__);
-		rc = 1;
+		rc = NEED_UPDATA;
 	} else {
 		TS_LOG_INFO("%s: not need to update fw\n", __func__);
-		rc = 0;
+		rc = NO_UPDATA;
 		if (fw_entry != NULL) {
 			release_firmware(fw_entry);
 			fw_entry = NULL;
@@ -6618,13 +8127,13 @@ static ssize_t cyttsp5_manual_upgrade_show(struct device *dev,
 		TS_LOG_INFO("%s: fw update from sdcard is successful.\n", __func__);
 		rsize = snprintf(buf, 1024,
 		"fw update from sdcard is successful,rc=%d\n",rc);
-		/*Set Power On Flag*/
-		rc = parade_set_power_on_flag(tskit_parade_data);
-		if (rc) {
-			TS_LOG_ERR("%s: set power on flag fail r=%d\n",
-				__func__, rc);
-			//Do nothing on this error
-		}
+		rc = parade_startup(tskit_parade_data,false);
+		if(rc)
+			TS_LOG_ERR("%s: Startup Error after FW upgrade\n",
+					__func__);
+		else
+			TS_LOG_INFO("%s: Start up successfully after FW upgrade\n",
+					__func__);
 	}
 	return rsize;
 }
@@ -7026,6 +8535,21 @@ static void cmcp_get_basic_info(struct test_case_field *field_array, struct conf
 static void cmcp_test_case_field_init(struct test_case_field *test_field_array,
 	struct configuration *configs)
 {
+	if(NULL == test_field_array || NULL == configs) {
+		TS_LOG_ERR("%s: param NULL\n", __func__);
+		return;
+	}
+
+	u32 CmRangeLimitType = TEST_CASE_TYPE_ONE;
+	u32 *CmRangeLimitRowBuf = &configs->cm_range_limit_row;
+	u32 *CmRangeLimitColBuf = &configs->cm_range_limit_col;
+
+	if(FLAG_EXIST == tskit_parade_data->cm_delta_lattice_flag){
+		CmRangeLimitType = TEST_CASE_TYPE_MUL_LINES;
+		CmRangeLimitRowBuf = &configs->cm_range_limit_row_lattice[0];
+		CmRangeLimitColBuf = &configs->cm_range_limit_col_lattice[0];
+	}
+
 	struct test_case_field test_case_field_array[MAX_CASE_NUM] = {
 		{"CM TEST INPUTS", 14, TEST_CASE_TYPE_NO,
 				NULL, 0, 0, 0},
@@ -7041,10 +8565,14 @@ static void cmcp_test_case_field_init(struct test_case_field *test_field_array,
 				0, 0, 0},
 		{"DIFF_NOISE_THRESHOLD", 20, TEST_CASE_TYPE_ONE,
 				&configs->diff_noise_threshold, 0, 0, 0},
-		{"CM_RANGE_LIMIT_ROW", 18, TEST_CASE_TYPE_ONE,
-				&configs->cm_range_limit_row, 0, 0, 0},
-		{"CM_RANGE_LIMIT_COL", 18, TEST_CASE_TYPE_ONE,
-				&configs->cm_range_limit_col, 0, 0, 0},
+		{"DIFF_SELF_RX_NOISE_THRESHOLD", CY_RAW_RX_NUM, TEST_CASE_TYPE_ONE,
+				&configs->diff_self_rx_noise_threshold, CY_CASE_EXIST, CY_DATA_NUM, CY_LINE_NUM},
+		{"DIFF_SELF_TX_NOISE_THRESHOLD", CY_RAW_TX_NUM, TEST_CASE_TYPE_ONE,
+				&configs->diff_self_tx_noise_threshold, CY_CASE_EXIST, CY_DATA_NUM, CY_LINE_NUM},
+		{"CM_RANGE_LIMIT_ROW", 18, CmRangeLimitType,
+				CmRangeLimitRowBuf, 0, 0, 0},
+		{"CM_RANGE_LIMIT_COL", 18, CmRangeLimitType,
+				CmRangeLimitColBuf, 0, 0, 0},
 		{"CM_MIN_LIMIT_CAL", 16, TEST_CASE_TYPE_ONE,
 				&configs->cm_min_limit_cal, 0, 0, 0},
 		{"CM_MAX_LIMIT_CAL", 16, TEST_CASE_TYPE_ONE,
@@ -7424,39 +8952,41 @@ static int validate_cp_test_results(struct parade_core_data *cd,
 
 		/* Check Sensor Cp delta for range limit */
 		result->cp_sensor_delta_pass = true;
-		/*check cp_sensor_tx_delta */
-		for (i = 0; i < configuration_tx_num; i++) {
-			cp_sensor_tx_delta =
-			ABS((cmcp_info->cp_tx_cal_data_panel[i]-
-			cmcp_info->cp_tx_data_panel[i]) * 100 /
-			cmcp_info->cp_tx_data_panel[i]);
+		if(cd->cp_delta_test_supported){
+			TS_LOG_INFO("cp_sensor_delta test start\n");
+			/*check cp_sensor_tx_delta */
+			for (i = 0; i < configuration_tx_num; i++) {
+				cp_sensor_tx_delta =
+				ABS((cmcp_info->cp_tx_cal_data_panel[i]-
+				cmcp_info->cp_tx_data_panel[i]) * 100 /
+				cmcp_info->cp_tx_data_panel[i]);
 
-			if (cp_sensor_tx_delta >
-			configuration->cp_max_delta_sensor_tx_percent) {
-				TS_LOG_ERR("%s: Cp_sensor_tx_delta:%d (%d)\n",
-				"Cp sensor delta range limit test",
-				cp_sensor_tx_delta,
-			configuration->cp_max_delta_sensor_tx_percent);
-				result->cp_sensor_delta_pass = false;
+				if (cp_sensor_tx_delta >
+				configuration->cp_max_delta_sensor_tx_percent) {
+					TS_LOG_ERR("%s: Cp_sensor_tx_delta:%d (%d)\n",
+					"Cp sensor delta range limit test",
+					cp_sensor_tx_delta,
+				configuration->cp_max_delta_sensor_tx_percent);
+					result->cp_sensor_delta_pass = false;
+				}
+			}
+
+			/*check cp_sensor_rx_delta */
+			for (i = 0; i < configuration_rx_num; i++) {
+				cp_sensor_rx_delta =
+				ABS((cmcp_info->cp_rx_cal_data_panel[i] -
+				cmcp_info->cp_rx_data_panel[i]) * 100 /
+				cmcp_info->cp_rx_data_panel[i]);
+				if (cp_sensor_rx_delta >
+				configuration->cp_max_delta_sensor_rx_percent) {
+					TS_LOG_ERR("%s: Cp_sensor_rx_delta:%d(%d)\n",
+					"Cp sensor delta range limit test",
+					cp_sensor_rx_delta,
+				configuration->cp_max_delta_sensor_rx_percent);
+					result->cp_sensor_delta_pass = false;
+				}
 			}
 		}
-
-		/*check cp_sensor_rx_delta */
-		for (i = 0; i < configuration_rx_num; i++) {
-			cp_sensor_rx_delta =
-			ABS((cmcp_info->cp_rx_cal_data_panel[i] -
-			cmcp_info->cp_rx_data_panel[i]) * 100 /
-			cmcp_info->cp_rx_data_panel[i]);
-			if (cp_sensor_rx_delta >
-			configuration->cp_max_delta_sensor_rx_percent) {
-				TS_LOG_ERR("%s: Cp_sensor_rx_delta:%d(%d)\n",
-				"Cp sensor delta range limit test",
-				cp_sensor_rx_delta,
-			configuration->cp_max_delta_sensor_rx_percent);
-				result->cp_sensor_delta_pass = false;
-			}
-		}
-
 		/* Check sensor Cp rx for min/max values */
 		result->cp_rx_validation_pass = true;
 		for (i = 0; i < configuration_rx_num; i++) {
@@ -7482,8 +9012,8 @@ static int validate_cp_test_results(struct parade_core_data *cd,
 				configuration->cp_min_max_table_tx[i * 2];
 			int32_t cp_tx_max =
 				configuration->cp_min_max_table_tx[i * 2 + 1];
-			if ((cp_sensor_tx_data[i] <= cp_tx_min)
-				|| (cp_sensor_tx_data[i] >= cp_tx_max)) {
+			if ((cp_sensor_tx_data[i] < cp_tx_min)
+				|| (cp_sensor_tx_data[i] > cp_tx_max)) {
 				TS_LOG_ERR("%s: Cp Tx[%d]:%d(%d,%d)\n",
 				"Cp Tx min/max test",
 				i,
@@ -7505,6 +9035,12 @@ static int validate_cp_test_results(struct parade_core_data *cd,
 
 	return 0;
 }
+
+#define LIMIT_INDEX(x)	((tskit_parade_data->cm_delta_lattice_flag)?(x-1):(x))
+
+#define LIMIT_ROW(i,j)	((tskit_parade_data->cm_delta_lattice_flag)?(configuration->cm_range_limit_row_lattice[(j-1)*tx_num+i]):(configuration->cm_range_limit_row))
+
+#define LIMIT_COL(i,j)	((tskit_parade_data->cm_delta_lattice_flag)?(configuration->cm_range_limit_col_lattice[j*(tx_num-1)+i-1]):(configuration->cm_range_limit_col))
 
 static int validate_cm_test_results(struct parade_core_data *cd,
 	struct configuration *configuration, struct cmcp_data *cmcp_info,
@@ -7592,15 +9128,15 @@ static int validate_cm_test_results(struct parade_core_data *cd,
 				int32_t cm_sensor_row_diff =
 				ABS(cm_sensor_data[i * rx_num + j] -
 				cm_sensor_data[i * rx_num + j - 1]);
-				cm_sensor_row_delta[i * rx_num + j - 1] =
+				cm_sensor_row_delta[i * LIMIT_INDEX(rx_num) + j - 1] =
 				cm_sensor_row_diff;
-				if (cm_sensor_row_diff
-				> configuration->cm_range_limit_row) {
+				if (cm_sensor_row_diff >
+					LIMIT_ROW(i,j)) {
 					TS_LOG_ERR("%s: Sensor[%d,%d]:%d (%d)\n",
 									"Cm sensor row range limit test",
-									j, i,
+									LIMIT_INDEX(j), i,
 									cm_sensor_row_diff,
-									configuration->cm_range_limit_row);
+									LIMIT_ROW(i,j));
 					result->cm_sensor_row_delta_pass = false;
 				}
 			}
@@ -7617,12 +9153,12 @@ static int validate_cm_test_results(struct parade_core_data *cd,
 				cm_sensor_column_delta[(i - 1) * rx_num + j] =
 					cm_sensor_col_diff;
 				if (cm_sensor_col_diff >
-					configuration->cm_range_limit_col) {
+					LIMIT_COL(i,j)) {
 					TS_LOG_ERR("%s: Sensor[%d,%d]:%d (%d)\n",
 								"Cm sensor column range limit test",
-								j, i,
+								j, LIMIT_INDEX(i),
 								cm_sensor_col_diff,
-								configuration->cm_range_limit_col);
+								LIMIT_COL(i,j));
 					result->cm_sensor_col_delta_pass = false;
 				}
 			}
@@ -8024,7 +9560,10 @@ static int  parade_get_cmcp_info(struct parade_core_data *cd,
 			i, gd_sensor_row[i].cm_max, gd_sensor_row[i].cm_min,
 			gd_sensor_row[i].cm_ave, gd_sensor_row[i].gradient_val);
 	}
-
+	/*after get cm data,there is some initial and fast calibration,
+	delay 200ms before the next command*/
+	if(cd->need_wait_after_cm_test)
+		msleep(200);
 	/*Get cp data*/
 	rc = parade_run_and_get_selftest_result_noprint(
 		cd, tmp_buf, sizeof(tmp_buf),
@@ -8060,8 +9599,12 @@ static int  parade_get_cmcp_info(struct parade_core_data *cd,
 
 	/*get cp_sensor_tx_delta,using the first sensor cal value for temp */
 	/*multiple 1000 to increase accuracy*/
-	cmcp_info->cp_sensor_tx_delta = ABS((cp_tx_cal_data_panel[0]
-		- cp_tx_ave_data_panel) * 1000 / cp_tx_ave_data_panel);
+	if(cp_tx_ave_data_panel != 0 && cp_tx_cal_data_panel != NULL) {
+		cmcp_info->cp_sensor_tx_delta = ABS((cp_tx_cal_data_panel[0]
+			- cp_tx_ave_data_panel) * 1000 / cp_tx_ave_data_panel);
+	} else {
+		TS_LOG_ERR("%s: cp_tx_ave_data_panel is zero, please check it\n", __func__);
+	}
 
 	/*Get cp_rx_data_panel*/
 	if (cp_rx_data_panel != NULL) {
@@ -8091,10 +9634,12 @@ static int  parade_get_cmcp_info(struct parade_core_data *cd,
 
 	/*get cp_sensor_rx_delta,using the first sensor cal value for temp */
 	/*multiple 1000 to increase accuracy*/
-	cmcp_info->cp_sensor_rx_delta = ABS((cp_rx_cal_data_panel[0]
-		- cp_rx_ave_data_panel) * 1000 / cp_rx_ave_data_panel);
-
-
+	if(cp_rx_ave_data_panel != 0 && cp_rx_cal_data_panel != NULL) {
+		cmcp_info->cp_sensor_rx_delta = ABS((cp_rx_cal_data_panel[0]
+			- cp_rx_ave_data_panel) * 1000 / cp_rx_ave_data_panel);
+	} else {
+		TS_LOG_ERR("%s: cp_rx_ave_data_panel is zero, please check it\n", __func__);
+	}
 
 exit:
 	return rc;
@@ -8119,7 +9664,6 @@ static ssize_t parade_cmcp_test_show(struct device *dev,
 		TS_LOG_ERR("%s: configuration or cmcp_info is NULL\n", __func__);
 		goto exit;
 	}
-
 	TS_LOG_INFO("%s: Start Cm/Cp test!\n", __func__);
 
 	/*force single tx*/
@@ -8452,7 +9996,7 @@ static int parade_check_cmd_status()
 {
 	int t = 0;
 	int timeout_ms = PARADE_WORK_WAIT_TIMEOUT;
-	TS_LOG_INFO("%s Enter\n", __func__);
+	TS_LOG_DEBUG("%s Enter\n", __func__);
 	t = wait_event_timeout(tskit_parade_data->wait_q, (tskit_parade_data->isworkongoing == false), msecs_to_jiffies(timeout_ms));
 		if (IS_TMO(t)) {
 			TS_LOG_ERR("%s: tmo waiting access work, t = %d\n",
@@ -8476,27 +10020,37 @@ static int parade_chip_get_info(struct ts_chip_info_param *info)
 	struct parade_cydata *cydata = &cd->sysinfo.cydata;
 	int t = 0;
 	int timeout_ms = PARADE_WORK_WAIT_TIMEOUT;
+
 	TS_LOG_INFO("%s Enter\n", __func__);
 	retval = parade_check_cmd_status();
+
 	if(retval)
 		return retval;
-	retval = parade_hid_output_get_sysinfo_(cd);
-
-	if(retval < 0){
-		info->status = TS_ACTION_FAILED;
-		goto out;
+	if (unlikely((atomic_read(&g_ts_kit_platform_data.state) == TS_SLEEP) || (atomic_read(&g_ts_kit_platform_data.state) == TS_WORK_IN_SLEEP))){
+		TS_LOG_INFO("%s In sleep state, use cached value\n", __func__);
+	} else {
+		retval = parade_hid_output_get_sysinfo_(cd);
+		if(retval < 0){
+			info->status = TS_ACTION_FAILED;
+			goto out;
+		}
 	}
 	info->status = TS_ACTION_SUCCESS;
+
 	sprintf(info->fw_vendor,
 		"%02X.%02X.%08X.%04X",
 		cydata->fw_ver_major,
 		cydata->fw_ver_minor,
 		cydata->revctrl,
 		cydata->fw_ver_conf);
-
-	snprintf(info->ic_vendor, sizeof(info->ic_vendor), PARADE_VENDER_NAME);
 	snprintf(info->chip_name, sizeof(info->chip_name), cd->chip_name);
 	snprintf(info->mod_vendor, sizeof(info->mod_vendor), cd->module_vendor);
+	if (g_ts_kit_platform_data.hide_plain_id) {
+		snprintf(info->ic_vendor, sizeof(info->ic_vendor), cd->project_id);
+	} else {
+		snprintf(info->ic_vendor, sizeof(info->ic_vendor), PARADE_VENDER_NAME);
+	}
+
 out:
 	parade_finish_cmd();
 	return retval;
@@ -8504,6 +10058,19 @@ out:
 
 static int parade_get_rawdata(struct ts_rawdata_info *info, struct ts_cmd_node *out_cmd)
 {
+	if(NULL == tskit_parade_data) {
+		TS_LOG_ERR("%s: tskit_parade_data is NULL, err!\n", __func__);
+		return -EINVAL;
+	}
+	if(NULL == info) {
+		TS_LOG_ERR("%s: info is NULL, err!\n", __func__);
+		return -EINVAL;
+	}
+	if(NULL == out_cmd) {
+		TS_LOG_ERR("%s: out_cmd is NULL, err!\n", __func__);
+		return -EINVAL;
+	}
+
 	struct parade_core_data *cd = tskit_parade_data;
 	struct cmcp_data *cmcp_info = cd->dad.cmcp_info;
 	struct result *result = cd->dad.result;
@@ -8513,32 +10080,38 @@ static int parade_get_rawdata(struct ts_rawdata_info *info, struct ts_cmd_node *
 	int test_item = 1;
 	int result_buf_index = 0;
 	int rc = NO_ERR;
-	u8 status;
+	u8 status = 0;
 	int self_test_id_supported = 0;
 	uint32_t sensor_num = 0;
-	int32_t *cm_sensor_data = cmcp_info->cm_data_panel;
+	int32_t *cm_sensor_data = NULL;
 	int t = 0;
 	int timeout_ms = PARADE_WORK_WAIT_TIMEOUT;
 	u8 reg_addr = PAR_REG_BASE;
 	u16 size;
 	u8 buf[2];
 	TS_LOG_INFO("%s Enter\n", __func__);
+	if ((configuration == NULL) || (cmcp_info == NULL)){
+		TS_LOG_ERR("%s: configuration or cmcp_info is NULL\n", __func__);
+		rc = -EINVAL;
+		return rc;
+	}
+	cm_sensor_data = cmcp_info->cm_data_panel;
+
 	info->status = TS_ACTION_SUCCESS;
 	rc = parade_check_cmd_status();
 	if(rc){
 		info->status = TS_ACTION_FAILED;
 		return rc;
 	}
-
-	if ((configuration == NULL) || (cmcp_info == NULL)){
-		TS_LOG_ERR("%s: configuration or cmcp_info is NULL\n", __func__);
-		rc = -EINVAL;
-		goto exit;
+	if(false == g_ts_kit_platform_data.chip_data->isbootupdate_finish) {
+		TS_LOG_ERR("%s MMI test is running.\n",__func__);
+		return -EBUSY;
 	}
+	g_ts_kit_platform_data.chip_data->isbootupdate_finish = false;
 	memset(buf_parademmitest_result, 0, sizeof(buf_parademmitest_result));
 	memset(tp_test_failed_reason,0,sizeof(tp_test_failed_reason));
 	/*i2c test*/
-	rc = cd->parade_chip_data->ts_platform_data->bops->bus_read(&reg_addr, sizeof(reg_addr), buf, 2);
+	rc = parade_i2c_read(&reg_addr, sizeof(reg_addr), buf, 2);
 	if (rc < 0){
 		result->i2c_test_pass = false;
 		TS_LOG_ERR("%s: i2c read failed\n", __func__);
@@ -8615,6 +10188,13 @@ static int parade_get_rawdata(struct ts_rawdata_info *info, struct ts_cmd_node *
 		goto exit;
 	}
 
+	if(tskit_parade_data->calibrate_fw_update_and_cmcp) {
+		rc = parade_calibrate_child();
+		if(!rc) {
+			TS_LOG_INFO("%s calibrate end\n", __func__);
+		}
+	}
+
 	TS_LOG_INFO("%s: Finish Cm/Cp test!\n", __func__);
 
 	rc = parade_cmcp_parse_threshold_file();
@@ -8627,6 +10207,14 @@ static int parade_get_rawdata(struct ts_rawdata_info *info, struct ts_cmd_node *
 	validate_cm_test_results(cd, configuration, cmcp_info,result, &final_pass, test_item);
 	validate_cp_test_results(cd, configuration, cmcp_info,result, &final_pass, test_item);
 	validate_diff_result(configuration->diff_noise_threshold);//Hardcode here
+	if (CY_SELF_NOISE_SUP == cd->self_noise_supported) {
+		validate_diff_self_result(configuration->diff_self_rx_noise_threshold, configuration->diff_self_tx_noise_threshold);
+	}
+
+	result->change_report_rate_pass = CY_REPORT_RATE_FAIL;
+	if(CY_REPORT_RATE_SUP == cd->report_rate_check_supported) {
+		parade_change_report_rate();
+	}
 
 	if (result->i2c_test_pass){
 		strncat(buf_parademmitest_result, "0P-",strlen("0P-"));
@@ -8657,7 +10245,17 @@ static int parade_get_rawdata(struct ts_rawdata_info *info, struct ts_cmd_node *
 		strncat(buf_parademmitest_result, "3F-",strlen("3F-"));
 		AddReasonToBuf("-3F:Noise");
 	}
-	strncat(buf_parademmitest_result, "4P-",strlen("4P-"));/*Not implemented Yet*/
+	if(CY_REPORT_RATE_SUP == cd->report_rate_check_supported) {
+		if(result->change_report_rate_pass){
+			strncat(buf_parademmitest_result, CY_REPORT_RATE_PASS, strlen(CY_REPORT_RATE_PASS));
+		}
+		else{
+			strncat(buf_parademmitest_result, CY_REPORT_RATE_FAIL, strlen(CY_REPORT_RATE_FAIL));
+		}
+	}
+	else{
+		strncat(buf_parademmitest_result, CY_REPORT_RATE_PASS, strlen(CY_REPORT_RATE_PASS));
+	}
 	if(result->short_test_pass){
 		strncat(buf_parademmitest_result, "5P-",strlen("5P-"));
 	}
@@ -8680,7 +10278,14 @@ static int parade_get_rawdata(struct ts_rawdata_info *info, struct ts_cmd_node *
 		strncat(buf_parademmitest_result, "7F-",strlen("7F-"));
 		AddReasonToBuf("-7F:CpDelta");
 	}
-
+	if (CY_SELF_NOISE_SUP == cd->self_noise_supported) {
+		if(result->diff_self_rx_test_pass && result->diff_self_tx_test_pass){
+			strncat(buf_parademmitest_result, CY_SELF_NOISE_PASS, strlen(CY_SELF_NOISE_PASS));
+		} else {
+			strncat(buf_parademmitest_result, CY_SELF_NOISE_FAIL, strlen(CY_SELF_NOISE_FAIL));
+			AddReasonToBuf("-9F:Self RX Noise");
+		}
+	}
 	/*copy x y electrodes out for show*/
 	info->buff[1] = cmcp_info->tx_num;
 	info->buff[0] = cmcp_info->rx_num;
@@ -8745,7 +10350,7 @@ exit:
 		if(strlen(tp_test_failed_reason) != 0){
 			strncat(buf_parademmitest_result, tp_test_failed_reason,strlen(tp_test_failed_reason));
 		}
-		AddtoMMIResult("-");
+		AddtoMMIResult(";");
 		AddtoMMIResult(PARADE_VENDER_NAME);
 		AddtoMMIResult("-");
 		AddtoMMIResult(tskit_parade_data->chip_name);
@@ -8755,7 +10360,9 @@ exit:
 	}
 	if(rc!=NO_ERR)
 		info->status = TS_ACTION_FAILED;
+
 	parade_hid_output_resume_scanning_(tskit_parade_data);
+	g_ts_kit_platform_data.chip_data->isbootupdate_finish = true;
 	parade_finish_cmd();
 	return rc;
 
@@ -8777,7 +10384,7 @@ static int parade_regulator_get(void)
 			tskit_parade_data->vddd = regulator_get(&tskit_parade_data->parade_dev->dev,"parade_vddio");
 			if (IS_ERR(tskit_parade_data->vddd)) {
 				TS_LOG_ERR("%s, regulator tp vddd not used\n",__func__);
-				return -EINVAL;
+				goto ts_vddio_out;
 			}
 		}
 	}
@@ -8785,24 +10392,48 @@ static int parade_regulator_get(void)
 		TS_LOG_INFO("%s, power control by LCD, nothing to do\n",__func__);
 	}
 	return 0;
+
+ts_vddio_out:
+	if (1 == tskit_parade_data->parade_chip_data->vci_regulator_type)
+		regulator_put(tskit_parade_data->vdda);
+	return -EINVAL;
 }
+
+static void parade_regulator_put(void)
+{
+	if (1 == tskit_parade_data->parade_chip_data->vci_regulator_type) {
+		if (!IS_ERR(tskit_parade_data->vdda)) {
+			regulator_put(tskit_parade_data->vdda);
+		}
+	}
+	if (1 == tskit_parade_data->parade_chip_data->vddio_regulator_type) {
+		if (!IS_ERR(tskit_parade_data->vddd)) {
+			regulator_put(tskit_parade_data->vddd);
+		}
+	}
+}
+
 
 static int parade_set_voltage(void)
 {
 	int rc = 0;
 	if(tskit_parade_data->self_ctrl_power == 1){
 		TS_LOG_INFO("%s, power control by touch ic\n",__func__);
-		/*set voltage for vddd and vdda*/
-		rc = regulator_set_voltage(tskit_parade_data->vdda, tskit_parade_data->parade_chip_data->regulator_ctr.vci_value, tskit_parade_data->parade_chip_data->regulator_ctr.vci_value);
-		if(rc < 0){
-			TS_LOG_ERR("%s, failed to set parade vdda to %dV, rc = %d\n", __func__, rc,tskit_parade_data->parade_chip_data->regulator_ctr.vci_value);
-			return -1;
+		if(1 == tskit_parade_data->parade_chip_data->vci_regulator_type){
+			/*set voltage for vddd and vdda*/
+			rc = regulator_set_voltage(tskit_parade_data->vdda, tskit_parade_data->parade_chip_data->regulator_ctr.vci_value, tskit_parade_data->parade_chip_data->regulator_ctr.vci_value);
+			if(rc < 0){
+				TS_LOG_ERR("%s, failed to set parade vdda to %dV, rc = %d\n", __func__, rc,tskit_parade_data->parade_chip_data->regulator_ctr.vci_value);
+				return -1;
+			}
 		}
 
-		rc = regulator_set_voltage(tskit_parade_data->vddd, tskit_parade_data->parade_chip_data->regulator_ctr.vddio_value, tskit_parade_data->parade_chip_data->regulator_ctr.vddio_value);
-		if(rc < 0){
-			TS_LOG_ERR("%s, failed to set parade vddd to %dV, rc = %d\n", __func__, rc,tskit_parade_data->parade_chip_data->regulator_ctr.vddio_value);
-			return -1;
+		if (1 == tskit_parade_data->parade_chip_data->vddio_regulator_type){ 
+			rc = regulator_set_voltage(tskit_parade_data->vddd, tskit_parade_data->parade_chip_data->regulator_ctr.vddio_value, tskit_parade_data->parade_chip_data->regulator_ctr.vddio_value);
+			if(rc < 0){
+				TS_LOG_ERR("%s, failed to set parade vddd to %dV, rc = %d\n", __func__, rc,tskit_parade_data->parade_chip_data->regulator_ctr.vddio_value);
+				return -1;
+			}
 		}
 	}
 	else{
@@ -8811,6 +10442,52 @@ static int parade_set_voltage(void)
 
 	return 0;
 }
+
+static int parade_gpio_request(void)
+{
+	int retval = NO_ERR;
+	TS_LOG_INFO("%s enter\n", __func__);
+
+	if (0 == tskit_parade_data->parade_chip_data->vci_regulator_type) {
+		retval = gpio_request(tskit_parade_data->parade_chip_data->vci_gpio_ctrl, "parade_vci_gpio_ctrl");
+		if (retval) {
+			TS_LOG_ERR
+			    ("SFT:Ok;  ASIC: Real ERR----unable to request vci_gpio_ctrl2:%d\n",
+			     tskit_parade_data->parade_chip_data->vci_gpio_ctrl);
+			return -1;
+		}
+	}
+	if (0 ==  tskit_parade_data->parade_chip_data->vddio_regulator_type) {
+		retval = gpio_request(tskit_parade_data->parade_chip_data->vddio_gpio_ctrl, "parade_vddio_gpio_ctrl");
+		if (retval) {
+			TS_LOG_ERR
+			    ("SFT:Ok;  ASIC: Real ERR----unable to request vddio_gpio_ctrl:%d\n",
+			     tskit_parade_data->parade_chip_data->vddio_gpio_ctrl);
+			goto ts_vddio_out;
+		}
+	}
+	return 0;
+	
+ts_vddio_out:
+	if (0 == tskit_parade_data->parade_chip_data->vci_regulator_type) 
+		gpio_free(tskit_parade_data->parade_chip_data->vci_gpio_ctrl);	
+	return -1;
+}
+
+static void parade_gpio_free(void)
+{
+	TS_LOG_INFO("%s enter\n", __func__);
+	/*0 is power supplied by gpio, 1 is power supplied by ldo */
+	if (0 == tskit_parade_data->parade_chip_data->vci_regulator_type) {
+		if(0 <= tskit_parade_data->parade_chip_data->vci_gpio_ctrl)
+		gpio_free(tskit_parade_data->parade_chip_data->vci_gpio_ctrl);
+	}
+	if (0 == tskit_parade_data->parade_chip_data->vddio_regulator_type) {
+		if (0 <= tskit_parade_data->parade_chip_data->vddio_gpio_ctrl)
+		gpio_free(tskit_parade_data->parade_chip_data->vddio_gpio_ctrl);
+	}
+}
+
 
 static int parade_power_on(void)
 {
@@ -8839,26 +10516,31 @@ static int parade_power_on(void)
 				rc = regulator_enable(tskit_parade_data->vddd);
 				if (rc < 0) {
 					TS_LOG_ERR("%s, failed to enable parade vddd, rc = %d\n", __func__, rc);
-					return -1;
+					goto ts_vddd_out;
 				}
 			}
 		}
-		else if(0 == tskit_parade_data->parade_chip_data->vddio_regulator_type) {
+		if(0 == tskit_parade_data->parade_chip_data->vddio_gpio_type) {
 			TS_LOG_INFO("%s vddd switch gpio on\n", __func__);
 			gpio_direction_output(tskit_parade_data->parade_chip_data->vddio_gpio_ctrl, 1);//TODO: need related with dts
 		}
-
 	}else{
 		TS_LOG_INFO("%s, power control by LCD, nothing to do\n",__func__);
 	}
 
 	parade_power_on_gpio_set();
 	return 0;
+
+ts_vddd_out:
+	if (1 == tskit_parade_data->parade_chip_data->vci_regulator_type)
+		regulator_disable(tskit_parade_data->vdda);
+	return -1;
 }
 
 static int parade_power_off(void)
 {
 	int rc = 0;
+	TS_LOG_INFO("%s enter\n", __func__);
 	parade_power_off_gpio_set();
 
 	if(tskit_parade_data->self_ctrl_power == 1){
@@ -8889,11 +10571,10 @@ static int parade_power_off(void)
 				}
 			}
 		}
-		else if(0 == tskit_parade_data->parade_chip_data->vddio_regulator_type) {
+		if(0 == tskit_parade_data->parade_chip_data->vddio_gpio_type) {
 			TS_LOG_INFO("%s vddd switch gpio off\n", __func__);
 			gpio_direction_output(tskit_parade_data->parade_chip_data->vddio_gpio_ctrl, 0);//TODO: need related with dts
 		}
-
 	}
 	else{
 		TS_LOG_INFO("%s, power control by LCD, nothing to do\n",__func__);
@@ -9056,21 +10737,43 @@ static int parade_fw_update_sd(void)
 	rc = parade_check_cmd_status();
 	if(rc)
 		return rc;
+
+	if(false == g_ts_kit_platform_data.chip_data->isbootupdate_finish) {
+		TS_LOG_ERR("%s MMI test is running.\n",__func__);
+		return -EBUSY;
+	}
+	g_ts_kit_platform_data.chip_data->isbootupdate_finish = false;
+
 	rc = _parade_fw_update_from_sdcard(PARADE_FW_FROM_SD_NAME,1);
 	if (rc < 0) {
 		TS_LOG_ERR("%s: fw update from sdcard failed.\n", __func__);
 	}
 	else{
 		TS_LOG_INFO("%s: fw update from sdcard is successful.\n", __func__);
-		/*Set Power On Flag*/
-		rc = parade_set_power_on_flag(tskit_parade_data);
-		if (rc) {
-			TS_LOG_ERR("%s: set power on flag fail r=%d\n",
-				__func__, rc);
-			//Do nothing on this error
+		rc = parade_startup(tskit_parade_data,false);
+		if(rc)
+			TS_LOG_ERR("%s: Startup Error after FW upgrade\n",
+					__func__);
+		else {
+			TS_LOG_INFO("%s: Start up successfully after FW upgrade\n",
+					__func__);
+
+			if(tskit_parade_data->calibrate_fw_update_and_cmcp) {
+				rc = parade_calibrate_child();
+				if(!rc) {
+					TS_LOG_INFO("%s calibrate end\n", __func__);
+				}
+			}
+		}
+	}
+	if(tskit_parade_data->create_project_id_flag == 1){
+		rc = parade_create_project_id();
+		if (rc < 0) {
+			TS_LOG_ERR("%s: create project id failed!\n", __func__);
 		}
 	}
 out:
+	g_ts_kit_platform_data.chip_data->isbootupdate_finish = true;
 	parade_finish_cmd();
 	return rc;
 }
@@ -9140,14 +10843,36 @@ static int parade_chip_detect(struct ts_kit_platform_data *platform_data)
 	tskit_parade_data->parade_chip_data->is_i2c_one_byte = 0;
 	tskit_parade_data->parade_chip_data->is_new_oem_structure= 0;
 	tskit_parade_data->dev = &(platform_data->client->dev);
-
+	
 	g_ts_kit_platform_data.chip_data->isbootupdate_finish = true;
+
+	atomic_set(&parade_reset_pin_status,0);
+	parade_is_power_on = true;
 
 	rc = parade_parse_dts(tskit_parade_data->parade_dev->dev.of_node,tskit_parade_data->parade_chip_data);
 	if(0 != rc)
 	{
 		TS_LOG_ERR("%s, error parade_parse_dts\n", __func__);
-		goto err;
+		goto parse_dts_failed;
+	}
+
+	if(true == tskit_parade_data->parade_chip_data->check_bulcked){
+		if(false == lcdkit_info.panel_infos.isbulcked){
+		    TS_LOG_ERR("%s, no lcd buckled \n", __func__);
+		    rc = -EFAULT;
+			goto bulcked_err;
+		}
+	}
+
+	if(cd->core_pdata->wakeup_gesture_enable){
+		cd->double_tab_info = (struct parade_double_tap_info*)kzalloc(sizeof(struct parade_double_tap_info), GFP_KERNEL);
+		if(!cd->double_tab_info){
+			TS_LOG_ERR("%s : Failed to kzalloc for parade_double_tap_info.\n", __func__);
+			rc = -ENOMEM;
+			goto alloc_failed;
+		}
+
+		cd->parade_chip_data->easy_wakeup_info.off_motion_on = false;
 	}
 	/*in g_ts_device_map, parade's chip_detect is at the back of synpatics, so just add msleep 50ms here*/
 	msleep(50);
@@ -9156,36 +10881,22 @@ static int parade_chip_detect(struct ts_kit_platform_data *platform_data)
 	if(0 != rc)
 	{
 		TS_LOG_ERR("%s, error request power vdda vddd\n", __func__);
-		goto err;
+		goto regulator_err;
 	}
-#if 0
-	/*valid irq and rst*/
-	if (!gpio_is_valid(tskit_parade_data->parade_chip_data->reset_gpio)){
-		TS_LOG_ERR("%s, reset gpio:%d gpio not provided\n", __func__, tskit_parade_data->parade_chip_data->reset_gpio);
-		rc = -EIO;
-		goto out;
-	}
-	if (!gpio_is_valid(tskit_parade_data->parade_chip_data->irq_gpio)){
-		TS_LOG_ERR("%s, irq_gpio gpio:%d gpio not provided\n", __func__, tskit_parade_data->parade_chip_data->irq_gpio);
-		rc = -EIO;
-		goto out;
-	}
-	/*request irq and rst*/
-	rc = gpio_request(tskit_parade_data->parade_chip_data->reset_gpio, "ts_reset_gpio");
-	if (rc < 0) {
-		TS_LOG_ERR("%s, Fail to request gpio:%d. rc = %d\n", __func__, tskit_parade_data->parade_chip_data->reset_gpio,
-			rc);
-		goto out;
-	}
-	rc = gpio_request(tskit_parade_data->parade_chip_data->irq_gpio, "ts_irq_gpio");
-	if (rc < 0) {
-		TS_LOG_ERR("%s, Fail to request gpio:%d. rc = %d\n", __func__, tskit_parade_data->parade_chip_data->irq_gpio,
-			rc);
-		gpio_free(tskit_parade_data->parade_chip_data->reset_gpio);
-		goto out;
-	}
-#endif
 
+	rc = parade_gpio_request();
+	if(0 != rc)
+	{
+		TS_LOG_ERR("%s, error request gpio for vci and vddio\n", __func__);
+		goto gpio_err;
+	}
+	if(tskit_parade_data->pinctrl_set == 1) {
+		rc = parade_pinctrl_select_normal();
+		if(rc < 0){
+			TS_LOG_ERR("%s, parade_pinctrl_select_normal failed\n", __func__);
+			goto pinctrl_get_err;
+		}
+	}
 	/*irq and rst direciton set*/
 	gpio_direction_output(tskit_parade_data->parade_chip_data->ts_platform_data->reset_gpio, 1);
 	gpio_direction_input(tskit_parade_data->parade_chip_data->ts_platform_data->irq_gpio);
@@ -9193,12 +10904,12 @@ static int parade_chip_detect(struct ts_kit_platform_data *platform_data)
 	rc = parade_set_voltage();
 	if (rc < 0) {
 		TS_LOG_ERR("%s, failed to set voltage, rc = %d\n", __func__, rc);
-		goto err;
+		goto pinctrl_select_error;
 	}
 	rc = parade_power_on();
 	if (rc < 0) {
 		TS_LOG_ERR("%s, failed to enable power, rc = %d\n", __func__, rc);
-		goto err;
+		goto pinctrl_select_error;
 	}
 	msleep(5);
 	parade_hw_reset();
@@ -9207,7 +10918,7 @@ static int parade_chip_detect(struct ts_kit_platform_data *platform_data)
 	rc = i2c_communicate_check();
 	if (rc < 0) {
 		TS_LOG_ERR("%s, not find parade device\n", __func__);
-		goto err;
+		goto check_err;
 	} else {
 		strncpy(tskit_parade_data->parade_chip_data->chip_name,PARADE_VENDER_NAME,strlen(PARADE_VENDER_NAME)+1);
 		TS_LOG_INFO("%s, find parade device\n", __func__);
@@ -9219,50 +10930,59 @@ static int parade_chip_detect(struct ts_kit_platform_data *platform_data)
 	if (rc) {
 		TS_LOG_ERR("%s: Error, could not create hw_reset sysfs\n",
 				__func__);
-		goto error;
+		goto check_err;
 	}
 	rc = device_create_file(cd->dev, &dev_attr_drv_debug);
 	if (rc) {
 		TS_LOG_ERR("%s: Error, could not create hw_reset sysfs\n",
 				__func__);
-		goto error;
+		goto check_err;
 	}
 
 	rc = device_create_file(cd->dev, &dev_attr_ic_ver);
 	if (rc) {
 		TS_LOG_ERR("%s: Error, could not create ic_ver sysfs\n",
 				__func__);
-		goto error;
+		goto check_err;
 	}
 	rc = device_create_file(cd->dev, &dev_attr_doze);
 	if (rc) {
 		TS_LOG_ERR("%s: Error, could not create dozea sysfs\n",
 				__func__);
-		goto error;
+		goto check_err;
 	}
 	rc = device_create_file(cd->dev, &dev_attr_drv_ver);
 	if (rc) {
 		TS_LOG_ERR("%s: Error, could not create drv_ver sysfs\n",
 				__func__);
-		goto error;
+		goto check_err;
 	}
 	//Set chip to reset state during fully init
 	TS_LOG_INFO("%s: put reset to low\n", __func__);
-	gpio_set_value(tskit_parade_data->parade_chip_data->ts_platform_data->reset_gpio, 0);
+	parade_reset_pin_low();
 	msleep(5); //Solution: as following IRQ will be register.  if not sleep, it will has false trigger
-out:
-	TS_LOG_INFO("%s, done\n", __func__);
+
+	TS_LOG_INFO("%s: done\n", __func__);
 	return NO_ERR;
-error:
-	TS_LOG_ERR("%s, creat file error\n", __func__);
-err:
-	TS_LOG_ERR("%s, error\n", __func__);
-	TS_LOG_ERR("%s free irq and rest gpio\n", __func__);
-	/*release rst and irq gpio*/
-//	gpio_free(tskit_parade_data->parade_chip_data->ts_platform_data->irq_gpio);
-//	gpio_free(tskit_parade_data->parade_chip_data->ts_platform_data->reset_gpio);
-	/*release regulator*/
+
+check_err:
 	parade_power_off();
+pinctrl_select_error:
+	if(tskit_parade_data->pinctrl_set == 1)
+		parade_pinctrl_select_lowpower();
+pinctrl_get_err:
+	parade_gpio_free();
+gpio_err:
+	parade_regulator_put();
+regulator_err:
+	if(cd->double_tab_info){
+		kfree(cd->double_tab_info);
+		cd->double_tab_info = NULL;
+	}
+alloc_failed:
+bulcked_err:
+parse_dts_failed:
+	TS_LOG_ERR("parade_chip_detect fail!\n");
 	return rc;
 }
 
@@ -9278,7 +10998,7 @@ static int __init parade_module_init(void)
     if (!tskit_parade_data) {
     	TS_LOG_ERR("Failed to alloc mem for struct tskit_parade_data\n");
        error =  -ENOMEM;
-       goto out;
+       return error;
     }
     tskit_parade_data->parade_chip_data = kzalloc(sizeof(struct ts_kit_device_data), GFP_KERNEL);
     if (!tskit_parade_data->parade_chip_data ) {

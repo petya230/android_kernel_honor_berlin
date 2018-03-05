@@ -40,6 +40,67 @@ void get_average_max_min_data(struct mxt_data *data, char *buf)
 	return;
 }
 
+int get_self_cap_data_test(struct mxt_data *data)
+{
+	int i = 0;
+	/*There are two groups of self capacitance. Self cap to the earth has ysize data and amplify self cap has xsize plus ysize*/
+	for (i = 0; i < (data->info->matrix_xsize + data->info->matrix_ysize*2); i++) {
+		if(abs(data->T37_buf[i]) > data->chip_data->self_cap_max)
+			return 0;
+	}
+	return 1;
+}
+
+int get_enhance_refs_tx2tx_delta_test(struct mxt_data *data)
+{
+	int tx_n, rx_n;
+	int tx_delta_value = 0;
+	size_t result = 0;
+	int x_absolute_size = data->x_size - data->x_origin;
+	int y_absolute_size = data->y_size - data->y_origin;
+
+	for (tx_n = 0; tx_n < x_absolute_size - 1; tx_n++) {
+		for (rx_n = 0; rx_n < y_absolute_size; rx_n++) {
+			tx_delta_value = data->T37_buf[(int)((tx_n + 1) * y_absolute_size + rx_n)] -
+				data->T37_buf[(int)(tx_n * y_absolute_size + rx_n)];
+			tx_delta_value = abs(tx_delta_value);
+			if (tx_delta_value <= data->chip_data->tx_delta[(int)(tx_n * y_absolute_size + rx_n)]) {
+				result++;
+			}
+		}
+	}
+	if (result == (data->T37_buf_size / sizeof(int) - y_absolute_size)) {
+		TS_LOG_INFO("rawdata tx diff is all right, result = %zu\n", result);
+		return 1;
+	} else
+		return 0;
+}
+
+int get_enhance_refs_rx2rx_delta_test(struct mxt_data *data)
+{
+	int tx_n, rx_n;
+	int rx_delta_value = 0;
+	size_t result = 0;
+	int x_absolute_size = data->x_size - data->x_origin;
+	int y_absolute_size = data->y_size - data->y_origin;
+
+	for (rx_n = 0; rx_n < y_absolute_size - 1; rx_n++) {
+		for (tx_n = 0; tx_n < x_absolute_size; tx_n++) {
+			rx_delta_value = data->T37_buf[(int)(tx_n * y_absolute_size + rx_n + 1)] -
+				data->T37_buf[(int)(tx_n * y_absolute_size + rx_n)];
+			rx_delta_value = abs(rx_delta_value);
+			if (rx_delta_value <= data->chip_data->rx_delta[(int)(tx_n * (y_absolute_size - 1) + rx_n)]) {
+				result++;
+			}
+		}
+	}
+	if (result == (data->T37_buf_size / sizeof(int) - x_absolute_size)) {
+		TS_LOG_INFO("rawdata rx diff is all right, result = %zu\n", result);
+		return 1;
+	} else
+		return 0;
+}
+
 int get_refs_rx2rx_delta_test(struct mxt_data *data, int data_uplimit,
 			      int data_lowlimit)
 {
@@ -117,6 +178,30 @@ int get_refs_max_minus_min_test(struct mxt_data *data, int data_limit)
 	if (max_num - min_num < data_limit) {
 		return 1;
 	} else {
+		return 0;
+	}
+}
+
+int get_enhance_refs_or_deltas_data_test(struct mxt_data *data)
+{
+	size_t i = 0;
+	size_t result = 0;
+
+	TS_LOG_INFO("rawdata compare start\n");
+	for (i = 0; i < data->T37_buf_size / sizeof(int); i++) {
+		if (data->T37_buf[i] >= data->chip_data->lower[i]
+			&& data->T37_buf[i] <= data->chip_data->upper[i]) {
+			result++;
+		} else {
+			TS_LOG_ERR("error rawdata[%d]:%d out of range, min:%d, max:%d\n",
+				i, data->T37_buf[i], data->chip_data->lower[i], data->chip_data->upper[i]);
+		}
+	}
+	if (result == data->T37_buf_size / sizeof(int)) {
+		TS_LOG_INFO("all data is ok, result:%zu\n", result);
+		return 1;
+	} else {
+		TS_LOG_INFO("some data is bad, result:%zu\n", result);
 		return 0;
 	}
 }

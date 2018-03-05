@@ -1,18 +1,39 @@
 /*
- * Texas Instruments TUSB422 Power Delivery
+ * TUSB422 Power Delivery
  *
- * Author: Dan Murphy <dmurphy@ti.com>
+ * Author: Brian Quach <brian.quach@ti.com>
  *
- * Copyright: (C) 2016 Texas Instruments, Inc.
+ * Copyright (C) 2016 Texas Instruments Incorporated - http://www.ti.com/
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
  *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * General Public License for more details.
+ *  Redistribution and use in source and binary forms, with or without
+ *  modification, are permitted provided that the following conditions
+ *  are met:
+ *
+ *    Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ *
+ *    Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the
+ *    distribution.
+ *
+ *    Neither the name of Texas Instruments Incorporated nor the names of
+ *    its contributors may be used to endorse or promote products derived
+ *    from this software without specific prior written permission.
+ *
+ *  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ *  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ *  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ *  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ *  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ *  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ *  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ *  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ *  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ *  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ *  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
  */
 
 #include "tusb422_common.h"
@@ -22,8 +43,23 @@
 #endif
 #ifndef CONFIG_TUSB422
 	#include "timer.h"
+	#include "tcpm_hal.h"
 #endif
 
+#ifdef CONFIG_TUSB422_PAL
+
+#ifdef CONFIG_CONTEXTHUB_PD
+#include <linux/hisi/contexthub/tca.h>
+#include <huawei_platform/usb/hw_pd_dev.h>
+
+extern void dp_aux_switch_op(uint32_t value);
+extern void dp_aux_uart_switch_enable(void);
+
+uint8_t g_polarity;
+uint8_t g_mux_type;
+#endif
+#endif
+#ifdef CONFIG_TUSB422
 
 int8_t tcpc_read8(unsigned int port, uint8_t reg, uint8_t *data)
 {
@@ -104,67 +140,298 @@ void timer_cancel(struct tusb422_timer_t *timer)
 	tusb422_stop_timer();
 }
 
-void tcpm_hal_vbus_enable(uint8_t port, enum vbus_select_t sel)
-{
-#ifdef CONFIG_TUSB422_PAL
-	tcpc_device_t *tcpc_dev = tcpm_get_device(port);
-	uint16_t ma;
-
-	if (sel == VBUS_SRC_5V)
-	{
-		if (tcpc_dev->rp_val == RP_HIGH_CURRENT)
-		{
-			ma = 3000;
-		}
-		else if (tcpc_dev->rp_val == RP_MEDIUM_CURRENT)
-		{
-			ma = 1500;
-		}
-		else /* default */
-		{
-			// Default 500mA for USB2 and 900mA for USB3.
-			ma = 500;
-		}
-
-		usb_pd_pal_source_vbus(port, false, 5000, ma);
-	}
-	else if (sel == VBUS_SNK)
-	{
-		if (tcpc_dev->src_current_adv == CC_SNK_STATE_POWER30)
-		{
-			ma = 3000;
-		}
-		else if (tcpc_dev->src_current_adv == CC_SNK_STATE_POWER15)
-		{
-			ma = 1500;
-		}
-		else /* default */
-		{
-			// Default 500mA for USB2 and 900mA for USB3.
-			ma = 500;
-		}
-
-		usb_pd_pal_sink_vbus(port, false, 5000, ma);
-	}
-#else
-	tusb422_set_vbus((int) sel);
 #endif
 
-}
-
-void tcpm_hal_vbus_disable(uint8_t port, enum vbus_select_t sel)
-{
-#ifdef CONFIG_TUSB422_PAL
-	if (sel == VBUS_SRC_5V)
-	{
-		usb_pd_pal_disable_vbus(port);
-	}
-#else
-	tusb422_clr_vbus((int) sel);
-#endif
-}
 
 void tcpm_msleep(int msecs)
 {
+#ifdef CONFIG_TUSB422
 	tusb422_msleep(msecs);
+#else /* For MSP430/432 platform */
+	msleep(msecs);
+#endif
+}
+
+void tcpm_source_vconn(uint8_t port, bool enable)
+{
+#ifdef CONFIG_TUSB422_PAL
+	usb_pd_pal_source_vconn(port, enable);
+#elif defined CONFIG_TUSB422 /* For BeagleBone Black EVM platform */
+#else /* For MSP430/432 platform */
+#endif
+	return;
+}
+void tcpm_source_vbus(uint8_t port, bool usb_pd, uint16_t mv)
+{
+	tcpm_src_vbus_enable(port, mv);
+#ifdef CONFIG_TUSB422_PAL
+
+	usb_pd_pal_source_vbus(port, usb_pd, mv, 0);  /* using 0 for current since the platform doesn't use this data */
+
+#elif defined CONFIG_TUSB422 /* For BeagleBone Black EVM platform */
+	if (mv == 5000)
+	{
+		tusb422_set_vbus(VBUS_SEL_SRC_5V);
+	}
+	else
+	{
+		tusb422_set_vbus(VBUS_SEL_SRC_HI_VOLT);
+	}
+#else /* For MSP430/432 platform */
+	if (mv == 5000)
+	{
+		tcpm_hal_vbus_enable(port, VBUS_SRC_5V);
+	}
+	else
+	{
+		tcpm_hal_vbus_enable(port, VBUS_SRC_HI_VOLT);
+	}
+#endif
+
+	return;
+}
+
+void tcpm_source_vbus_disable(uint8_t port)
+{
+#ifdef CONFIG_TUSB422_PAL
+	usb_pd_pal_disable_vbus(port);
+#elif defined CONFIG_TUSB422 /* For BeagleBone Black EVM platform */
+	tusb422_clr_vbus(VBUS_SEL_SRC_5V);
+	tusb422_clr_vbus(VBUS_SEL_SRC_HI_VOLT);
+#else /* For MSP430/432 platform */
+	tcpm_hal_vbus_disable(port, VBUS_SRC_5V);
+	tcpm_hal_vbus_disable(port, VBUS_SRC_HI_VOLT);
+#endif
+	return;
+}
+
+void tcpm_sink_vbus(uint8_t port, bool usb_pd, uint16_t mv, uint16_t ma)
+{
+	tcpm_snk_vbus_enable(port);
+#ifdef CONFIG_TUSB422_PAL
+	usb_pd_pal_sink_vbus(port, usb_pd, mv, ma);
+#elif defined CONFIG_TUSB422 /* For BeagleBone Black EVM platform */
+	tusb422_set_vbus(VBUS_SEL_SNK);
+#else /* For MSP430/432 platform */
+	tcpm_hal_vbus_enable(port, VBUS_SNK);
+#endif
+	return;
+}
+
+void tcpm_sink_vbus_batt(uint8_t port, uint16_t min_mv, uint16_t max_mv, uint16_t mw)
+{
+#ifdef CONFIG_TUSB422_PAL
+	usb_pd_pal_sink_vbus_batt(port, min_mv, max_mv, mw);
+#elif defined CONFIG_TUSB422 /* For BeagleBone Black EVM platform */
+#else /* For MSP430/432 platform */
+#endif
+	return;
+}
+
+void tcpm_sink_vbus_vari(uint8_t port, uint16_t min_mv, uint16_t max_mv, uint16_t ma)
+{
+#ifdef CONFIG_TUSB422_PAL
+	usb_pd_pal_sink_vbus_vari(port, min_mv, max_mv, ma);
+#elif defined CONFIG_TUSB422 /* For BeagleBone Black EVM platform */
+#else /* For MSP430/432 platform */
+#endif
+	return;
+}
+
+void tcpm_sink_vbus_disable(uint8_t port)
+{
+#ifdef CONFIG_TUSB422_PAL
+	usb_pd_pal_disable_vbus(port);
+#elif defined CONFIG_TUSB422 /* For BeagleBone Black EVM platform */
+	tusb422_clr_vbus(VBUS_SEL_SNK);
+#else /* For MSP430/432 platform */
+	tcpm_hal_vbus_disable(port, VBUS_SNK);
+#endif
+	return;
+}
+
+void tcpm_mux_control(uint8_t port, uint8_t data_role, mux_ctrl_t ctrl, uint8_t polarity)
+{
+#ifdef CONFIG_TUSB422_PAL
+	// << Call platform functions to configure mux here >>
+#ifdef CONFIG_CONTEXTHUB_PD
+	g_polarity = polarity;
+	switch (ctrl)
+	{
+		case MUX_DISABLE:
+			return;
+		case MUX_USB:
+			return;
+		case MUX_DP_2LANE:
+			g_mux_type = TCPC_USB31_AND_DP_2LINE;
+			break;
+		case MUX_DP_4LANE:
+			g_mux_type = TCPC_DP;
+			break;
+		default:
+			break;
+	}
+
+	/* add aux switch */
+	dp_aux_switch_op(polarity);
+	/* add aux uart switch*/
+	dp_aux_uart_switch_enable();
+
+	struct pd_dpm_combphy_event event;
+	event.dev_type = TCA_ID_RISE_EVENT;
+	event.irq_type = TCA_IRQ_HPD_OUT;
+	event.mode_type = TCPC_NC;
+	event.typec_orien = polarity;
+
+	pd_dpm_handle_combphy_event(event);
+	pd_dpm_set_combphy_status(g_mux_type);
+
+	event.dev_type = TCA_ID_FALL_EVENT;
+	event.irq_type = TCA_IRQ_HPD_IN;
+	event.mode_type = g_mux_type;
+	pd_dpm_handle_combphy_event(event);
+
+	pr_info("\nhuawei_pd %s pd_event_notify , mux_type = %d\n", __func__, g_mux_type);
+
+#endif
+#elif defined CONFIG_TUSB422 /* For BeagleBone Black EVM platform */
+#else /* For MSP430/432 platform */
+
+	// 0 = UNFLIPPED, 1 = FLIPPED.
+	tcpm_hal_set_mux_polarity(polarity);
+
+	switch (ctrl)
+	{
+		case MUX_DISABLE:
+			CRIT("Mux: Disable\n");
+			// Power down mux.
+			if (data_role == PD_DATA_ROLE_UFP)
+			{
+				// For TUSB460 Sink Board.
+				tcpm_hal_set_mux_enable(0);
+			}
+			else /* DFP */
+			{
+				// For TUSB1046.  AM_SEL = CTL0, EN = CTL1.
+				tcpm_hal_set_mux_am_sel(0);
+				tcpm_hal_set_mux_enable(0);
+			}
+			break;
+
+		case MUX_USB:
+			CRIT("Mux: USB\n");
+			if (data_role == PD_DATA_ROLE_UFP)
+			{
+			}
+			else /* DFP */
+			{
+				// For TUSB1046. One Port USB3.1.
+				tcpm_hal_set_mux_am_sel(1);
+				tcpm_hal_set_mux_enable(0);
+			}
+			break;
+
+		case MUX_DP_2LANE:
+			CRIT("Mux: DP 2-lane\n");
+			if (data_role == PD_DATA_ROLE_UFP)
+			{
+			}
+			else /* DFP */
+			{
+				// For TUSB1046.  One Port USB 3.1 + 2 Lane DP.
+				tcpm_hal_set_mux_am_sel(1);
+				tcpm_hal_set_mux_enable(1);
+			}
+			break;
+
+		case MUX_DP_4LANE:
+			CRIT("Mux: DP 4-lane\n");
+			if (data_role == PD_DATA_ROLE_UFP)
+			{
+				// For TUSB460 Sink Board.
+				tcpm_hal_set_mux_am_sel(1);
+				tcpm_hal_set_mux_enable(1);
+			}
+			else /* DFP */
+			{
+				// For TUSB1046. 4 Lane DP.
+				tcpm_hal_set_mux_am_sel(0);
+				tcpm_hal_set_mux_enable(1);
+			}
+			break;
+
+		case MUX_AUDIO:
+			CRIT("Mux: Audio\n");
+			break;
+
+		default:
+			break;
+	}
+
+#endif
+
+	return;
+}
+
+void tcpm_hpd_out_control(uint8_t port, hpd_state_t state)
+{
+	DEBUG("HPD_OUT: %u\n", val);
+#ifdef CONFIG_TUSB422_PAL
+	// << Call platform functions to send HPD to DisplayPort source here >>
+#ifdef CONFIG_CONTEXTHUB_PD
+	struct pd_dpm_combphy_event event;
+	event.mode_type = g_mux_type;
+	event.typec_orien = g_polarity;
+
+	if (state == HPD_LOW)
+	{
+		event.dev_type = TCA_DP_OUT;
+		event.irq_type = TCA_IRQ_HPD_OUT;
+		pd_dpm_handle_combphy_event(event);
+		pd_dpm_set_last_hpd_status(false);
+	}
+	else if (state == HPD_HIGH)
+	{
+		event.dev_type = TCA_DP_IN;
+		event.irq_type = TCA_IRQ_HPD_IN;
+		pd_dpm_handle_combphy_event(event);
+		pd_dpm_set_last_hpd_status(true);
+	}
+	else /* HPD_IRQ */
+	{
+		event.dev_type = TCA_DP_IN;
+		event.irq_type = TCA_IRQ_SHORT;
+		pd_dpm_handle_combphy_event(event);
+	}
+
+#endif
+
+#elif defined CONFIG_TUSB422 /* For BeagleBone Black EVM platform */
+#else /* For MSP430/432 platform */
+	if (state == HPD_IRQ)
+	{
+		tcpm_hal_hpd_out_control(port, 0);
+		tcpm_msleep(1);
+		tcpm_hal_hpd_out_control(port, 1);
+	}
+	else
+	{
+		tcpm_hal_hpd_out_control(port, (state == HPD_LOW) ? 0 : 1);
+	}
+#endif
+	return;
+}
+
+uint8_t tcpm_get_hpd_in(uint8_t port)
+{
+	uint8_t hpd = 0;
+
+#ifdef CONFIG_TUSB422_PAL
+	// << Call platform functions to get HPD status from DisplayPort sink here >>
+#elif defined CONFIG_TUSB422 /* For BeagleBone Black EVM platform */
+#else
+	hpd = tcpm_hal_get_hpd_in(port);
+#endif
+
+	return hpd;
 }

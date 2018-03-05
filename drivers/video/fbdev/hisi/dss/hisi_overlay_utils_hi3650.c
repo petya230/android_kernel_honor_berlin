@@ -493,9 +493,20 @@ void hisi_dss_aif_init(char __iomem *aif_ch_base,
 void hisi_dss_aif_ch_set_reg(struct hisi_fb_data_type *hisifd,
 	char __iomem *aif_ch_base, dss_aif_t *s_aif)
 {
-	BUG_ON(hisifd == NULL);
-	BUG_ON(aif_ch_base == NULL);
-	BUG_ON(s_aif == NULL);
+	if (hisifd == NULL) {
+		HISI_FB_DEBUG("hisifd is NULL!\n");
+		return;
+	}
+
+	if (aif_ch_base == NULL) {
+		HISI_FB_DEBUG("aif_ch_base is NULL!\n");
+		return;
+	}
+
+	if (s_aif == NULL) {
+		HISI_FB_DEBUG("s_aif is NULL!\n");
+		return;
+	}
 
 	hisifd->set_reg(hisifd, aif_ch_base + AIF_CH_CTL,
 		s_aif->aif_ch_ctl, 32, 0);
@@ -514,10 +525,22 @@ int hisi_dss_aif_ch_config(struct hisi_fb_data_type *hisifd, dss_overlay_t *pov_
 	uint32_t scfd_v = 0;
 	uint32_t online_offline_rate = 1;
 
-	BUG_ON(hisifd == NULL);
-	BUG_ON(pov_req == NULL);
-	BUG_ON((layer == NULL) && (wb_layer == NULL));
-	BUG_ON((ovl_idx < DSS_OVL0) || (ovl_idx >= DSS_OVL_IDX_MAX));
+	if (hisifd == NULL) {
+		HISI_FB_ERR("hisifd is NULL Point!");
+		return -EINVAL;
+	}
+	if (pov_req == NULL){
+		HISI_FB_ERR("pov_req is NULL Point!");
+		return -EINVAL;
+	}
+	if ((layer == NULL) && (wb_layer == NULL)){
+		HISI_FB_ERR("layer & wb_layer is NULL Point!");
+		return -EINVAL;
+	}
+	if ((ovl_idx < DSS_OVL0) || (ovl_idx >= DSS_OVL_IDX_MAX)){
+		HISI_FB_ERR("ovl_idx(%d) is invalid!\n", ovl_idx);
+		return -EINVAL;
+	}
 
 	if (wb_layer) {
 		chn_idx = wb_layer->chn_idx;
@@ -529,10 +552,16 @@ int hisi_dss_aif_ch_config(struct hisi_fb_data_type *hisifd, dss_overlay_t *pov_
 	hisifd->dss_module.aif_ch_used[chn_idx] = 1;
 
 	aif_bw = &(hisifd->dss_module.aif_bw[chn_idx]);
-	BUG_ON(aif_bw->is_used != 1);
+	if (aif_bw->is_used != 1) {
+		HISI_FB_ERR("fb%d, aif_bw->is_used(%d) is invalid!", hisifd->index, aif_bw->is_used);
+		return -EINVAL;
+	}
 
 	mid = 0x9 - chn_idx;
-	BUG_ON(mid < 0);
+	if (mid < 0) {
+		HISI_FB_ERR("fb%d, mid(%d) is invalid!", hisifd->index, mid);
+		return -EINVAL;
+	}
 
 	aif->aif_ch_ctl = set_bits32(aif->aif_ch_ctl, aif_bw->axi_sel, 1, 0);
 	aif->aif_ch_ctl = set_bits32(aif->aif_ch_ctl, mid, 4, 4);
@@ -622,10 +651,22 @@ int hisi_dss_aif1_ch_config(struct hisi_fb_data_type *hisifd, dss_overlay_t *pov
 	uint32_t scfd_h = 0;
 	uint32_t scfd_v = 0;
 
-	BUG_ON(hisifd == NULL);
-	BUG_ON(pov_req == NULL);
-	BUG_ON((layer == NULL) && (wb_layer == NULL));
-	BUG_ON((ovl_idx < DSS_OVL0) || (ovl_idx >= DSS_OVL_IDX_MAX));
+	if (hisifd == NULL) {
+		HISI_FB_ERR("hisifd is NULL Point!");
+		return -EINVAL;
+	}
+	if (pov_req == NULL){
+		HISI_FB_ERR("pov_req is NULL Point!");
+		return -EINVAL;
+	}
+	if ((layer == NULL) && (wb_layer == NULL)){
+		HISI_FB_ERR("layer & wb_layer is NULL Point!");
+		return -EINVAL;
+	}
+	if ((ovl_idx < DSS_OVL0) || (ovl_idx >= DSS_OVL_IDX_MAX)){
+		HISI_FB_ERR("ovl_idx(%d) is invalid!\n", ovl_idx);
+		return -EINVAL;
+	}
 
 	if (wb_layer) {
 		chn_idx = wb_layer->chn_idx;
@@ -642,10 +683,16 @@ int hisi_dss_aif1_ch_config(struct hisi_fb_data_type *hisifd, dss_overlay_t *pov
 	hisifd->dss_module.aif1_ch_used[chn_idx] = 1;
 
 	aif1_bw = &(hisifd->dss_module.aif1_bw[chn_idx]);
-	BUG_ON(aif1_bw->is_used != 1);
+	if (aif1_bw->is_used != 1) {
+		HISI_FB_ERR("fb%d, aif1_bw->is_used=%d no equal to 1 is err!", hisifd->index, aif1_bw->is_used);
+		return 0;
+	}
 
 	mid = 0x9 - chn_idx;
-	BUG_ON(mid < 0);
+	if (mid < 0) {
+		HISI_FB_ERR("fb%d, mid=%d is invalid!", hisifd->index, mid);
+		return 0;
+	}
 
 	aif1->aif_ch_ctl = set_bits32(aif1->aif_ch_ctl, aif1_bw->axi_sel, 1, 0);
 	aif1->aif_ch_ctl = set_bits32(aif1->aif_ch_ctl, mid, 4, 4);
@@ -847,9 +894,20 @@ void hisi_dss_smmu_ch_set_reg(struct hisi_fb_data_type *hisifd,
 	int idx2 = 0;
 	int idx3 = 0;
 
-	BUG_ON(hisifd == NULL);
-	BUG_ON(smmu_base == NULL);
-	BUG_ON(s_smmu == NULL);
+	if (hisifd == NULL) {
+		HISI_FB_DEBUG("hisifd is NULL!\n");
+		return;
+	}
+
+	if (smmu_base == NULL) {
+		HISI_FB_DEBUG("smmu_base is NULL!\n");
+		return;
+	}
+
+	if (s_smmu == NULL) {
+		HISI_FB_DEBUG("s_smmu is NULL!\n");
+		return;
+	}
 
 	/*
 	if (chn_idx == DSS_RCHN_D2) {
@@ -1090,9 +1148,20 @@ void hisi_dss_csc_init(char __iomem *csc_base, dss_csc_t *s_csc)
 void hisi_dss_csc_set_reg(struct hisi_fb_data_type *hisifd,
 	char __iomem *csc_base, dss_csc_t *s_csc)
 {
-	BUG_ON(hisifd == NULL);
-	BUG_ON(csc_base == NULL);
-	BUG_ON(s_csc == NULL);
+	if (hisifd == NULL) {
+		HISI_FB_DEBUG("hisifd is NULL!\n");
+		return;
+	}
+
+	if (csc_base == NULL) {
+		HISI_FB_DEBUG("csc_base is NULL!\n");
+		return;
+	}
+
+	if (s_csc == NULL) {
+		HISI_FB_DEBUG("s_csc is NULL!\n");
+		return;
+	}
 
 	hisifd->set_reg(hisifd, csc_base + CSC_IDC, s_csc->idc, 32, 0);
 	hisifd->set_reg(hisifd, csc_base + CSC_ODC, s_csc->odc, 32, 0);
@@ -1114,16 +1183,21 @@ int hisi_dss_csc_config(struct hisi_fb_data_type *hisifd,
 	int (*csc_coe_yuv2rgb)[CSC_COL];
 	int (*csc_coe_rgb2yuv)[CSC_COL];
 
-	BUG_ON(hisifd == NULL);
+	if (hisifd == NULL) {
+		HISI_FB_ERR("hisifd is NULL Point!");
+		return -EINVAL;
+	}
 
 	if (wb_layer) {
 		chn_idx = wb_layer->chn_idx;
 		format = wb_layer->dst.format;
 		csc_mode = wb_layer->dst.csc_mode;
 	} else {
-		chn_idx = layer->chn_idx;
-		format = layer->img.format;
-		csc_mode = layer->img.csc_mode;
+		if (layer) {
+			chn_idx = layer->chn_idx;
+			format = layer->img.format;
+			csc_mode = layer->img.csc_mode;
+		}
 	}
 
 	if (!isYUV(format))
@@ -1273,9 +1347,20 @@ void hisi_dss_ovl_set_reg(struct hisi_fb_data_type *hisifd,
 {
 	int i = 0;
 
-	BUG_ON(hisifd == NULL);
-	BUG_ON(ovl_base == NULL);
-	BUG_ON(s_ovl == NULL);
+	if (hisifd == NULL) {
+		HISI_FB_DEBUG("hisifd is NULL!\n");
+		return;
+	}
+
+	if (ovl_base == NULL) {
+		HISI_FB_DEBUG("ovl_base is NULL!\n");
+		return;
+	}
+
+	if (s_ovl == NULL) {
+		HISI_FB_DEBUG("s_ovl is NULL!\n");
+		return;
+	}
 
 	if ((ovl_idx == DSS_OVL1) || (ovl_idx == DSS_OVL3)) {
 		hisifd->set_reg(hisifd, ovl_base + OVL2_REG_DEFAULT, 0x1, 32, 0);
@@ -1356,6 +1441,16 @@ void hisi_dss_ovl_set_reg(struct hisi_fb_data_type *hisifd,
 void hisi_dss_ov_set_reg_default_value(struct hisi_fb_data_type *hisifd,
 	char __iomem *ovl_base, int ovl_idx)
 {
+	if (hisifd == NULL) {
+		HISI_FB_DEBUG("hisifd is NULL!\n");
+		return;
+	}
+
+	if (ovl_base == NULL) {
+		HISI_FB_DEBUG("ovl_base is NULL!\n");
+		return;
+	}
+
 	if ((ovl_idx == DSS_OVL1) || (ovl_idx == DSS_OVL3)) {
 		hisifd->set_reg(hisifd, ovl_base + OVL2_REG_DEFAULT, 0x1, 32, 0);
 		hisifd->set_reg(hisifd, ovl_base + OVL2_REG_DEFAULT, 0x0, 32, 0);
@@ -1372,6 +1467,11 @@ void hisi_dss_mctl_ov_set_ctl_dbg_reg(struct hisi_fb_data_type *hisifd, char __i
 		return;
 	}
 
+	if (mctl_base == NULL) {
+		HISI_FB_DEBUG("mctl_base is NULL!\n");
+		return;
+	}
+
 	if (is_mipi_cmd_panel(hisifd) && (hisifd->ldi_data_gate_en == 1)) {
 		//open underflow clear
 		set_reg(mctl_base + MCTL_CTL_DBG, 0x782620, 32, 0);
@@ -1380,7 +1480,21 @@ void hisi_dss_mctl_ov_set_ctl_dbg_reg(struct hisi_fb_data_type *hisifd, char __i
 		set_reg(mctl_base + MCTL_CTL_DBG, 0x78A620, 32, 0);
 	}
 }
+/*lint -e715*/
+void hisi_dss_post_clip_set_reg(struct hisi_fb_data_type *hisifd,
+	char __iomem *post_clip_base, dss_post_clip_t *s_post_clip, int chn_idx)
+{
+	if (NULL == hisifd || NULL == post_clip_base || NULL == s_post_clip) {
+		HISI_FB_ERR("NULL ptr.\n");
+		return;
+	}
 
+	hisifd->set_reg(hisifd, post_clip_base + POST_CLIP_DISP_SIZE, s_post_clip->disp_size, 32, 0);
+	hisifd->set_reg(hisifd, post_clip_base + POST_CLIP_CTL_HRZ, s_post_clip->clip_ctl_hrz, 32, 0);
+	hisifd->set_reg(hisifd, post_clip_base + POST_CLIP_CTL_VRZ, s_post_clip->clip_ctl_vrz, 32, 0);
+	hisifd->set_reg(hisifd, post_clip_base + POST_CLIP_EN, s_post_clip->ctl_clip_en, 32, 0);
+}
+/*lint +e715*/
 uint32_t hisi_dss_mif_get_invalid_sel(dss_img_t *img, uint32_t transform, int v_scaling_factor,
 	uint8_t is_tile, bool rdma_stretch_enable)
 {
@@ -1515,7 +1629,7 @@ int hisi_dss_check_userdata(struct hisi_fb_data_type *hisifd,
 	}
 
 	if ((pov_h_block_infos->layer_nums <= 0)
-		|| (pov_h_block_infos->layer_nums > MAX_DSS_SRC_NUM)) {
+		|| (pov_h_block_infos->layer_nums > OVL_LAYER_NUM_MAX)) {
 		HISI_FB_ERR("fb%d, invalid layer_nums=%d!",
 			hisifd->index, pov_h_block_infos->layer_nums);
 		return -EINVAL;
@@ -1662,7 +1776,7 @@ int hisi_dss_check_layer_par(struct hisi_fb_data_type *hisifd, dss_layer_t *laye
 		return -EINVAL;
 	}
 
-	if (layer->layer_idx < 0 || layer->layer_idx >= MAX_DSS_SRC_NUM) {
+	if (layer->layer_idx < 0 || layer->layer_idx >= OVL_LAYER_NUM_MAX) {
 		HISI_FB_ERR("fb%d, layer_idx=%d is invalid!", hisifd->index, layer->layer_idx);
 		return -EINVAL;
 	}
@@ -1786,3 +1900,23 @@ int hisi_dss_check_layer_par(struct hisi_fb_data_type *hisifd, dss_layer_t *laye
 void hisifb_dss_disreset(struct hisi_fb_data_type *hisifd)
 {
 }
+
+void hisi_dss_mctl_sys_init(char __iomem *mctl_sys_base, dss_mctl_sys_t *s_mctl_sys)
+{
+	int i;
+
+	if (NULL == mctl_sys_base || NULL == s_mctl_sys) {
+		HISI_FB_ERR("NULL ptr.\n");
+		return;
+	}
+	memset(s_mctl_sys, 0, sizeof(dss_mctl_sys_t));
+
+	for (i= 0; i < DSS_OVL_IDX_MAX; i++) {
+		s_mctl_sys->chn_ov_sel[i] = inp32(mctl_sys_base + MCTL_RCH_OV0_SEL + i * 0x4);//lint !e732
+	}
+
+	for (i= 0; i < DSS_WCH_MAX; i++) {
+		s_mctl_sys->wchn_ov_sel[i] = inp32(mctl_sys_base + MCTL_WCH_OV2_SEL + i * 0x4);//lint !e732
+	}
+}
+

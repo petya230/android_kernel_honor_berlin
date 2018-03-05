@@ -22,25 +22,33 @@ static bool s_ov2281_power_on = false;
 
 static struct sensor_power_setting ov2281_power_setting[] = {
 
-	//SCAM1 AVDD 2.8V
-	{
-		.seq_type = SENSOR_AVDD,
-		.data = (void*)"front-sensor-avdd",
-		.config_val = LDO_VOLTAGE_V2P8V,
-		.sensor_index = SENSOR_INDEX_INVALID,
-		.delay = 0,
-	},
+    //SCAM1 DVDD0  1.20V  [CAM_PMIC_LDO1]
+    {
+        .seq_type = SENSOR_PMIC,
+        .seq_val = VOUT_LDO_1,
+        .config_val = PMIC_1P2V,
+        .sensor_index = SENSOR_INDEX_INVALID,
+        .delay = 0,
+    },
 
-	//SCAM1 DVDD 1.2V
-	{
-		.seq_type = SENSOR_PMIC,
-		.seq_val = VOUT_LDO_1,
-		.config_val = LDO_VOLTAGE_1P2V,
-		.sensor_index = SENSOR_INDEX_INVALID,
-		.delay = 0,
-	},
+    //SCAM1 AVDD0  2.85V  [CAM_PMIC_LDO3]
+    {
+        .seq_type = SENSOR_PMIC,
+        .seq_val = VOUT_LDO_3,
+        .config_val = PMIC_2P85V,
+        .sensor_index = SENSOR_INDEX_INVALID,
+        .delay = 0,
+    },
 
-	//enable gpio51 output iovdd 1.8v
+    //SMCAM1 IOVDD 1.80V
+    {
+        .seq_type = SENSOR_IOVDD,
+        .config_val = LDO_VOLTAGE_1P8V,
+        .sensor_index = SENSOR_INDEX_INVALID,
+        .delay = 1,
+    },
+
+	//enable gpio54 output iovdd 1.8v
     {
         .seq_type = SENSOR_LDO_EN,
         .config_val = SENSOR_GPIO_LOW,

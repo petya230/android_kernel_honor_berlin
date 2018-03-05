@@ -487,6 +487,7 @@ static const struct pinmux_ops pinctrl_sec_pinmux_ops = {
 }; /*lint !e785 */
 
 /* Clear BIAS value */
+// cppcheck-suppress *
 static void pinctrl_sec_pinconf_clear_bias(struct pinctrl_dev *pctldev, unsigned pin)
 {
 	unsigned long config;
@@ -630,7 +631,7 @@ static int pinctrl_sec_add_pin(struct pinctrl_sec_device *pinctrl_sec, unsigned 
 
 	pin = &pinctrl_sec->pins.pa[i];
 	pn = &pinctrl_sec->names[i];
-	sprintf(pn->name, "%lx.%u",
+	snprintf(pn->name, sizeof(pn->name), "%lx.%u",/*lint !e421*/
 		(unsigned long)pinctrl_sec->res->start + offset, pin_pos);
 	pin->name = pn->name;
 	pin->number = (unsigned int)i;
@@ -792,7 +793,7 @@ static int pinctrl_sec_add_pingroup(struct pinctrl_sec_device *pinctrl_sec,
 	pinctrl_sec->ngroups++;
 	mutex_unlock(&pinctrl_sec->mutex);
 
-	return 0;
+	return 0;/*lint !e429 */
 }
 
 /**
@@ -1067,7 +1068,7 @@ free_pins:
 free_vals:
 	devm_kfree(pinctrl_sec->dev, vals);
 
-	return res;
+	return res;/*lint !e593*/
 }
 
 #define PARAMS_FOR_BITS_PER_MUX 3
@@ -1194,7 +1195,7 @@ free_pins:
 free_vals:
 	devm_kfree(pinctrl_sec->dev, vals);
 
-	return res;
+	return res;/*lint !e593*/
 }
 /**
  * pinctrl_sec_dt_node_to_map() - allocates and parses pinctrl maps
@@ -1343,6 +1344,7 @@ static void pinctrl_sec_free_resources(struct pinctrl_sec_device *pinctrl_sec)
 	pinctrl_sec_free_pingroups(pinctrl_sec);
 }
 
+// cppcheck-suppress *
 #define PCS_GET_PROP_U32(name, reg, err)				\
 	do {								\
 		ret = of_property_read_u32(np, name, reg);		\
@@ -1427,7 +1429,7 @@ static int pinctrl_sec_probe(struct platform_device *pdev)
 	memcpy(&pinctrl_sec->socdata, soc, sizeof(*soc));
 
 	PCS_GET_PROP_U32("pinctrl-single,register-width", &pinctrl_sec->width,
-			 "register width not specified\n");
+			 "register width not specified\n");/*lint !e429*/
 
 	ret = of_property_read_u32(np, "pinctrl-single,function-mask",
 				   &pinctrl_sec->fmask);
@@ -1452,21 +1454,22 @@ static int pinctrl_sec_probe(struct platform_device *pdev)
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!res) {
 		dev_err(pinctrl_sec->dev, "could not get resource\n");
-		return -ENODEV;
+		devm_kfree(&pdev->dev,pinctrl_sec);
+		return -ENODEV;/*lint !e429*/
 	}
 
 	pinctrl_sec->res = devm_request_mem_region(pinctrl_sec->dev, res->start,
 			resource_size(res), DRIVER_NAME);
 	if (!pinctrl_sec->res) {
 		dev_err(pinctrl_sec->dev, "could not get mem_region\n");
-		return -EBUSY;
+		return -EBUSY;/*lint !e429*/
 	}
 
 	pinctrl_sec->size = (unsigned int)resource_size(pinctrl_sec->res);
 	pinctrl_sec->base = devm_ioremap(pinctrl_sec->dev, pinctrl_sec->res->start, (unsigned long long)pinctrl_sec->size);
 	if (!pinctrl_sec->base) {
 		dev_err(pinctrl_sec->dev, "could not ioremap\n");
-		return -ENODEV;
+		return -ENODEV;/*lint !e429*/
 	}
 
 	INIT_RADIX_TREE(&pinctrl_sec->pgtree, GFP_KERNEL);

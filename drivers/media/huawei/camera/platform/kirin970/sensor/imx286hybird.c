@@ -37,207 +37,33 @@
 
 #define I2S(i) container_of(i, sensor_t, intf)
 
-static struct sensor_power_setting imx286hybird_power_setting [] = {
-    //M0 AVDD0  2.80V  [LDO19]
+static struct sensor_power_setting imx286hybird_power_setting[] = {
+    //disable front camera reset
     {
-        .seq_type = SENSOR_AVDD0,
-        .config_val = LDO_VOLTAGE_V2P8V,
+        .seq_type = SENSOR_SUSPEND,
+        .config_val = SENSOR_GPIO_LOW,
         .sensor_index = SENSOR_INDEX_INVALID,
         .delay = 0,
     },
-
-    //M1 AVDD1  2.80V  [CAM_PMIC_LDO3]
-    {
-        .seq_type = SENSOR_AVDD1,
-        .config_val = LDO_VOLTAGE_V2P8V,
-        .sensor_index = SENSOR_INDEX_INVALID,
-        .delay = 0,
-    },
-
-    //M1 AVDD1  1.80V  [CAM_PMIC_LDO5]
+    //M0 AVDD0  2.85V  [CAM_PMIC_LDO4]
     {
         .seq_type = SENSOR_PMIC,
-        .seq_val = VOUT_LDO_5,
-        .config_val = PMIC_1P8V,
-        .sensor_index = SENSOR_INDEX_INVALID,
-        .delay = 0,
-    },
-
-    // DVDD BUCK_1 1.125v
-    {
-        .seq_type = SENSOR_PMIC,
-        .seq_val = VOUT_BUCK_1,
-        .config_val = PMIC_1P125V,  // 1.125v
-        .sensor_index = SENSOR_INDEX_INVALID,
-        .delay = 0,
-    },
-
-    //M0  VCM  3V  [PMIC BUCK2]
-    {
-        .seq_type = SENSOR_PMIC,
-        .seq_val  = VOUT_BUCK_2,
-        .config_val = PMIC_2P9V,
-        .sensor_index = SENSOR_INDEX_INVALID,
-        .delay = 0,
-    },
-
-    //DRVVDD 2.85V [PMIC_LDO4]
-    {
-        .seq_type = SENSOR_PMIC,
-        .seq_val  = VOUT_LDO_4,
+        .seq_val = VOUT_LDO_4,
         .config_val = PMIC_2P85V,
         .sensor_index = SENSOR_INDEX_INVALID,
         .delay = 0,
     },
 
-    //M0 + M1  IOVDD  1.8V  [CAM_PMIC_LDO1]
-    {
-        .seq_type = SENSOR_PMIC,
-        .seq_val = VOUT_LDO_1,
-        .config_val = LDO_VOLTAGE_1P8V,
-        .sensor_index = SENSOR_INDEX_INVALID,
-        .delay = 0,
-    },
-
-    {
-        .seq_type = SENSOR_MCLK,
-        .sensor_index = 0,
-        .delay = 1,
-    },
-
-    {
-        .seq_type = SENSOR_MCLK,
-        .sensor_index = 2,
-        .delay = 1,
-    },
-
-    //M0 RESET  [GPIO_018]
-    {
-        .seq_type = SENSOR_RST,
-        .config_val = SENSOR_GPIO_LOW,
-        .sensor_index = SENSOR_INDEX_INVALID,
-        .delay = 1,
-    },
-
-    //M1 RESET  [GPIO_17]
-    {
-        .seq_type = SENSOR_RST2,
-        .config_val = SENSOR_GPIO_LOW,
-        .sensor_index = SENSOR_INDEX_INVALID,
-        .delay = 1,
-    },
-};
-
-static struct sensor_power_setting imx286hybird_lon_power_setting[] = {
-    //M0 AVDD0  2.80V  [LDO19]
-    {
-        .seq_type = SENSOR_AVDD0,
-        .config_val = LDO_VOLTAGE_V2P8V,
-        .sensor_index = SENSOR_INDEX_INVALID,
-        .delay = 0,
-    },
-
-    //M1 AVDD1  2.80V  [CAM_PMIC_LDO3]
-    {
-        .seq_type = SENSOR_AVDD1,
-        .config_val = LDO_VOLTAGE_V2P8V,
-        .sensor_index = SENSOR_INDEX_INVALID,
-        .delay = 0,
-    },
-
-    //M1 AVDD1  1.80V  [CAM_PMIC_LDO5]
-    {
-        .seq_type = SENSOR_PMIC,
-        .seq_val = VOUT_LDO_5,
-        .config_val = PMIC_1P8V,
-        .sensor_index = SENSOR_INDEX_INVALID,
-        .delay = 0,
-    },
-
-    // DVDD BUCK_1 1.125v
-    {
-        .seq_type = SENSOR_PMIC,
-        .seq_val = VOUT_BUCK_1,
-        .config_val = PMIC_1P125V,  // 1.125v
-        .sensor_index = SENSOR_INDEX_INVALID,
-        .delay = 0,
-    },
-
-    //M0  VCM  3V  [PMIC BUCK2]
-    {
-        .seq_type = SENSOR_PMIC,
-        .seq_val  = VOUT_BUCK_2,
-        .config_val = PMIC_2P85V,
-        .sensor_index = SENSOR_INDEX_INVALID,
-        .delay = 0,
-    },
-
-    //DRVVDD 2.85V [PMIC_LDO4]
-    {
-        .seq_type = SENSOR_VCM_AVDD2,
-        .config_val = LDO_VOLTAGE_V2P85V,
-        .sensor_index = SENSOR_INDEX_INVALID,
-        .delay = 0,
-    },
-
-    //M0 + M1  IOVDD  1.8V  [CAM_PMIC_LDO1]
-    {
-        .seq_type = SENSOR_PMIC,
-        .seq_val = VOUT_LDO_1,
-        .config_val = LDO_VOLTAGE_1P8V,
-        .sensor_index = SENSOR_INDEX_INVALID,
-        .delay = 0,
-    },
-
-    {
-        .seq_type = SENSOR_MCLK,
-        .sensor_index = 0,
-        .delay = 1,
-    },
-
-    {
-        .seq_type = SENSOR_MCLK,
-        .sensor_index = 2,
-        .delay = 1,
-    },
-
-    //M0 RESET  [GPIO_018]
-    {
-        .seq_type = SENSOR_RST,
-        .config_val = SENSOR_GPIO_LOW,
-        .sensor_index = SENSOR_INDEX_INVALID,
-        .delay = 1,
-    },
-
-    //M1 RESET  [GPIO_17]
-    {
-        .seq_type = SENSOR_RST2,
-        .config_val = SENSOR_GPIO_LOW,
-        .sensor_index = SENSOR_INDEX_INVALID,
-        .delay = 1,
-    },
-};
-
-static struct sensor_power_setting imx286hybird_udp_power_setting[] = {
-    //enable gpio51 output iovdd 1.8v
+    //M1 AVDD1  2.85V  [CAM_PMIC_LDO2]
     {
         .seq_type = SENSOR_PMIC,
         .seq_val = VOUT_LDO_2,
-        .config_val = PMIC_2P8V,
+        .config_val = PMIC_2P85V,
         .sensor_index = SENSOR_INDEX_INVALID,
         .delay = 0,
     },
 
-    //M1 AVDD0  2.80V  [CAM_PMIC_LDO3]
-    {
-        .seq_type = SENSOR_PMIC,
-        .seq_val = VOUT_LDO_3,
-        .config_val = PMIC_2P8V,
-        .sensor_index = SENSOR_INDEX_INVALID,
-        .delay = 0,
-    },
-
-    //M1 AVDD1  1.80V  [CAM_PMIC_LDO3]
+    //M1 AVDD1  1.80V  [CAM_PMIC_LDO5]
     {
         .seq_type = SENSOR_PMIC,
         .seq_val = VOUT_LDO_5,
@@ -245,42 +71,51 @@ static struct sensor_power_setting imx286hybird_udp_power_setting[] = {
         .sensor_index = SENSOR_INDEX_INVALID,
         .delay = 0,
     },
-
-    // DVDD BUCK_1 1.15v
+    //MCAM IOVDD 1.80V
     {
-        .seq_type = SENSOR_PMIC,
-        .seq_val = VOUT_BUCK_1,
-        .config_val = PMIC_1P15V,
+        .seq_type = SENSOR_IOVDD,
+        .config_val = LDO_VOLTAGE_1P8V,
+        .sensor_index = SENSOR_INDEX_INVALID,
+        .delay = 1,
+    },
+    //MCAM0 DVDD 1.1V [LDO]
+    {
+        .seq_type = SENSOR_DVDD,
+        .config_val = LDO_VOLTAGE_1P1V,
         .sensor_index = SENSOR_INDEX_INVALID,
         .delay = 0,
     },
-
-    //M0  VCM  3V  [PMIC BUCK2]
+    //MCAM1 DVDD 1.05V [LDO]
+    {
+        .seq_type = SENSOR_DVDD2,
+        .config_val = LDO_VOLTAGE_1P05V,
+        .sensor_index = SENSOR_INDEX_INVALID,
+        .delay = 0,
+    },
+    //M0  VCM  2.8V  [PMIC BUCK1]
+    {
+        .seq_type = SENSOR_PMIC,
+        .seq_val  = VOUT_BUCK_1,
+        .config_val = PMIC_2P8V,
+        .sensor_index = SENSOR_INDEX_INVALID,
+        .delay = 0,
+    },
+    //M1  VCM  2.8V  [PMIC BUCK2]
     {
         .seq_type = SENSOR_PMIC,
         .seq_val  = VOUT_BUCK_2,
-        .config_val = PMIC_3PV,
-        .sensor_index = SENSOR_INDEX_INVALID,
-        .delay = 0,
-    },
-
-    //DRVVDD 2.85V [PMIC_LDO4]
-    {
-        .seq_type = SENSOR_PMIC,
-        .seq_val  = VOUT_LDO_4,
         .config_val = PMIC_2P8V,
         .sensor_index = SENSOR_INDEX_INVALID,
         .delay = 0,
     },
 
-    //enable gpio51 output iovdd 1.8v
-    {
-        .seq_type = SENSOR_LDO_EN,
-        .config_val = SENSOR_GPIO_LOW,
-        .sensor_index = SENSOR_INDEX_INVALID,
-        .delay = 0,
-    },
-
+    //MCAM OISVDD 2.80V
+	{
+		.seq_type = SENSOR_OIS_DRV,
+		.config_val = 2800000,
+		.sensor_index = SENSOR_INDEX_INVALID,
+		.delay = 0,
+	},
     {
         .seq_type = SENSOR_MCLK,
         .sensor_index = 0,
@@ -293,7 +128,7 @@ static struct sensor_power_setting imx286hybird_udp_power_setting[] = {
         .delay = 1,
     },
 
-    // M0 RESET  [GPIO_052]
+    // M0 RESET  [GPIO_051]
     {
         .seq_type = SENSOR_RST,
         .config_val = SENSOR_GPIO_LOW,
@@ -301,6 +136,7 @@ static struct sensor_power_setting imx286hybird_udp_power_setting[] = {
         .delay = 1,
     },
 
+    // M1 RESET  [GPIO_013]
     {
         .seq_type = SENSOR_RST2,
         .config_val = SENSOR_GPIO_LOW,
@@ -556,24 +392,6 @@ static sensor_t s_imx286hybird =
     },
 };
 
-static sensor_t s_imx286hybird_lon =
-{
-    .intf = { .vtbl = &s_imx286hybird_vtbl, },
-    .power_setting_array = {
-        .size = ARRAY_SIZE(imx286hybird_lon_power_setting),
-        .power_setting = imx286hybird_lon_power_setting,
-    },
-};
-
-static sensor_t s_imx286hybird_udp =
-{
-    .intf = { .vtbl = &s_imx286hybird_vtbl, },
-    .power_setting_array = {
-        .size = ARRAY_SIZE(imx286hybird_udp_power_setting),
-        .power_setting = imx286hybird_udp_power_setting,
-    },
-};
-
 static sensor_t s_imx286hybird_fpga =
 {
     .intf = { .vtbl = &s_imx286hybird_vtbl, },
@@ -592,19 +410,12 @@ s_imx286hybird_dt_match[] =
         .data = &s_imx286hybird.intf,
     },
     {
-        .compatible = "huawei,imx286hybird_lon",
-        .data = &s_imx286hybird_lon.intf,
-    },
-    {
-        .compatible = "huawei,imx286hybird_udp",
-        .data = &s_imx286hybird_udp.intf,
-    },
-    {
         .compatible = "huawei,imx286hybird_fpga",
         .data = &s_imx286hybird_fpga.intf,
     },
     { } /* terminate list */
 };
+
 MODULE_DEVICE_TABLE(of, s_imx286hybird_dt_match);
 /* platform driver struct */
 static int32_t imx286hybird_platform_probe(struct platform_device* pdev);

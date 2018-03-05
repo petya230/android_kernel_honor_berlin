@@ -1424,6 +1424,34 @@ static IMG_VOID devaio_CommsReadWords(
                        ui32Offset, ui32NumWords, pui32Values, bValidate);
 }
 
+static IMG_BOOL devaio_IsFwStatusOk(
+    DEVAIO_sContext *  psContext
+)
+{
+    IMG_UINT32  ui32FwStatus = 0;
+    IMG_UINT32  ui32FwSignature = 0;
+    IMG_RESULT  ui32Result;
+
+    ui32Result = PVDECIO_VLRReadWords(psContext->hPvdecIoCtx,
+                                REGION_PVDEC_VLRFE_REGSPACE,
+                                PVDEC_COM_RAM_FW_STATUS_OFFSET,
+                                1,
+                                &ui32FwStatus,
+                                IMG_FALSE);
+    IMG_ASSERT(ui32Result == IMG_SUCCESS);
+    ui32Result = PVDECIO_VLRReadWords(psContext->hPvdecIoCtx,
+                                REGION_PVDEC_VLRFE_REGSPACE,
+                                PVDEC_COM_RAM_SIGNATURE_OFFSET,
+                                1,
+                                &ui32FwSignature,
+                                IMG_FALSE);
+    IMG_ASSERT(ui32Result == IMG_SUCCESS);
+    return (ui32FwStatus != FW_STATUS_PANIC) &&
+           (ui32FwStatus != FW_STATUS_ASSERT) &&
+           (ui32FwStatus != FW_STATUS_GAMEOVER) &&
+           (ui32FwSignature == FW_READY_SIGNATURE);
+}
+
 
 /*!
 ******************************************************************************
@@ -1477,6 +1505,8 @@ static IMG_VOID devaio_WaitForCommsSpace(
                                     IMG_FALSE);
     IMG_ASSERT(ui32Result == IMG_SUCCESS);
     while (
+           devaio_IsFwStatusOk(psContext)
+           &&
            (ui32WaitRetry--)
            &&
            (

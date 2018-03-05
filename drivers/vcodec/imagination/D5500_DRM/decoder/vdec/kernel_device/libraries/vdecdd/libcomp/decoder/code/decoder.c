@@ -116,7 +116,7 @@
 #define CORE_NUM_DECODE_SLOTS 2
 
 /*! Default device watch timer period (in ms). */
-#define CORE_DEFAULT_DWR_PERIOD 500         // Around 3 frames period @30FPS. This is good enough for production driver. Needs to be increase for c-sim using debug options.
+#define CORE_DEFAULT_DWR_PERIOD 100         // Around 3 frames period @30FPS. This is good enough for production driver. Needs to be increase for c-sim using debug options.
 
 /*! Default retry count of device watch timer for JPEG */
 #define CORE_DEFAULT_DWR_JPEG_RETRY 5       // JPEGs can take longer to decode and there's no way to determine if HW is locked up.
@@ -660,10 +660,10 @@ decoder_GetPictProcessingInfo(
 
             /* If not found, we probbaly stuck on FE ? */
             for (ui32i = VDECFW_CHECKPOINT_FE_END; ui32i >= VDECFW_CHECKPOINT_FE_START; ui32i--)
-    {
+            {
                 VXD_sPipeState * psPipeState = &sLastState.sCoreState.sFwState.asPipeState[ui8PipeMinus1];
                 if (psPipeState->aui32CheckPoint[ui32i] == psDecodedPict->ui32TransactionId)
-        {
+                {
                     /* Mark all MBs as dropped */
                     psPictAttrs->ui32MbsDropped = *pui32PictLastMb;
                     psPictAttrs->ui32MbsRecovered = 0;
@@ -1025,6 +1025,7 @@ decoder_PictureDisplay(
         // Set decode order id
         psPicture->psDecPictInfo->ui32DecodeId = ui32PictId;
 
+        // XXX-mbs: don't display pictures whose layout is different from the current output configuration.
         // this can happen when reference pictures span different configurations.
 
         // Return the picture to the client for display
@@ -2419,11 +2420,11 @@ decoder_PictureDecode(
                         &psDecCoreCtx->psDecCtx->sPtdInfo);
     }
 #endif /* VDEC_USE_PVDEC_SEC */
-        IMG_ASSERT(ui32Result == IMG_SUCCESS);
-        if(ui32Result != IMG_SUCCESS)
-        {
-            goto error_other;
-        }
+    IMG_ASSERT(ui32Result == IMG_SUCCESS);
+    if(ui32Result != IMG_SUCCESS)
+    {
+        goto error_other;
+    }
 
     IMG_ASSERT(psDecCoreCtx->bBusy == IMG_FALSE);
     psDecCoreCtx->bBusy = IMG_TRUE;
@@ -4185,6 +4186,7 @@ DECODER_StreamReleaseBuffers(
         psDecodedPict = DQ_first(&psDecStrCtx->sStrDecdPictList);
     }
 
+    // XXX-matt: the stream context must be cleared of everything right now
     // if and only if the output buffers were used for reference.
     //IMG_ASSERT("Stream context must be cleared on an output buffer release" == IMG_NULL);
 
@@ -4276,6 +4278,7 @@ decoder_StreamReferenceResourceCreate(
     VDEC_BZERO(psPictRefRes);
 
     /* Allocate the firmware context buffer to contain data required for subsequent picture. */
+    // XXX: improve memory use by sharing a 4k page between multiple resources
     ui32Result = MMU_StreamMalloc(psDecStrCtx->hMmuStrHandle,
                                   MMU_HEAP_STREAM_BUFFERS,
                                   sInsecureMemPool, //FW Control always in insecure memory
@@ -4759,6 +4762,7 @@ DECODER_StreamGetStatus(
             {
                 // If the transaction has already been processed by this checkpoint mark this as the most
                 // advanced point the transaction has reached and stop tracing back through the system.
+                // XXX: TODO[ML]: This has to be updated for multi-pipe cases.
                 if (psCoreState->sCoreState.sFwState.asPipeState[0].aui32CheckPoint[i] >= psDecStrUnit->psDecPict->ui32TransactionId)
                 {
                     psDecPictStat->eFwCheckPoint = i;
@@ -4868,6 +4872,7 @@ decoder_StreamProcessUnit(
             ui32MaxNumActivePict *= 2;
 
             // Ensure that there are enough resource to have pictures filling all slots on all cores.
+            // XXX: this is not very efficient but it's simple!
             ui32MaxNumActivePict += psDecStrCtx->psDecCtx->psDevConfig->ui32NumSlotsPerPipe * psDecStrCtx->psDecCtx->ui32NumPipes;
 
             // Increase decoder stream resources if necessary.
@@ -4922,11 +4927,12 @@ decoder_StreamProcessUnit(
             bProcessed = IMG_TRUE;
 #ifdef VDEC_USE_PVDEC_SEC
             if (psDecStrCtx->sConfig.bSecureStream)
-        {
+            {
                 DEBUG_REPORT(REPORT_MODULE_DECODER,
                    "[USERSID=0x%08X] [PID=0x%08X] DROP",
                     psDecStrCtx->sConfig.ui32UserStrId,
                     psStrUnit->ui32ParseId);
+
                 ui32Result = FWBSP_BRIDGE_PictureReturn(psDecStrCtx->hFWBSP_BRIDGEStrCtx,
                                                         psStrUnit->ui32ParseId,
                                                         IMG_FALSE);
@@ -4935,15 +4941,16 @@ decoder_StreamProcessUnit(
                 {
                     return ui32Result;
                 }
+
                 ui32Result = FWBSP_BRIDGE_PictureRemove(psDecStrCtx->hFWBSP_BRIDGEStrCtx,
                                                         psStrUnit->ui32ParseId,
                                                         IMG_FALSE);
-            IMG_ASSERT(ui32Result == IMG_SUCCESS);
-            if (ui32Result != IMG_SUCCESS)
-            {
-                return ui32Result;
+                IMG_ASSERT(ui32Result == IMG_SUCCESS);
+                if (ui32Result != IMG_SUCCESS)
+                {
+                    return ui32Result;
+                }
             }
-        }
 #endif /* VDEC_USE_PVDEC_SEC */
         }
         break;
@@ -5278,6 +5285,7 @@ DECODER_StreamDestroy(
             psDecStrUnit->psDecPict = IMG_NULL;
         }
 
+        // XXX: perhaps replace with UNIT_ABORTED event?
         // Report that the picture has been decoded and
         // have all non-reference elements released.
         IMG_ASSERT(psDecStrCtx->psDecCtx);
@@ -5343,6 +5351,7 @@ DECODER_StreamDestroy(
     }
 
     // Remove the device resources used for decoding and the two
+    // added to hold the last on front and back-end for stream.
     for (i = 0; i < psDecStrCtx->ui32NumDecRes + 2; i++)
     {
         ui32Result = RESOURCE_ListEmpty(&psDecStrCtx->sDecResList,
@@ -5899,6 +5908,7 @@ DECODER_CheckSupport(
                     if (psComSequHdrInfo->sOrigDisplayRegion.ui32TopOffset ||
                         psComSequHdrInfo->sOrigDisplayRegion.ui32LeftOffset)
                     {
+                        // XXX-matt: top crop may be possible without corruption?
                         IMG_WARN_ONCE("Cannot scale correctly with top or left crop");
                     }
                 }
@@ -6499,7 +6509,6 @@ DECODER_StreamCreate(
     sInsecureMemPool.eMemPoolType = VXDIO_MEMPOOL_INSECURE;
 
 #ifdef VDEC_USE_PVDEC_SEC
-
     {
         DECODER_sCoreContext * psDecCoreCtx = psDecCtx->psDecCoreCtx;
         VXDIO_sMemPool sMemPool = sInsecureMemPool;
@@ -6511,6 +6520,7 @@ DECODER_StreamCreate(
             sMemPool.eMemPoolId = psDecCtx->eSecurePool = eSecureMemPool;
             sMemPool.eMemPoolType = VXDIO_MEMPOOL_SECURE;
         }
+
         HWCTRL_SetSecured(psDecCoreCtx->hHwCtx, sStrConfig.bSecureStream);
 
         /* Obtain firmware */
@@ -6528,6 +6538,8 @@ DECODER_StreamCreate(
             (sStrConfig.bSecureStream && psDecCtx->eDecFwConf == eDCONF_FwNonSecure) ||
             (!sStrConfig.bSecureStream && psDecCtx->eDecFwConf == eDCONF_FwSecure))
         {
+            ui32Result = HWCTRL_PowerOff(psDecCoreCtx->hHwCtx);
+            IMG_ASSERT(ui32Result == IMG_SUCCESS);
 
             // Create core resources.
             ui32Result = RESOURCE_Create(psDecCtx->hMmuDevHandle,
@@ -6682,6 +6694,7 @@ error:
 #   define DMAC_ALIGN_16_BYTE       __attribute__ ((aligned (16)))
 #endif
 
+// XXX-matt: this should be removed.
 /*! Hardware defined of fields of linked list element */
 typedef struct
 {
@@ -7105,22 +7118,25 @@ IMG_RESULT DECODER_Replay(
 
     psDecCoreCtx = psDecCtx->psDecCoreCtx;
     IMG_ASSERT (psDecCoreCtx);
-        if (IMG_SUCCESS == HWCTRL_PeekHeadPicList(psDecCoreCtx->hHwCtx, &psDecPict))
+    if (IMG_SUCCESS == HWCTRL_PeekHeadPicList(psDecCoreCtx->hHwCtx, &psDecPict))
+    {
+        if(psDecCoreCtx->bAPM)
         {
-            if(psDecCoreCtx->bAPM)
-            {
             DMANKM_ResumeDevice(psDecCtx->hDevHandle, IMG_TRUE);
-                psDecCoreCtx->bAPM = IMG_FALSE;
-            }
-
-            ui32Result = HWCTRL_CoreReplay(psDecCoreCtx->hHwCtx);
-            IMG_ASSERT(ui32Result == IMG_SUCCESS);
-            if (ui32Result != IMG_SUCCESS)
-            {
-                return ui32Result;
-            }
+            psDecCoreCtx->bAPM = IMG_FALSE;
         }
 
+        ui32Result = HWCTRL_CoreReplay(psDecCoreCtx->hHwCtx);
+        IMG_ASSERT(ui32Result == IMG_SUCCESS);
+        if (ui32Result != IMG_SUCCESS)
+        {
+            return ui32Result;
+        }
+    }
+    else
+    {
+        REPORT(REPORT_MODULE_VXDIO, REPORT_ERR, "DECODER_Replay-->Nothing to replay!");
+    }
     return IMG_SUCCESS;
 }
 
@@ -7151,12 +7167,12 @@ IMG_RESULT DECODER_ResetCore(
 
     psDecCoreCtx = psDecCtx->psDecCoreCtx;
     IMG_ASSERT(psDecCoreCtx);
-        ui32Result = HWCTRL_PowerOff(psDecCoreCtx->hHwCtx);
-        IMG_ASSERT(ui32Result == IMG_SUCCESS);
-        if (ui32Result != IMG_SUCCESS)
-        {
-            return ui32Result;
-        }
+    ui32Result = HWCTRL_PowerOff(psDecCoreCtx->hHwCtx);
+    IMG_ASSERT(ui32Result == IMG_SUCCESS);
+    if (ui32Result != IMG_SUCCESS)
+    {
+        return ui32Result;
+    }
 
     return IMG_SUCCESS;
 }
@@ -7310,15 +7326,15 @@ DECODER_PostPowerOn(
 
     psDecCoreCtx = psDecCtx->psDecCoreCtx;
     IMG_ASSERT(psDecCoreCtx);
-        if (IMG_SUCCESS == HWCTRL_PeekHeadPicList(psDecCoreCtx->hHwCtx, &psDecPict))
+    if (IMG_SUCCESS == HWCTRL_PeekHeadPicList(psDecCoreCtx->hHwCtx, &psDecPict))
+    {
+        ui32Result = HWCTRL_CoreReplay(psDecCoreCtx->hHwCtx);
+        IMG_ASSERT(ui32Result == IMG_SUCCESS);
+        if (ui32Result != IMG_SUCCESS)
         {
-            ui32Result = HWCTRL_CoreReplay(psDecCoreCtx->hHwCtx);
-            IMG_ASSERT(ui32Result == IMG_SUCCESS);
-            if (ui32Result != IMG_SUCCESS)
-            {
-                return ui32Result;
-            }
+            return ui32Result;
         }
+    }
 
     DEBUG_REPORT(REPORT_MODULE_DECODER,
                  "Decoder has performed post power on operations");
@@ -7353,14 +7369,14 @@ DECODER_CoreServiceTimerExpiry(
 
     psDecCoreCtx = psDecCtx->psDecCoreCtx;
     IMG_ASSERT(psDecCoreCtx);
-        // find the effected core
+    // find the effected core
     if (HWCTRL_HwStateIsLockUp(psDecCoreCtx->hHwCtx))
-        {
+    {
         DECODER_CoreReset(hDecCtx, RESET_DWR);
 
-            DEBUG_REPORT(REPORT_MODULE_DECODER,
-                         "Decoder has Serviced a Service Time Expiry");
-        }
+        DEBUG_REPORT(REPORT_MODULE_DECODER,
+                     "Decoder has Serviced a Service Time Expiry");
+    }
 
     return IMG_SUCCESS;
 }
@@ -7409,34 +7425,31 @@ DECODER_CoreReset(
         if (HWCTRL_HasFwBspLockUp(psDecCoreCtx->hHwCtx, &ui32LockUpPID))
         {
             DECODER_sStrContext * psDecStrCtx;
+            IMG_UINT32 ui32i = 0;
 
             psDecStrCtx = LST_first(&psDecCoreCtx->psDecCtx->sStreamList);
             while (psDecStrCtx)
             {
-                if (FWBSP_BRIDGE_GET_STREAM_ID(ui32LockUpPID) == psDecStrCtx->ui32StrId)
-    {
-                    break;
+                do
+                {
+                    ui32Result = FWBSP_BRIDGE_DiscardBitstreamUnit(psDecStrCtx->hFWBSP_BRIDGEStrCtx,
+                                                                   ui32LockUpPID);
+                    ui32i++;
                 }
+                while (ui32Result == IMG_SUCCESS);
 
                 psDecStrCtx = LST_next(psDecStrCtx);
             }
-
-            IMG_ASSERT(psDecStrCtx != IMG_NULL);
-            if (psDecStrCtx)
-        {
-                ui32Result = FWBSP_BRIDGE_DiscardBitstreamUnit(psDecStrCtx->hFWBSP_BRIDGEStrCtx,
-                                                                ui32LockUpPID);
-            IMG_ASSERT(ui32Result == IMG_SUCCESS);
-            if (ui32Result != IMG_SUCCESS)
-            {
-                goto error;
-            }
-            }
+            REPORT(REPORT_MODULE_DECODER, REPORT_INFO, "Dropping %u bstrbufs!", ui32i);
         }
     }
+    // xxx:todo: If picture decode hasn't been started yet, the below call will not make any harm ?
 #endif
             // Throw away the picture
-    ui32Result = HWCTRL_DiscardHeadPicList(psDecCoreCtx->hHwCtx, eReason);
+            // XXX-michals: I don't like that DECODER_CoreReset is broken down into multiple pieces
+            // XXX-michals: This will be serviced on next spin of CORE_ProcessEvent
+            // XXX-michals: What if some other message get posted to the list in-between?
+            ui32Result = HWCTRL_DiscardHeadPicList(psDecCoreCtx->hHwCtx, eReason);
             IMG_ASSERT(ui32Result == IMG_SUCCESS);
             if (ui32Result != IMG_SUCCESS)
             {
@@ -7444,6 +7457,11 @@ DECODER_CoreReset(
             }
 
             // Post a replay here
+            // XXX-michals: I don't like that DECODER_CoreReset is broken down into multiple pieces
+            // XXX-michals: This will be serviced on next spin of CORE_ProcessEvent
+            // XXX-michals: What if some other message get posted to the list in-between?
+            // XXX-michals: I think we should (?) do it synchrounously like that:
+            // XXX-michals: ui32Result = DECODER_CoreReplay(hDecCtx, psDecCoreCtx->ui32CoreNum);
             ui32Result = HWCTRL_PostCoreReplay(psDecCoreCtx->hHwCtx);
             IMG_ASSERT(ui32Result == IMG_SUCCESS);
             if (ui32Result != IMG_SUCCESS)
@@ -7486,21 +7504,24 @@ DECODER_CoreReplay(
 
     psDecCoreCtx = psDecCtx->psDecCoreCtx;
     IMG_ASSERT(psDecCoreCtx);
-            if (IMG_SUCCESS == HWCTRL_PeekHeadPicList(psDecCoreCtx->hHwCtx, &psDecPict))
-            {
-                if(psDecCoreCtx->bAPM)
-                {
+    if (IMG_SUCCESS == HWCTRL_PeekHeadPicList(psDecCoreCtx->hHwCtx, &psDecPict))
+    {
+        if(psDecCoreCtx->bAPM)
+        {
             DMANKM_ResumeDevice(psDecCtx->hDevHandle, IMG_TRUE);
-                    psDecCoreCtx->bAPM = IMG_FALSE;
-                }
-                ui32Result = HWCTRL_CoreReplay(psDecCoreCtx->hHwCtx);
-                IMG_ASSERT(ui32Result == IMG_SUCCESS);
-                if (ui32Result != IMG_SUCCESS)
-                {
-                    return ui32Result;
-                }
+            psDecCoreCtx->bAPM = IMG_FALSE;
+        }
+        ui32Result = HWCTRL_CoreReplay(psDecCoreCtx->hHwCtx);
+        IMG_ASSERT(ui32Result == IMG_SUCCESS);
+        if (ui32Result != IMG_SUCCESS)
+        {
+            return ui32Result;
+        }
     }
-
+    else
+    {
+        REPORT(REPORT_MODULE_VXDIO, REPORT_ERR, "DECODER_CoreReplay-->Nothing to replay!");
+    }
     return IMG_SUCCESS;
 }
 
@@ -7532,8 +7553,8 @@ DECODER_IsHWQueueEmpty(
     psDecCoreCtx = psDecCtx->psDecCoreCtx;
     IMG_ASSERT(psDecCoreCtx);
 
-        if (IMG_SUCCESS == HWCTRL_PeekHeadPicList(psDecCoreCtx->hHwCtx, &psDecPict))
-        {
+    if (IMG_SUCCESS == HWCTRL_PeekHeadPicList(psDecCoreCtx->hHwCtx, &psDecPict))
+    {
         return IMG_FALSE;
     }
 
@@ -7557,6 +7578,7 @@ DECODER_CoreServiceInterrupt(
     IMG_BOOL    bPictureDone = IMG_TRUE;
 
     // Picture processing done interrupt.
+    // XXX: Add check for picture done interrupt.
     if (bPictureDone)
     {
         IMG_BOOL bHeadOfQueue = IMG_TRUE;
@@ -8185,7 +8207,7 @@ IMG_RESULT DECODER_HandleInterrupt(
     // Determine which core this interrupt is for.
     psDecCoreCtx = psDecCtx->psDecCoreCtx;
     IMG_ASSERT(psDecCoreCtx);
-        HWCTRL_HandleInterrupt(psDecCoreCtx->hHwCtx,psDdDevContext);
+    HWCTRL_HandleInterrupt(psDecCoreCtx->hHwCtx,psDdDevContext);
 
     return IMG_SUCCESS;
 

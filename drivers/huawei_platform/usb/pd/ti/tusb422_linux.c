@@ -28,12 +28,14 @@
 
 #include <linux/atomic.h>
 #include <linux/cpu.h>
+#include <linux/gpio/consumer.h>
 #include <linux/delay.h>
 #include <linux/device.h>
 #include <linux/hrtimer.h>
 #include <linux/i2c.h>
 #include <linux/interrupt.h>
 #include <linux/irqflags.h>
+#include <linux/kthread.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/of.h>
@@ -56,11 +58,12 @@
 #include <huawei_platform/usb/hw_pd_dev.h>
 #include "huawei_platform/power/charger/charger_ap/direct_charger/loadswitch/rt9748/rt9748.h"
 
-//#define TUSB422_LEVEL_IRQ
+#define TUSB422_I2C_NAME "tusb422"
 
-#define TUSB422_USE_REGMAP
-//#define TUSB422_CPU_POLL_CTRL
-//#define TUSB422_USE_POLLING
+#define TUSB422_DELAYED_START
+#define START_WORK_DELAY	msecs_to_jiffies(500)
+#define TUSB422_CPU_POLL_CTRL
+#define CPU_POLL_CTRL_TIMEOUT  msecs_to_jiffies(50)
 
 /* Remove the following line to disable sysfs debug */
 #define TUSB422_DEBUG
@@ -80,7 +83,6 @@ struct tusb422_pwr_delivery {
 	struct gpio_desc *vbus_5v_gpio;
 	struct hrtimer timer;
 	bool timer_expired;
-	struct work_struct work;
 #ifdef CONFIG_WAKELOCK
 	struct wake_lock attach_wakelock;
 	struct wake_lock detach_wakelock;
@@ -89,14 +91,23 @@ struct tusb422_pwr_delivery {
 	tcpc_config_t *configuration;
 	usb_pd_port_config_t *port_config;
 	int alert_irq;
-	atomic_t alert_status;
-	struct mutex i2c_lock;
-	struct delayed_work start;
+	int alert_status;
 #ifdef TUSB422_CPU_POLL_CTRL
 	struct delayed_work poll_work;
-	atomic_t poll_count;
+	unsigned long flags;
+#define FLAG_POLL_CTRL  0
 #endif
-	bool polling;
+#ifdef TUSB422_KTHREAD
+	struct kthread_worker kworker;
+	struct task_struct *kworker_task;
+	struct kthread_work work;
+#else
+	struct work_struct work;
+#endif
+#ifdef TUSB422_DELAYED_START
+	struct delayed_work start_work;
+	int start_done;
+#endif
 };
 
 static struct tusb422_pwr_delivery *tusb422_pd;
@@ -174,7 +185,7 @@ static ssize_t tusb422_registers_show(struct device *dev,
 	reg_count = sizeof(tusb422_regs) / sizeof(tusb422_regs[0]);
 
 	for (i = 0, n = 0; i < reg_count; i++) {
-#ifdef TUSB422_USE_REGMAP
+#ifdef CONFIG_REGMAP
 	regmap_read(tusb422_pd->regmap, tusb422_regs[i].reg, &read_buf);
 #else
 	tusb422_read(tusb422_regs[i].reg, &read_buf, 1);
@@ -296,7 +307,7 @@ static ssize_t tusb422_registers_store(struct device *dev,
 	reg_count = sizeof(tusb422_regs) / sizeof(tusb422_regs[0]);
 	for (i = 0; i < reg_count; i++) {
 		if (!strcmp(name, tusb422_regs[i].name)) {
-#ifdef TUSB422_USE_REGMAP
+#ifdef CONFIG_REGMAP
 		error = regmap_write(tusb422_pd->regmap, tusb422_regs[i].reg, value);
 #else
 		error = tusb422_write(tusb422_regs[i].reg, &value, 1);
@@ -328,20 +339,24 @@ static const struct attribute_group tusb422_attr_group = {
 };
 #endif
 
-#ifdef TUSB422_USE_REGMAP
+#ifdef CONFIG_REGMAP
 
 int tusb422_write(int reg, const void *data, int len)
 {
 	int ret;
 
+#ifdef CONFIG_DIRECT_CHARGER
 	ls_i2c_mutex_lock();
+#endif
 
 	if (len == 1)
 		ret = regmap_write(tusb422_pd->regmap, reg, *(unsigned int *)data);
 	else
 		ret = regmap_raw_write(tusb422_pd->regmap, reg, data, len);
 
+#ifdef CONFIG_DIRECT_CHARGER
 	ls_i2c_mutex_unlock();
+#endif
 	return ret;
 }
 
@@ -349,9 +364,16 @@ int tusb422_read(int reg, void *data, int len)
 {
 	int ret;
 
+#ifdef CONFIG_DIRECT_CHARGER
 	ls_i2c_mutex_lock();
+#endif
+
 	ret = regmap_raw_read(tusb422_pd->regmap, reg, data, len);
+
+#ifdef CONFIG_DIRECT_CHARGER
 	ls_i2c_mutex_unlock();
+#endif
+
 	return ret;
 }
 
@@ -359,9 +381,15 @@ int tusb422_modify_reg(int reg, int clr_mask, int set_mask)
 {
 	int ret;
 
+#ifdef CONFIG_DIRECT_CHARGER
 	ls_i2c_mutex_lock();
+#endif
+
 	ret = regmap_update_bits(tusb422_pd->regmap, reg, (clr_mask | set_mask), set_mask);
+
+#ifdef CONFIG_DIRECT_CHARGER
 	ls_i2c_mutex_unlock();
+#endif
 	return ret;
 }
 
@@ -371,18 +399,21 @@ int tusb422_write(int reg, const void *data, int len)
 {
 	int ret;
 
-	mutex_lock(&tusb422_pd->i2c_lock);
+#ifdef CONFIG_DIRECT_CHARGER
 	ls_i2c_mutex_lock();
+#endif
 
 	if (len == 1)
 		ret = i2c_smbus_write_byte_data(tusb422_pd->client, reg, *(uint8_t *)data);
-//	else if (len == 2)
-//		ret = i2c_smbus_write_word_data(tusb422_pd->client, reg, *(uint16_t *)data);
+	else if (len == 2)
+		ret = i2c_smbus_write_word_data(tusb422_pd->client, reg, *(uint16_t *)data);
 	else
-		ret = i2c_smbus_write_block_data(tusb422_pd->client, reg, len, data);
+		ret = i2c_smbus_write_i2c_block_data(tusb422_pd->client, reg, len, data);
 
+#ifdef CONFIG_DIRECT_CHARGER
 	ls_i2c_mutex_unlock();
-	mutex_unlock(&tusb422_pd->i2c_lock);
+#endif
+
 
 	return ret;
 }
@@ -392,23 +423,27 @@ int tusb422_read(int reg, void *data, int len)
 {
 	int ret;
 
-	mutex_lock(&tusb422_pd->i2c_lock);
+
+#ifdef CONFIG_DIRECT_CHARGER
 	ls_i2c_mutex_lock();
+#endif
 
 	if (len == 1) {
 		ret = i2c_smbus_read_byte_data(tusb422_pd->client, reg);
 		if (ret >= 0)
 			*(uint8_t *)data = (uint8_t)ret;
-//	} else if (len == 2) {
-//		ret = i2c_smbus_read_word_data(tusb422_pd->client, reg);
-//		if (ret >= 0)
-//			*(uint16_t *)data = (uint16_t)ret;
+	} else if (len == 2) {
+		ret = i2c_smbus_read_word_data(tusb422_pd->client, reg);
+		if (ret >= 0)
+			*(uint16_t *)data = (uint16_t)ret;
 	} else {
 		ret = i2c_smbus_read_i2c_block_data(tusb422_pd->client, reg, len, data);
 	}
 
+#ifdef CONFIG_DIRECT_CHARGER
 	ls_i2c_mutex_unlock();
-	mutex_unlock(&tusb422_pd->i2c_lock);
+#endif
+
 
 	return ret;
 }
@@ -419,8 +454,9 @@ int tusb422_modify_reg(int reg, int clr_mask, int set_mask)
 	uint8_t val;
 	uint8_t new_val;
 
-	mutex_lock(&tusb422_pd->i2c_lock);
+#ifdef CONFIG_DIRECT_CHARGER
 	ls_i2c_mutex_lock();
+#endif
 
 	ret = i2c_smbus_read_byte_data(tusb422_pd->client, reg);
 	if (ret >= 0) {
@@ -433,8 +469,9 @@ int tusb422_modify_reg(int reg, int clr_mask, int set_mask)
 			ret = i2c_smbus_write_byte_data(tusb422_pd->client, reg, new_val);
 	}
 
+#ifdef CONFIG_DIRECT_CHARGER
 	ls_i2c_mutex_unlock();
-	mutex_unlock(&tusb422_pd->i2c_lock);
+#endif
 
 	return ret;
 }
@@ -479,43 +516,6 @@ static inline void tusb422_schedule_work(struct work_struct *work)
 	queue_work(system_highpri_wq, work);
 }
 
-#ifdef TUSB422_CPU_POLL_CTRL
-static inline void tusb422_poll_ctrl(struct tusb422_pwr_delivery *tusb422_pwr)
-{
-	cancel_delayed_work_sync(&tusb422_pwr->poll_work);
-
-	if (atomic_read(&tusb422_pwr->poll_count) == 0) {
-		//atomic_set(&tusb422_pwr->poll_count, 1);
-		atomic_inc(&tusb422_pd->poll_count);
-		cpu_idle_poll_ctrl(true);
-	}
-
-	schedule_delayed_work(&tusb422_pwr->poll_work, msecs_to_jiffies(700));
-	return;
-}
-
-static void tusb422_poll_work(struct work_struct *work)
-{
-	struct tusb422_pwr_delivery *tusb422_pwr = container_of(work, struct tusb422_pwr_delivery, work);
-
-	if (atomic_dec_and_test(&tusb422_pwr->poll_count))
-		cpu_idle_poll_ctrl(false);
-	//if (atomic_read(&tusb422_pwr->poll_count) == 1){
-	//			cpu_idle_poll_ctrl(false);
-	//			atomic_set(&tusb422_pwr->poll_count, 0);
-	//}
-	return;
-}
-#endif
-
-static void tusb422_start(struct work_struct *work)
-{
-	struct tusb422_pwr_delivery *tusb422_pwr = container_of(work, struct tusb422_pwr_delivery, work);
-
-	tusb422_schedule_work(&tusb422_pd->work);
-	return;
-}
-
 
 #ifdef CONFIG_WAKELOCK
 void tusb422_wake_lock_attach(void)
@@ -528,7 +528,7 @@ void tusb422_wake_lock_attach(void)
 	return;
 }
 
-#define WAKE_LOCK_TIMEOUT_MS  5000
+#define WAKE_LOCK_TIMEOUT_MS  7000
 
 void tusb422_wake_lock_detach(void)
 {
@@ -543,7 +543,7 @@ void tusb422_wake_lock_detach(void)
 
 int tusb422_set_vbus(int vbus_sel)
 {
-	if (vbus_sel == VBUS_SRC_5V) {
+	if (vbus_sel == VBUS_SEL_SRC_5V) {
 		/* Disable high voltage. */
 		gpiod_direction_output(tusb422_pd->vbus_hv_gpio, 0);
 		/* Enable 5V. */
@@ -551,7 +551,7 @@ int tusb422_set_vbus(int vbus_sel)
 		/* Enable SRC switch. */
 		gpiod_direction_output(tusb422_pd->vbus_src_gpio, 0);
 	}
-	else if (vbus_sel == VBUS_SRC_HI_VOLT) {
+	else if (vbus_sel == VBUS_SEL_SRC_HI_VOLT) {
 		/* Disable 5v */
 		gpiod_direction_output(tusb422_pd->vbus_5v_gpio, 0);
 		/* Enable high voltage. */
@@ -559,7 +559,7 @@ int tusb422_set_vbus(int vbus_sel)
 		/* Enable SRC switch. */
 		gpiod_direction_output(tusb422_pd->vbus_src_gpio, 0);
 	}
-	else if (vbus_sel == VBUS_SNK) {
+	else if (vbus_sel == VBUS_SEL_SNK) {
 		/* Enable SNK switch. */
 		gpiod_direction_output(tusb422_pd->vbus_snk_gpio, 0);
 	}
@@ -569,17 +569,17 @@ int tusb422_set_vbus(int vbus_sel)
 
 int tusb422_clr_vbus(int vbus_sel)
 {
-	if (vbus_sel == VBUS_SRC_5V) {
+	if (vbus_sel == VBUS_SEL_SRC_5V) {
 		/* Disable SRC switch. */
 		gpiod_direction_output(tusb422_pd->vbus_src_gpio, 1);
 		/* Disable 5V. */
 		gpiod_direction_output(tusb422_pd->vbus_5v_gpio, 0);
 	}
-	else if (vbus_sel == VBUS_SRC_HI_VOLT) {
+	else if (vbus_sel == VBUS_SEL_SRC_HI_VOLT) {
 		/* Disable high voltage. */
 		gpiod_direction_output(tusb422_pd->vbus_hv_gpio, 0);
 	}
-	else if (vbus_sel == VBUS_SNK) {
+	else if (vbus_sel == VBUS_SEL_SNK) {
 		/* Disable SNK switch. */
 		gpiod_direction_output(tusb422_pd->vbus_snk_gpio, 1);
 	}
@@ -587,37 +587,38 @@ int tusb422_clr_vbus(int vbus_sel)
 	return 0;
 }
 
-void tusb422_start_polling(void)
-{
-	tusb422_pd->polling = true;
-	tusb422_schedule_work(&tusb422_pd->work);
-}
 
-void tusb422_stop_polling(void)
-{
-	tusb422_pd->polling = false;
-	atomic_set(&tusb422_pd->alert_status, 1);
-	tusb422_schedule_work(&tusb422_pd->work);
-}
 
-static irqreturn_t tusb422_event_handler(int irq, void *data)
+static irqreturn_t tusb422_irq_handler(int irq, void *data)
 {
 	struct tusb422_pwr_delivery *tusb422_pwr = data;
 
-	if (!tusb422_pwr->polling)
-	{
-		atomic_set(&tusb422_pwr->alert_status, 1);
+#ifdef TUSB422_DELAYED_START
+	if (!tusb422_pwr->start_done)
+		return IRQ_HANDLED;
+#endif
+#ifdef TUSB422_CPU_POLL_CTRL
+	cancel_delayed_work(&tusb422_pwr->poll_work);
+	schedule_delayed_work(&tusb422_pwr->poll_work, CPU_POLL_CTRL_TIMEOUT);
 
-		tusb422_schedule_work(&tusb422_pwr->work);
+	if (!test_and_set_bit(FLAG_POLL_CTRL, &tusb422_pwr->flags))
+	{
+		cpu_idle_poll_ctrl(true);
 	}
+#endif
+	tusb422_pwr->alert_status = 1;
+#ifdef TUSB422_KTHREAD
+	queue_kthread_work(&tusb422_pwr->kworker, &tusb422_pwr->work);
+#else
+		tusb422_schedule_work(&tusb422_pwr->work);
+#endif
 
 	return IRQ_HANDLED;
 }
 
 static int tusb422_of_get_gpios(struct tusb422_pwr_delivery *tusb422_pd)
 {
-	tusb422_pd->alert_gpio = devm_gpiod_get(tusb422_pd->dev, "ti,alert",
-											GPIOD_IN);
+	tusb422_pd->alert_gpio = devm_gpiod_get(tusb422_pd->dev, "ti,alert", GPIOD_IN);
 	if (IS_ERR(tusb422_pd->alert_gpio)) {
 		dev_err(tusb422_pd->dev, "failed to allocate alert gpio\n");
 		return PTR_ERR(tusb422_pd->alert_gpio);
@@ -625,30 +626,20 @@ static int tusb422_of_get_gpios(struct tusb422_pwr_delivery *tusb422_pd)
 
 	tusb422_pd->alert_irq = gpiod_to_irq(tusb422_pd->alert_gpio);
 
-	tusb422_pd->vbus_snk_gpio = devm_gpiod_get(tusb422_pd->dev, "ti,vbus-snk",
-											   GPIOD_OUT_LOW);
-	if (IS_ERR(tusb422_pd->vbus_snk_gpio))
-		tusb422_pd->vbus_snk_gpio = NULL;
+	tusb422_pd->vbus_snk_gpio = devm_gpiod_get_optional(
+		tusb422_pd->dev, "ti,vbus-snk", GPIOD_OUT_HIGH);
 
-	tusb422_pd->vbus_src_gpio = devm_gpiod_get(tusb422_pd->dev, "ti,vbus-src",
-											   GPIOD_OUT_LOW);
-	if (IS_ERR(tusb422_pd->vbus_src_gpio))
-		tusb422_pd->vbus_src_gpio = NULL;
+	tusb422_pd->vbus_src_gpio = devm_gpiod_get_optional(
+		tusb422_pd->dev, "ti,vbus-src", GPIOD_OUT_HIGH);
 
-	tusb422_pd->vconn_gpio = devm_gpiod_get(tusb422_pd->dev, "ti,vconn-en",
-											GPIOD_OUT_HIGH);
-	if (IS_ERR(tusb422_pd->vconn_gpio))
-		tusb422_pd->vconn_gpio = NULL;
+	tusb422_pd->vconn_gpio = devm_gpiod_get_optional(
+		tusb422_pd->dev, "ti,vconn-en", GPIOD_OUT_HIGH);
 
-	tusb422_pd->vbus_hv_gpio = devm_gpiod_get(tusb422_pd->dev, "ti,vbus-hv",
-											  GPIOD_OUT_LOW);
-	if (IS_ERR(tusb422_pd->vbus_hv_gpio))
-		tusb422_pd->vbus_hv_gpio = NULL;
+	tusb422_pd->vbus_hv_gpio = devm_gpiod_get_optional(
+		tusb422_pd->dev, "ti,vbus-hv", GPIOD_OUT_LOW);
 
-	tusb422_pd->vbus_5v_gpio = devm_gpiod_get(tusb422_pd->dev, "ti,vbus-5v",
-											  GPIOD_OUT_LOW);
-	if (IS_ERR(tusb422_pd->vbus_5v_gpio))
-		tusb422_pd->vbus_5v_gpio = NULL;
+	tusb422_pd->vbus_5v_gpio = devm_gpiod_get_optional(
+		tusb422_pd->dev, "ti,vbus-5v", GPIOD_OUT_LOW);
 
 	return 0;
 }
@@ -659,8 +650,8 @@ static int tusb422_pd_init(struct tusb422_pwr_delivery *tusb422_pd)
 	struct device_node *pp;
 	unsigned int supply_type;
 	unsigned int min_volt, current_flow, peak_current, pdo;
-	unsigned int max_volt, max_current, max_power, fast_role_swap_support;
-	unsigned int op_current, min_current, op_power, min_power, pdo_priority;
+	unsigned int max_volt, max_current, max_power, temp;
+	unsigned int op_current, min_current, op_power, min_power;
 	int ret;
 	int num_of_sink = 0, num_of_src = 0;
 	struct device *dev = tusb422_pd->dev;
@@ -708,28 +699,70 @@ static int tusb422_pd_init(struct tusb422_pwr_delivery *tusb422_pd)
 	if (of_property_read_bool(of_node, "ti,auto-accept-vconn-swap"))
 		tusb422_pd->port_config->auto_accept_vconn_swap = true;
 
-	ret = of_property_read_u16(of_node, "ti,src-settling-time-ms",
-							   &tusb422_pd->port_config->src_settling_time_ms);
-	if (ret)
-		pr_err("%s: Missing src-settling-time-ms\n", __func__);
+	if (of_property_read_u32(of_node, "ti,src-settling-time-ms", &temp) == 0)
+        tusb422_pd->port_config->src_settling_time_ms = (uint16_t)temp;
 
 	/* Mandate at least 50ms settling time */
-	if (tusb422_pd->port_config->src_settling_time_ms < 50)
+	if (tusb422_pd->port_config->src_settling_time_ms < 50) {
+		pr_err("%s: src-settling-time-ms = %u is invalid, using default of 50\n",
+			   __func__, tusb422_pd->port_config->src_settling_time_ms);
 		tusb422_pd->port_config->src_settling_time_ms = 50;
+	}
 
-	ret = of_property_read_u32(of_node, "ti,fast-role-swap-support",
-							   &fast_role_swap_support);
-	if (ret)
-		pr_err("%s: Missing fast-role-swap-support\n", __func__);
-	else
-		tusb422_pd->port_config->fast_role_swap_support	= (fr_swap_current_t) fast_role_swap_support;
+	if (of_property_read_u32(of_node, "ti,fast-role-swap-support", &temp) == 0)
+		tusb422_pd->port_config->fast_role_swap_support	= (fr_swap_current_t) temp;
 
-	ret = of_property_read_u32(of_node, "ti,pdo-priority", &pdo_priority);
-	if (ret)
+	if (of_property_read_u32(of_node, "ti,pdo-priority", &temp))
 		pr_err("%s: Missing pdo-priority\n", __func__);
 	else
-		tusb422_pd->port_config->pdo_priority = (pdo_priority_t) pdo_priority;
+		tusb422_pd->port_config->pdo_priority = (pdo_priority_t) temp;
 
+	if (of_property_read_bool(of_node, "ti,ufp-alt-mode-entry-timeout-enable"))
+		tusb422_pd->port_config->ufp_alt_mode_entry_timeout_enable = true;
+	if (of_property_read_bool(of_node, "ti,multi-function-preferred"))
+		tusb422_pd->port_config->multi_function_preferred = true;
+
+	if (of_property_read_u32(of_node, "ti,id-header-vdo", &temp) == 0)
+		tusb422_pd->port_config->id_header_vdo = temp;
+
+	if (of_property_read_u32(of_node, "ti,cert-stat-vdo", &temp) == 0)
+		tusb422_pd->port_config->cert_stat_vdo = temp;
+
+	if (of_property_read_u32(of_node, "ti,product-vdo", &temp) == 0)
+		tusb422_pd->port_config->product_vdo = temp;
+
+	if (of_property_read_u32(of_node, "ti,num-product-type-vdos", &temp) == 0)
+		tusb422_pd->port_config->num_product_type_vdos = (uint8_t)temp;
+
+	if (of_property_read_u32(of_node, "ti,product-type-vdo-1", &temp) == 0)
+		tusb422_pd->port_config->product_type_vdos[0] = temp;
+
+	if (of_property_read_u32(of_node, "ti,product-type-vdo-2", &temp) == 0)
+		tusb422_pd->port_config->product_type_vdos[1] = temp;
+
+	if (of_property_read_u32(of_node, "ti,product-type-vdo-3", &temp) == 0)
+		tusb422_pd->port_config->product_type_vdos[2] = temp;
+
+	if (of_property_read_u32(of_node, "ti,num-svids", &temp) == 0)
+		tusb422_pd->port_config->num_svids = (uint8_t)temp;
+
+	if (of_property_read_u32(of_node, "ti,svid-1", &temp) == 0)
+		tusb422_pd->port_config->svids[0] = (uint16_t)temp;
+
+	if (of_property_read_u32(of_node, "ti,svid-2", &temp) == 0)
+		tusb422_pd->port_config->svids[1] = (uint16_t)temp;
+
+	if (of_property_read_u32(of_node, "ti,svid-3", &temp) == 0)
+		tusb422_pd->port_config->svids[2] = (uint16_t)temp;
+
+	if (of_property_read_u32(of_node, "ti,mode-1", &temp) == 0)
+		tusb422_pd->port_config->modes[0] = temp;
+
+	if (of_property_read_u32(of_node, "ti,mode-2", &temp) == 0)
+		tusb422_pd->port_config->modes[1] = temp;
+
+	if (of_property_read_u32(of_node, "ti,mode-3", &temp) == 0)
+		tusb422_pd->port_config->modes[2] = temp;
 	for_each_child_of_node(of_node, pp) {
 		ret = of_property_read_u32(pp, "ti,current-flow", &current_flow);
 		if (ret) {
@@ -943,31 +976,66 @@ static enum hrtimer_restart tusb422_timer_tasklet(struct hrtimer *hrtimer)
 	struct tusb422_pwr_delivery *tusb422_pwr = container_of(hrtimer, struct tusb422_pwr_delivery, timer);
 
 	tusb422_pwr->timer_expired = true;
+#ifdef TUSB422_KTHREAD
+	queue_kthread_work(&tusb422_pwr->kworker, &tusb422_pwr->work);
+#else
 	tusb422_schedule_work(&tusb422_pwr->work);
+#endif
 
 	return HRTIMER_NORESTART;
 }
 
+#ifdef TUSB422_CPU_POLL_CTRL
+static void tusb422_poll_work(struct work_struct *work)
+{
+	struct delayed_work *dwork = to_delayed_work(work);
+	struct tusb422_pwr_delivery *tusb422_pwr = container_of(dwork, struct tusb422_pwr_delivery, poll_work);
+	if (!tusb422_pwr->flags)
+	{
+		PRINT("-> delayed work: flags = %ld (%ld)\n", tusb422_pwr->flags, tusb422_pd->flags);
+	}
+	if (test_and_clear_bit(FLAG_POLL_CTRL, &tusb422_pwr->flags))
+	{
+		cpu_idle_poll_ctrl(false);
+	}
+	return;
+}
+#endif
+#ifdef TUSB422_DELAYED_START
+static void tusb422_start_work(struct work_struct *work)
+{
+	struct delayed_work *dwork = to_delayed_work(work);
+	struct tusb422_pwr_delivery *tusb422_pwr = container_of(dwork, struct tusb422_pwr_delivery, start_work);
+	PRINT("->%s\n", __func__);
+	tusb422_pwr->start_done = 1;
+	tusb422_pwr->alert_status = 1;
+#ifdef TUSB422_KTHREAD
+	queue_kthread_work(&tusb422_pwr->kworker, &tusb422_pwr->work);
+#else
+	tusb422_schedule_work(&tusb422_pwr->work);
+#endif
+	return;
+}
+#endif
+#ifdef TUSB422_KTHREAD
+static void tusb422_kwork(struct kthread_work *work)
+#else
 static void tusb422_work(struct work_struct *work)
+#endif
 {
 	struct tusb422_pwr_delivery *tusb422_pwr = container_of(work, struct tusb422_pwr_delivery, work);
 
-#ifdef TUSB422_CPU_POLL_CTRL
-	tusb422_poll_ctrl(tusb422_pwr);
-#endif
-	if (!tusb422_pwr->polling)
+	if (tusb422_pwr->alert_status)
 	{
+		tusb422_pwr->alert_status = 0;
 
-		if (atomic_read(&tusb422_pwr->alert_status)) {
-			atomic_set(&tusb422_pwr->alert_status, 0);
-
-			do {
+		do {
 				tcpm_alert_event(0);
 				/* Run USB Type-C state machine */
 				tcpm_connection_state_machine(0);
 				/* Run USB PD state machine */
 				usb_pd_pe_state_machine(0);
-			} while (!gpiod_get_raw_value(tusb422_pwr->alert_gpio));
+		} while (!gpiod_get_raw_value(tusb422_pwr->alert_gpio));
 		}
 
 		if (tusb422_pwr->timer_expired) {
@@ -977,44 +1045,23 @@ static void tusb422_work(struct work_struct *work)
 				tusb422_pwr->callback(0);
 
 				/* Run USB Type-C state machine */
-				tcpm_connection_state_machine(0);
 				/* Run USB PD state machine */
-				usb_pd_pe_state_machine(0);
-			}
-		}
-	} else {
 
-		do {
-			tcpm_alert_event(0);
 			/* Run USB Type-C state machine */
 			tcpm_connection_state_machine(0);
 			/* Run USB PD state machine */
 			usb_pd_pe_state_machine(0);
-		} while (!gpiod_get_raw_value(tusb422_pwr->alert_gpio));
 
-		if (tusb422_pwr->timer_expired) {
-			tusb422_pwr->timer_expired = false;
 
-			if (tusb422_pwr->callback) {
-				tusb422_pwr->callback(0);
 
 				/* Run USB Type-C state machine */
-				tcpm_connection_state_machine(0);
 				/* Run USB PD state machine */
-				usb_pd_pe_state_machine(0);
 			}
 		}
-
-		tusb422_schedule_work(&tusb422_pwr->work);
-	}
 
 	return;
 }
 
-int tusb422_i2c_write_byte(int reg, uint8_t data)
-{
-	return i2c_smbus_write_byte_data(tusb422_pd->client, reg, data);
-}
 
 static const struct regmap_config tusb422_regmap_config = {
 	.reg_bits = 8,
@@ -1081,9 +1128,11 @@ static struct cc_check_ops cc_check_ops = {
 	.is_cable_for_direct_charge = is_cable_for_direct_charge,
 };
 
-static int tusb422_i2c_probe(struct i2c_client *client,
-							 const struct i2c_device_id *id)
+static int tusb422_probe(struct i2c_client *client, const struct i2c_device_id *id)
 {
+#ifdef TUSB422_KTHREAD
+	struct sched_param param = { .sched_priority = MAX_RT_PRIO - 1 };
+#endif
 	struct device *dev = &client->dev;
 	int ret;
 
@@ -1097,8 +1146,7 @@ static int tusb422_i2c_probe(struct i2c_client *client,
 	i2c_set_clientdata(client, tusb422_pd);
 	tusb422_pd->dev = dev;
 
-	mutex_init(&tusb422_pd->i2c_lock);
-#ifdef TUSB422_USE_REGMAP
+#ifdef CONFIG_REGMAP
 	tusb422_pd->regmap = devm_regmap_init_i2c(client, &tusb422_regmap_config);
 	if (IS_ERR(tusb422_pd->regmap)) {
 		ret = PTR_ERR(tusb422_pd->regmap);
@@ -1118,11 +1166,41 @@ static int tusb422_i2c_probe(struct i2c_client *client,
 		goto err_of;
 
 	hrtimer_init(&tusb422_pd->timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+#ifdef TUSB422_KTHREAD
+	init_kthread_worker(&tusb422_pd->kworker);
+	tusb422_pd->kworker_task = kthread_run(kthread_worker_fn, &tusb422_pd->kworker, "tusb422_pd");
+	if (IS_ERR(tusb422_pd->kworker_task)) {
+		dev_err(dev, "failed to create kworker task\n");
+		goto err_kthread;
+	}
+	init_kthread_work(&tusb422_pd->work, tusb422_kwork);
+	sched_setscheduler(tusb422_pd->kworker_task, SCHED_FIFO, &param);
+#else
 	INIT_WORK(&tusb422_pd->work, tusb422_work);
-	INIT_DELAYED_WORK(&tusb422_pd->start, tusb422_start);
+#endif
+#ifdef TUSB422_DELAYED_START
+	INIT_DELAYED_WORK(&tusb422_pd->start_work, tusb422_start_work);
+#endif
 #ifdef TUSB422_CPU_POLL_CTRL
 	INIT_DELAYED_WORK(&tusb422_pd->poll_work, tusb422_poll_work);
 #endif
+	if (tusb422_pd->alert_irq > 0) {
+		ret = devm_request_irq(dev,
+							   tusb422_pd->alert_irq,
+							   tusb422_irq_handler,
+							   IRQF_TRIGGER_FALLING | IRQF_NO_THREAD | IRQF_NO_SUSPEND,
+							   "tusb422_pd", 
+							   tusb422_pd);
+		if (ret) {
+			dev_err(dev, "unable to request IRQ\n");
+			goto err_irq;
+		}
+		enable_irq_wake(tusb422_pd->alert_irq);
+	} else {
+		dev_err(dev, "no IRQ resource found\n");
+		ret = tusb422_pd->alert_irq;
+		goto err_irq;
+	}
 
 #ifdef CONFIG_WAKELOCK
 	wake_lock_init(&tusb422_pd->attach_wakelock, WAKE_LOCK_SUSPEND, "typec_attach_wakelock");
@@ -1145,7 +1223,7 @@ static int tusb422_i2c_probe(struct i2c_client *client,
 	ret = tusb422_linux_dual_role_init(dev);
 	if (ret) {
 		dev_err(dev, "failed to init dual role class: %d\n", ret);
-		goto err_init;
+		goto err_dualrole;
 	}
 #endif
 
@@ -1157,34 +1235,8 @@ static int tusb422_i2c_probe(struct i2c_client *client,
 	}
 #endif
 
-	if (tusb422_pd->alert_irq > 0) {
-#ifdef TUSB422_LEVEL_IRQ
-		ret = devm_request_threaded_irq(dev,
-										tusb422_pd->alert_irq,
-										NULL,
-										tusb422_event_handler,
-										IRQF_TRIGGER_LOW | IRQF_ONESHOT,
-										"tusb422_event", tusb422_pd);
-#else /* Edge IRQ */
-		ret = devm_request_irq(dev,
-							   tusb422_pd->alert_irq,
-							   tusb422_event_handler,
-							   IRQF_TRIGGER_FALLING | IRQF_NO_THREAD | IRQF_NO_SUSPEND,
-							   "tusb422_event",
-							   tusb422_pd);
-#endif
 
-		if (ret) {
-			dev_err(dev, "unable to request IRQ\n");
-			goto err_irq;
-		}
 
-		enable_irq_wake(tusb422_pd->alert_irq);
-	} else {
-		dev_err(dev, "no IRQ resource found\n");
-		ret = tusb422_pd->alert_irq;
-		goto err_irq;
-	}
 
 	ret = cc_check_ops_register(&cc_check_ops);
 	if (ret)
@@ -1195,16 +1247,18 @@ static int tusb422_i2c_probe(struct i2c_client *client,
 	printk("%s cc_check register OK!\n", __func__);
 	printk("%s probe OK!\n", __func__);
 
-	atomic_set(&tusb422_pd->alert_status, 1);
-	//tusb422_schedule_work(&tusb422_pd->work);
-	schedule_delayed_work(&tusb422_pd->start, msecs_to_jiffies(100));
-
+#ifdef TUSB422_DELAYED_START
+	schedule_delayed_work(&tusb422_pd->start_work, START_WORK_DELAY);
+#else
+	tusb422_pd->alert_status = 1;
+#endif 
+#ifdef TUSB422_KTHREAD
+	queue_kthread_work(&tusb422_pd->kworker, &tusb422_pd->work);
+#else
+	tusb422_schedule_work(&tusb422_pd->work);
+#endif
 	return 0;
 
-err_irq:
-#ifdef TUSB422_DEBUG
-	sysfs_remove_group(&client->dev.kobj, &tusb422_attr_group);
-#endif
 
 err_sysfs:
 #ifdef CONFIG_DUAL_ROLE_USB_INTF
@@ -1212,16 +1266,37 @@ err_sysfs:
 #endif
 
 err_init:
+#ifdef CONFIG_DUAL_ROLE_USB_INTF
+err_dualrole:
+#endif
+	disable_irq_wake(tusb422_pd->alert_irq);
+	devm_free_irq(&client->dev, tusb422_pd->alert_irq, tusb422_pd);
 	hrtimer_cancel(&tusb422_pd->timer);
+#ifdef TUSB422_KTHREAD
+	kthread_stop(tusb422_pd->kworker_task);
+#else
 	cancel_work_sync(&tusb422_pd->work);
+#endif
+#ifdef TUSB422_DELAYED_START
+	cancel_delayed_work_sync(&tusb422_pd->start_work);
+#endif
+#ifdef TUSB422_CPU_POLL_CTRL
+	cancel_delayed_work_sync(&tusb422_pd->poll_work);
+#endif
 #ifdef CONFIG_WAKELOCK
 	wake_lock_destroy(&tusb422_pd->attach_wakelock);
 	wake_lock_destroy(&tusb422_pd->detach_wakelock);
 #endif
 
+#ifdef CONFIG_REGMAP
 err_regmap:
-err_nodev:
+#endif
+#ifdef TUSB422_KTHREAD
+err_kthread:
+#endif
 err_of:
+err_irq:
+err_nodev:
 	i2c_set_clientdata(client, NULL);
 
 	return ret;
@@ -1230,8 +1305,24 @@ err_of:
 static int tusb422_remove(struct i2c_client *client)
 {
 	disable_irq_wake(tusb422_pd->alert_irq);
+	devm_free_irq(&client->dev, tusb422_pd->alert_irq, tusb422_pd);
 	hrtimer_cancel(&tusb422_pd->timer);
+#ifdef TUSB422_DELAYED_START
+	cancel_delayed_work_sync(&tusb422_pd->start_work);
+#endif
+#ifdef TUSB422_KTHREAD
+	flush_kthread_worker(&tusb422_pd->kworker);
+	kthread_stop(tusb422_pd->kworker_task);
+#else
 	cancel_work_sync(&tusb422_pd->work);
+#endif
+#ifdef TUSB422_CPU_POLL_CTRL
+	cancel_delayed_work_sync(&tusb422_pd->poll_work);
+	if (test_and_clear_bit(FLAG_POLL_CTRL, &tusb422_pd->flags))
+	{
+		cpu_idle_poll_ctrl(false);
+	}
+#endif
 #ifdef CONFIG_WAKELOCK
 	wake_lock_destroy(&tusb422_pd->attach_wakelock);
 	wake_lock_destroy(&tusb422_pd->detach_wakelock);
@@ -1267,10 +1358,11 @@ static struct i2c_driver tusb422_i2c_driver = {
 		.owner = THIS_MODULE,
 		.of_match_table = of_match_ptr(tusb422_pd_ids),
 	},
-	.probe = tusb422_i2c_probe,
+	.probe = tusb422_probe,
 	.remove = tusb422_remove,
 	.id_table = tusb422_id,
 };
 module_i2c_driver(tusb422_i2c_driver);
 
 MODULE_LICENSE("GPL v2");
+MODULE_DESCRIPTION("Texas Instruments TUSB422 USB-PD Driver");

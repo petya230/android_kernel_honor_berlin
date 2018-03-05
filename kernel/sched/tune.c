@@ -592,7 +592,7 @@ boost_write(struct cgroup_subsys_state *css, struct cftype *cft,
 
 	if (boost < -100 || boost > 100)
 		return -EINVAL;
-	boost_pct = boost;
+	boost_pct = (boost > 0) ? boost : -boost;
 
 	/*
 	 * Update threshold params for Performance Boost (B)
@@ -893,10 +893,11 @@ schedtune_add_cluster_nrg(
 			 * Assume we have EM data only at the CPU and
 			 * the upper CLUSTER level
 			 */
-			BUG_ON(!cpumask_equal(
-				sched_group_cpus(sg),
-				sched_group_cpus(sd2->parent->groups)
-				));
+			if (sd2->parent)
+				BUG_ON(!cpumask_equal(
+					sched_group_cpus(sg),
+					sched_group_cpus(sd2->parent->groups)
+					));
 			break;
 		}
 	}

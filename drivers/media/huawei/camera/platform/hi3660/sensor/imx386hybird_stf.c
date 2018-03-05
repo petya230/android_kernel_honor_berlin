@@ -370,6 +370,8 @@ imx386hybird_stf_platform_probe(
     if (rc < 0)
     {
         cam_err("%s rpmsg_sensor_register fail.\n", __func__);
+        hwsensor_unregister(&s_imx386hybird_stf.intf);
+        goto imx386hybird_stf_sensor_probe_fail;
     }
 
 imx386hybird_stf_sensor_probe_fail:

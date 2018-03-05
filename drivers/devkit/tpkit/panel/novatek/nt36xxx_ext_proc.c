@@ -49,18 +49,6 @@
 #define TEST_MODE_1 0x21
 #define TEST_MODE_2 0x22
 
-#define RAW_PIPE0_ADDR  0x10000
-#define RAW_PIPE1_ADDR  0x12000
-#define BASELINE_ADDR   0x10E70
-#define DIFF_PIPE0_ADDR 0x10830
-#define DIFF_PIPE1_ADDR 0x12830
-
-#define RAW_BTN_PIPE0_ADDR  0x10E60
-#define RAW_BTN_PIPE1_ADDR  0x12E60
-#define BASELINE_BTN_ADDR   0x12E70
-#define DIFF_BTN_PIPE0_ADDR 0x10E68
-#define DIFF_BTN_PIPE1_ADDR 0x12E68
-
 #define XDATA_SECTOR_SIZE   256
 
 static uint8_t xdata_tmp[2048] = {0};
@@ -258,8 +246,8 @@ void nvt_kit_change_mode(uint8_t mode)
 
 	//---set xdata index to 0x11E00---
 	buf[0] = 0xFF;
-	buf[1] = 0x01;
-	buf[2] = 0x1E;
+	buf[1] = (nvt_ts->mmap->EVENT_BUF_ADDR >> 16) & 0xFF;
+	buf[2] = (nvt_ts->mmap->EVENT_BUF_ADDR >> 8) & 0xFF;
 	novatek_ts_kit_i2c_write(nvt_ts->client, I2C_FW_Address, buf, 3);
 
 	//---set mode---
@@ -290,8 +278,8 @@ int8_t nvt_kit_switch_noPD(uint8_t noPD)
 	for (retry = 0; retry < 5; retry++) {
 		//---set xdata index to 0x11E00---
 		buf[0] = 0xFF;
-		buf[1] = 0x01;
-		buf[2] = 0x1E;
+		buf[1] = (nvt_ts->mmap->EVENT_BUF_ADDR >> 16) & 0xFF;
+		buf[2] = (nvt_ts->mmap->EVENT_BUF_ADDR >> 8) & 0xFF;
 		novatek_ts_kit_i2c_write(nvt_ts->client, I2C_FW_Address, buf, 3);
 
 		//---switch noPD---
@@ -336,8 +324,8 @@ int8_t nvt_kit_get_fw_info(void)
 info_retry:
 	//---set xdata index to 0x11E00---
 	buf[0] = 0xFF;
-	buf[1] = 0x01;
-	buf[2] = 0x1E;
+	buf[1] = (nvt_ts->mmap->EVENT_BUF_ADDR >> 16) & 0xFF;
+	buf[2] = (nvt_ts->mmap->EVENT_BUF_ADDR >> 8) & 0xFF;
 	novatek_ts_kit_i2c_write(nvt_ts->client, I2C_FW_Address, buf, 3);
 
 	//---read fw info---
@@ -348,6 +336,7 @@ info_retry:
 	y_num = buf[4];
 	button_num = buf[11];
 
+	TS_LOG_INFO("%s: nvt_fw_ver=0x%02X\n", __func__, nvt_fw_ver);
 	//---clear x_num, y_num if fw info is broken---
 	if ((buf[1] + buf[2]) != 0xFF) {
 		TS_LOG_ERR("%s: FW info is broken! nvt_fw_ver=0x%02X, ~nvt_fw_ver=0x%02X\n", __func__, buf[1], buf[2]);
@@ -382,8 +371,8 @@ uint8_t nvt_kit_get_fw_pipe(void)
 
 	//---set xdata index to 0x11E00---
 	buf[0] = 0xFF;
-	buf[1] = 0x01;
-	buf[2] = 0x1E;
+	buf[1] = (nvt_ts->mmap->EVENT_BUF_ADDR >> 16) & 0xFF;
+	buf[2] = (nvt_ts->mmap->EVENT_BUF_ADDR >> 8) & 0xFF;
 	novatek_ts_kit_i2c_write(nvt_ts->client, I2C_FW_Address, buf, 3);
 
 	//---read fw status---
@@ -426,7 +415,7 @@ void nvt_kit_read_mdata(uint32_t xdata_addr)
 	for (i = 0; i < ((dummy_len + data_len) / XDATA_SECTOR_SIZE); i++) {
 		//---change xdata index---
 		buf[0] = 0xFF;
-		buf[1] = ((head_addr + XDATA_SECTOR_SIZE * i) >> 16);
+		buf[1] = ((head_addr + XDATA_SECTOR_SIZE * i) >> 16) & 0xFF;
 		buf[2] = ((head_addr + XDATA_SECTOR_SIZE * i) >> 8) & 0xFF;
 		novatek_ts_kit_i2c_write(nvt_ts->client, I2C_FW_Address, buf, 3);
 
@@ -449,7 +438,7 @@ void nvt_kit_read_mdata(uint32_t xdata_addr)
 	if (residual_len != 0) {
 		//---change xdata index---
 		buf[0] = 0xFF;
-		buf[1] = ((xdata_addr + data_len - residual_len) >> 16);
+		buf[1] = ((xdata_addr + data_len - residual_len) >> 16)& 0xFF;
 		buf[2] = ((xdata_addr + data_len - residual_len) >> 8) & 0xFF;
 		novatek_ts_kit_i2c_write(nvt_ts->client, I2C_FW_Address, buf, 3);
 
@@ -493,8 +482,8 @@ void nvt_kit_read_mdata(uint32_t xdata_addr)
 
 	//---set xdata index to 0x11E00---
 	buf[0] = 0xFF;
-	buf[1] = 0x01;
-	buf[2] = 0x1E;
+	buf[1] = (nvt_ts->mmap->EVENT_BUF_ADDR >> 16) & 0xFF;
+	buf[2] = (nvt_ts->mmap->EVENT_BUF_ADDR >> 8) & 0xFF;
 	novatek_ts_kit_i2c_write(nvt_ts->client, I2C_FW_Address, buf, 3);
 }
 
@@ -651,7 +640,7 @@ static int32_t nvt_baseline_open(struct inode *inode, struct file *file)
 	if (nvt_kit_get_fw_info())
 		return -EAGAIN;
 
-	nvt_kit_read_mdata(BASELINE_ADDR);
+	nvt_kit_read_mdata(nvt_ts->mmap->BASELINE_ADDR);
 
 	nvt_kit_change_mode(NORMAL_MODE);
 
@@ -687,9 +676,9 @@ static int32_t nvt_raw_open(struct inode *inode, struct file *file)
 		return -EAGAIN;
 
 	if (nvt_kit_get_fw_pipe() == 0)
-		nvt_kit_read_mdata(RAW_PIPE0_ADDR);
+		nvt_kit_read_mdata(nvt_ts->mmap->RAW_PIPE0_ADDR);
 	else
-		nvt_kit_read_mdata(RAW_PIPE1_ADDR);
+		nvt_kit_read_mdata(nvt_ts->mmap->RAW_PIPE1_ADDR);
 
 	nvt_kit_change_mode(NORMAL_MODE);
 
@@ -725,9 +714,9 @@ static int32_t nvt_diff_open(struct inode *inode, struct file *file)
 	nvt_kit_get_fw_info();
 
 	if (nvt_kit_get_fw_pipe() == 0)
-		nvt_kit_read_mdata(DIFF_PIPE0_ADDR);
+		nvt_kit_read_mdata(nvt_ts->mmap->DIFF_PIPE0_ADDR);
 	else
-		nvt_kit_read_mdata(DIFF_PIPE1_ADDR);
+		nvt_kit_read_mdata(nvt_ts->mmap->DIFF_PIPE1_ADDR);
 
 	nvt_kit_change_mode(NORMAL_MODE);
 

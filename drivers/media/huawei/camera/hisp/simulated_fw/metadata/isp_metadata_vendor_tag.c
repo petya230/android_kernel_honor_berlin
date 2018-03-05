@@ -31,14 +31,15 @@
 #include "isp_metadata_vendor_tag.h"
 #ifdef HISP_V150
 #include "../hisp150_md_message.h"
+#elif defined HISP_V160
+#include "../hisp160_md_message.h"
 #else
 #include "../hisp_md_message.h"
 #endif
 
 #endif
 
-
-const char *isp_metadata_vendor_section_names[ANDROID_HUAWEI_SECTION_MAX -
+static const char *isp_metadata_vendor_section_names[ANDROID_HUAWEI_SECTION_MAX -
     VENDOR_SECTION] =
 {
     "ANDROID_HUAWEI_DEVICE_CAPABILITIES",
@@ -48,17 +49,17 @@ const char *isp_metadata_vendor_section_names[ANDROID_HUAWEI_SECTION_MAX -
     "ANDROID_HUAWEI_STREAM_PARAMETERS",
 };
 
-static int vendor_section_bounds[ANDROID_HUAWEI_SECTION_MAX -
+static unsigned int vendor_section_bounds[ANDROID_HUAWEI_SECTION_MAX -
     VENDOR_SECTION][2] =
 {
-    {ANDROID_HUAWEI_DEVICE_CAPABILITIES_START, ANDROID_HUAWEI_DEVICE_CAPABILITIES_END},//no tag now
-    {ANDROID_HUAWEI_DEVICE_PARAMETERS_START, ANDROID_HUAWEI_DEVICE_PARAMETERS_END},//no tag now
-    {ANDROID_HUAWEI_METADATA_START, ANDROID_HUAWEI_METADATA_END},
-    {ANDROID_HUAWEI_STREAM_INFO_START, ANDROID_HUAWEI_STREAM_INFO_END},//no tag now
-    {ANDROID_HUAWEI_STREAM_PARAMETERS_START, ANDROID_HUAWEI_STREAM_PARAMETERS_END}//no tag now
+    {(uint32_t)ANDROID_HUAWEI_DEVICE_CAPABILITIES_START, (uint32_t)ANDROID_HUAWEI_DEVICE_CAPABILITIES_END},//no tag now
+    {(uint32_t)ANDROID_HUAWEI_DEVICE_PARAMETERS_START, (uint32_t)ANDROID_HUAWEI_DEVICE_PARAMETERS_END},//no tag now
+    {(uint32_t)ANDROID_HUAWEI_METADATA_START, (uint32_t)ANDROID_HUAWEI_METADATA_END},
+    {(uint32_t)ANDROID_HUAWEI_STREAM_INFO_START, (uint32_t)ANDROID_HUAWEI_STREAM_INFO_END},//no tag now
+    {(uint32_t)ANDROID_HUAWEI_STREAM_PARAMETERS_START, (uint32_t)ANDROID_HUAWEI_STREAM_PARAMETERS_END}//no tag now
 };
 
-static tag_info_t android_huawei_device_capabilities[ANDROID_HUAWEI_DEVICE_CAPABILITIES_END -
+static tag_info_t isp_huawei_device_capabilities[ANDROID_HUAWEI_DEVICE_CAPABILITIES_END -
     ANDROID_HUAWEI_DEVICE_CAPABILITIES_START] =
 {
     [ANDROID_HUAWEI_DEVICE_SENSOR_POSITION - ANDROID_HUAWEI_DEVICE_CAPABILITIES_START] =
@@ -101,11 +102,9 @@ static tag_info_t android_huawei_device_capabilities[ANDROID_HUAWEI_DEVICE_CAPAB
         {"android.hw.expowure.comp.step",       DATA_FLOAT, 1},
     [ANDROID_HW_AVAILABLE_VIDEO_STABILIZATION_MODES - ANDROID_HUAWEI_DEVICE_CAPABILITIES_START] =
         {"android.hw.available.video.stabilization.modes",       DATA_BYTE, 1},
-    [ANDROID_HW_PROFESSIONAL_RAW12_SUPPORTED - ANDROID_HUAWEI_DEVICE_CAPABILITIES_START] =
-    {"android.hw.professional.raw12.supported",       DATA_INT32, 1},
 };
 
-static tag_info_t android_huawei_metadata[ANDROID_HUAWEI_METADATA_END -
+static tag_info_t isp_huawei_metadata[ANDROID_HUAWEI_METADATA_END -
     ANDROID_HUAWEI_METADATA_START] =
 {
     //AF
@@ -123,7 +122,18 @@ static tag_info_t android_huawei_metadata[ANDROID_HUAWEI_METADATA_END -
         { "android.hw.dualCameraVerificationMode", DATA_BYTE,        1      },
     [ANDROID_HW_MMI_7CMAF_TEST_ENABLE - ANDROID_HUAWEI_METADATA_START] =
         { "android.hw.mmi7CmafTestEnable",         DATA_BYTE,        1      },
+    [ANDROID_HW_MMI_EQUIP_AF_TEST_ENABLE - ANDROID_HUAWEI_METADATA_START] =
+        { "android.hw.mmiEquipAFTestEnable",         DATA_BYTE,        1      },
 
+    // MMI
+    [ ANDROID_HW_MMI_GAMMA_MODE - ANDROID_HUAWEI_METADATA_START ] =
+        { "android.hw.mmiGammaMode",                 DATA_BYTE,       1   },
+    [ ANDROID_HW_MMI_RAW_REGION - ANDROID_HUAWEI_METADATA_START ] =
+        { "android.hw.mmiRawRegion",                 DATA_INT32,      4   },
+    [ ANDROID_HW_MMI_IVP_PRO - ANDROID_HUAWEI_METADATA_START ] =
+        { "android.hw.mmiIvpPro",                  DATA_INT32,  1  },
+    [ ANDROID_HW_HDC_CALIBRATE - ANDROID_HUAWEI_METADATA_START ] =
+        { "hw-mmi-hdc_calib",                    DATA_BYTE,       1   },
     //common
     [ANDROID_HISTAR_COMMON_SENSOR_INFO - ANDROID_HUAWEI_METADATA_START] =
         {"android.histar.common.sensorInfo",       DATA_INT32, 4},
@@ -132,13 +142,20 @@ static tag_info_t android_huawei_metadata[ANDROID_HUAWEI_METADATA_END -
     [ANDROID_HISTAR_COMMON_OTPINFO - ANDROID_HUAWEI_METADATA_START] =
         {"android.histar.common.otpInfo",          DATA_BYTE,  1219},
     [ANDROID_HISTAR_COMMON_STAT3A - ANDROID_HUAWEI_METADATA_START] =
-        {"android.histar.common.stat3a",           DATA_INT32, (sizeof(stat3a_md_t)/sizeof(int32_t))},
-    [ANDROID_HISTAR_COMMON_SAVERAW - ANDROID_HUAWEI_METADATA_START] =
+        {"android.histar.common.stat3a",    DATA_INT32, (sizeof(stat3a_md_t)/sizeof(int32_t))},
+#if defined( CHICAGO_CAMERA ) || defined( BOSTON_CAMERA )
+	[ANDROID_HISTAR_AE_STAT_INFO - ANDROID_HUAWEI_METADATA_START] =
+        {"android.histar.stat3a.ae",    DATA_INT32, (sizeof(ae_stat_t)/sizeof(int32_t))},
+	[ANDROID_HISTAR_AF_STAT_INFO - ANDROID_HUAWEI_METADATA_START] =
+        {"android.histar.stat3a.af",    DATA_INT32, (sizeof(af_stat_t)/sizeof(int32_t))},
+#endif
+	[ANDROID_HISTAR_COMMON_SAVERAW - ANDROID_HUAWEI_METADATA_START] =
         {"android.histar.common.saveraw",          DATA_INT32, 1},
     [ANDROID_HISTAR_COMMON_SAVEYUV - ANDROID_HUAWEI_METADATA_START] =
         {"android.histar.common.saveyuv",          DATA_INT32, 1},
     [ANDROID_HISTAR_COMMON_FACE_DETECTION - ANDROID_HUAWEI_METADATA_START] =
-        {"android.histar.common.faceDetection", DATA_INT32, 111},
+        {"android.histar.common.faceDetection",    DATA_INT32, 111},
+
     //blc
     [ANDROID_HISTAR_BLC_VALUE - ANDROID_HUAWEI_METADATA_START] =
         {"android.histar.blc.setValue", DATA_INT32, 4},
@@ -204,51 +221,10 @@ static tag_info_t android_huawei_metadata[ANDROID_HUAWEI_METADATA_END -
         {"android.histar.gamma.setAutoParams",   DATA_INT32,       257*3  },
 
     //AE
-    [ANDROID_HW_ISO - ANDROID_HUAWEI_METADATA_START] =
-        {"android.huawei.ae.setCaptureIso",      DATA_INT32,       1      },
-    [ANDROID_HW_METERING_MODE - ANDROID_HUAWEI_METADATA_START] =
-        {"android.huawei.ae.setMeteringMode",    DATA_INT32,       1      },
-    [ANDROID_HW_EXPOSURE_TIME - ANDROID_HUAWEI_METADATA_START] =
-        {"android.huawei.ae.setExposureTime",    DATA_INT32,       1      },
-    [ANDROID_HW_ALGO_EXPO_MAX - ANDROID_HUAWEI_METADATA_START] =
-        {"android.huawei.ae.getMaxExposureTime", DATA_INT32,       1      },
-    [ANDROID_HW_ALGO_EXPO_MIN - ANDROID_HUAWEI_METADATA_START] =
-        {"android.huawei.ae.getMinExposureTime", DATA_INT32,       1      },
-    [ANDROID_HW_ALGO_GAIN_MAX - ANDROID_HUAWEI_METADATA_START] =
-        {"android.huawei.ae.getMaxGain",         DATA_INT32,       1      },
-    [ANDROID_HW_ALGO_GAIN_MIN - ANDROID_HUAWEI_METADATA_START] =
-        {"android.huawei.ae.getMinGain",         DATA_INT32,       1      },
-    [ANDROID_HW_ALGO_LUM_MAX - ANDROID_HUAWEI_METADATA_START] =
-        {"android.huawei.ae.getLumMax",          DATA_INT32,       1      },
-    [ANDROID_HW_ALGO_LUM_MIN - ANDROID_HUAWEI_METADATA_START] =
-        {"android.huawei.ae.getLumMin",          DATA_INT32,       1      },
-    [ANDROID_HW_ALGO_EXPO - ANDROID_HUAWEI_METADATA_START] =
-        {"android.huawei.ae.getExposure",        DATA_INT32,       1      },
-    [ANDROID_HW_ALGO_EXPO_TIME - ANDROID_HUAWEI_METADATA_START] =
-        {"android.huawei.ae.getExposureTime",    DATA_INT32,       1      },
-    [ANDROID_HW_ALGO_GAIN - ANDROID_HUAWEI_METADATA_START] =
-        {"android.huawei.ae.getGain",            DATA_INT32,       1      },
-    [ANDROID_HW_ALGO_ISO - ANDROID_HUAWEI_METADATA_START] =
-        {"android.huawei.ae.getIso",             DATA_INT32,       1      },
-    [ANDROID_HW_ALGO_MEAN_Y - ANDROID_HUAWEI_METADATA_START] =
-        {"android.huawei.ae.getMeanY",           DATA_INT32,       1      },
-    [ANDROID_HW_ALGO_AECSTABE - ANDROID_HUAWEI_METADATA_START] =
-        {"android.huawei.ae.getAecStableState",  DATA_INT32,       1      },
-    [ANDROID_HW_ISO_STATE - ANDROID_HUAWEI_METADATA_START] =
-        {"android.huawei.ae.getIsoState",        DATA_INT32,       1      },
-    [ANDROID_HW_AE_TARGET_LOW - ANDROID_HUAWEI_METADATA_START] =
-        {"android.huawei.ae.getTargetLow",       DATA_INT32,       1      },
-    [ANDROID_HW_AE_TARGET_HIGH - ANDROID_HUAWEI_METADATA_START] =
-        {"android.huawei.ae.getTargetHigh",      DATA_INT32,       1      },
-    [ANDROID_HW_METERING_AREAS - ANDROID_HUAWEI_METADATA_START] =
-        {"android.huawei.ae.setMeteringArea",    DATA_INT32,       5      },
-    [ANDROID_HW_EXPOSURE_COMP_VALUE - ANDROID_HUAWEI_METADATA_START] =
-        {"android.huawei.ae.setExposureCompensation", DATA_INT32,  1      },
-    [ANDROID_HW_MANUAL_ISO - ANDROID_HUAWEI_METADATA_START] =
-        {"android.huawei.ae.setManualIso",       DATA_INT32,       1      },
-    [ANDROID_HW_MANUAL_EXPOSURE - ANDROID_HUAWEI_METADATA_START] =
-        {"android.huawei.ae.setManualExpoTime",  DATA_INT32,       1      },
-
+//    [ANDROID_AE_SET_ANTIBANDING_MODE - ANDROID_HUAWEI_METADATA_START] =
+//        {"android.control.aeAntibandingMode",         DATA_BYTE,       1      },
+//    [ANDROID_AE_SET_EXPO_COMPENSATION - ANDROID_HUAWEI_METADATA_START] =
+//        {"android.control.aeExposureCompensation",         DATA_INT32,       1      },
     [ANDROID_HISTAR_AE_SET_TARGET_Y - ANDROID_HUAWEI_METADATA_START] =
         {"android.histar.ae.setTargetY",         DATA_INT32,       1      },
     [ANDROID_HISTAR_AE_SET_METER_MODE - ANDROID_HUAWEI_METADATA_START] =
@@ -257,11 +233,13 @@ static tag_info_t android_huawei_metadata[ANDROID_HUAWEI_METADATA_END -
         {"android.histar.ae.setMeterArea",       DATA_INT32,       4      },
     [ANDROID_HISTAR_AE_SET_TOLERANCE - ANDROID_HUAWEI_METADATA_START] =
         {"android.histar.ae.setTolerance",       DATA_INT32,       2      },
+//    [ANDROID_AE_SET_LOCK - ANDROID_HUAWEI_METADATA_START] =
+//        {"android.control.aeLock",             DATA_BYTE,       1      },
     [ANDROID_HISTAR_AE_MANUAL - ANDROID_HUAWEI_METADATA_START] =
-        {"android.histar.ae.setManual",          DATA_INT32,       1      },
+        {"android.histar.ae.manual",             DATA_INT32,       1      },
     [ANDROID_HISTAR_AE_SET_GAIN - ANDROID_HUAWEI_METADATA_START] =
         {"android.histar.ae.setGain",            DATA_INT32,       1      },
-    [ ANDROID_HISTAR_AE_SET_EXPO_TIME - ANDROID_HUAWEI_METADATA_START] =
+    [ANDROID_HISTAR_AE_SET_EXPO_TIME - ANDROID_HUAWEI_METADATA_START] =
         {"android.histar.ae.setExpoTime",        DATA_INT32,       1      },
     [ANDROID_HISTAR_AE_GET_CURRENT_Y - ANDROID_HUAWEI_METADATA_START] =
         {"android.histar.ae.getCurrentY",        DATA_INT32,       1      },
@@ -277,15 +255,21 @@ static tag_info_t android_huawei_metadata[ANDROID_HUAWEI_METADATA_END -
         {"android.histar.ae.gainRange",          DATA_INT32,       2      },
     [ANDROID_HISTAR_VIDEO_STABILIZATION_MODE - ANDROID_HUAWEI_METADATA_START] =
         {"android.histar.vstab.mode",               DATA_BYTE,       1  },
+//FIXME:NEED REMOVE
+#if defined( CHICAGO_CAMERA ) || defined( BOSTON_CAMERA )
     [ANDROID_HISTAR_BUFFER_METADATA - ANDROID_HUAWEI_METADATA_START] =
-        {"android.histar.raw2yuv",               DATA_INT32,       MD_PARAM_SIZE * MAX_COP_CAM_CNT  },
+        {"android.histar.raw2yuv",               DATA_INT32, 2*MD_PARAM_SIZE},
+#else
+    [ANDROID_HISTAR_BUFFER_METADATA - ANDROID_HUAWEI_METADATA_START] =
+        {"android.histar.raw2yuv",               DATA_INT32, MD_PARAM_SIZE},
+#endif
 };
 
 tag_info_t* vendor_tag_infos[ANDROID_HUAWEI_SECTION_MAX - VENDOR_SECTION] =
 {
-    android_huawei_device_capabilities, //ANDROID_HUAWEI_DEVICE_CAPABILITIES
+    isp_huawei_device_capabilities, //ANDROID_HUAWEI_DEVICE_CAPABILITIES
     NULL, //ANDROID_HUAWEI_DEVICE_PARAMETERS
-    android_huawei_metadata,
+    isp_huawei_metadata,
     NULL, //ANDROID_HUAWEI_STREAM_INFO
     NULL, //ANDROID_HUAWEI_STREAM_PARAMETERS
 };
@@ -297,7 +281,6 @@ const char* get_vendor_section_name(unsigned int tag)
     {
         return isp_metadata_vendor_section_names[index];
     }
-
     return NULL;
 }
 

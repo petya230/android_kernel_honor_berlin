@@ -47,7 +47,9 @@
 #define VIB_CALIDATA_NV_SIZE    3
 #define NV_READ_TAG	   1
 #define NV_WRITE_TAG	   0
-
+#define MAX_BUF_LEGTH    16
+#define MAX_HAP_BUF_SIZE 100
+#define MIN_HAP_BUF_SIZE  2
 static char vib_calib[3] = { 0 };
 
 static int vib_calib_result;
@@ -156,11 +158,16 @@ static char g_effect_bank = EFFECT_LIBRARY;
 static int device_id = -1;
 static char read_val;
 static int vibrator_is_playing = NO;
+#if defined(CONFIG_HISI_VIBRATOR)
 extern volatile int vibrator_shake;
+#else
+volatile int vibrator_shake;
+#endif
 static char reg_value;
 static char reg_add;
 static char rtp_strength = 0x7F;
 static struct drv2605_data *data;
+extern int vibrator_abnormal_sound;
 static ssize_t haptics_write(struct file* filp, const char* buff, size_t len, loff_t* off);
 
 static const unsigned char ERM_autocal_sequence[] = {
@@ -517,7 +524,8 @@ static void vibrator_off(struct drv2605_data *data)
 
 	dev_info(&(data->client->dev), "drv2605 off!");
 }
-
+extern int is_vibrator_issue_gesture(void);
+extern int is_ps_near(void);
 static void vibrator_enable(struct timed_output_dev *dev, int value)
 {
 	int ret = 0, wake_time = 0;
@@ -548,7 +556,18 @@ static void vibrator_enable(struct timed_output_dev *dev, int value)
 		     DRV260X_MODE_MASK)
 		    != MODE_REAL_TIME_PLAYBACK) {
 			vibrator_shake = 1;
-			drv2605_set_rtp_val(data->client, rtp_strength);
+			if(1 == vibrator_abnormal_sound && value > 900 && (1 == is_ps_near()) &&  1 == is_vibrator_issue_gesture())
+			{
+				drv2605_set_rtp_val(data->client, 0x32);
+				dev_info(&(data->client->dev),
+					"This time vabrator reduce strength value%d\n", value);
+			}
+			else
+			{
+				drv2605_set_rtp_val(data->client, rtp_strength);
+				dev_info(&(data->client->dev),
+					"This time vabrator not reduce strength %d\n", rtp_strength);
+			}
 			drv2605_change_mode(data->client,
 					    MODE_REAL_TIME_PLAYBACK);
 			vibrator_is_playing = YES;
@@ -678,7 +697,13 @@ static int drv2605_parse_dt(struct device *dev, struct drv2605_pdata *pdata)
 		pdata->lra_rtp_strength = (char)temp;
 	}
 
-	dev_info(dev, "max timedout_ms:%d.\n", pdata->max_timeout_ms);
+	rc = of_property_read_u32(dev->of_node, "vibor_abnor_sound", &temp);
+	if (rc < 0) {
+		vibrator_abnormal_sound = 0;
+	} else {
+		vibrator_abnormal_sound = (char)temp;
+	}
+	dev_info(dev, "max timedout_ms:%d. vib=%d\n", pdata->max_timeout_ms, vibrator_abnormal_sound);
 	pdata->gpio_enable = of_get_named_gpio(dev->of_node, "gpio-enable", 0);
 
 	return 0;
@@ -927,8 +952,13 @@ static ssize_t haptic_test_store(struct device *dev, struct device_attribute *at
 	int time = 0, table_num = 0;
 	char rtp_value = 0;
 
-	/*get haptic value */
-	for (i = 0, j = 0;i < 100;) {
+	if(count < MIN_HAP_BUF_SIZE || count > MAX_HAP_BUF_SIZE || buf == NULL){
+		dev_info(&client_temp->dev, "-----> haptic_test bad value\n");
+		return -1;
+	}
+
+	/*get haptic value, the buf max length is count -2 */
+	for (i = 0, j = 0;i < 100 && i < count-MIN_HAP_BUF_SIZE;) {
 		memcpy(&a[0], &buf[i], 2);
 		i = i + 2;
 		dev_info(&client_temp->dev, "-----> haptic_test1 is %d %d\n", a[0],a[1]);
@@ -1018,9 +1048,20 @@ static ssize_t haptics_write(struct file* filp, const char* buff, size_t len, lo
 	struct drv2605_data *data = (struct drv2605_data *)filp->private_data;
 	int i = 0, type_flag = 0, table_num = 0;
 	uint64_t type = 0;
+	char write_buf[MAX_BUF_LEGTH] = {0};
 
 	mutex_lock(&data->lock);
-	if (strict_strtoull(buff, 10, &type)) {
+	if(len>MAX_BUF_LEGTH || buff == NULL){
+		dev_info(&(data->client->dev), "[haptics_write] bad value\n");
+		goto out;
+	}
+
+	if(copy_from_user(write_buf, buff, len)){
+		dev_info(&(data->client->dev), "[haptics_write] copy_from_user failed\n");
+		goto out;
+	}
+
+	if (strict_strtoull(write_buf, 10, &type)) {
 		dev_info(&(data->client->dev), "[haptics_write] read value error\n");
 		goto out;
 	}

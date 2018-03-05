@@ -10,6 +10,7 @@
 #include <linux/skbuff.h>
 #include <linux/netdevice.h>
 #include <linux/tty.h>
+#include <linux/time.h>
 
 #include <linux/usb/drv_acm.h>
 #include <linux/usb/drv_udi.h>
@@ -135,6 +136,8 @@ struct gs_acm_cdev_port {
 	unsigned stat_tx_copy_fail;
 	unsigned stat_tx_alloc_fail;
 	unsigned stat_tx_disconnect;
+	long stat_tx_done_maxtime;
+	long stat_tx_done_alltime;
 
 	char debug_rx_domain[DOMAIN_NAME_LEN];
 	unsigned stat_read_call;
@@ -190,6 +193,7 @@ struct gs_acm_cdev_rw_priv {
 	struct usb_request *req;
 	struct kiocb *iocb;
 	void *user_p_skb;
+	struct timeval tx_start_time;
 };
 
 static struct acm_cdev_port_manager {
@@ -315,6 +319,7 @@ static int gs_acm_cdev_start_tx(struct gs_acm_cdev_port *port,
 	write_priv->user_p_skb = send_skb;
 	write_priv->is_sync = is_sync;
 	write_priv->is_copy = is_do_copy;
+	do_gettimeofday(&(write_priv->tx_start_time));
 
 	spin_lock_irqsave(&port->port_lock, flags);
 	if (!port->port_usb) {
@@ -791,6 +796,8 @@ static void gs_acm_cdev_write_complete(struct usb_ep *ep, struct usb_request *re
 {
 	struct gs_acm_cdev_port *port = ep->driver_data;
 	struct gs_acm_cdev_rw_priv *write_priv;
+	struct timeval tx_end_time;
+	long write_time;
 
 	D("port_num %d\n", port->port_num);
 
@@ -800,6 +807,13 @@ static void gs_acm_cdev_write_complete(struct usb_ep *ep, struct usb_request *re
 	if (!req->status) {
 		port->stat_tx_done++;
 		port->stat_tx_done_bytes += req->actual;
+		do_gettimeofday(&tx_end_time);
+		write_time = (tx_end_time.tv_sec - write_priv->tx_start_time.tv_sec)*1000000
+			+ (tx_end_time.tv_usec - write_priv->tx_start_time.tv_usec);
+		port->stat_tx_done_alltime += write_time;
+		if (write_time > port->stat_tx_done_maxtime)
+			port->stat_tx_done_maxtime = write_time;
+
 	} else {
 		pr_err("%s: req->status(%d) is fail\n", __func__, req->status);
 		port->stat_tx_done_fail++;
@@ -2219,7 +2233,7 @@ int gs_acm_cdev_alloc_line(unsigned char *line_num)
 			return ret;
 		break;
 	}
-	if (ret)
+	if (ret || ACM_CDEV_COUNT <= port_num)
 		return ret;
 
 	D("got a free port, port_num: %d\n", port_num);
@@ -2354,6 +2368,11 @@ int gacm_cdev_line_state(struct gserial *gser, u8 port_num, u32 state)
 	if (line_state != (u16)(state & U_ACM_CTRL_DTR)) {
 		port->line_state_on = (u16)(state & U_ACM_CTRL_DTR);
 		port->line_state_change = 1;
+
+		if (port->line_state_on) {
+			port->stat_tx_done_maxtime = 0;
+			port->stat_tx_done_alltime = 0;
+		}
 
 		pr_info("acm[%d] old_DTR_value = %d, ucDtr = %d\n",
 			port_num, line_state, port->line_state_on);
@@ -2557,7 +2576,12 @@ void gacm_cdev_resume_notify(struct gserial *gser)
 void gacm_cdev_suspend_notify(struct gserial *gser)
 {
 	struct gs_acm_cdev_port *port = gser->ioport;
-	MODEM_MSC_STRU *flow_msg = &port->flow_msg;
+	MODEM_MSC_STRU *flow_msg;
+	if (!port) {
+		pr_err("acm cdev port is null\n");
+		return;
+	}
+	flow_msg = &port->flow_msg;
 
 	pr_info("acm[%s] suspend\n", ACM_CDEV_GET_NAME(port->port_num));
 
@@ -2761,6 +2785,11 @@ void hiusb_do_acm_cdev_dump(struct seq_file *s, unsigned int port_num)
 	seq_printf(s, "stat_tx_copy_fail         %d\n", port->stat_tx_copy_fail);
 	seq_printf(s, "stat_tx_alloc_fail        %d\n", port->stat_tx_alloc_fail);
 	seq_printf(s, "stat_tx_disconnect        %d\n", port->stat_tx_disconnect);
+	seq_printf(s, "stat_tx_done_maxtime      %ld\n", port->stat_tx_done_maxtime);
+	if (port->stat_tx_done) {
+		seq_printf(s, "stat_tx_done_avgtime      %ld\n", port->stat_tx_done_alltime / (long)port->stat_tx_done);
+	}
+	seq_printf(s, "stat_tx_done_alltime      %ld\n", port->stat_tx_done_alltime);
 
 	mdelay(10);
 	seq_printf(s, "\n=== dump port status info ===\n");

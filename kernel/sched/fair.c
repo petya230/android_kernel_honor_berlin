@@ -58,6 +58,14 @@ unsigned int sysctl_sched_sync_hint_enable = 0;
 unsigned int sysctl_sched_initial_task_util = 0;
 unsigned int sysctl_sched_cstate_aware = 0;
 
+#ifdef CONFIG_HISI_GLOBAL_BOOST
+int global_boost_enabled_flag = 0;
+#endif
+#ifdef CONFIG_HISI_CPU_TOPO
+int hisi_test_fast_cpu(int cpu);
+void hisi_get_fast_cpus(struct cpumask *cpumask);
+#endif
+
 #ifdef CONFIG_SCHED_WALT
 unsigned int sysctl_sched_use_walt_cpu_util = 1;
 unsigned int sysctl_sched_use_walt_task_util = 1;
@@ -105,7 +113,8 @@ unsigned int sysctl_sched_child_runs_first __read_mostly;
 unsigned int sysctl_sched_wakeup_granularity = 1000000UL;
 unsigned int normalized_sysctl_sched_wakeup_granularity = 1000000UL;
 
-const_debug unsigned int sysctl_sched_migration_cost = 500000UL;
+/*const_debug unsigned int sysctl_sched_migration_cost = 500000UL;*/
+const_debug unsigned int sysctl_sched_migration_cost = 0UL;
 
 /*
  * The exponential sliding  window over which load is averaged for shares
@@ -3113,20 +3122,60 @@ place_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int initial)
 
 static void check_enqueue_throttle(struct cfs_rq *cfs_rq);
 
+/*
+ * MIGRATION
+ *
+ *	dequeue
+ *	  update_curr()
+ *	    update_min_vruntime()
+ *	  vruntime -= min_vruntime
+ *
+ *	enqueue
+ *	  update_curr()
+ *	    update_min_vruntime()
+ *	  vruntime += min_vruntime
+ *
+ * this way the vruntime transition between RQs is done when both
+ * min_vruntime are up-to-date.
+ *
+ * WAKEUP (remote)
+ *
+ *	->migrate_task_rq_fair() (p->state == TASK_WAKING)
+ *	  vruntime -= min_vruntime
+ *
+ *	enqueue
+ *	  update_curr()
+ *	    update_min_vruntime()
+ *	  vruntime += min_vruntime
+ *
+ * this way we don't have the most up-to-date min_vruntime on the originating
+ * CPU and an up-to-date min_vruntime on the destination CPU.
+ */
+
 static void
 enqueue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags)
 {
-	/*
-	 * Update the normalized vruntime before updating min_vruntime
-	 * through calling update_curr().
-	 */
-	if (!(flags & ENQUEUE_WAKEUP) || (flags & ENQUEUE_WAKING))
-		se->vruntime += cfs_rq->min_vruntime;
+	bool renorm = !(flags & ENQUEUE_WAKEUP) || (flags & ENQUEUE_MIGRATED);
+	bool curr = cfs_rq->curr == se;
 
 	/*
-	 * Update run-time statistics of the 'current'.
+	 * If we're the current task, we must renormalise before calling
+	 * update_curr().
 	 */
+	if (renorm && curr)
+		se->vruntime += cfs_rq->min_vruntime;
+
 	update_curr(cfs_rq);
+
+	/*
+	 * Otherwise, renormalise after, such that we're placed at the current
+	 * moment in time, instead of some random moment in the past. Being
+	 * placed in the past could significantly boost this task to the
+	 * fairness detriment of existing tasks.
+	 */
+	if (renorm && !curr)
+		se->vruntime += cfs_rq->min_vruntime;
+
 	enqueue_entity_load_avg(cfs_rq, se);
 	account_entity_enqueue(cfs_rq, se);
 	update_cfs_shares(cfs_rq);
@@ -3138,7 +3187,8 @@ enqueue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags)
 
 	update_stats_enqueue(cfs_rq, se);
 	check_spread(cfs_rq, se);
-	if (se != cfs_rq->curr)
+
+	if (!curr)
 		__enqueue_entity(cfs_rq, se);
 	se->on_rq = 1;
 
@@ -4742,28 +4792,6 @@ static void record_wakee(struct task_struct *p)
 	}
 }
 
-static void task_waking_fair(struct task_struct *p)
-{
-	struct sched_entity *se = &p->se;
-	struct cfs_rq *cfs_rq = cfs_rq_of(se);
-	u64 min_vruntime;
-
-#ifndef CONFIG_64BIT
-	u64 min_vruntime_copy;
-
-	do {
-		min_vruntime_copy = cfs_rq->min_vruntime_copy;
-		smp_rmb();
-		min_vruntime = cfs_rq->min_vruntime;
-	} while (min_vruntime != min_vruntime_copy);
-#else
-	min_vruntime = cfs_rq->min_vruntime;
-#endif
-
-	se->vruntime -= min_vruntime;
-	record_wakee(p);
-}
-
 #ifdef CONFIG_FAIR_GROUP_SCHED
 /*
  * effective_load() calculates the load change as seen from the root_task_group
@@ -5107,14 +5135,12 @@ static int sched_group_energy(struct energy_env *eenv)
 
 				if (sg->group_weight == 1) {
 					/* Remove capacity of src CPU (before task move) */
-					if (eenv->util_delta == 0 &&
-					    cpumask_test_cpu(eenv->src_cpu, sched_group_cpus(sg))) {
+					if (cpumask_test_cpu(eenv->src_cpu, sched_group_cpus(sg))) {
 						eenv->cap.before = sg->sge->cap_states[cap_idx].cap;
 						eenv->cap.delta -= eenv->cap.before;
 					}
 					/* Add capacity of dst CPU  (after task move) */
-					if (eenv->util_delta != 0 &&
-					    cpumask_test_cpu(eenv->dst_cpu, sched_group_cpus(sg))) {
+					if (cpumask_test_cpu(eenv->dst_cpu, sched_group_cpus(sg))) {
 						eenv->cap.after = sg->sge->cap_states[cap_idx].cap;
 						eenv->cap.delta += eenv->cap.after;
 					}
@@ -5255,8 +5281,14 @@ energy_diff(struct energy_env *eenv)
 	__energy_diff(eenv);
 
 	/* Return energy diff when boost margin is 0 */
-	if (boost == 0)
+	if (boost == 0) {
+		trace_sched_energy_diff(eenv->task,
+				eenv->src_cpu, eenv->dst_cpu, eenv->util_delta,
+				eenv->nrg.before, eenv->nrg.after, eenv->nrg.diff,
+				eenv->cap.before, eenv->cap.after, eenv->cap.delta,
+				eenv->nrg.delta, eenv->payoff, boost);
 		return eenv->nrg.diff;
+	}
 
 	/* Compute normalized energy diff */
 	nrg_delta = normalize_energy(eenv->nrg.diff);
@@ -5267,6 +5299,11 @@ energy_diff(struct energy_env *eenv)
 			eenv->cap.delta,
 			eenv->task);
 
+	trace_sched_energy_diff(eenv->task,
+			eenv->src_cpu, eenv->dst_cpu, eenv->util_delta,
+			eenv->nrg.before, eenv->nrg.after, eenv->nrg.diff,
+			eenv->cap.before, eenv->cap.after, eenv->cap.delta,
+			eenv->nrg.delta, eenv->payoff, boost);
 	/*
 	 * When SchedTune is enabled, the energy_diff() function will return
 	 * the computed energy payoff value. Since the energy_diff() return
@@ -5956,6 +5993,9 @@ static int energy_aware_wake_cpu(struct task_struct *p, int target, int sync)
 	int target_cpu = -1;
 	unsigned long task_util_boosted, new_util;
 	int i;
+#ifdef CONFIG_HISI_CPU_TOPO
+	int nrg_diff;
+#endif
 
 	if (sysctl_sched_sync_hint_enable && sync) {
 		int cpu = smp_processor_id();
@@ -6086,8 +6126,20 @@ static int energy_aware_wake_cpu(struct task_struct *p, int target, int sync)
 		if (cpu_overutilized(task_cpu(p)))
 			return target_cpu;
 
+#ifdef CONFIG_HISI_CPU_TOPO
+		nrg_diff = energy_diff(&eenv);
+		if (nrg_diff >= 0) {
+			/* prefer little cores */
+			if ((nrg_diff == 0) && hisi_test_fast_cpu(task_cpu(p))
+			    && !hisi_test_fast_cpu(target_cpu) && !cpu_overutilized(target_cpu))
+				return target_cpu;
+			else
+				return task_cpu(p);
+		}
+#else
 		if (energy_diff(&eenv) >= 0)
 			return task_cpu(p);
+#endif
 	}
 
 	return target_cpu;
@@ -6117,10 +6169,12 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 	if (p->nr_cpus_allowed == 1)
 		return prev_cpu;
 
-	if (sd_flag & SD_BALANCE_WAKE)
+	if (sd_flag & SD_BALANCE_WAKE) {
+		record_wakee(p);
 		want_affine = (!wake_wide(p) && task_fits_max(p, cpu) &&
 			      cpumask_test_cpu(cpu, tsk_cpus_allowed(p))) ||
 			      (energy_aware() && need_want_affine(p, cpu));
+	}
 
 	rcu_read_lock();
 	for_each_domain(cpu, tmp) {
@@ -6148,6 +6202,24 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 		if (cpu != prev_cpu && wake_affine(affine_sd, p, sync))
 			new_cpu = cpu;
 	}
+
+#ifdef CONFIG_HISI_GLOBAL_BOOST
+	/* if global_boost_enabled_flag is 1, only boost those task which didn't set schedtune*/
+	if (global_boost_enabled_flag && !schedtune_task_margin(p)) {
+		struct sched_domain *fast_domain;
+		struct cpumask fast_cpus;
+
+		hisi_get_fast_cpus(&fast_cpus);
+		if (cpumask_intersects(tsk_cpus_allowed(p), &fast_cpus)) {
+			if (!cpumask_empty(&fast_cpus)) {
+				for_each_domain(cpumask_first(&fast_cpus), fast_domain)
+					if (cpumask_equal(&fast_cpus, sched_domain_span(fast_domain)))
+						break;
+			}
+			sd = fast_domain;
+		}
+	}
+#endif
 
 	if (!sd) {
 		if (energy_aware() &&
@@ -6202,6 +6274,32 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
  */
 static void migrate_task_rq_fair(struct task_struct *p, int next_cpu)
 {
+	/*
+	 * As blocked tasks retain absolute vruntime the migration needs to
+	 * deal with this by subtracting the old and adding the new
+	 * min_vruntime -- the latter is done by enqueue_entity() when placing
+	 * the task on the new runqueue.
+	 */
+	if (p->state == TASK_WAKING) {
+		struct sched_entity *se = &p->se;
+		struct cfs_rq *cfs_rq = cfs_rq_of(se);
+		u64 min_vruntime;
+
+#ifndef CONFIG_64BIT
+		u64 min_vruntime_copy;
+
+		do {
+			min_vruntime_copy = cfs_rq->min_vruntime_copy;
+			smp_rmb();
+			min_vruntime = cfs_rq->min_vruntime;
+		} while (min_vruntime != min_vruntime_copy);
+#else
+		min_vruntime = cfs_rq->min_vruntime;
+#endif
+
+		se->vruntime -= min_vruntime;
+	}
+
 	/*
 	 * We are supposed to update the task to "current" time, then its up to date
 	 * and ready to go to new CPU/cfs_rq. But we have difficulty in getting
@@ -6874,6 +6972,13 @@ int can_migrate_task(struct task_struct *p, struct lb_env *env)
 	int tsk_cache_hot = 0;
 
 	lockdep_assert_held(&env->src_rq->lock);
+
+#ifdef CONFIG_HISI_GLOBAL_BOOST
+	if (global_boost_enabled_flag) {
+		if (!hisi_test_fast_cpu(env->dst_cpu) && hisi_test_fast_cpu(env->src_cpu))
+			return 0;
+	}
+#endif
 
 	/*
 	 * We do not migrate tasks that are:
@@ -9765,7 +9870,6 @@ const struct sched_class fair_sched_class = {
 	.rq_online		= rq_online_fair,
 	.rq_offline		= rq_offline_fair,
 
-	.task_waking		= task_waking_fair,
 	.task_dead		= task_dead_fair,
 #endif
 
@@ -9811,3 +9915,130 @@ __init void init_sched_fair_class(void)
 #endif /* SMP */
 
 }
+
+#ifdef CONFIG_HISI_GLOBAL_BOOST
+#define EAS_DATA_SYSFS_MAX	9
+
+struct eas_global_attr {
+	struct attribute attr;
+	ssize_t (*show)(struct kobject *kobj,
+			struct attribute *attr, char *buf);
+	ssize_t (*store)(struct kobject *a, struct attribute *b,
+			const char *c, size_t count);
+	int *value;
+	int (*to_sysfs)(int);
+	int (*from_sysfs)(int);
+	ssize_t (*to_sysfs_text)(char *buf, int buf_size);
+};
+
+struct eas_data_struct {
+	int multiplier; /* used to scale the time delta */
+	struct attribute_group attr_group;
+	struct attribute *attributes[EAS_DATA_SYSFS_MAX + 1];
+	struct eas_global_attr attr[EAS_DATA_SYSFS_MAX];
+} eas_data;
+
+static ssize_t eas_show(struct kobject *kobj,
+				struct attribute *attr, char *buf)
+{
+	struct eas_global_attr *eas_attr =
+		container_of(attr, struct eas_global_attr, attr);
+	int temp;
+
+	if (eas_attr->to_sysfs_text != NULL)
+		return eas_attr->to_sysfs_text(buf, PAGE_SIZE);
+
+	temp = *(eas_attr->value);
+	if (eas_attr->to_sysfs != NULL)
+		temp = eas_attr->to_sysfs(temp);
+
+	return (ssize_t)sprintf(buf, "%d\n", temp);
+}
+
+static ssize_t eas_store(struct kobject *a, struct attribute *attr,
+				const char *buf, size_t count)
+{
+	int temp;
+	ssize_t ret = count;
+	struct eas_global_attr *eas_attr =
+		container_of(attr, struct eas_global_attr, attr);
+	char *str = vmalloc(count + 1);
+
+	if (str == NULL)
+		return -ENOMEM;
+
+	memcpy(str, buf, count);
+	str[count] = 0;
+	if (sscanf(str, "%d", &temp) < 1)
+		ret = -EINVAL;
+	else {
+		if (eas_attr->from_sysfs != NULL)
+			temp = eas_attr->from_sysfs(temp);
+		if (temp < 0)
+			ret = -EINVAL;
+		else
+			*(eas_attr->value) = temp;
+	}
+	vfree(str);
+	return ret;
+}
+
+static void eas_attr_add(
+	const char *name,
+	int *value,
+	int (*to_sysfs)(int),
+	int (*from_sysfs)(int),
+	ssize_t (*to_sysfs_text)(char *, int),
+	umode_t mode)
+{
+	int i = 0;
+
+	while (eas_data.attributes[i] != NULL) {
+		i++;
+		if (i >= EAS_DATA_SYSFS_MAX)
+			return;
+	}
+	if (mode)
+		eas_data.attr[i].attr.mode = mode;
+	else
+		eas_data.attr[i].attr.mode = 0644;
+	eas_data.attr[i].show = eas_show;
+	eas_data.attr[i].store = eas_store;
+	eas_data.attr[i].attr.name = name;
+	eas_data.attr[i].value = value;
+	eas_data.attr[i].to_sysfs = to_sysfs;
+	eas_data.attr[i].from_sysfs = from_sysfs;
+	eas_data.attr[i].to_sysfs_text = to_sysfs_text;
+	eas_data.attributes[i] = &eas_data.attr[i].attr;
+	eas_data.attributes[i + 1] = NULL;
+}
+
+static int eas_attr_init(void)
+{
+	int ret;
+
+	memset(&eas_data, 0, sizeof(eas_data));
+
+	eas_attr_add("boost",
+		&global_boost_enabled_flag,
+		NULL,
+		NULL,
+		NULL,
+		0644);
+
+	eas_attr_add("capacity_margin",
+		&capacity_margin,
+		NULL,
+		NULL,
+		NULL,
+		0644);
+
+	eas_data.attr_group.name = "eas";
+	eas_data.attr_group.attrs = eas_data.attributes;
+	ret = sysfs_create_group(kernel_kobj,
+		&eas_data.attr_group);
+
+	return 0;
+}
+late_initcall(eas_attr_init);
+#endif

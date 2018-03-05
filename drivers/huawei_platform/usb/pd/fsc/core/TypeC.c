@@ -94,6 +94,7 @@ TIMER                 StateTimer;             // Timer used to validate proceedi
 TIMER                 PDDebounceTimer;             // Timer used for first level debouncing
 TIMER                 CCDebounceTimer;             // Timer used for second level debouncing
 TIMER                 PDFilterTimer;         // Timer used to ignore traffic less than tPDDebounce
+TIMER                 LoopResetTimer;
 CCTermType              CCTermPrevious;        // Active CC1 termination value
 CCTermType              CCTermCCDebounce;      // Debounced CC1 termination value
 CCTermType              CCTermPDDebounce;
@@ -201,7 +202,7 @@ void InitializeTypeCVariables(void)
     updateSourceCurrent();
 
     blnSMEnabled = FALSE;                // Enable the TypeC state machine by default
-    DetachThreshold = VBUS_MDAC_4P20;    // Default to 5V detach threshold
+    DetachThreshold = VBUS_MDAC_3P36;    // Default to 5V detach threshold
 
 #ifdef FSC_DTS
     DTSMode = FALSE;
@@ -268,6 +269,8 @@ void InitializeTypeCVariables(void)
     StateTimer.expired = FALSE;
     StateTimer.id = STATE_TIMER;
 
+    LoopResetTimer.expired = FALSE;
+    LoopResetTimer.id = LOOP_RESET_TIMER;
 }
 
 void InitializeTypeC(void)
@@ -480,6 +483,7 @@ void StateMachineUnattached(void)
    g_Idle = TRUE;
     if (Registers.Status.I_TOGDONE)
     {
+	    platform_stop_timer(&LoopResetTimer);
         DeviceRead(regStatus1a, 1, &Registers.Status.byte[1]);                  // Read TOGSS
 		FSC_PRINT("FUSB %s, Toggle Reg: %x\n", __func__, Registers.Status.byte[1]);
 
@@ -666,15 +670,12 @@ void StateMachineAttachWaitSink(void)
 			updateVCONNSink();
 		}
 
-		if((VCONNTerm >= CCTypeRdUSB) && (VCONNTerm < CCTypeUndefined))
+		if(isVBUSOverVoltage(VBUS_MDAC_4P20))
 		{
-			SetStateDebugAccessorySink();
-		}
-		else if(isVBUSOverVoltage(VBUS_MDAC_4P62))
-		{
-			FSC_PRINT("FUSB %s - CCDebounce VBUS Check Pass\n", __func__);
-			if(VCONNTerm == CCTypeOpen)
-			{
+		    if((VCONNTerm >= CCTypeRdUSB) && (VCONNTerm < CCTypeUndefined))
+		    {
+                        SetStateDebugAccessorySink();
+			} else if(VCONNTerm == CCTypeOpen) {
 #ifdef FSC_HAVE_DRP
 				if ((PortType == USBTypeC_DRP) && blnSrcPreferred)
 					SetStateTrySource();
@@ -683,7 +684,7 @@ void StateMachineAttachWaitSink(void)
 				{
 					SetStateAttachedSink();
 				}
-			}
+		    }
 		}
 	}
 }
@@ -741,6 +742,7 @@ void StateMachineAttachedSink(void)
 {
     if(Registers.Status.I_COMP_CHNG == 1)
     {
+        FSC_PRINT("FUSB %s - IsPRSwap = %d, IsHardReset= %d\n", __func__, IsPRSwap, IsHardReset);
         if ((!IsPRSwap) && (IsHardReset == FALSE) && !isVBUSOverVoltage(DetachThreshold))      // If VBUS is removed and we are not in the middle of a power role swap...
         {
             SetStateDelayUnattached();                                              // Go to the unattached state
@@ -1102,7 +1104,7 @@ void StateMachineDebugAccessorySink(void)
 {
     debounceCC();
 
-    if (!isVBUSOverVoltage(DetachThreshold))
+    if (!isVBUSOverVoltage(VBUS_MDAC_3P36))
     {
         SetStateDelayUnattached();
     }
@@ -1127,6 +1129,8 @@ void StateMachineDebugAccessorySink(void)
         platform_enable_timer(FALSE);
     }
 #endif
+    Registers.Measure.MDAC = VBUS_MDAC_3P36;
+    DeviceWrite(regMeasure, 1, &Registers.Measure.byte);
 }
 #endif /* (defined(FSC_HAVE_SNK)*/
 
@@ -1402,6 +1406,7 @@ void SetStateUnattached(void)
     DeviceWrite(regControl0, 3, &Registers.Control.byte[0]);       // Commit the control state
 
     platform_set_timer(&StateTimer, T_TIMER_DISABLE);                                         // Disable the state timer, not used in this state
+    platform_start_timer(&LoopResetTimer, tLoopReset);
 }
 
 #ifdef FSC_HAVE_SNK
@@ -1427,7 +1432,7 @@ void SetStateAttachWaitSink(void)
     DeviceWrite(regControl2, 1, &Registers.Control.byte[2]);                    // Commit the toggle state
 
     Registers.Measure.MEAS_VBUS = 1;
-    Registers.Measure.MDAC = VBUS_MDAC_4P62;
+    Registers.Measure.MDAC = VBUS_MDAC_4P20;
     DeviceWrite(regMeasure, 1, &Registers.Measure.byte);
 
     Registers.Mask.M_COMP_CHNG = 0;
@@ -1438,17 +1443,24 @@ void SetStateAttachWaitSink(void)
     platform_stop_timer(&PDDebounceTimer);
     low = 0;
 
-	StateMachineAttachWaitSink();
+    StateMachineAttachWaitSink();
+    DeviceRead(regStatus0, 1, &Registers.Status.byte[regInterruptIdxa]);
+
+    /* Current voltage status of the measured CC pin(under 200 mV) */
+    if(Registers.Status.BC_LVL == 0)
+        SetStateDelayUnattached();
 }
 
 void SetStateDebugAccessorySink(void)
 {
     FSC_PRINT("FUSB %s\n", __func__);
-    g_Idle = FALSE;
+    g_Idle = TRUE;
     loopCounter = 0;
 
     ConnState = DebugAccessorySink;
     setStateSink();
+    Registers.Measure.MDAC = VBUS_MDAC_3P36;
+    DeviceWrite(regMeasure, 1, &Registers.Measure.byte);
 
     platform_set_timer(&StateTimer, tOrientedDebug);
 }

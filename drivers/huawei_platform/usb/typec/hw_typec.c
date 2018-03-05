@@ -704,6 +704,7 @@ struct typec_device_info *typec_chip_register(struct typec_device_info *device_i
     di->ops = ops;
     di->owner = owner;
     di->typec_trigger_otg = device_info->typec_trigger_otg;
+    di->gpio_intb = device_info->gpio_intb;
 
     mutex_init(&di->typec_lock);
     INIT_WORK(&di->g_intb_work, typec_intb_work);

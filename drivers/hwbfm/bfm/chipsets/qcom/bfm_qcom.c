@@ -32,6 +32,7 @@
 #include <chipset_common/bfmr/bfm/chipsets/qcom/bfm_qcom.h>
 
 struct boot_log_struct *boot_log = NULL;
+extern void msm_trigger_wdog_bark(void);
 
 static u32 hwboot_calculate_checksum(unsigned char *addr, u32 len)
 {
@@ -428,7 +429,7 @@ static u64 get_ats_1_secs(void)
 
     pr_err("%s:ats_tmp=%llu\n",__func__,ats_tmp);
 
-    return (ats_tmp/1000);
+    return div_u64(ats_tmp,1000);
 }
 
 long long bfm_hctosys(unsigned long long current_secs, bool is_do_set_time)
@@ -468,7 +469,10 @@ int qcom_hwboot_fail_init(void)
     {
         panic("hwboot: inject KERNEL_AP_PANIC");
     }
-
+    if(check_bootfail_inject(KERNEL_AP_WDT))
+    {
+        msm_trigger_wdog_bark();
+    }
     if(check_bootfail_inject(KERNEL_BOOT_TIMEOUT))
     {
         boot_fail_err(KERNEL_BOOT_TIMEOUT, NO_SUGGESTION, NULL);

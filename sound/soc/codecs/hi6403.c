@@ -20,6 +20,7 @@
 #include <linux/of.h>
 #include <linux/of_address.h>
 #include <linux/of_device.h>
+#include <linux/of_gpio.h>
 #include <linux/of_irq.h>
 #include <linux/of_platform.h>
 #include <linux/wakelock.h>
@@ -42,8 +43,10 @@
 #include "../../../drivers/hisi/slimbus/slimbus.h"
 #include "../../../drivers/hisi/hi64xx_dsp/hi6403_hifi_config.h"
 #include <linux/hisi/hilog.h>
-#include <dsm/dsm_pub.h>
-
+#ifdef CONFIG_HUAWEI_DSM
+#include <dsm_audio/dsm_audio.h>
+#endif
+#include <linux/gpio.h>
 /*lint -e750 -e730 -e835 -e715 -e785 -e838 -e64*/
 #define HI6403_FORMATS	( SNDRV_PCM_FMTBIT_S16_LE | \
 			SNDRV_PCM_FMTBIT_S16_BE | \
@@ -75,7 +78,12 @@
 #define FS_48000	0x4
 #define FS_96000	0x5
 
-extern struct dsm_client *dsm_audio_client;
+#ifdef CONFIG_HAC_SUPPORT
+/*hac status*/
+#define HAC_ENABLE                   1
+#define HAC_DISABLE                  0
+#endif
+
 
 typedef enum {
 	TRACK_FREE = 0,
@@ -99,10 +107,16 @@ typedef enum {
 struct hi6403_board_cfg {
 	/* board defination */
 	int mic_num;
+	unsigned int ir_gpio_id;
 	bool use_stereo_smartpa;
 	bool classh_rcv_hp_switch;
 	bool hp_high_low_change_enable;
 	bool hp_res_detect_enable;
+	bool extern_hs_hifi_ak4376_I2S3;
+	bool gpio_pd_enable;
+#ifdef CONFIG_HAC_SUPPORT
+	int hac_gpio;
+#endif
 };
 
 /* codec private data */
@@ -154,6 +168,10 @@ int hi6403_pll44k1_turn_off(struct snd_soc_codec *codec);
 int hi6403_pllmad_turn_on(struct snd_soc_codec *codec);
 int hi6403_pllmad_turn_off(struct snd_soc_codec *codec);
 
+#ifdef CONFIG_BUCKBOOST
+extern int max77813_forced_pwm_enable(int enable);
+#endif
+
 /* VOLUME CONTROLS */
 /*
 * MAIN MIC GAIN volume control:
@@ -204,6 +222,87 @@ static DECLARE_TLV_DB_SCALE(lor_pga_tlv, -2100, 150, 0);
 */
 
 static DECLARE_TLV_DB_SCALE(mad_tlv, 0, 200, 0);
+
+#ifdef CONFIG_HAC_SUPPORT
+static const char * const hac_switch_text[] = {"OFF", "ON"};
+
+static const struct soc_enum hac_switch_enum[] = {
+	SOC_ENUM_SINGLE_EXT(ARRAY_SIZE(hac_switch_text), hac_switch_text),
+};
+
+static int hi6403_hac_status_get(struct snd_kcontrol *kcontrol,
+					struct snd_ctl_elem_value *ucontrol)
+{
+	if (NULL == kcontrol || NULL == ucontrol){
+		pr_err("%s: input pointer is null\n", __func__);
+		return -1;
+	}
+
+	struct hi6403_platform_data *priv = NULL;
+	priv = snd_soc_codec_get_drvdata(g_hi6403_codec);
+
+	if (!gpio_is_valid(priv->board_config.hac_gpio)) {
+		pr_err("%s: hac gpio = %d is invalid\n", __func__, priv->board_config.hac_gpio);
+		return -1;
+	}
+	int ret = 0;
+	ret = gpio_get_value(priv->board_config.hac_gpio);
+	pr_debug("%s: hac gpio = %d, value = %d\n", __func__, priv->board_config.hac_gpio, ret);
+	ucontrol->value.integer.value[0] = ret;
+
+	return 0;
+}
+
+static int hi6403_hac_status_set(struct snd_kcontrol *kcontrol,
+					struct snd_ctl_elem_value *ucontrol)
+{
+	if (NULL == kcontrol || NULL == ucontrol) {
+		pr_err("%s: input pointer is null\n", __func__);
+		return -1;
+	}
+
+	struct hi6403_platform_data *priv = NULL;
+	priv = snd_soc_codec_get_drvdata(g_hi6403_codec);
+
+	if (!gpio_is_valid(priv->board_config.hac_gpio)) {
+		pr_err("%s: hac gpio = %d is invalid\n", __func__, priv->board_config.hac_gpio);
+		return -1;
+	}
+
+	int ret = 0;
+	ret = ucontrol->value.integer.value[0];
+	pr_debug("%s:hac status, ret = %d\n", __func__, ret);
+
+	if (HAC_ENABLE == ret) {
+		pr_debug("%s: Enable hac gpio %u, ret = %d\n",
+		__func__, priv->board_config.hac_gpio, ret);
+		gpio_set_value(priv->board_config.hac_gpio, HAC_ENABLE);
+	} else {
+		pr_debug("%s: Disable hac gpio %u, ret = %d\n",
+		__func__, priv->board_config.hac_gpio, ret);
+		gpio_set_value(priv->board_config.hac_gpio, HAC_DISABLE);
+	}
+	return ret;
+}
+
+int hi6403_hac_gpio_init(int hac_gpio)
+{
+	if (!gpio_is_valid(hac_gpio)) {
+		pr_err("%s : hac is not support.\n", __FUNCTION__);
+		return -1;
+	}
+	if (gpio_request(hac_gpio, "hac_en_gpio")) {
+		pr_err("%s : hac gpio request failed!\n", __FUNCTION__);
+		return -1;
+	}
+	if (gpio_direction_output(hac_gpio, 0)) {
+		pr_err("%s: hac gpio set output failed!\n", __FUNCTION__);
+		return -1;
+	}
+
+	return 0;
+}
+#endif
 
 int hi6403_s2_rx_power_event(struct snd_soc_dapm_widget *w,
 		struct snd_kcontrol *kcontrol, int event)
@@ -441,6 +540,66 @@ int hi6403_pll_power_event(struct snd_soc_dapm_widget *w,
 	return 0;
 }
 
+static void hi6403_ir_gpio_switch(unsigned int gpio_id, int val)
+{
+	int ret = 0;
+
+	ret = gpio_request(gpio_id, "hi64xx_ir_gpio");
+	if (0 != ret) {
+		pr_err("gpio_request fail %u\n", gpio_id);
+		return ;
+	}
+
+	ret = gpio_direction_output(gpio_id, val);
+	if(0 != ret){
+		pr_err("could not set gpio:%u direction out \n",  gpio_id);
+	}
+
+	gpio_free(gpio_id);
+
+	return ;
+}
+#define GPIO_PULL_UP                  1
+#define GPIO_PULL_DOWN                0
+
+int hi6403_ir_tx_power_event(struct snd_soc_dapm_widget *w,
+		struct snd_kcontrol *kcontrol, int event)
+{
+	struct hi6403_platform_data *priv = NULL;
+	struct snd_soc_codec *codec = snd_soc_dapm_to_codec(w->dapm);
+
+	BUG_ON(NULL == codec);
+
+	priv = snd_soc_codec_get_drvdata(codec);
+	BUG_ON(NULL == priv);
+
+	if (0 == priv->board_config.ir_gpio_id) {
+		dev_warn(codec->dev, "%s : can't get ir switch gpio, maybe not support audio ir transmit\n", __FUNCTION__);
+		return 0;
+	}
+
+	switch (event) {
+	case SND_SOC_DAPM_PRE_PMU:
+		hi64xx_update_bits(codec, HI6403_CODEC_ANA_RWREG_106,
+				(3<<HI6403_CODEC_ANA_RWREG_106_OCP_BIT),
+				(2<<HI6403_CODEC_ANA_RWREG_106_OCP_BIT));
+		hi6403_ir_gpio_switch(priv->board_config.ir_gpio_id, GPIO_PULL_UP);
+		dev_info(codec->dev, "%s : ir switch gpio %d up\n", __FUNCTION__, priv->board_config.ir_gpio_id);
+		break;
+	case SND_SOC_DAPM_POST_PMD:
+		hi64xx_update_bits(codec, HI6403_CODEC_ANA_RWREG_106,
+				(3<<HI6403_CODEC_ANA_RWREG_106_OCP_BIT),
+				(0<<HI6403_CODEC_ANA_RWREG_106_OCP_BIT));
+		hi6403_ir_gpio_switch(priv->board_config.ir_gpio_id, GPIO_PULL_DOWN);
+		dev_info(codec->dev, "%s : ir switch gpio %d down\n", __FUNCTION__, priv->board_config.ir_gpio_id);
+		break;
+	default :
+		dev_warn(codec->dev, "%s : power mode event err : %d\n", __FUNCTION__, event);
+		break;
+	}
+
+	return 0;
+}
 
 int hi6403_adc1r_power_event(struct snd_soc_dapm_widget *w,
 			struct snd_kcontrol *kcontrol, int event)
@@ -1752,17 +1911,43 @@ int hi6403_voice32k_power_event(struct snd_soc_dapm_widget *w,
 	return ret;
 }
 
-int hi6403_slimbus_param_pass(slimbus_track_type_t	track,
+int hi6403_slimbus_param_pass(struct snd_soc_codec *codec, slimbus_track_type_t track,
 							slimbus_track_param_t	*params, int event)
 {
 	int ret = 0;
 
 	switch (event) {
 	case SND_SOC_DAPM_PRE_PMU:
+		if (params == NULL) {
+			snd_soc_write(codec, HI6403_SLIM0_CLK_CFG_REG, 0x44);
+			snd_soc_write(codec, HI6403_DACL_PGA_MUX_SEL, 0x0);
+			snd_soc_write(codec, HI6403_DACR_PGA_MUX_SEL, 0x0);
+		}
+		else {
+			if (params ->rate == SLIMBUS_SAMPLE_RATE_96K) {
+				snd_soc_write(codec, HI6403_SLIM0_CLK_CFG_REG, 0x55);
+				snd_soc_write(codec, HI6403_DACL_PGA_MUX_SEL, 0x0);
+				snd_soc_write(codec, HI6403_DACR_PGA_MUX_SEL, 0x0);
+			}
+			else if (params ->rate == SLIMBUS_SAMPLE_RATE_192K) {
+				snd_soc_write(codec, HI6403_SLIM0_CLK_CFG_REG, 0x66);
+				snd_soc_write(codec, HI6403_DACL_PGA_MUX_SEL, 0x02);
+				snd_soc_write(codec, HI6403_DACR_PGA_MUX_SEL, 0x02);
+			}
+			else {
+				snd_soc_write(codec, HI6403_SLIM0_CLK_CFG_REG, 0x44);
+				snd_soc_write(codec, HI6403_DACL_PGA_MUX_SEL, 0x0);
+				snd_soc_write(codec, HI6403_DACR_PGA_MUX_SEL, 0x0);
+			}
+		}
+
 		ret = slimbus_track_activate(SLIMBUS_DEVICE_HI6403, track, params);
 		break;
 	case SND_SOC_DAPM_POST_PMD:
 		ret = slimbus_track_deactivate(SLIMBUS_DEVICE_HI6403, track, params);
+		snd_soc_write(codec, HI6403_SLIM0_CLK_CFG_REG, 0x44);
+		snd_soc_write(codec, HI6403_DACL_PGA_MUX_SEL, 0x0);
+		snd_soc_write(codec, HI6403_DACR_PGA_MUX_SEL, 0x0);
 		break;
 	default :
 		pr_warn("%s : event err : %d\n", __FUNCTION__, event);
@@ -1776,9 +1961,12 @@ int hi6403_slimbus_param_pass(slimbus_track_type_t	track,
 int hi6403_play48k_power_event(struct snd_soc_dapm_widget *w,
 			struct snd_kcontrol *kcontrol, int event)
 {
+	struct snd_soc_codec *codec = snd_soc_dapm_to_codec(w->dapm);
 	int ret = 0;
 
-	ret = hi6403_slimbus_param_pass(SLIMBUS_TRACK_AUDIO_PLAY, NULL, event);
+	BUG_ON(NULL == codec);
+
+	ret = hi6403_slimbus_param_pass(codec, SLIMBUS_TRACK_AUDIO_PLAY, NULL, event);
 
 	return ret;
 }
@@ -1797,7 +1985,7 @@ int hi6403_play96k_power_event(struct snd_soc_dapm_widget *w,
 
 	priv->play_params.rate = SLIMBUS_SAMPLE_RATE_96K ;
 
-	ret = hi6403_slimbus_param_pass(SLIMBUS_TRACK_DIRECT_PLAY, &priv->play_params, event);
+	ret = hi6403_slimbus_param_pass(codec, SLIMBUS_TRACK_DIRECT_PLAY, &priv->play_params, event);
 
 	return ret;
 }
@@ -1816,7 +2004,7 @@ int hi6403_play192k_power_event(struct snd_soc_dapm_widget *w,
 
 	priv->play_params.rate = SLIMBUS_SAMPLE_RATE_192K ;
 
-	ret = hi6403_slimbus_param_pass(SLIMBUS_TRACK_DIRECT_PLAY, &priv->play_params, event);
+	ret = hi6403_slimbus_param_pass(codec, SLIMBUS_TRACK_DIRECT_PLAY, &priv->play_params, event);
 
 	return ret;
 }
@@ -2027,8 +2215,31 @@ int hi6403_hp_high_level_power_event(struct snd_soc_dapm_widget *w,
 
 	return 0;
 }
+#ifdef CONFIG_BUCKBOOST
+int hi6403_auxmic_pwm_power_event(struct snd_soc_dapm_widget *w,
+	struct snd_kcontrol *kcontrol, int event)
+{
+	int ret = 0;
+	switch (event) {
+	case SND_SOC_DAPM_PRE_PMU:
+		ret = max77813_forced_pwm_enable(1);
+		if (ret < 0)
+			pr_warn("%s :  set max77813 pwm enable fail : %d\n", __FUNCTION__, event);
+		break;
 
-void hi6403_pll_param_pass(struct snd_soc_dapm_widget *w, 
+	case SND_SOC_DAPM_POST_PMD:
+		ret = max77813_forced_pwm_enable(0);
+		if (ret < 0)
+			pr_warn("%s :  set max77813 pwm disable fail : %d\n", __FUNCTION__, event);
+		break;
+	default :
+		pr_warn("%s : power mode event err : %d\n", __FUNCTION__, event);
+		break;
+	}
+	return 0;
+}
+#endif
+void hi6403_pll_param_pass(struct snd_soc_dapm_widget *w,
 						enum hi64xx_pll_type pll_type, int event)
 {
 	struct hi6403_platform_data *priv = NULL;
@@ -2531,6 +2742,18 @@ static const struct snd_kcontrol_new hi6403_snd_controls[] = {
 	SOC_SINGLE("S2 TX CLK SEL",
 		HI6403_S2_CFG_REG_H, HI6403_S2_TX_CLK_SEL_BIT, 1, 0),
 
+	/* support clk to 3nd codec incall mode, such as hifi chip */
+	SOC_SINGLE("S3 CLK IF EN",
+		HI6403_S3_CLK_CFG_REG, HI6403_S3_CLK_EN_BIT, 1, 0),
+	SOC_SINGLE("S3 CLK FS",
+		HI6403_S3_CLK_CFG_REG, HI6403_S3_CLK_FS_SEL_BIT, 7, 0),
+	SOC_SINGLE("S3 OUT LR CLK FS",
+		HI6403_S3_CLK_CFG_REG1, HI6403_S3_LR_CLK_FS_BIT, 7, 0),
+	SOC_SINGLE("S3 IF RX EN",
+		HI6403_S3_CFG_REG_H, HI6403_S3_IF_RX_EN_BIT, 1, 0),
+	SOC_SINGLE("S3 IF TX EN",
+		HI6403_S3_CFG_REG_H, HI6403_S3_IF_TX_EN_BIT, 1, 0),
+
 	/* s1 i pga gain kcontrol */
 	SOC_SINGLE("S1 IL PGA GAIN",
 		HI6403_S1_PGA_IL_GAIN_CFG_REG, HI6403_S1_PGA_IL_GAIN_BIT, 255, 0),
@@ -2650,6 +2873,9 @@ static const struct snd_kcontrol_new hi6403_snd_controls[] = {
 		HI6403_ANALOG_REG34, HI6403_ADC1R_BOOST_1_BIT, 1, 0),
 	SOC_SINGLE("LINEINR BOOST1",
 		HI6403_ANALOG_REG36, HI6403_ADC1R_BOOST_2_BIT, 1, 0),
+#ifdef CONFIG_HAC_SUPPORT
+	SOC_ENUM_EXT("HAC", hac_switch_enum[0], hi6403_hac_status_get, hi6403_hac_status_set),
+#endif
 };
 
 /* SWITCH CONTROL */
@@ -2733,6 +2959,12 @@ static const struct snd_kcontrol_new hi6403_dapm_voice32k_switch_controls =
 static const struct snd_kcontrol_new hi6403_dapm_hp_high_level_switch_controls =
 	SOC_DAPM_SINGLE("SWITCH",
 		HI6403_VIRTUAL_REG, HI6403_HPCLASSH_BIT, 1, 0);
+/* MAX77813 PWM SWITCH */
+#ifdef CONFIG_BUCKBOOST
+static const struct snd_kcontrol_new hi6403_dapm_auxmic_pwm_power_switch_controls =
+	SOC_DAPM_SINGLE("SWITCH",
+		HI6403_VIRTUAL_REG, HI6403_AUXMICPWMPOWER_BIT, 1, 0);/*lint !e64 */
+#endif
 /* PLL48K SWITCH */
 static const struct snd_kcontrol_new hi6403_dapm_pll48k_switch_controls =
 	SOC_DAPM_SINGLE("SWITCH",
@@ -2745,6 +2977,10 @@ static const struct snd_kcontrol_new hi6403_dapm_pll44k1_switch_controls =
 static const struct snd_kcontrol_new hi6403_dapm_pllmad_switch_controls =
 	SOC_DAPM_SINGLE("SWITCH",
 		HI6403_VIRTUAL_REG, HI6403_PLLMAD_BIT, 1, 0);
+/* ir_env_study SWITCH*/
+static const struct snd_kcontrol_new hi6403_dapm_ir_env_study_switch_controls =
+	SOC_DAPM_SINGLE("SWITCH",
+		HI6403_VIRTUAL_REG, HI6403_IR_ENV_STUDY_BIT, 1, 0);/*lint !e64*/
 
 /* MUX CONTROL */
 /* MUX OF DACL SRC IN 0x7215 */
@@ -3094,6 +3330,7 @@ static const char *hi6403_dacs_mux_texts[] = {
 	"DACR SDM",
 	"DACSR",
 	"EP_SDM_MUX",
+	"DSP_IF8",
 	"Off",
 };
 static const struct soc_enum hi6403_dac_ep_mux_enum =
@@ -3331,6 +3568,13 @@ static const struct snd_soc_dapm_widget hi6403_dapm_widgets[] = {
 	SND_SOC_DAPM_INPUT("VOICE IN"),
 	/* fake input for HP HIGH */
 	SND_SOC_DAPM_INPUT("HP HIGH IN"),
+	/* fake input for MAX77813 PWM */
+	#ifdef CONFIG_BUCKBOOST
+	SND_SOC_DAPM_INPUT("AUXMIC PWM IN"),
+	#endif
+
+	/* ir */
+	SND_SOC_DAPM_INPUT("IR TX IN"),
 
 	/* OUTPUT */
 	/* analog output */
@@ -3363,6 +3607,12 @@ static const struct snd_soc_dapm_widget hi6403_dapm_widgets[] = {
 	SND_SOC_DAPM_OUTPUT("VOICE OUT"),
 	/* fake output for HP HIGH */
 	SND_SOC_DAPM_OUTPUT("HP HIGH OUT"),
+	/* fake output for MAX77813 PWM */
+	#ifdef CONFIG_BUCKBOOST
+	SND_SOC_DAPM_OUTPUT("AUXMIC PWM OUT"),
+	#endif
+	/* ir rx carrier endpoint dspif8 */
+	SND_SOC_DAPM_OUTPUT("IR RX8 OUT"),
 
 	/* keep for pll test */
 	SND_SOC_DAPM_INPUT("PLL IN"),
@@ -3384,6 +3634,9 @@ static const struct snd_soc_dapm_widget hi6403_dapm_widgets[] = {
 		(SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD)),
 	SND_SOC_DAPM_SUPPLY_S("MAD CLK",
 		0, SND_SOC_NOPM, 0, 0, hi6403_mad_pll_power_event,
+		(SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD)),
+	SND_SOC_DAPM_SUPPLY_S("IR TX CLK",
+		0, SND_SOC_NOPM, 0, 0, hi6403_ir_tx_power_event,
 		(SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD)),
 	SND_SOC_DAPM_SUPPLY_S("DP CLK",
 		1, SND_SOC_NOPM, 0, 0, hi6403_dp_clk_power_event,
@@ -3595,6 +3848,12 @@ static const struct snd_soc_dapm_widget hi6403_dapm_widgets[] = {
 	SND_SOC_DAPM_SWITCH_E("HPHIGHLEVEL SWITCH",
 		SND_SOC_NOPM, 0, 0, &hi6403_dapm_hp_high_level_switch_controls,
 		hi6403_hp_high_level_power_event, (SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD)),
+	/* SWITCH FOR MAX77813 PWM */
+	#ifdef CONFIG_BUCKBOOST
+	SND_SOC_DAPM_SWITCH_E("AUXMICPWMPOWER SWITCH",
+		SND_SOC_NOPM, 0, 0, &hi6403_dapm_auxmic_pwm_power_switch_controls,
+		hi6403_auxmic_pwm_power_event, (SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD)),
+	#endif
 
 	/* keep for pll test */
 	SND_SOC_DAPM_SWITCH_E("PLL48K SWITCH",
@@ -3607,6 +3866,10 @@ static const struct snd_soc_dapm_widget hi6403_dapm_widgets[] = {
 		SND_SOC_NOPM, 0, 0, &hi6403_dapm_pllmad_switch_controls,
 		hi6403_pllmad_power_event, (SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD)),
 	/* end for pll test */
+	/* ir_study */
+	SND_SOC_DAPM_SWITCH("IR STUDY ENV SWITCH",
+		SND_SOC_NOPM, 0, 0,
+		&hi6403_dapm_ir_env_study_switch_controls),
 
 	/* MUX */
 	/* MUX 9 */
@@ -3854,6 +4117,11 @@ static const struct snd_soc_dapm_route route_map[] = {
 	{"HP HIGH OUT",		NULL,			"HPHIGHLEVEL SWITCH"},
 	{"HPHIGHLEVEL SWITCH",	"SWITCH",		"HP HIGH IN"},
 
+	#ifdef CONFIG_BUCKBOOST
+	{"AUXMIC PWM OUT",		NULL,			"AUXMICPWMPOWER SWITCH"},
+	{"AUXMICPWMPOWER SWITCH",	"SWITCH",		"AUXMIC PWM IN"},
+	#endif
+
 	{"VOICE8K SWITCH",      NULL,                   "PLL CLK"},
 	{"VOICE16K SWITCH",     NULL,                   "PLL CLK"},
 	{"VOICE32K SWITCH",     NULL,                   "PLL CLK"},
@@ -3886,6 +4154,10 @@ static const struct snd_soc_dapm_route route_map[] = {
 	{"S1R IN",		NULL,			"DP CLK"},
 	{"S1L IN",		NULL,			"PLL CLK"},
 	{"S1R IN",		NULL,			"PLL CLK"},
+
+	{"IR TX IN",		NULL,			"DP CLK"},
+	{"IR TX IN",		NULL,			"PLL CLK"},
+	{"IR TX IN",		NULL,			"IR TX CLK"},
 
 	{"S2L IN",		NULL,			"S2 RX"},
 	{"S2R IN",		NULL,			"S2 RX"},
@@ -3920,8 +4192,10 @@ static const struct snd_soc_dapm_route route_map[] = {
 	{"MAD PGA",		NULL,			"MAD CLK"},
 	{"MAIN PGA",	NULL,			"PLL CLK"},
 	{"AUX PGA",		NULL,			"PLL CLK"},
-	{"LINEINL PGA",	NULL,			"PLL CLK"},
-	{"LINEINR PGA",	NULL,			"PLL CLK"},
+	{"LINEINL PGA",		NULL,			"PLL CLK"},
+	{"LINEINL PGA",	NULL,			"DP CLK"},
+	{"LINEINR PGA",		NULL,			"PLL CLK"},
+	{"LINEINR PGA",		NULL,			"DP CLK"},
 
 	{"MAD OUT",		NULL,			"MAD CLK"},
 	{"MAD OUT",		NULL,			"DP CLK"},
@@ -4034,6 +4308,7 @@ static const struct snd_soc_dapm_route route_map[] = {
 	{"DAC EP MUX",		"DACSL",		"DACSL PGA"},
 	{"DAC EP MUX",		"DACR SDM",		"DACR PGA"},
 	{"DAC EP MUX",		"DACSR",		"DACSR PGA"},
+	{"DAC EP MUX",		"DSP_IF8",		"IR TX IN"},
 
 	/* LOL MUX */
 	{"DAC LINEOUTL MUX",	"DACL SDM",		"DACL PGA"},
@@ -4260,12 +4535,15 @@ static const struct snd_soc_dapm_route route_map[] = {
 	{"REF MIC MUX",	"R0",			"ANC CORE IN"},
 	{"REF MIC MUX",	"L1",			"ANC CORE IN"},
 	{"REF MIC MUX",	"R1",			"ANC CORE IN"},
+
+	{"IR STUDY ENV SWITCH",		"SWITCH",		"ADC1L"},
+	{"IR RX8 OUT",		NULL,		"IR STUDY ENV SWITCH"},
 };
 
 
 static void hi6403_dump_reg(char *buf, unsigned int dump_size)
 {
-	int len = 0;
+	unsigned int len = 0;
 	unsigned int i = 0;
 
 	if (NULL == buf) {
@@ -4287,6 +4565,13 @@ static void hi6403_dump_reg(char *buf, unsigned int dump_size)
 			i = BASE_ADDR_PAGE_CFG + 0x4c;
 			continue;
 		}
+		len += snprintf(buf + len, dump_size - len, "%#04x-%#04x\n", CODEC_BASE_ADDR | i, snd_soc_read(g_hi6403_codec, i));
+		if (len >= dump_size)
+			return;
+	}
+
+	for (i = BASE_ADDR_PAGE_ANA + 0x00; i <= BASE_ADDR_PAGE_ANA + 0xd3; i++)
+	{
 		len += snprintf(buf + len, dump_size - len, "%#04x-%#04x\n", CODEC_BASE_ADDR | i, snd_soc_read(g_hi6403_codec, i));
 		if (len >= dump_size)
 			return;
@@ -5183,7 +5468,7 @@ unsigned int hi6403_get_resvalue(struct snd_soc_codec *codec)
 	unsigned int volume_value[HI6403_IMP_RES_NUM] = {0};
 	unsigned int calc_res_value = 0;
 	int i = 0;
-	int data_num = 0;
+	unsigned int data_num = 0;
 
 	hi6403_headphone_resdet_enable(codec, true);
 
@@ -5209,7 +5494,7 @@ unsigned int hi6403_get_resvalue(struct snd_soc_codec *codec)
 			calc_res_value = hi6403_calc_res(codec, volume_value[i], i);
 			pr_info("%s : afer calculated res[%d] is %d\n", __FUNCTION__, i, calc_res_value);
 			if (HI6403_FAKE_RES_VALUE != calc_res_value) {
-				data_num ++;
+				data_num++;
 				res_value += calc_res_value;
 			}
 		}
@@ -5313,15 +5598,12 @@ static void hi6403_mad_set_param(struct snd_soc_codec *codec)
 
 enum hi64xx_pll_type hi6403_pll_for_reg_access(struct snd_soc_codec *codec, unsigned int reg)
 {
-#if 1
 	if ((reg >= 0x20007200 && reg <= 0x20007fff) ||
 		(reg >= 0x20007041 && reg <= 0x2000704c)) {
 		return PLL_HIGH;
 	} else {
 		return PLL_NONE;
 	}
-#endif
-	return PLL_NONE;
 }
 
 static int hi6403_resmgr_init(struct hi6403_platform_data *pd)
@@ -5377,6 +5659,7 @@ static void hi6403_init_chip(struct snd_soc_codec *codec)
 
 	/* codec irq ioshare config */
 	snd_soc_write(codec, HI6403_IRQ_IOSHARE_REG, 1<<HI6403_IRQ_EN_BIT);
+	snd_soc_write(codec, HI6403_SSI_DATA_IOS_IOM_CTRL, 0x109);
 	snd_soc_write(codec, HI6403_IRQN_IOCONFIG_REG, 0x84);
 	/* slimbus ioshare config */
 	snd_soc_write(codec, HI6403_I2S1_SYNC_IOSHARE_REG, 1<<HI6403_SLIM_DATA_EN_BIT);
@@ -5388,6 +5671,13 @@ static void hi6403_init_chip(struct snd_soc_codec *codec)
 	snd_soc_write(codec, HI6403_I2S2_CLK_IOSHARE_REG, 1<<HI6403_I2S2_CLK_EN_BIT);
 	snd_soc_write(codec, HI6403_I2S2_SDI_IOSHARE_REG, 1<<HI6403_I2S2_SDI_EN_BIT);
 	snd_soc_write(codec, HI6403_I2S2_SDO_IOSHARE_REG, 1<<HI6403_I2S2_SDO_EN_BIT);
+	/* I2S3 ioshare config */
+	if (priv->board_config.extern_hs_hifi_ak4376_I2S3) {/*lint !e613*/
+		snd_soc_write(codec, HI6403_I2S3_SYNC_IOSHARE_REG, 1<<HI6403_I2S3_SYNC_EN_BIT);
+		snd_soc_write(codec, HI6403_I2S3_CLK_IOSHARE_REG, 1<<HI6403_I2S3_CLK_EN_BIT);
+		snd_soc_write(codec, HI6403_I2S3_SDI_IOSHARE_REG, 1<<HI6403_I2S3_SDI_EN_BIT);
+		snd_soc_write(codec, HI6403_I2S3_SDO_IOSHARE_REG, 1<<HI6403_I2S3_SDO_EN_BIT);
+	}
 	/* DSD ioshare config */
 	//snd_soc_write(codec, HI6403_I2S3_SDI_IOSHARE_REG, 1<<HI6403_DSD_L_EN_BIT);
 	//snd_soc_write(codec, HI6403_I2S3_SDO_IOSHARE_REG, 1<<HI6403_DSD_R_EN_BIT);
@@ -5431,13 +5721,17 @@ static void hi6403_init_chip(struct snd_soc_codec *codec)
 				0x7<<HI6403_SLIM_CLK_IO_CURRENT_BIT, 0x5<<HI6403_SLIM_CLK_IO_CURRENT_BIT);
 	}
 
-	/* GPIO0 pd enable */
-	hi64xx_update_bits(codec, HI6403_GPIO0_IOCONFIG_REG, 0x40, 0x40);
+	if (priv->board_config.gpio_pd_enable) {
+		/* GPIO0 pd enable */
+		hi64xx_update_bits(codec, HI6403_GPIO0_IOCONFIG_REG, 0x40, 0x40);
+		/* 12.228M GPIO pd enable */
+		hi64xx_update_bits(codec, HI6403_12M288_IOCONFIG_REG, 0x40, 0x40);
+	}
+
 	/* dsd clk disable */
 	snd_soc_write(codec, HI6403_DSD_CLK_CFG_REG0, 0xC0);
 	snd_soc_write(codec, HI6403_DSD_CLK_CFG_REG1, 0x80);
-	/* 12.228M GPIO pd enable */
-	hi64xx_update_bits(codec, HI6403_12M288_IOCONFIG_REG, 0x40, 0x40);
+
 	/* SPK CLK GPIO pd disable */
 	hi64xx_update_bits(codec, HI6403_SPK_CLK_IOCONFIG_REG, 0x40, 0x0);
 	/* mic voltage config */
@@ -5457,12 +5751,12 @@ static void hi6403_init_chip(struct snd_soc_codec *codec)
 	hi6403_pll48k_config(codec);
 	hi6403_pllmad_config(codec);
 	hi6403_pll44k1_config(codec);
-	/* pll lock state check enable */
-	hi64xx_update_bits(codec, HI6403_PLL_LOCK_CFG_REG,
-			1<<HI6403_PLL_LOCK_CHECK_BIT, 1<<HI6403_PLL_LOCK_CHECK_BIT);
 	/* clear pll unlock state enable */
 	hi64xx_update_bits(codec, HI6403_PLL_LOCK_CFG_REG,
 					1<<HI6403_PLL_LOCK_CLR_BIT, 1<<HI6403_PLL_LOCK_CLR_BIT);
+	/* pll lock state check enable */
+	hi64xx_update_bits(codec, HI6403_PLL_LOCK_CFG_REG,
+			1<<HI6403_PLL_LOCK_CHECK_BIT, 1<<HI6403_PLL_LOCK_CHECK_BIT);
 	/* 12M288&6M144 clk enable */
 	hi64xx_update_bits(codec, HI6403_AUDIO_CLK_CFG_REG,
 			0x3<<HI6403_ADUIO_12M288CLK_EN_BIT, 0x3<<HI6403_ADUIO_12M288CLK_EN_BIT);
@@ -5558,8 +5852,8 @@ static void hi6403_init_chip(struct snd_soc_codec *codec)
 	snd_soc_write(codec, HI6403_DAC_SRC_MUX_SEL, 0x88);
 	/* mux for sdm init */
 	snd_soc_write(codec, HI6403_DAC_HP_MUX_SEL, 0x1B);
-	snd_soc_write(codec, HI6403_DACS_MUX_SEL, 0x2D);
-	snd_soc_write(codec, HI6403_DAC_LTR_MUX_SEL, 0x5);
+	snd_soc_write(codec, HI6403_DACS_MUX_SEL, 0x36);
+	snd_soc_write(codec, HI6403_DAC_LTR_MUX_SEL, 0x6);
 	/* headphone detect config */
 	snd_soc_write(codec, HI6403_HP_DET_CFG_REG, 0x9);
 	/* headphone dac VB current select -> 80uA */
@@ -5724,7 +6018,7 @@ static void hi6403_init_chip(struct snd_soc_codec *codec)
 	if (priv->board_config.classh_rcv_hp_switch)
 		priv->rcv_hp_classh_state |= rcv_classh_state;
 	else
-		priv->rcv_hp_classh_state &= ~rcv_classh_state;
+		priv->rcv_hp_classh_state &= ~rcv_classh_state;/*lint !e64*/
 	set_classh_config(codec, priv->rcv_hp_classh_state);
 
 	/* g2_hp -> g2 */
@@ -5890,6 +6184,9 @@ static irqreturn_t hi6403_bunk1_ocp_handler(int irq, void *data)
 {
 	pr_warn("hi6403: bunk1_ocp irq received!!!\n");
 
+	#ifdef CONFIG_HUAWEI_DSM
+	audio_dsm_report_info(AUDIO_CODEC, DSM_CODEC_BUNK1_OCP, "64xx codec bunk1 ocp\n");
+	#endif
 	return IRQ_HANDLED;
 }
 
@@ -5897,6 +6194,9 @@ static irqreturn_t hi6403_bunk1_scp_handler(int irq, void *data)
 {
 	pr_warn("hi6403: bunk1_scp irq received!!!\n");
 
+	#ifdef CONFIG_HUAWEI_DSM
+	audio_dsm_report_info(AUDIO_CODEC, DSM_CODEC_BUNK1_SCP, "64xx codec bunk1 scp\n");
+	#endif
 	return IRQ_HANDLED;
 }
 
@@ -5904,6 +6204,9 @@ static irqreturn_t hi6403_bunk2_ocp_handler(int irq, void *data)
 {
 	pr_warn("hi6403: bunk2_ocp irq received!!!\n");
 
+	#ifdef CONFIG_HUAWEI_DSM
+	audio_dsm_report_info(AUDIO_CODEC, DSM_CODEC_BUNK2_OCP, "64xx codec bunk2 ocp\n");
+	#endif
 	return IRQ_HANDLED;
 }
 
@@ -5911,6 +6214,9 @@ static irqreturn_t hi6403_bunk2_scp_handler(int irq, void *data)
 {
 	pr_warn("hi6403: bunk2_scp irq received!!!\n");
 
+	#ifdef CONFIG_HUAWEI_DSM
+	audio_dsm_report_info(AUDIO_CODEC, DSM_CODEC_BUNK2_SCP, "64xx codec bunk2 scp\n");
+	#endif
 	return IRQ_HANDLED;
 }
 
@@ -5918,6 +6224,9 @@ static irqreturn_t hi6403_cp1_short_handler(int irq, void *data)
 {
 	pr_warn("hi6403: cp1_short irq received!!!\n");
 
+	#ifdef CONFIG_HUAWEI_DSM
+	audio_dsm_report_info(AUDIO_CODEC, DSM_CODEC_CP1_SHORT, "64xx codec cp1 short\n");
+	#endif
 	return IRQ_HANDLED;
 }
 
@@ -5925,6 +6234,9 @@ static irqreturn_t hi6403_cp2_short_handler(int irq, void *data)
 {
 	pr_warn("hi6403: cp2_short irq received!!!\n");
 
+	#ifdef CONFIG_HUAWEI_DSM
+	audio_dsm_report_info(AUDIO_CODEC, DSM_CODEC_CP2_SHORT, "64xx codec cp2 short\n");
+	#endif
 	return IRQ_HANDLED;
 }
 
@@ -5932,10 +6244,9 @@ static irqreturn_t hi6403_pll_unlock_handler(int irq, void *data)
 {
 	pr_warn("hi6403: pll_unlock irq received!!!\n");
 
-	if (!dsm_client_ocuppy(dsm_audio_client)) {
-		dsm_client_record(dsm_audio_client, "64xx codec pll unlock\n");
-		dsm_client_notify(dsm_audio_client, DSM_HI6402_PLL_UNLOCK);
-	}
+	#ifdef CONFIG_HUAWEI_DSM
+	audio_dsm_report_info(AUDIO_CODEC, DSM_HI6402_PLL_UNLOCK, "64xx codec pll unlock\n");
+	#endif
 	return IRQ_HANDLED;
 }
 
@@ -5943,11 +6254,9 @@ static irqreturn_t hi6403_pll44k1_unlock_handler(int irq, void *data)
 {
 	pr_warn("hi6403: pll44k1_unlock irq received!!!\n");
 
-	if (!dsm_client_ocuppy(dsm_audio_client)) {
-		dsm_client_record(dsm_audio_client, "64xx codec pll 44k1 unlock\n");
-		dsm_client_notify(dsm_audio_client, DSM_HI6402_PLL_UNLOCK);
-	}
-
+	#ifdef CONFIG_HUAWEI_DSM
+	audio_dsm_report_info(AUDIO_CODEC, DSM_HI6402_PLL_UNLOCK, "64xx codec pll 44k1 unlock\n");
+	#endif
 	return IRQ_HANDLED;
 }
 
@@ -5955,10 +6264,9 @@ static irqreturn_t hi6403_pllmad_unlock_handler(int irq, void *data)
 {
 	pr_warn("hi6403: pllmad_unlock irq received!!!\n");
 
-	if (!dsm_client_ocuppy(dsm_audio_client)) {
-		dsm_client_record(dsm_audio_client, "64xx codec pll mad unlock\n");
-		dsm_client_notify(dsm_audio_client, DSM_HI6402_PLL_UNLOCK);
-	}
+	#ifdef CONFIG_HUAWEI_DSM
+	audio_dsm_report_info(AUDIO_CODEC, DSM_HI6402_PLL_UNLOCK, "64xx codec pll mad unlock\n");
+	#endif
 	return IRQ_HANDLED;
 }
 
@@ -6077,6 +6385,26 @@ static unsigned int hi6403_virtual_reg_read(struct hi6403_platform_data *priv,
 	case HI6403_DACR_PGA_GAIN_VIRTUAL_REG:
 		mutex_lock(&priv->rw_mutex);
 		ret = priv->virtul_dacr_gain;
+		mutex_unlock(&priv->rw_mutex);
+		break;
+	case HI6403_ADC0L_05PGA_GAIN_VIRTUAL_REG:
+		mutex_lock(&priv->rw_mutex);
+		ret = priv->mic_fixed_value[0];
+		mutex_unlock(&priv->rw_mutex);
+		break;
+	case HI6403_ADC0R_05PGA_GAIN_VIRTUAL_REG:
+		mutex_lock(&priv->rw_mutex);
+		ret = priv->mic_fixed_value[1];
+		mutex_unlock(&priv->rw_mutex);
+		break;
+	case HI6403_ADC1L_05PGA_GAIN_VIRTUAL_REG:
+		mutex_lock(&priv->rw_mutex);
+		ret = priv->mic_fixed_value[2];
+		mutex_unlock(&priv->rw_mutex);
+		break;
+	case HI6403_ADC1R_05PGA_GAIN_VIRTUAL_REG:
+		mutex_lock(&priv->rw_mutex);
+		ret = priv->mic_fixed_value[3];
 		mutex_unlock(&priv->rw_mutex);
 		break;
 	default :
@@ -6206,13 +6534,26 @@ static void hi6403_compat_deinit(void)
 	hi64xx_compat_deinit();
 }
 
-
-static void hi6403_get_board_micnum(struct device_node *node, struct hi6403_board_cfg *board_cfg)
+static void hi6403_get_board_ir_gpio_id(struct device_node *node, struct hi6403_board_cfg *board_cfg)
 {
 	int val = 0;
 
+	val = of_get_named_gpio(node, "hisilicon,ir_gpio", 0);
+
+	if (val > 0) {
+		board_cfg->ir_gpio_id = (unsigned int)val;
+	} else {
+		board_cfg->ir_gpio_id = 0;
+		pr_err("%s : ir_gpio get err\n", __FUNCTION__);
+	}
+}
+
+static void hi6403_get_board_micnum(struct device_node *node, struct hi6403_board_cfg *board_cfg)
+{
+	unsigned int val = 0;
+
 	if (!of_property_read_u32(node, "hisilicon,mic_num", &val)) {
-		board_cfg->mic_num = val;
+		board_cfg->mic_num = (int)val;
 	} else {
 		board_cfg->mic_num = 2;
 	}
@@ -6220,7 +6561,7 @@ static void hi6403_get_board_micnum(struct device_node *node, struct hi6403_boar
 
 static void hi6403_get_board_pa(struct device_node *node, struct hi6403_board_cfg *board_cfg)
 {
-	int val = 0;
+	unsigned int val = 0;
 
 	if (!of_property_read_u32(node, "use_stereo_smartpa", &val)){
 		if(val){
@@ -6235,7 +6576,7 @@ static void hi6403_get_board_pa(struct device_node *node, struct hi6403_board_cf
 
 static void hi6403_get_board_hpswitch(struct device_node *node, struct hi6403_board_cfg *board_cfg)
 {
-	int val = 0;
+	unsigned int val = 0;
 
 	if (!of_property_read_u32(node, "hisilicon,classh_rcv_hp_switch", &val)){
 		if(val){
@@ -6250,7 +6591,7 @@ static void hi6403_get_board_hpswitch(struct device_node *node, struct hi6403_bo
 
 static void hi6403_get_board_high_low_change(struct device_node *node, struct hi6403_board_cfg *board_cfg)
 {
-	int val = 0;
+	unsigned int val = 0;
 
 	if (!of_property_read_u32(node, "hisilicon,hp_high_low_change_enable", &val)){
 		if(val){
@@ -6265,7 +6606,7 @@ static void hi6403_get_board_high_low_change(struct device_node *node, struct hi
 
 static void hi6403_get_board_hp_res_detect(struct device_node *node, struct hi6403_board_cfg *board_cfg)
 {
-	int val = 0;
+	unsigned int val = 0;
 
 	if (!of_property_read_u32(node, "hisilicon,hp_res_detect_enable", &val)){
 		if(val){
@@ -6278,13 +6619,71 @@ static void hi6403_get_board_hp_res_detect(struct device_node *node, struct hi64
 	}
 }
 
+static void hi6403_get_extern_hs_hifi_ak4376_I2S3(struct device_node *node, struct hi6403_board_cfg *board_cfg)
+{
+	unsigned int val = 0;
+	if (NULL == node || NULL == board_cfg) {
+		pr_err("%s: input null pointer! \n", __FUNCTION__);
+		return;
+	}
+
+	if (!of_property_read_u32(node, "extern_hs_hifi_ak4376_I2S3", &val)) {
+		if (val) {
+			board_cfg->extern_hs_hifi_ak4376_I2S3 = true;
+		} else {
+			board_cfg->extern_hs_hifi_ak4376_I2S3 = false;
+		}
+	} else {
+		board_cfg->extern_hs_hifi_ak4376_I2S3 = false;
+	}
+}
+
+static void hi6403_get_board_gpio_pd_status(struct device_node *node, struct hi6403_board_cfg *board_cfg)
+{
+	if (of_property_read_bool(node, "gpio_pd_enable")) {
+		board_cfg->gpio_pd_enable = true;
+	} else {
+		board_cfg->gpio_pd_enable = false;
+	}
+}
+
+#ifdef CONFIG_HAC_SUPPORT
+static void hi6403_get_board_hac(struct device_node *node, struct hi6403_board_cfg *board_cfg)
+{
+	if (NULL == node || NULL == board_cfg) {
+		pr_err("%s: intput parameters is null pointer ! \n", __FUNCTION__);
+		return;
+	}
+	unsigned int val = 0;
+	int ret = 0;
+	pr_debug("%s: hi6403_get_board_hac !\n", __FUNCTION__);
+	if (!of_property_read_u32(node, "hisilicon,hac_gpio", &val)) {
+		board_cfg->hac_gpio = val;
+		pr_debug("%s: hi6403_get_board_hac, gpio = %d!\n", __FUNCTION__, board_cfg->hac_gpio);
+		ret = hi6403_hac_gpio_init(board_cfg->hac_gpio);
+		if (0 != ret) {
+			pr_err("%s : gpio resource init fail, ret = %d\n", __FUNCTION__, ret);
+		}
+	} else {
+		board_cfg->hac_gpio = -1;
+		pr_debug("%s: hac not supported, gpio = %d!\n", __FUNCTION__, board_cfg->hac_gpio);
+	}
+}
+#endif
+
 static void hi6403_get_board_cfg(struct device_node *node, struct hi6403_board_cfg *board_cfg)
 {
+	hi6403_get_board_ir_gpio_id(node, board_cfg);
 	hi6403_get_board_micnum(node, board_cfg);
 	hi6403_get_board_pa(node, board_cfg);
 	hi6403_get_board_hpswitch(node, board_cfg);
 	hi6403_get_board_high_low_change(node, board_cfg);
 	hi6403_get_board_hp_res_detect(node, board_cfg);
+	hi6403_get_extern_hs_hifi_ak4376_I2S3(node, board_cfg);
+	hi6403_get_board_gpio_pd_status(node, board_cfg);
+#ifdef CONFIG_HAC_SUPPORT
+	hi6403_get_board_hac(node, board_cfg);
+#endif
 }
 
 static int hi6403_irq_init(struct hi64xx_irq *irq_data)
@@ -6329,7 +6728,7 @@ static struct snd_soc_codec_driver hi6403_codec_driver = {
 	.dapm_routes = route_map,
 	.num_dapm_routes = ARRAY_SIZE(route_map),
 };
-
+/*lint -e429*/
 static int hi6403_platform_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -6350,12 +6749,19 @@ static int hi6403_platform_probe(struct platform_device *pdev)
 		goto free_platform_data;
 	} else {
 		hi6403_get_board_cfg(priv->node, &priv->board_config);
-		dev_info(dev, "%s : mic_num %d , use_stereo_smartpa %d, classh_rcv_hp_switch %d, hp_high_low_change_enable %d, hp_res_detect_enable %d\n",
+
+		dev_info(dev, "%s : mic_num %d , use_stereo_smartpa %d, classh_rcv_hp_switch %d, hp_high_low_change_enable %d, hp_res_detect_enable %d, extern_hs_hifi_ak4376_I2S3 %d, gpio_pd_enable %d, ir_gpio_id %u\n",
 			__FUNCTION__, priv->board_config.mic_num,
 			priv->board_config.use_stereo_smartpa,
 			priv->board_config.classh_rcv_hp_switch,
 			priv->board_config.hp_high_low_change_enable,
-			priv->board_config.hp_res_detect_enable);
+			priv->board_config.hp_res_detect_enable,
+			priv->board_config.extern_hs_hifi_ak4376_I2S3,
+			priv->board_config.gpio_pd_enable,
+			priv->board_config.ir_gpio_id);
+#ifdef CONFIG_HAC_SUPPORT
+		dev_info(dev, "%s : hac_gpio %d\n", __FUNCTION__, priv->board_config.hac_gpio);
+#endif
 	}
 
 	priv->irqmgr = (struct hi64xx_irq *)dev_get_drvdata(pdev->dev.parent);
@@ -6503,7 +6909,7 @@ free_platform_data:
 
 	return ret;
 }
-
+/*lint +e429*/
 static int hi6403_platform_remove(struct platform_device *pdev)
 {
 	struct hi6403_platform_data *priv = platform_get_drvdata(pdev);
@@ -6511,6 +6917,12 @@ static int hi6403_platform_remove(struct platform_device *pdev)
 	pr_info("%s\n",__FUNCTION__);
 
 	BUG_ON(NULL == priv);
+
+#ifdef CONFIG_HAC_SUPPORT
+	if (gpio_is_valid(priv->board_config.hac_gpio)) {
+		gpio_free(priv->board_config.hac_gpio);
+	}
+#endif
 
 	snd_soc_unregister_codec(&pdev->dev);
 

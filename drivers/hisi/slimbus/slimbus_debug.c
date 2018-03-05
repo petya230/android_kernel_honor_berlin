@@ -32,7 +32,7 @@
 #include "slimbus_drv.h"
 #include "slimbus.h"
 
-/*lint -e838 -e737 -e715 -e778 -e846 -e866 -e528 -e753 -e514 -e84 -e64 -e747*/
+/*lint -e838 -e737 -e715 -e778 -e846 -e866 -e528 -e753 -e514 -e84 -e64 -e747 -e732 */
 
 #define CLASS_NAME    "slimbus_debug"
 
@@ -94,12 +94,12 @@ static ssize_t imgdown_show(struct class *class, struct class_attribute *attr,
 {
 	uint32_t ret = 0;
 
-	ret = sprintf(buf, "usage: echo param>simgdown \n");
-	ret += sprintf(buf+ret, "para: \n1: configure asp dma;\n");
-	ret += sprintf(buf+ret, "2: configure 6402 dma;\n");
-	ret += sprintf(buf+ret, "3: start and active slimbus image download channel;\n");
-	ret += sprintf(buf+ret, "4: deactive and remove slimbus image download channel;\n");
-	ret += sprintf(buf+ret, "else: set startvalue write to 6402 ocram;\n");
+	ret = snprintf(buf, PAGE_SIZE, "usage: echo param>simgdown \n");
+	ret += snprintf(buf+ret, (PAGE_SIZE-ret), "para: \n1: configure asp dma;\n");
+	ret += snprintf(buf+ret, (PAGE_SIZE-ret), "2: configure 6402 dma;\n");
+	ret += snprintf(buf+ret, (PAGE_SIZE-ret), "3: start and active slimbus image download channel;\n");
+	ret += snprintf(buf+ret, (PAGE_SIZE-ret), "4: deactive and remove slimbus image download channel;\n");
+	ret += snprintf(buf+ret, (PAGE_SIZE-ret), "else: set startvalue write to 6402 ocram;\n");
 
 	return ret;
 }
@@ -112,6 +112,7 @@ static ssize_t imgdown_store(struct class *class, struct class_attribute *attr,
 	uint32_t i = 0;
 	uint32_t val = 0;
 
+	// cppcheck-suppress *
 	sscanf(buf, "0x%x", &simgdown);
 
 	printk(KERN_EMERG"[%s:%d] simgdown:%x!\n", __FUNCTION__, __LINE__, simgdown);
@@ -180,15 +181,15 @@ static ssize_t regpagerd_show(struct class *class, struct class_attribute *attr,
 {
 	uint32_t i = 0;
 	uint32_t j = 0;
-	int ret = 0;
+	uint32_t ret = 0;
 
 	if (sregpagerd >= 0x10000000 && sregpagerd <= 0x20008000) {
-		ret = sprintf(buf, "addr:%x:\n", sregpagerd);
+		ret = snprintf(buf, PAGE_SIZE, "addr:%x:\n", sregpagerd);
 
 		if ((sregpagerd >= 0x10000000 && sregpagerd <= 0x10001000)
 			|| (sregpagerd >= 0x20000700 && sregpagerd < 0x20007000)){
 			for (i=0; i<240; i+=16) {
-				ret += sprintf(buf+ret, " %4x %4x %4x %4x \n",
+				ret += snprintf(buf+ret, (PAGE_SIZE-ret), " %4x %4x %4x %4x \n",
 							slimbus_read_4byte(sregpagerd+i), slimbus_read_4byte(sregpagerd+i+4),
 							slimbus_read_4byte(sregpagerd+i+8), slimbus_read_4byte(sregpagerd+i+12));
 				msleep(20);
@@ -196,18 +197,18 @@ static ssize_t regpagerd_show(struct class *class, struct class_attribute *attr,
 		}
 
 		if (sregpagerd >= 0x20007000 && sregpagerd <= 0x20008000) {
-			ret += sprintf(buf+ret, "begin\n");
+			ret += snprintf(buf+ret, (PAGE_SIZE-ret), "begin\n");
 			for (j=0; j<=0x1ff; j+=16) {
 				for (i=j; i<j+16; i++) {
-					ret += sprintf(buf+ret, " %3x ",slimbus_read_1byte(sregpagerd+i));
+					ret += snprintf(buf+ret, (PAGE_SIZE-ret), " %3x ",slimbus_read_1byte(sregpagerd+i));
 				}
-				ret += sprintf(buf+ret, "\n");
+				ret += snprintf(buf+ret, (PAGE_SIZE-ret), "\n");
 			}
 		}
-		ret += sprintf(buf+ret, "end\n");
+		ret += snprintf(buf+ret, (PAGE_SIZE-ret), "end\n");
 	}else {
-		ret += sprintf(buf, "usage: echo regaddr>sregpagerd\n");
-		ret += sprintf(buf+ret, "sregpagerd:%x!\n", sregpagerd);
+		ret += snprintf(buf, PAGE_SIZE, "usage: echo regaddr>sregpagerd\n");
+		ret += snprintf(buf+ret, (PAGE_SIZE-ret), "sregpagerd:%x!\n", sregpagerd);
 	}
 
 	return ret;
@@ -216,6 +217,7 @@ static ssize_t regpagerd_show(struct class *class, struct class_attribute *attr,
 static ssize_t regpagerd_store(struct class *class, struct class_attribute *attr,
 				 const char *buf, size_t size)
 {
+	// cppcheck-suppress *
 	if (sscanf(buf, "0x%x", &sregpagerd) != 1)
 		return -EINVAL;
 
@@ -225,16 +227,16 @@ static ssize_t regpagerd_store(struct class *class, struct class_attribute *attr
 static ssize_t regrd_show(struct class *class, struct class_attribute *attr,
 				 char *buf)
 {
-	int ret = 0;
+	uint32_t ret = 0;
 
 	if (sregrd >= 0x20007000 && sregrd < 0x20008000) {
 		gregvalue = slimbus_read_1byte(sregrd);
 		slimbus_read_pageaddr();
 
-		ret = sprintf(buf, "sregrd:0x%x, value:%x!\n", sregrd, gregvalue);
+		ret = snprintf(buf, PAGE_SIZE, "sregrd:0x%x, value:%x!\n", sregrd, gregvalue);
 	} else {
-		ret = sprintf(buf, "usage: echo param>sregrd\n");
-		ret += sprintf(buf+ret, "param: 0xregaddr\n");
+		ret = snprintf(buf, PAGE_SIZE, "usage: echo param>sregrd\n");
+		ret += snprintf(buf+ret, (PAGE_SIZE-ret), "param: 0xregaddr\n");
 	}
 
 	printk(KERN_ERR"[%s:%d] sregrd (%x %x) !\n", __FUNCTION__, __LINE__, sregrd, gregvalue);
@@ -245,6 +247,7 @@ static ssize_t regrd_show(struct class *class, struct class_attribute *attr,
 static ssize_t regrd_store(struct class *class, struct class_attribute *attr,
 				 const char *buf, size_t size)
 {
+	// cppcheck-suppress *
 	if (sscanf(buf, "0x%x", &sregrd) != 1)
 		return -EINVAL;
 
@@ -253,10 +256,10 @@ static ssize_t regrd_store(struct class *class, struct class_attribute *attr,
 static ssize_t regwr_show(struct class *class, struct class_attribute *attr,
 				 char *buf)
 {
-	int ret = 0;
+	uint32_t ret = 0;
 
-	ret = sprintf(buf, "usage: echo param>sregrd\n");
-	ret += sprintf(buf+ret, "param: 0xregaddr 0xvalue\n");
+	ret = snprintf(buf, PAGE_SIZE, "usage: echo param>sregrd\n");
+	ret += snprintf(buf+ret, (PAGE_SIZE-ret), "param: 0xregaddr 0xvalue\n");
 
 	return ret;
 }
@@ -264,6 +267,7 @@ static ssize_t regwr_show(struct class *class, struct class_attribute *attr,
 static ssize_t regwr_store(struct class *class, struct class_attribute *attr,
 				 const char *buf, size_t size)
 {
+	// cppcheck-suppress *
 	if (sscanf(buf, "0x%x 0x%x", &sregwr, &gregvalue) != 1)
 		return -EINVAL;
 
@@ -282,13 +286,13 @@ static ssize_t regwr_store(struct class *class, struct class_attribute *attr,
 static ssize_t switchframer_show(struct class *class, struct class_attribute *attr,
 				 char *buf)
 {
-	int ret = 0;
+	uint32_t ret = 0;
 
-	ret = sprintf(buf, "sswitchframer:0x%x!\n", sswitchframer);
-	ret += sprintf(buf+ret, "usage: echo param>sswitchframer\n");
-	ret += sprintf(buf+ret, "param: \n");
-	ret += sprintf(buf+ret, "0x1: switch to soc \n");
-	ret += sprintf(buf+ret, "0x2: switch to codec \n");
+	ret = snprintf(buf, PAGE_SIZE, "sswitchframer:0x%x!\n", sswitchframer);
+	ret += snprintf(buf+ret, (PAGE_SIZE-ret), "usage: echo param>sswitchframer\n");
+	ret += snprintf(buf+ret, (PAGE_SIZE-ret), "param: \n");
+	ret += snprintf(buf+ret, (PAGE_SIZE-ret), "0x1: switch to soc \n");
+	ret += snprintf(buf+ret, (PAGE_SIZE-ret), "0x2: switch to codec \n");
 
 	return ret;
 }
@@ -296,6 +300,7 @@ static ssize_t switchframer_show(struct class *class, struct class_attribute *at
 static ssize_t switchframer_store(struct class *class, struct class_attribute *attr,
 				 const char *buf, size_t size)
 {
+	// cppcheck-suppress *
 	if (sscanf(buf, "0x%x", &sswitchframer) != 1)
 		return -EINVAL;
 
@@ -320,10 +325,10 @@ static ssize_t switchframer_store(struct class *class, struct class_attribute *a
 static ssize_t devtype_show(struct class *class, struct class_attribute *attr,
 				 char *buf)
 {
-	int ret = 0;
+	uint32_t ret = 0;
 
-	ret = sprintf(buf, "sdevicetype:0x%x!\n", sdevice_type);
-	ret += sprintf(buf+ret, "usage: echo param>sdevice_type\n");
+	ret = snprintf(buf, PAGE_SIZE, "sdevicetype:0x%x!\n", sdevice_type);
+	ret += snprintf(buf+ret, (PAGE_SIZE-ret), "usage: echo param>sdevice_type\n");
 
 	return ret;
 }
@@ -331,6 +336,7 @@ static ssize_t devtype_show(struct class *class, struct class_attribute *attr,
 static ssize_t devtype_store(struct class *class, struct class_attribute *attr,
 				 const char *buf, size_t size)
 {
+	// cppcheck-suppress *
 	if (sscanf(buf, "0x%x", &sdevice_type) != 1)
 		return -EINVAL;
 
@@ -343,10 +349,10 @@ static ssize_t devtype_store(struct class *class, struct class_attribute *attr,
 static ssize_t clockgear_show(struct class *class, struct class_attribute *attr,
 				 char *buf)
 {
-	int ret = 0;
+	uint32_t ret = 0;
 
-	ret = sprintf(buf, "sclockgear:0x%x!\n", sclockgear);
-	ret += sprintf(buf+ret, "usage: echo param>sclockgear\n");
+	ret = snprintf(buf, PAGE_SIZE, "sclockgear:0x%x!\n", sclockgear);
+	ret += snprintf(buf+ret, (PAGE_SIZE-ret), "usage: echo param>sclockgear\n");
 
 	return ret;
 }
@@ -354,6 +360,7 @@ static ssize_t clockgear_show(struct class *class, struct class_attribute *attr,
 static ssize_t clockgear_store(struct class *class, struct class_attribute *attr,
 				 const char *buf, size_t size)
 {
+	// cppcheck-suppress *
 	if (sscanf(buf, "0x%x", &sclockgear) != 1)
 		return -EINVAL;
 
@@ -368,15 +375,15 @@ static ssize_t clockgear_store(struct class *class, struct class_attribute *attr
 static ssize_t channelctrl_show(struct class *class, struct class_attribute *attr,
 				 char *buf)
 {
-	int ret = 0;
+	uint32_t ret = 0;
 
-	ret = sprintf(buf, "schannelctrl:0x%x 0x%x!\n", schannelctrl, stracktype);
-	ret += sprintf(buf+ret, "usage: echo param>schannelctrl\n");
-	ret += sprintf(buf+ret, "param: schannelctrl\n");
-	ret += sprintf(buf+ret, "0x1: deactive  channel!\n");
-	ret += sprintf(buf+ret, "0x2: active  channel!\n");
-	ret += sprintf(buf+ret, "param: stracktype\n");
-	ret += snprintf(buf+ret, 256, "0x0:audio play; 0x1:record; 0x2:voice down; 0x3:voice up; 0x4:image; 0x5:ec; 0x6:sound trigger; 0x7:debug; 0x8:direct; 0x9:fast\n");
+	ret = snprintf(buf, PAGE_SIZE, "schannelctrl:0x%x 0x%x!\n", schannelctrl, stracktype);
+	ret += snprintf(buf+ret, (PAGE_SIZE-ret), "usage: echo param>schannelctrl\n");
+	ret += snprintf(buf+ret, (PAGE_SIZE-ret), "param: schannelctrl\n");
+	ret += snprintf(buf+ret, (PAGE_SIZE-ret), "0x1: deactive  channel!\n");
+	ret += snprintf(buf+ret, (PAGE_SIZE-ret), "0x2: active  channel!\n");
+	ret += snprintf(buf+ret, (PAGE_SIZE-ret), "param: stracktype\n");
+	ret += snprintf(buf+ret, (PAGE_SIZE-ret), "0x0:audio play; 0x1:record; 0x2:voice down; 0x3:voice up; 0x4:image; 0x5:ec; 0x6:sound trigger; 0x7:debug; 0x8:direct; 0x9:fast\n");
 
 	return ret;
 }
@@ -387,6 +394,7 @@ static ssize_t channelctrl_store(struct class *class, struct class_attribute *at
 	int ret = 0;
 	int i = 0;
 
+	// cppcheck-suppress *
 	if (sscanf(buf, "0x%x 0x%x", &schannelctrl, &stracktype) != 2)
 		return -EINVAL;
 
@@ -419,11 +427,11 @@ static ssize_t channelctrl_store(struct class *class, struct class_attribute *at
 static ssize_t pauseclock_show(struct class *class, struct class_attribute *attr,
 				 char *buf)
 {
-	int ret = 0;
+	uint32_t ret = 0;
 
-	ret = sprintf(buf, "spauseclock:0x%x!\n", spauseclock);
-	ret += sprintf(buf+ret, "0x2: slimbus clk pause!\n");
-	ret += sprintf(buf+ret, "himm 0xe8050020 0x8 to wakeup clk!\n");
+	ret = snprintf(buf, PAGE_SIZE, "spauseclock:0x%x!\n", spauseclock);
+	ret += snprintf(buf+ret, (PAGE_SIZE-ret), "0x2: slimbus clk pause!\n");
+	ret += snprintf(buf+ret, (PAGE_SIZE-ret), "himm 0xe8050020 0x8 to wakeup clk!\n");
 
 	return ret;
 }
@@ -431,6 +439,7 @@ static ssize_t pauseclock_show(struct class *class, struct class_attribute *attr
 static ssize_t pauseclock_store(struct class *class, struct class_attribute *attr,
 				 const char *buf, size_t size)
 {
+	// cppcheck-suppress *
 	if (sscanf(buf, "0x%x", &spauseclock) != 1)
 		return -EINVAL;
 
@@ -458,12 +467,12 @@ static ssize_t pauseclock_store(struct class *class, struct class_attribute *att
 static ssize_t regtest_show(struct class *class, struct class_attribute *attr,
 				 char *buf)
 {
-	int ret = 0;
+	uint32_t ret = 0;
 
-	ret = sprintf(buf, "sregtest:0x%x!\n", sregtest);
-	ret += sprintf(buf+ret, "scopyright_error:0x%x!\n", scopyright_error);
-	ret += sprintf(buf+ret, "sreg8_rd_error:0x%x!\n", sreg8_rd_error);
-	ret += sprintf(buf+ret, "sreg32_rd_error:0x%x!\n", sreg32_rd_error);
+	ret = snprintf(buf, PAGE_SIZE, "sregtest:0x%x!\n", sregtest);
+	ret += snprintf(buf+ret, (PAGE_SIZE-ret), "scopyright_error:0x%x!\n", scopyright_error);
+	ret += snprintf(buf+ret, (PAGE_SIZE-ret), "sreg8_rd_error:0x%x!\n", sreg8_rd_error);
+	ret += snprintf(buf+ret, (PAGE_SIZE-ret), "sreg32_rd_error:0x%x!\n", sreg32_rd_error);
 
 	return ret;
 }
@@ -547,6 +556,7 @@ static ssize_t regtest_store(struct class *class, struct class_attribute *attr,
 	sreg8_rd_error   = 0;
 	sreg32_rd_error  = 0;
 
+	// cppcheck-suppress *
 	if (sscanf(buf, "0x%x", &sregtest) != 1)
 		return -EINVAL;
 
@@ -558,9 +568,9 @@ static ssize_t regtest_store(struct class *class, struct class_attribute *attr,
 static ssize_t busreset_show(struct class *class, struct class_attribute *attr,
 				 char *buf)
 {
-	int ret = 0;
+	uint32_t ret = 0;
 
-	ret = sprintf(buf, "sbusreset:0x%x!\n", sbusreset);
+	ret = snprintf(buf, PAGE_SIZE, "sbusreset:0x%x!\n", sbusreset);
 
 	return ret;
 }
@@ -568,6 +578,7 @@ static ssize_t busreset_show(struct class *class, struct class_attribute *attr,
 static ssize_t busreset_store(struct class *class, struct class_attribute *attr,
 				 const char *buf, size_t size)
 {
+	// cppcheck-suppress *
 	if (sscanf(buf, "0x%x", &sbusreset) != 1 )
 		return -EINVAL;
 
@@ -583,9 +594,9 @@ static ssize_t busreset_store(struct class *class, struct class_attribute *attr,
 static ssize_t mixtest_show(struct class *class, struct class_attribute *attr,
 				 char *buf)
 {
-	int ret = 0;
+	uint32_t ret = 0;
 
-	ret = sprintf(buf, "smixtest:0x%x sregtest:0x%x stracktype:0x%x!\n", smixtest, sregtest, stracktype);
+	ret = snprintf(buf, PAGE_SIZE, "smixtest:0x%x sregtest:0x%x stracktype:0x%x!\n", smixtest, sregtest, stracktype);
 
 	return ret;
 }
@@ -595,6 +606,7 @@ static ssize_t mixtest_store(struct class *class, struct class_attribute *attr,
 {
 	int ret = 0;
 
+	// cppcheck-suppress *
 	if (sscanf(buf, "0x%x 0x%x 0x%x", &smixtest, &sregtest, &stracktype) != 3)
 		return -EINVAL;
 
@@ -624,9 +636,9 @@ static int info = 0;
 static ssize_t requestinfo_show(struct class *class, struct class_attribute *attr,
 				 char *buf)
 {
-	int ret = 0;
+	uint32_t ret = 0;
 
-	ret = sprintf(buf, "srequestinfo:0x%x!, val:%x! \n", srequestinfo, info);
+	ret = snprintf(buf, PAGE_SIZE, "srequestinfo:0x%x!, val:%x! \n", srequestinfo, info);
 
 	return ret;
 }
@@ -634,6 +646,7 @@ static ssize_t requestinfo_show(struct class *class, struct class_attribute *att
 static ssize_t requestinfo_store(struct class *class, struct class_attribute *attr,
 				 const char *buf, size_t size)
 {
+	// cppcheck-suppress *
 	if (sscanf(buf, "0x%x", &srequestinfo) != 1)
 		return -EINVAL;
 
@@ -663,10 +676,11 @@ static ssize_t requestinfo_store(struct class *class, struct class_attribute *at
 static ssize_t logcount_show(struct class *class, struct class_attribute *attr,
 				 char *buf)
 {
-	int ret = 0;
+	uint32_t ret = 0;
+
 	srdwrerr_logcount = slimbus_logcount_get();
 
-	ret = sprintf(buf, "srdwrerr_logcount:0x%x!\n", srdwrerr_logcount);
+	ret = snprintf(buf, PAGE_SIZE, "srdwrerr_logcount:0x%x!\n", srdwrerr_logcount);
 
 
 	return ret;
@@ -675,6 +689,7 @@ static ssize_t logcount_show(struct class *class, struct class_attribute *attr,
 static ssize_t logcount_store(struct class *class, struct class_attribute *attr,
 				 const char *buf, size_t size)
 {
+	// cppcheck-suppress *
 	if (sscanf(buf, "0x%x", &srdwrerr_logcount) != 1)
 		return -EINVAL;
 
@@ -686,10 +701,11 @@ static ssize_t logcount_store(struct class *class, struct class_attribute *attr,
 static ssize_t logtimes_show(struct class *class, struct class_attribute *attr,
 				 char *buf)
 {
-	int ret = 0;
+	uint32_t ret = 0;
+
 	srdwrerr_logtimes = slimbus_logtimes_get();
 
-	ret = sprintf(buf, "srdwrerr_logtimes:0x%x!\n", srdwrerr_logtimes);
+	ret = snprintf(buf, PAGE_SIZE, "srdwrerr_logtimes:0x%x!\n", srdwrerr_logtimes); /* [false alarm] */
 
 
 	return ret;
@@ -698,6 +714,7 @@ static ssize_t logtimes_show(struct class *class, struct class_attribute *attr,
 static ssize_t logtimes_store(struct class *class, struct class_attribute *attr,
 				 const char *buf, size_t size)
 {
+	// cppcheck-suppress *
 	if (sscanf(buf, "0x%x", &srdwrerr_logtimes) != 1)
 		return -EINVAL;
 
@@ -709,10 +726,11 @@ static ssize_t logtimes_store(struct class *class, struct class_attribute *attr,
 static ssize_t lostmstimes_show(struct class *class, struct class_attribute *attr,
 				 char *buf)
 {
-	int ret = 0;
+	uint32_t ret = 0;
+
 	slostms_times = slimbus_drv_lostms_get();
 
-	ret = sprintf(buf, "slostms_times:0x%x!\n", slostms_times);
+	ret = snprintf(buf, PAGE_SIZE, "slostms_times:0x%x!\n", slostms_times);
 
 	return ret;
 }
@@ -720,6 +738,7 @@ static ssize_t lostmstimes_show(struct class *class, struct class_attribute *att
 static ssize_t lostmstimes_store(struct class *class, struct class_attribute *attr,
 				 const char *buf, size_t size)
 {
+	// cppcheck-suppress *
 	if (sscanf(buf, "0x%x", &slostms_times) != 1)
 		return -EINVAL;
 

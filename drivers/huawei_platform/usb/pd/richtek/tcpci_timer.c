@@ -21,7 +21,9 @@
 #include <linux/kthread.h>
 #include <linux/hrtimer.h>
 #include <linux/version.h>
+#ifdef CONFIG_HUAWEI_DSM
 #include <dsm/dsm_pub.h>
+#endif
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 9, 0))
 #include <linux/sched/rt.h>
@@ -57,44 +59,75 @@
 #define TCPC_TIMER_EN_DBG(format, args...)
 #endif /* TCPC_TIMER_INFO_EN */
 
-static inline uint64_t rt_get_value(uint64_t *p)
+static inline uint64_t tcpc_get_timer_enable_mask(struct tcpc_device *tcpc)
 {
-	unsigned long flags;
 	uint64_t data;
+	unsigned long flags;
 
+	down(&tcpc->timer_enable_mask_lock);
 	raw_local_irq_save(flags);
-	data = *p;
+	data = tcpc->timer_enable_mask;
 	raw_local_irq_restore(flags);
+	up(&tcpc->timer_enable_mask_lock);
 	return data;
 }
 
-static inline void rt_set_value(uint64_t *p, uint64_t data)
+static inline void tcpc_reset_timer_enable_mask(struct tcpc_device *tcpc)
 {
 	unsigned long flags;
 
+	down(&tcpc->timer_enable_mask_lock);
 	raw_local_irq_save(flags);
-	*p = data;
+	tcpc->timer_enable_mask = 0;
 	raw_local_irq_restore(flags);
+	up(&tcpc->timer_enable_mask_lock);
 }
 
-static inline void rt_clear_bit(int nr, uint64_t *addr)
+static inline void tcpc_clear_timer_enable_mask(
+	struct tcpc_device *tcpc, int nr)
 {
-	uint64_t mask = ((uint64_t)1) << nr;
 	unsigned long flags;
 
+	down(&tcpc->timer_enable_mask_lock);
 	raw_local_irq_save(flags);
-	*addr &= ~mask;
+	tcpc->timer_enable_mask &= ~RT_MASK64(nr);
 	raw_local_irq_restore(flags);
+	up(&tcpc->timer_enable_mask_lock);
 }
 
-static inline void rt_set_bit(int nr, uint64_t *addr)
+static inline void tcpc_set_timer_enable_mask(
+	struct tcpc_device *tcpc, int nr)
 {
-	uint64_t mask = ((uint64_t)1) << nr;
 	unsigned long flags;
 
+	down(&tcpc->timer_enable_mask_lock);
 	raw_local_irq_save(flags);
-	*addr |= mask;
+	tcpc->timer_enable_mask |= RT_MASK64(nr);
 	raw_local_irq_restore(flags);
+	up(&tcpc->timer_enable_mask_lock);
+}
+static inline uint64_t tcpc_get_timer_tick(struct tcpc_device *tcpc)
+{
+	uint64_t data;
+	unsigned long flags;
+	spin_lock_irqsave(&tcpc->timer_tick_lock, flags);
+	data = tcpc->timer_tick;
+	spin_unlock_irqrestore(&tcpc->timer_tick_lock, flags);
+	return data;
+}
+static inline void tcpc_clear_timer_tick(struct tcpc_device *tcpc, int nr)
+{
+	unsigned long flags;
+	spin_lock_irqsave(&tcpc->timer_tick_lock, flags);
+	tcpc->timer_tick &= ~RT_MASK64(nr);
+	spin_unlock_irqrestore(&tcpc->timer_tick_lock, flags);
+}
+static inline void tcpc_set_timer_tick(struct tcpc_device *tcpc, int nr)
+{
+	unsigned long flags;
+	spin_lock_irqsave(&tcpc->timer_tick_lock, flags);
+	tcpc->timer_tick |= RT_MASK64(nr);
+	spin_unlock_irqrestore(&tcpc->timer_tick_lock, flags);
 }
 
 const char *tcpc_timer_name[] = {
@@ -215,7 +248,7 @@ static const uint32_t tcpc_timer_timeout[PD_TIMER_NR] = {
 	TIMEOUT_VAL(CONFIG_USB_PD_UVDM_TOUT),
 	TIMEOUT_VAL(30),		/* PD_TIMER_DFP_FLOW_DELAY */
 	TIMEOUT_VAL(300), 		/* PD_TIMER_UFP_FLOW_DELAY */
-	TIMEOUT_VAL_US(1000),   /* PD_PE_VDM_POSTPONE */
+	TIMEOUT_VAL_US(3000),   /* PD_PE_VDM_POSTPONE */
 
 	/* TYPEC-RT-TIMER */
 	TIMEOUT_VAL(1),				/* TYPEC_RT_TIMER_PE_IDLE */
@@ -340,9 +373,7 @@ static inline void on_pe_timer_timeout(
 
 #define TCPC_TIMER_TRIGGER()	do \
 {				\
-	spin_lock(&tcpc_dev->timer_tick_lock);			\
-	rt_set_bit(index, (uint64_t *)&tcpc_dev->timer_tick);	\
-	spin_unlock(&tcpc_dev->timer_tick_lock);				\
+	tcpc_set_timer_tick(tcpc_dev, index);	\
 	wake_up_interruptible(&tcpc_dev->timer_wait_que);	\
 } while (0)
 
@@ -872,16 +903,12 @@ static inline void tcpc_reset_timer_range(
 	int i;
 	uint64_t mask;
 
-	down(&tcpc->timer_enable_mask_lock);
-	mask = rt_get_value((uint64_t *)&tcpc->timer_enable_mask);
-	up(&tcpc->timer_enable_mask_lock);
+	mask = tcpc_get_timer_enable_mask(tcpc);
 
 	for (i = start; i <= end; i++) {
-		if (mask & (((uint64_t)1) << i)) {
+		if (mask & RT_MASK64(i)) {
 			hrtimer_try_to_cancel(&tcpc->tcpc_timer[i]);
-			down(&tcpc->timer_enable_mask_lock);
-			rt_clear_bit(i, (uint64_t *)&tcpc->timer_enable_mask);
-			up(&tcpc->timer_enable_mask_lock);
+			tcpc_clear_timer_enable_mask(tcpc, i);
 		}
 	}
 }
@@ -890,10 +917,8 @@ void tcpc_restart_timer(struct tcpc_device *tcpc, uint32_t timer_id)
 {
 	uint64_t mask;
 
-	down(&tcpc->timer_enable_mask_lock);
-	mask = rt_get_value((uint64_t *)&tcpc->timer_enable_mask);
-	up(&tcpc->timer_enable_mask_lock);
-	if (mask & (((uint64_t)1) << timer_id))
+	mask = tcpc_get_timer_enable_mask(tcpc);
+	if (mask & RT_MASK64(timer_id))
 		tcpc_disable_timer(tcpc, timer_id);
 	tcpc_enable_timer(tcpc, timer_id);
 }
@@ -907,15 +932,15 @@ void tcpc_enable_timer(struct tcpc_device *tcpc, uint32_t timer_id)
 	TCPC_TIMER_EN_DBG(tcpc, timer_id);
 	if(timer_id >= PD_TIMER_NR) {
 		snprintf(buf, sizeof(buf), "the timer_id %d is over PD_TIMER_NR\n", timer_id);
+#ifdef CONFIG_HUAWEI_DSM
 		rt_dsm_report(ERROR_RT_PD_TIMER_NR, buf);
+#endif
 	}
 	mutex_lock(&tcpc->timer_lock);
 	if (timer_id >= TYPEC_TIMER_START_ID)
 		tcpc_reset_timer_range(tcpc, TYPEC_TIMER_START_ID, PD_TIMER_NR);
 
-	down(&tcpc->timer_enable_mask_lock);
-	rt_set_bit(timer_id, (uint64_t *)&tcpc->timer_enable_mask);
-	up(&tcpc->timer_enable_mask_lock);
+	tcpc_set_timer_enable_mask(tcpc, timer_id);
 
 	tout = tcpc_timer_timeout[timer_id];
 
@@ -938,18 +963,17 @@ void tcpc_disable_timer(struct tcpc_device *tcpc_dev, uint32_t timer_id)
 	uint64_t mask;
 	char buf[1024] = { 0 };
 
-	down(&tcpc_dev->timer_enable_mask_lock);
-	mask = rt_get_value((uint64_t *)&tcpc_dev->timer_enable_mask);
-	up(&tcpc_dev->timer_enable_mask_lock);
+	mask = tcpc_get_timer_enable_mask(tcpc_dev);
 
 	if(timer_id >= PD_TIMER_NR) {
 		snprintf(buf, sizeof(buf), "the timer_id %d is over PD_TIMER_NR\n", timer_id);
+#ifdef CONFIG_HUAWEI_DSM
 		rt_dsm_report(ERROR_RT_PD_TIMER_NR, buf);
+#endif
 	}
-	if (mask&(((uint64_t)1)<<timer_id)) {
+	if (mask & RT_MASK64(timer_id)) {
 		hrtimer_try_to_cancel(&tcpc_dev->tcpc_timer[timer_id]);
-		rt_clear_bit(timer_id,
-			(uint64_t *)&tcpc_dev->timer_enable_mask);
+		tcpc_clear_timer_enable_mask(tcpc_dev, timer_id);
 	}
 }
 
@@ -958,13 +982,11 @@ void tcpc_timer_reset(struct tcpc_device *tcpc_dev)
 	uint64_t mask;
 	int i;
 
-	down(&tcpc_dev->timer_enable_mask_lock);
-	mask = rt_get_value((uint64_t *)&tcpc_dev->timer_enable_mask);
-	up(&tcpc_dev->timer_enable_mask_lock);
+	mask = tcpc_get_timer_enable_mask(tcpc_dev);
 	for (i = 0; i < PD_TIMER_NR; i++)
-		if (mask & (((uint64_t)1) << i))
+		if (mask & RT_MASK64(i))
 			hrtimer_try_to_cancel(&tcpc_dev->tcpc_timer[i]);
-	rt_set_value((uint64_t *)&tcpc_dev->timer_enable_mask, 0);
+	tcpc_reset_timer_enable_mask(tcpc_dev);
 }
 
 #ifdef CONFIG_USB_POWER_DELIVERY
@@ -996,18 +1018,14 @@ static void tcpc_handle_timer_triggered(struct tcpc_device *tcpc_dev)
 	uint64_t triggered_timer;
 	int i = 0;
 
-	spin_lock(&tcpc_dev->timer_tick_lock);
-	triggered_timer = rt_get_value((uint64_t *)&tcpc_dev->timer_tick);
-	spin_unlock(&tcpc_dev->timer_tick_lock);
+	triggered_timer = tcpc_get_timer_tick(tcpc_dev);
 
 #ifdef CONFIG_USB_POWER_DELIVERY
 	for (i = 0; i < PD_PE_TIMER_END_ID; i++) {
 		if (triggered_timer & RT_MASK64(i)) {
 			TCPC_TIMER_DBG(tcpc_dev, i);
 			on_pe_timer_timeout(tcpc_dev, i);
-			spin_lock(&tcpc_dev->timer_tick_lock);
-			rt_clear_bit(i, (uint64_t *)&tcpc_dev->timer_tick);
-			spin_unlock(&tcpc_dev->timer_tick_lock);
+			tcpc_clear_timer_tick(tcpc_dev, i);
 		}
 	}
 #endif /* CONFIG_USB_POWER_DELIVERY */
@@ -1017,9 +1035,7 @@ static void tcpc_handle_timer_triggered(struct tcpc_device *tcpc_dev)
 		if (triggered_timer & RT_MASK64(i)) {
 			TCPC_TIMER_DBG(tcpc_dev, i);
 			tcpc_typec_handle_timeout(tcpc_dev, i);
-			spin_lock(&tcpc_dev->timer_tick_lock);
-			rt_clear_bit(i, (uint64_t *)&tcpc_dev->timer_tick);
-			spin_unlock(&tcpc_dev->timer_tick_lock);
+			tcpc_clear_timer_tick(tcpc_dev, i);
 		}
 	}
 	mutex_unlock(&tcpc_dev->typec_lock);
@@ -1030,13 +1046,11 @@ static int tcpc_timer_thread(void *param)
 {
 	struct tcpc_device *tcpc_dev = param;
 
-	uint64_t *timer_tick;
+	volatile uint64_t *timer_tick;
 	struct sched_param sch_param = {.sched_priority = MAX_RT_PRIO - 1};
 
 
-	spin_lock(&tcpc_dev->timer_tick_lock);
 	timer_tick = &tcpc_dev->timer_tick;
-	spin_unlock(&tcpc_dev->timer_tick_lock);
 
 	sched_setscheduler(current, SCHED_FIFO, &sch_param);
 	while (true) {
@@ -1055,16 +1069,14 @@ static int tcpc_timer_thread(void *param)
 int tcpci_timer_init(struct tcpc_device *tcpc_dev)
 {
 	int i;
-	unsigned long flags;
 
 	pr_info("PD Timer number = %d\n", PD_TIMER_NR);
 	tcpc_dev->timer_task = kthread_create(tcpc_timer_thread, tcpc_dev,
 			"tcpc_timer_%s.%p", dev_name(&tcpc_dev->dev), tcpc_dev);
 	init_waitqueue_head(&tcpc_dev->timer_wait_que);
-	spin_lock_irqsave(&tcpc_dev->timer_tick_lock, flags);
+
 	tcpc_dev->timer_tick = 0;
-	spin_unlock_irqrestore(&tcpc_dev->timer_tick_lock, flags);
-	rt_set_value((uint64_t *)&tcpc_dev->timer_enable_mask, 0);
+	tcpc_dev->timer_enable_mask = 0;
 	wake_up_process(tcpc_dev->timer_task);
 	for (i = 0; i < PD_TIMER_NR; i++) {
 		hrtimer_init(&tcpc_dev->tcpc_timer[i],
@@ -1081,15 +1093,13 @@ int tcpci_timer_deinit(struct tcpc_device *tcpc_dev)
 	uint64_t mask;
 	int i;
 
-	down(&tcpc_dev->timer_enable_mask_lock);
-	mask = rt_get_value((uint64_t *)&tcpc_dev->timer_enable_mask);
-	up(&tcpc_dev->timer_enable_mask_lock);
+	mask = tcpc_get_timer_enable_mask(tcpc_dev);
 
 	mutex_lock(&tcpc_dev->timer_lock);
 	wake_up_interruptible(&tcpc_dev->timer_wait_que);
 	kthread_stop(tcpc_dev->timer_task);
 	for (i = 0; i < PD_TIMER_NR; i++) {
-		if (mask & (1 << i))
+		if (mask & RT_MASK64(i))
 			hrtimer_try_to_cancel(&tcpc_dev->tcpc_timer[i]);
 	}
 
