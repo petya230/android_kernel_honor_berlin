@@ -29,6 +29,7 @@
 #define FLP_IOCTL_TYPE_AR               (0x464C0010)
 #define FLP_IOCTL_TYPE_GEOFENCE         (0x464C0020)
 #define FLP_IOCTL_TYPE_BATCHING         (0x464C0030)
+#define FLP_IOCTL_TYPE_ENV		(0x464C0040)
 #define FLP_IOCTL_TYPE_COMMON           (0x464C00F0)
 
 #define FLP_IOCTL_PDR_START(x)          (0x464C0000 + ((x) * 0x100) + 1)
@@ -46,6 +47,16 @@
 #define FLP_IOCTL_AR_UPDATE(x)          (0x464C0000 + ((x) * 0x100) + 0x15)
 #define FLP_IOCTL_AR_FLUSH(x)           (0x464C0000 + ((x) * 0x100) + 0x16)
 #define FLP_IOCTL_AR_STATE(x)           (0x464C0000 + ((x) * 0x100) + 0x17)
+#define FLP_IOCTL_AR_CONFIG(x)           (0x464C0000 + ((x) * 0x100) + 0x18)
+#define FLP_IOCTL_AR_STATE_V2(x)           (0x464C0000 + ((x) * 0x100) + 0x1D)
+
+#define FLP_IOCTL_ENV_CONFIG(x)           (0x464C0000 + ((x) * 0x100) + 0x41)
+#define FLP_IOCTL_ENV_STOP(x)            (0x464C0000 + ((x) * 0x100) + 0x42)
+#define FLP_IOCTL_ENV_READ(x)            (0x464C0000 + ((x) * 0x100) + 0x43)
+#define FLP_IOCTL_ENV_FLUSH(x)           (0x464C0000 + ((x) * 0x100) + 0x46)
+#define FLP_IOCTL_ENV_STATE(x)           (0x464C0000 + ((x) * 0x100) + 0x47)
+#define FLP_IOCTL_ENV_INIT(x)		(0x464C0000 + ((x) * 0x100) + 0x48)
+#define FLP_IOCTL_ENV_EXIT(x)		(0x464C0000 + ((x) * 0x100) + 0x49)
 
 
 #define FLP_IOCTL_GEOFENCE_ADD                  (0x464C0000 + 0x21)
@@ -91,9 +102,21 @@ enum {
     AR_STATE_BUTT               = 0x40,
 };
 
+typedef enum ar_environment_type {
+	AR_ENVIRONMENT_HOME,
+	AR_ENVIRONMENT_OFFICE,
+	AR_ENVIRONMENT_STATION,
+	AR_ENVIRONMENT_TYPE_UNKNOWN,
+	AR_ENVIRONMENT_END =0x20
+} ar_environment_type_t;
+
+#define CONTEXT_TYPE_MAX (0x40)/*MAX(AR_STATE_BUTT, AR_ENVIRONMENT_END)*/
+
 enum {
-    AR_STATE_ENTER = 1,
-    AR_STATE_EXIT,
+	AR_STATE_ENTER = 1,
+	AR_STATE_EXIT,
+	AR_STATE_ENTER_EXIT = 3,
+	AR_STATE_MAX
 };
 
 enum {
@@ -142,6 +165,8 @@ typedef struct pdr_start_config {
 /********************************************
             define AR struct
 ********************************************/
+#define 	CONTEXT_PRIVATE_DATA_MAX (64)
+
 typedef struct ar_packet_header{
     unsigned char tag;
     unsigned char  cmd;
@@ -181,7 +206,60 @@ typedef struct ar_start_mcu_config {
     ar_activity_config_t    activity_list[AR_STATE_BUTT];
 } ar_start_mcu_config_t;
 
+typedef struct ar_context_cfg_header {
+	unsigned int	event_type;
+	unsigned int	context;
+	unsigned int	len;
+}__packed ar_context_cfg_header_t;
+/*KERNEL&HAL*/
 
+typedef struct context_config {
+	ar_context_cfg_header_t head;
+	char buf[CONTEXT_PRIVATE_DATA_MAX];
+} __packed context_config_t;
+
+typedef struct context_hal_config {
+	unsigned int	report_interval;
+	unsigned int	context_num;
+	context_config_t *context_addr;
+}__packed context_hal_config_t;
+
+/*KERNEL-->HUB*/
+typedef struct context_iomcu_cfg {
+	unsigned int report_interval;
+	unsigned int context_num;
+	context_config_t context_list[CONTEXT_TYPE_MAX];
+} context_iomcu_cfg_t;
+#define STATE_KERNEL_BUF_MAX	(1024)
+typedef struct context_dev_info {
+	unsigned int	usr_cnt;
+	unsigned int 	cfg_sz;
+	context_iomcu_cfg_t   cfg;
+	struct completion state_cplt;
+	unsigned int state_buf_len;
+	char state_buf[STATE_KERNEL_BUF_MAX];
+}context_dev_info_t;
+
+/*HUB-->KERNEL*/
+#define GET_STATE_NUM_MAX (5)
+typedef struct context_event {
+	unsigned int event_type;
+	unsigned int context;
+	unsigned long long msec;/*long long :keep some with iomcu*/
+	unsigned int buf_len;
+	char buf[0];
+} __packed context_event_t;
+
+typedef struct {
+	pkt_header_t pkt;
+	unsigned int context_num;
+	context_event_t context_event[0];
+} __packed ar_data_req_t;
+
+typedef struct {
+	unsigned int context_num;
+	context_event_t context_event[0];
+} __packed ar_state_t;
 /********************************************
       define Batching and Geofence struct
 ********************************************/
@@ -302,6 +380,7 @@ enum {
     FLP_GENL_CMD_GEOFENCE_MONITOR,
     FLP_GENL_CMD_GNSS_LOCATION,
     FLP_GENL_CMD_IOMCU_RESET,
+    FLP_GENL_CMD_ENV_DATA,
     __FLP_GENL_CMD_MAX,
 };
 #define FLP_GENL_CMD_MAX (__FLP_GENL_CMD_MAX - 1)

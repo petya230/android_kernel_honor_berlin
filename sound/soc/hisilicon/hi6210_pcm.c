@@ -81,7 +81,7 @@ __DRV_AUDIO_MAILBOX_WORK__   : leave mailbox's work to workqueue
 #include "hi6210_pcm.h"
 #include "hi6210_log.h"
 
-/*lint -e750 -e785 -e838 -e749 -e747 -e611*/
+/*lint -e750 -e785 -e838 -e749 -e747 -e611 -e570 -e647 -e574*/
 
 /*****************************************************************************
   2 macro define
@@ -464,11 +464,6 @@ static irq_rt_t hi6210_intr_handle(struct snd_pcm_substream *substream)
 		return IRQ_HDD_STATUS;
 	}
 
-	++prtd->period_cur;
-	prtd->period_cur = (prtd->period_cur) % num_period;
-
-	snd_pcm_period_elapsed(substream);
-
 	if (SNDRV_PCM_STREAM_CAPTURE == pcm_mode) {
 		avail = (snd_pcm_uframes_t)snd_pcm_capture_hw_avail(substream->runtime);
 	} else {
@@ -478,6 +473,11 @@ static irq_rt_t hi6210_intr_handle(struct snd_pcm_substream *substream)
 		logd("avail(%d)< rt_period_size(%d)\n", (int)avail, rt_period_size);
 		return IRQ_HDD_SIZE;
 	} else {
+		++prtd->period_cur;
+		prtd->period_cur = (prtd->period_cur) % num_period;
+
+		snd_pcm_period_elapsed(substream);
+
 		ret = hi6210_pcm_notify_set_buf(substream);
 		if(ret < 0) {
 			loge("hi6210_notify_pcm_set_buf(%d)\n", ret);
@@ -563,11 +563,15 @@ static int hi6210_mailbox_send_data(void *pmsg_body, unsigned int msg_len,
 		unsigned int msg_priority)
 {
 	unsigned int ret = 0;
+	static unsigned int err_count = 0;
 
 	ret = DRV_MAILBOX_SENDMAIL(MAILBOX_MAILCODE_ACPU_TO_HIFI_AUDIO, pmsg_body, msg_len);
 	if (MAILBOX_OK != ret) {
-		loge("Mailbox send mail failed,ret=%d\n", ret);
-		HiLOGE("audio", "Hi6210_pcm","Mailbox send mail failed,ret=%d\n", ret);
+		if (err_count % 50 == 0)
+			HiLOGE("audio", "Hi6210_pcm","mailbox ap to hifi fail,ret=%d, maybe ap is abnormal\n", ret);
+		err_count++;
+	} else {
+		err_count = 0;
 	}
 
 	return (int)ret;
@@ -697,7 +701,7 @@ static irq_rt_t hi6210_notify_recv_isr(void *usr_para, void *mail_handle, unsign
 			cur_time = (unsigned int)mailbox_get_timestamp();
 			delay_time = cur_time - pre_time;
 			if (delay_time > (HI6210_WORK_DELAY_1MS * 10)) {
-				logw("[%d]:recv pcm msg timeout! delayed %d slices, pre_time %d, pcm mode:%d\n",
+				logd("[%d]:recv pcm msg timeout! delayed %d slices, pre_time %d, pcm mode:%d\n",
 					mailbox_get_timestamp(), delay_time, pre_time, mail_buf.pcm_mode);
 			}
 
@@ -719,7 +723,7 @@ static irq_rt_t hi6210_notify_recv_isr(void *usr_para, void *mail_handle, unsign
 	cur_time = (unsigned int)mailbox_get_timestamp();
 	delay_time = cur_time - pre_time;
 	if (delay_time > (HI6210_WORK_DELAY_1MS * 20)) {
-		logw("[%d]:process pcm msg timeout! delayed %d slices, pre_time %d, pcm mode:%d\n",
+		logd("[%d]:process pcm msg timeout! delayed %d slices, pre_time %d, pcm mode:%d\n",
 			mailbox_get_timestamp(), delay_time, pre_time, mail_buf.pcm_mode);
 	}
 
@@ -1454,7 +1458,6 @@ static int  hi6210_platform_probe(struct platform_device *pdev)
 	return ret;
 
 probe_failed:
-
 	OUT_FUNCTION;
 	return ret;
 }

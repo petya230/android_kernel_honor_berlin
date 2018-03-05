@@ -54,7 +54,13 @@
 #define NETLINK_HW_NF   32
 #endif
 
+#ifdef CONFIG_HW_CPULOAD_NOTI
+#define NETLINK_HW_CPULOAD_NOTI 33
+#define MAX_LINKS 34
+#else
 #define MAX_LINKS 33
+#endif
+
 
 struct sockaddr_nl {
 	__kernel_sa_family_t	nl_family;	/* AF_NETLINK	*/
@@ -89,7 +95,7 @@ struct nlmsghdr {
 #define NLM_F_REPLACE	0x100	/* Override existing		*/
 #define NLM_F_EXCL	0x200	/* Do not touch, if it exists	*/
 #define NLM_F_CREATE	0x400	/* Create, if it does not exist	*/
-#define NLM_F_APPEND	0x800
+#define NLM_F_APPEND	0x800	/* Add to end of list		*/
 
 /*
    4.4BSD ADD		NLM_F_CREATE|NLM_F_EXCL

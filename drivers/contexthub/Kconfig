@@ -24,3 +24,6 @@ config CONTEXTHUB_PD
 	default n
 	help
 	Say yes here if you want to use contexthub pd function
+
+source "drivers/contexthub/flp/Kconfig"
+

@@ -273,47 +273,51 @@ extern "C" {
 	#define E902000000_CASENAME_VARCHAR 0
 	/* Error Level */
 	#define E902000000_RESULT_INT 1
-	/*  */
+	/* Actual Test Performance Value */
 	#define E902000000_TOTALTIMESPENT_INT 2
-	/*  */
+	/* Self Defined Argument 1 */
 	#define E902000000_ARG1_VARCHAR 3
-	/*  */
+	/* Self Defined Argument 1 */
 	#define E902000000_ARG2_INT 4
-	/*  */
+	/* Application Version */
 	#define E902000000_VERSION_VARCHAR 5
-	/*  */
+	/* CPU Load */
 	#define E902000000_CPULOAD_INT 6
-	/*  */
+	/* High CPU Load ( 1st) Process Name */
 	#define E902000000_CLTOP_PROC1_VARCHAR 7
-	/*  */
+	/* High CPU Load (1st) Process ID */
 	#define E902000000_CLPROC1_VAL_INT 8
-	/*  */
+	/* High CPU Load (2nd) Process Name */
 	#define E902000000_CLTOP_PROC2_VARCHAR 9
-	/*  */
+	/* High CPU Load (2nd) Process ID */
 	#define E902000000_CLPROC2_VAL_INT 10
-	/*  */
+	/* High CPU Load (3th) Process Name */
 	#define E902000000_CLTOP_PROC3_VARCHAR 11
-	/*  */
+	/* High CPU Load (3th) Process ID */
 	#define E902000000_CLPROC3_VAL_INT 12
-	/*  */
+	/* Free Available Memory */
 	#define E902000000_FREEMEM_INT 13
-	/*  */
+	/* Free Available Disk */
 	#define E902000000_FREEDISK_INT 14
-	/*  */
+	/* CPU Frequency Limit Flag */
 	#define E902000000_LIMIT_FREQ_INT 15
-	/*  */
+	/* Rooted Flag */
 	#define E902000000_BROOTED_INT 16
-	/*  */
+	/* Modem Log Enabled Flag */
 	#define E902000000_BMODEMLOGON_INT 17
-	/*  */
+	/* Serial Port Print Flag */
 	#define E902000000_BUARTENABL_INT 18
-	/*  */
+	/* Key Influence Item of Performance(Bitmap,0-5:Install
+		mobile security solution app from third vendor,Enable
+		Accessibility,Enable Touch Exploration,Enable
+		high text contrast,Enable Magnificationgestures,Enable
+		Color Correction) */
 	#define E902000000_NPERFBUGSETTINGS_INT 19
-	/*  */
+	/* Used for iAware */
 	#define E902000000_IAWARE_INT 20
-	/*  */
+	/* Reserve Argument 1 */
 	#define E902000000_NRESERVE1_INT 21
-	/*  */
+	/* Reserve Argument 2 */
 	#define E902000000_STRRESERVE2_VARCHAR 22
 
 	/* Event 902000001
