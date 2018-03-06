@@ -499,6 +499,49 @@ put_clusters:
 	return ret;
 }
 
+#ifdef CONFIG_ARCH_HISI
+/* set suspend frequency during suspend */
+static int bL_cpufreq_suspend(struct cpufreq_policy *policy)
+{
+	int ret;
+
+	if (!policy->suspend_freq) {
+		pr_debug("%s: suspend_freq not defined\n", __func__);
+		return 0;
+	}
+
+	pr_debug("%s: Setting suspend-freq: %u\n", __func__,
+			policy->suspend_freq);
+
+	ret = __cpufreq_driver_target(policy, policy->suspend_freq,
+			CPUFREQ_RELATION_H);
+	if (ret)
+		pr_err("%s: unable to set suspend-freq: %u. err: %d\n",
+				__func__, policy->suspend_freq, ret);
+
+	return ret;
+}
+
+static unsigned int bL_cpufreq_get_suspend_freq(unsigned int cluster)
+{
+	struct device_node *np;
+	unsigned int value;
+	int ret;
+
+	np = of_find_compatible_node(NULL, NULL, "hisi,suspend-freq");
+	if (!np)
+		return 0;
+
+	ret = of_property_read_u32_index(np, "suspend_freq", cluster, &value);
+	if (ret)
+		value = 0;
+
+	of_node_put(np);
+
+	return value;
+}
+#endif
+
 /* Per-CPU initialization */
 static int bL_cpufreq_init(struct cpufreq_policy *policy)
 {
@@ -524,6 +567,10 @@ static int bL_cpufreq_init(struct cpufreq_policy *policy)
 		put_cluster_clk_and_freq_table(cpu_dev);
 		return ret;
 	}
+
+#ifdef CONFIG_ARCH_HISI
+	policy->suspend_freq = bL_cpufreq_get_suspend_freq(cur_cluster);
+#endif
 
 	if (cur_cluster < MAX_CLUSTERS) {
 		int cpu;
@@ -581,6 +628,9 @@ static struct cpufreq_driver bL_cpufreq_driver = {
 	.init			= bL_cpufreq_init,
 	.exit			= bL_cpufreq_exit,
 	.attr			= cpufreq_generic_attr,
+#ifdef CONFIG_ARCH_HISI
+	.suspend		= bL_cpufreq_suspend,
+#endif
 };
 
 #ifdef CONFIG_BL_SWITCHER

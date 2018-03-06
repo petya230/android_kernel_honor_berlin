@@ -51,6 +51,11 @@ struct sched_param {
 #include <linux/resource.h>
 #include <linux/timer.h>
 #include <linux/hrtimer.h>
+
+#ifdef CONFIG_KCOV
+#include <linux/kcov.h>
+#endif
+
 #include <linux/task_io_accounting.h>
 #include <linux/latencytop.h>
 #include <linux/cred.h>
@@ -1521,9 +1526,6 @@ struct task_struct {
 #endif
 
 	struct mm_struct *mm, *active_mm;
-#ifdef CONFIG_COMPAT_BRK
-	unsigned brk_randomized:1;
-#endif
 	/* per-thread vma caching */
 	u32 vmacache_seqnum;
 	struct vm_area_struct *vmacache[VMACACHE_SIZE];
@@ -1546,9 +1548,17 @@ struct task_struct {
 	/* Revert to default priority/policy when forking */
 	unsigned sched_reset_on_fork:1;
 	unsigned sched_contributes_to_load:1;
+	unsigned sched_migrated:1;
+	unsigned sched_remote_wakeup:1;
 
+#ifdef CONFIG_MEMCG
+	unsigned memcg_may_oom:1;
+#endif
 #ifdef CONFIG_MEMCG_KMEM
 	unsigned memcg_kmem_skip_account:1;
+#endif
+#ifdef CONFIG_COMPAT_BRK
+	unsigned brk_randomized:1;
 #endif
 
 	unsigned long atomic_flags; /* Flags needing atomic access. */
@@ -1714,6 +1724,9 @@ struct task_struct {
 	struct held_lock held_locks[MAX_LOCK_DEPTH];
 	gfp_t lockdep_reclaim_gfp;
 #endif
+#ifdef CONFIG_UBSAN
+	unsigned int in_ubsan;
+#endif
 
 /* journalling filesystem info */
 	void *journal_info;
@@ -1747,6 +1760,11 @@ struct task_struct {
 	int cpuset_mem_spread_rotor;
 	int cpuset_slab_spread_rotor;
 #endif
+
+#ifdef CONFIG_HUAWEI_IO_MONITOR
+    int  user_group;
+#endif
+
 #ifdef CONFIG_CGROUPS
 	/* Control Group info protected by css_set_lock */
 	struct css_set __rcu *cgroups;
@@ -1878,13 +1896,20 @@ struct task_struct {
 	/* bitmask and counter of trace recursion */
 	unsigned long trace_recursion;
 #endif /* CONFIG_TRACING */
+#ifdef CONFIG_KCOV
+	/* Coverage collection mode enabled for this task (0 if disabled). */
+	enum kcov_mode kcov_mode;
+	/* Size of the kcov_area. */
+	unsigned kcov_size;
+	/* Buffer for coverage collection. */
+	void *kcov_area;
+	/* kcov desciptor wired with this task or NULL. */
+	struct kcov *kcov;
+#endif
 #ifdef CONFIG_MEMCG
-	struct memcg_oom_info {
-		struct mem_cgroup *memcg;
-		gfp_t gfp_mask;
-		int order;
-		unsigned int may_oom:1;
-	} memcg_oom;
+	struct mem_cgroup *memcg_in_oom;
+	gfp_t memcg_oom_gfp_mask;
+	int memcg_oom_order;
 #endif
 #ifdef CONFIG_UPROBES
 	struct uprobe_task *utask;
@@ -1903,6 +1928,29 @@ struct task_struct {
 	struct reclaim_result *proc_reclaimed_result;
 #endif
 };
+
+#ifdef CONFIG_HUAWEI_IO_MONITOR 
+enum process_group_hw
+{
+    process_root_group = 0,
+    process_ta_group  = 1,
+    process_fg_group = 2,
+    process_sbg_group = 3,
+    process_kbg_group = 4,
+    process_bg_group = 5,
+    process_max_ngroup = 6,
+};
+static inline int adjust_process_group(struct task_struct *tsk)
+{
+    return tsk->user_group;
+}
+#else
+static inline int adjust_process_group(struct task_struct *tsk)
+{
+    return 0;
+}
+#endif
+
 
 /* Future-safe accessor for struct task_struct's cpus_allowed. */
 #define tsk_cpus_allowed(tsk) (&(tsk)->cpus_allowed)

@@ -34,11 +34,16 @@ struct seq_file;
 
 /* define the enumeration of all cgroup subsystems */
 #define SUBSYS(_x) _x ## _cgrp_id,
+#define SUBSYS_TAG(_t) CGROUP_ ## _t, \
+	__unused_tag_ ## _t = CGROUP_ ## _t - 1,
 enum cgroup_subsys_id {
 #include <linux/cgroup_subsys.h>
 	CGROUP_SUBSYS_COUNT,
 };
+#undef SUBSYS_TAG
 #undef SUBSYS
+
+#define CGROUP_CANFORK_COUNT (CGROUP_CANFORK_END - CGROUP_CANFORK_START)
 
 /* bits in struct cgroup_subsys_state flags field */
 enum {
@@ -61,7 +66,6 @@ enum {
 
 /* cgroup_root->flags */
 enum {
-	CGRP_ROOT_SANE_BEHAVIOR	= (1 << 0), /* __DEVEL__sane_behavior specified */
 	CGRP_ROOT_NOPREFIX	= (1 << 1), /* mounted subsystems have no named prefix */
 	CGRP_ROOT_XATTR		= (1 << 2), /* supports extended attributes */
 	CGRP_ROOT_CPUSET_NOPREFIX	= (1 << 3), /* only cpuset have no named prefix */
@@ -219,10 +223,10 @@ struct cgroup {
 	int id;
 
 	/*
-	 * If this cgroup contains any tasks, it contributes one to
-	 * populated_cnt.  All children with non-zero popuplated_cnt of
-	 * their own contribute one.  The count is zero iff there's no task
-	 * in this cgroup or its subtree.
+	 * Each non-empty css_set associated with this cgroup contributes
+	 * one to populated_cnt.  All children with non-zero popuplated_cnt
+	 * of their own contribute one.  The count is zero iff there's no
+	 * task in this cgroup or its subtree.
 	 */
 	int populated_cnt;
 
@@ -414,13 +418,14 @@ struct cgroup_subsys {
 			      struct cgroup_taskset *tset);
 	void (*attach)(struct cgroup_subsys_state *css,
 		       struct cgroup_taskset *tset);
-	void (*fork)(struct task_struct *task);
+	int (*can_fork)(struct task_struct *task, void **priv_p);
+	void (*cancel_fork)(struct task_struct *task, void *priv);
+	void (*fork)(struct task_struct *task, void *priv);
 	void (*exit)(struct cgroup_subsys_state *css,
 		     struct cgroup_subsys_state *old_css,
 		     struct task_struct *task);
 	void (*bind)(struct cgroup_subsys_state *root_css);
 
-	int disabled;
 	int early_init;
 
 	/*
@@ -441,6 +446,9 @@ struct cgroup_subsys {
 	/* the following two fields are initialized automtically during boot */
 	int id;
 	const char *name;
+
+	/* optional, initialized automatically during boot if not set */
+	const char *legacy_name;
 
 	/* link to parent, protected by cgroup_lock() */
 	struct cgroup_root *root;
@@ -476,6 +484,7 @@ void cgroup_threadgroup_change_end(struct task_struct *tsk);
 
 #else	/* CONFIG_CGROUPS */
 
+#define CGROUP_CANFORK_COUNT 0
 #define CGROUP_SUBSYS_COUNT 0
 
 static inline void cgroup_threadgroup_change_begin(struct task_struct *tsk) {}

@@ -711,7 +711,7 @@ static int wifipro_tcp_monitor_send_msg(int pid, unsigned int msg_from,
 
 end:
 	mutex_unlock(&wifipro_nl_send_sem);
-	if (wifipro_log_level >= WIFIPRO_DEBUG && ret != -1) {
+	/*if (wifipro_log_level >= WIFIPRO_DEBUG && ret != -1) {
 		char printk_buf[WIFIPRO_PRINT_BUF_SIZE];
 		int buf_len = 0;
 		buf_len +=
@@ -733,7 +733,7 @@ end:
 		    snprintf(printk_buf + buf_len, sizeof(printk_buf) - buf_len,
 			     "\n@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n\n");
 		printk("%s", printk_buf);
-	}
+	}*/
 	return ret;
 }
 
@@ -773,27 +773,33 @@ static int wifipro_notify_rtt_msg(int pid, unsigned int msg_from)
 	packet->msg_from = msg_from;
 	switch (msg_from) {
 	case WIFIPRO_NOTIFY_WLAN_BQE_RTT:
-		packet->rtt =
-		    (wlan_bqe_rtt_stat.rtt / wlan_bqe_rtt_stat.packets) *
-		    WIFIPRO_TICK_TO_MS;
+		if (wlan_bqe_rtt_stat.packets != 0) {
+		    packet->rtt =
+		        (wlan_bqe_rtt_stat.rtt / wlan_bqe_rtt_stat.packets) *
+		        WIFIPRO_TICK_TO_MS;
+		}
 		packet->rtt_pkts = wlan_bqe_rtt_stat.packets;
 		packet->rtt_when =
 		    (jiffies - wlan_bqe_rtt_stat.last_update) / HZ;
 		break;
 
 	case WIFIPRO_NOTIFY_MOBILE_BQE_RTT:
-		packet->rtt =
-		    (mobile_bqe_rtt_stat.rtt / mobile_bqe_rtt_stat.packets) *
-		    WIFIPRO_TICK_TO_MS;
+		if(mobile_bqe_rtt_stat.packets != 0) {
+		    packet->rtt =
+		        (mobile_bqe_rtt_stat.rtt / mobile_bqe_rtt_stat.packets) *
+		        WIFIPRO_TICK_TO_MS;
+		}
 		packet->rtt_pkts = mobile_bqe_rtt_stat.packets;
 		packet->rtt_when =
 		    (jiffies - mobile_bqe_rtt_stat.last_update) / HZ;
 		break;
 
 	case WIFIPRO_NOTIFY_WLAN_SAMPLE_RTT:
-		packet->rtt =
-		    (wlan_sample_rtt_stat.rtt / wlan_sample_rtt_stat.packets) *
-		    WIFIPRO_TICK_TO_MS;
+		if(wlan_sample_rtt_stat.packets != 0) {
+		    packet->rtt =
+		        (wlan_sample_rtt_stat.rtt / wlan_sample_rtt_stat.packets) *
+		        WIFIPRO_TICK_TO_MS;
+		}
 		packet->rtt_pkts = wlan_sample_rtt_stat.packets;
 		packet->rtt_when =
 		    (jiffies - wlan_sample_rtt_stat.last_update) / HZ;
@@ -810,7 +816,7 @@ static int wifipro_notify_rtt_msg(int pid, unsigned int msg_from)
 
 end:
 	mutex_unlock(&wifipro_nl_send_sem);
-	if (wifipro_log_level >= WIFIPRO_DEBUG && ret != -1) {
+	/*if (wifipro_log_level >= WIFIPRO_DEBUG && ret != -1) {
 		char printk_buf[WIFIPRO_PRINT_BUF_SIZE];
 		int buf_len = 0;
 		buf_len +=
@@ -828,7 +834,7 @@ end:
 		    snprintf(printk_buf + buf_len, sizeof(printk_buf) - buf_len,
 			     "\n@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n\n");
 		printk("%s", printk_buf);
-	}
+	}*/
 	return ret;
 }
 
@@ -1126,7 +1132,7 @@ void wifipro_handle_congestion(struct sock *sk, u8 ca_state)
 
 	case TCP_CA_Disorder:
 		dst = wifipro_congestion_stat + TCP_CA_Disorder;
-		if (wifipro_log_level >= WIFIPRO_DEBUG) {
+		/*if (wifipro_log_level >= WIFIPRO_DEBUG) {
 			char printk_buf[WIFIPRO_PRINT_BUF_SIZE];
 			int buf_len = 0;
 			buf_len +=
@@ -1145,14 +1151,14 @@ void wifipro_handle_congestion(struct sock *sk, u8 ca_state)
 				     sizeof(printk_buf) - buf_len,
 				     "\n*********************************************************************\n");
 			printk("%s", printk_buf);
-		}
+		}*/
 		wifipro_set_cong_stat(dest_addr, dest_port,
 				      wifipro_congestion_stat, TCP_CA_Disorder);
 		break;
 
 	case TCP_CA_CWR:
 		dst = wifipro_congestion_stat + TCP_CA_CWR;
-		if (wifipro_log_level >= WIFIPRO_DEBUG) {
+		/*if (wifipro_log_level >= WIFIPRO_DEBUG) {
 			char printk_buf[WIFIPRO_PRINT_BUF_SIZE];
 			int buf_len = 0;
 			buf_len +=
@@ -1171,14 +1177,14 @@ void wifipro_handle_congestion(struct sock *sk, u8 ca_state)
 				     sizeof(printk_buf) - buf_len,
 				     "\n*********************************************************************\n");
 			printk("%s", printk_buf);
-		}
+		}*/
 		wifipro_set_cong_stat(dest_addr, dest_port,
 				      wifipro_congestion_stat, TCP_CA_CWR);
 		break;
 
 	case TCP_CA_Recovery:
 		dst = wifipro_congestion_stat + TCP_CA_Recovery;
-		if (wifipro_log_level >= WIFIPRO_DEBUG) {
+		/*if (wifipro_log_level >= WIFIPRO_DEBUG) {
 			char printk_buf[WIFIPRO_PRINT_BUF_SIZE];
 			int buf_len = 0;
 			buf_len +=
@@ -1197,7 +1203,7 @@ void wifipro_handle_congestion(struct sock *sk, u8 ca_state)
 				     sizeof(printk_buf) - buf_len,
 				     "\n*********************************************************************\n");
 			printk("%s", printk_buf);
-		}
+		}*/
 		wifipro_set_cong_stat(dest_addr, dest_port,
 				      wifipro_congestion_stat, TCP_CA_Recovery);
 		break;

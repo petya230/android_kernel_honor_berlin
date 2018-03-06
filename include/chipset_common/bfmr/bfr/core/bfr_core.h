@@ -79,7 +79,10 @@ typedef enum bfr_recovery_method
     /* download the latest OTA full package to do recovery */
     FRM_GOTO_ERECOVERY_DOWNLOAD_RECOVERY,
 
-    
+    /*
+    * download the latest OTA full package to do recovery
+    * and in the end delete the key files in data partition
+    */
     FRM_GOTO_ERECOVERY_DOWNLOAD_RECOVERY_AND_DEL_FILES,
 
     /*

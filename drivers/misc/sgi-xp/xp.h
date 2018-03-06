@@ -99,7 +99,11 @@
 				      is_uv() ? 64 : 128)
 
 
-
+/*
+ * Define the return values and values passed to user's callout functions.
+ * (It is important to add new value codes at the end just preceding
+ * xpUnknownReason, which must have the highest numerical value.)
+ */
 enum xp_retval {
 	xpSuccess = 0,
 

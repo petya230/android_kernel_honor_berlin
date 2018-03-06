@@ -12,6 +12,7 @@
 #include <uapi/linux/netlink.h>
 #include <linux/kthread.h>
 #include <linux/string.h>
+#include <linux/proc_fs.h>
 #include <net/tcp.h>
 
 #include "wifi_tcp_statistics.h"
