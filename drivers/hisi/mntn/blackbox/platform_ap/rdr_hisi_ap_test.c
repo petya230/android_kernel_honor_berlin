@@ -180,18 +180,18 @@ void ap_exch_hex_dump(unsigned char *buf, unsigned int size,
 #define TO_CHAR(a)      (((a) > 9) ? ((a) - 10 + 'A') : ((a) + '0'))
 #define IS_PRINTABLE(a) ((a) > 31 && (a) < 127)
 
-	for (row = 0; left; row++) {
+	for (row = 0; left; row++) {/*lint !e440 */
 		(void)memset(line, ' ', sizeof(line));
 
 		for (i = 0; (i < per_row) && left; i++, left--, buf++) {
 			unsigned char val = *buf;
 
 			/* The HEX value */
-			line[(i * 3)] = TO_CHAR(val >> 4);
-			line[(i * 3) + 1] = TO_CHAR(val & 0x0F);
+			line[(i * 3)] = TO_CHAR(val >> 4); /*lint !e679*/
+			line[(i * 3) + 1] = TO_CHAR(val & 0x0F); /*lint !e679*/
 
 			/* 若为可显示ASCII字符，则打印该字符，否则打印"." */
-			line[(per_row * 3) + 2 + i] =
+			line[(per_row * 3) + 2 + i] = /*lint !e679*/
 			    IS_PRINTABLE(val) ? val : '.';
 		}
 
@@ -216,7 +216,7 @@ typedef void (*FUNC_VOID) (void);
 int ap_exchUNDEF(void *arg)
 {
 	int b = 0;
-	FUNC_VOID a = (FUNC_VOID) (&b);
+	FUNC_VOID a = (FUNC_VOID) (&b); /*lint !e611*/
 	b = 0x12345678;
 	a();
 	return 0;

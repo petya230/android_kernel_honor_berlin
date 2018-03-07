@@ -34,6 +34,7 @@
 #include <linux/uaccess.h>
 #include <linux/wakelock.h>
 #include <linux/of_irq.h>
+#include <linux/version.h>
 #include "rdr_print.h"
 #include "rdr_inner.h"
 #include "rdr_field.h"
@@ -44,14 +45,13 @@
 #include "hifi_lpp.h"
 #include <dsm/dsm_pub.h>
 
-
-/*lint -e750 -e838*/
+/*lint -e750 -e838 -e730 -e715*/
 #define RDR_HIFI_DUMP_ADDR				(HIFI_DUMP_BIN_ADDR)
 #define RDR_HIFI_DUMP_SIZE				(HIFI_DUMP_BIN_SIZE)
-#define RDR_COMMENT_LEN					(128)
+#define RDR_COMMENT_LEN					(128UL)
 
 #define HIFI_BSS_SEC					(2)
-#define SOC_WDT_TIMEOUT_IRQ_NUM			(245)
+#define SOC_WDT_TIMEOUT_IRQ_NUM			(245U)
 #define OM_SOC_LOG_PATH					"sochifi_logs"
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 13, 0))
@@ -76,11 +76,11 @@
 #define CFG_DSP_NMI                     (0x3C)               /*DSP NMI ,bit0-bit15*/
 #define CFG_MMBUF_REMAP_EN              (0x130)              /*mmbuf remap enable，9bit*/
 #define CFG_OCRAM_REMAP_EN              (0x13C)              /*ocram remap enable，9bit*/
-#define ASP_CFG_BASE                    (0xE804E000)
+#define ASP_CFG_BASE                    (0xE804E000UL)
 
 struct rdr_soc_des_s {
 	uint32_t modid;
-	int32_t wdt_irq_num;
+	uint32_t wdt_irq_num;
 	char *pathname;
 	uint32_t *control_addr;
 	uint32_t *lock_addr;
@@ -101,13 +101,13 @@ static void hisi_rdr_nmi_notify_hifi(void)
 	unsigned int value;
 	void __iomem *rdr_aspcfg_base = NULL;
 
-	rdr_aspcfg_base = ioremap(ASP_CFG_BASE, SZ_4K);
+	rdr_aspcfg_base = ioremap(ASP_CFG_BASE, (unsigned long)SZ_4K);
 	if (!rdr_aspcfg_base) {
 		BB_PRINT_ERR("%s():rdr_aspcfg_base ioremap error\n", __func__);
 		return;
 	}
 
-	value = readl(rdr_aspcfg_base + CFG_DSP_NMI);
+	value = (unsigned int)readl(rdr_aspcfg_base + CFG_DSP_NMI);
 	value &= ~(0x1 << 0);
 	writel(value, (rdr_aspcfg_base + CFG_DSP_NMI));
 
@@ -118,14 +118,15 @@ static void hisi_rdr_nmi_notify_hifi(void)
 	rdr_aspcfg_base = NULL;
 
 	BB_PRINT_PN("%s\n", __func__);
-	return;
-}
+	return;/*lint !e438*/
+}/*lint !e550*/
+
 
 static void hisi_rdr_remap_init(void)
 {
 	void __iomem *rdr_aspcfg_base = NULL;
 
-	rdr_aspcfg_base = ioremap(ASP_CFG_BASE, SZ_4K);
+	rdr_aspcfg_base = ioremap(ASP_CFG_BASE, (unsigned long)SZ_4K);
 	if (!rdr_aspcfg_base) {
 		BB_PRINT_ERR("%s():rdr_aspcfg_base ioremap error\n", __func__);
 		return;
@@ -137,7 +138,7 @@ static void hisi_rdr_remap_init(void)
 	if (readl(rdr_aspcfg_base + CFG_OCRAM_REMAP_EN) & (0x1<<9))
 		writel(0x0, (rdr_aspcfg_base + CFG_OCRAM_REMAP_EN));
 
-	iounmap(rdr_aspcfg_base);
+	iounmap(rdr_aspcfg_base);/*lint !e548*/
 	rdr_aspcfg_base = NULL;
 
 	BB_PRINT_PN("%s\n", __func__);
@@ -147,10 +148,10 @@ static void hisi_rdr_remap_init(void)
 static bool is_dsp_power_on(void)
 {
 	unsigned int *power_status_addr = NULL;
-	unsigned int power_status = 0;
+	int power_status = 0;
 	bool is_power_on = false;
 
-	power_status_addr = (unsigned int *)ioremap_wc(DRV_DSP_POWER_STATUS_ADDR, 0x4);
+	power_status_addr = (unsigned int *)ioremap_wc(DRV_DSP_POWER_STATUS_ADDR, (unsigned long)0x4);
 	if (NULL == power_status_addr) {
 		BB_PRINT_ERR("%s():DRV_DSP_POWER_STATUS_ADDR ioremap failed\n", __func__);
 		return false;
@@ -175,13 +176,13 @@ static bool is_nmi_complete(void)
 	unsigned int *nmi_flag_addr = NULL;
 	bool is_complete = false;
 
-	nmi_flag_addr = (unsigned int *)ioremap_wc(DRV_DSP_NMI_FLAG_ADDR, 0x4);
+	nmi_flag_addr = (unsigned int *)ioremap_wc(DRV_DSP_NMI_FLAG_ADDR, 0x4ul);
 	if (NULL == nmi_flag_addr) {
 		BB_PRINT_ERR("%s():DRV_DSP_NMI_FLAG_ADDR ioremap failed\n", __func__);
 		return false;
 	}
 
-	if (DRV_DSP_NMI_COMPLETE == readl(nmi_flag_addr))
+	if ((unsigned int)DRV_DSP_NMI_COMPLETE == (unsigned int)readl(nmi_flag_addr))
 		is_complete = true;
 	else
 		is_complete = false;
@@ -240,7 +241,7 @@ static int dump_hifi_ddr(char *filepath)
 	memcpy(full_text, comment, RDR_COMMENT_LEN);
 	memcpy(full_text + RDR_COMMENT_LEN, buf, RDR_HIFI_DUMP_SIZE);
 
-	ret = rdr_audio_write_file(xn, full_text, RDR_HIFI_DUMP_SIZE + RDR_COMMENT_LEN);
+	ret = rdr_audio_write_file(xn, full_text, RDR_HIFI_DUMP_SIZE + RDR_COMMENT_LEN);/*lint !e747*/
 	if (ret)
 		BB_PRINT_ERR("rdr:dump %s fail\n", xn);
 
@@ -357,15 +358,15 @@ static int reset_hifi_sec(void)
 	struct drv_hifi_sec_ddr_head *head;
 	char *sec_head = NULL;
 	char *sec_addr = NULL;
-	int i;
+	unsigned int i;
 	int ret = 0;
 
-	sec_head = (char *)ioremap_wc(HIFI_SEC_HEAD_BACKUP, HIFI_SEC_HEAD_SIZE);
+	sec_head = (char *)ioremap_wc(HIFI_SEC_HEAD_BACKUP, (unsigned long)HIFI_SEC_HEAD_SIZE);
 	if (!sec_head) {
 		ret = -ENOMEM;
 		goto error;
 	}
-	head = (struct drv_hifi_sec_ddr_head *)sec_head;
+	head = (struct drv_hifi_sec_ddr_head *)sec_head;/*lint !e826*/
 
 	BB_PRINT_PN("sections_num = 0x%x\n", head->sections_num);
 
@@ -377,14 +378,14 @@ static int reset_hifi_sec(void)
 					head->sections[i].src_addr,
 					head->sections[i].des_addr,
 					head->sections[i].size);
-			sec_addr = (char *)ioremap_wc(head->sections[i].des_addr,
-							head->sections[i].size);
+			sec_addr = (char *)ioremap_wc((phys_addr_t)head->sections[i].des_addr,
+							(unsigned long)head->sections[i].size);
 			if (NULL == sec_addr) {
 				ret = -ENOMEM;
 				goto error1;
 			}
 
-			memset(sec_addr, 0x0, head->sections[i].size);
+			memset(sec_addr, 0x0, (unsigned long)head->sections[i].size);
 			iounmap(sec_addr);
 			sec_addr = NULL;
 		}
@@ -418,7 +419,7 @@ static int dump_thread(void *arg)
 
 		if (soc_des.dumpdone_cb) {
 			BB_PRINT_DBG("begin dump soc hifi done callback, modid: 0x%x\n", soc_des.modid);
-			soc_des.dumpdone_cb(soc_des.modid, RDR_HIFI);
+			soc_des.dumpdone_cb(soc_des.modid, (unsigned long long)RDR_HIFI);
 			BB_PRINT_DBG("end dump soc hifi done callback\n");
 		}
 	}
@@ -483,13 +484,13 @@ void rdr_audio_soc_dump(u32 modid, char *pathname, pfn_cb_dump_done pfb)
 	return;
 }
 
-static int hisi_rdr_ipc_notify_lpm3(u32 *msg, unsigned long len)
+static int hisi_rdr_ipc_notify_lpm3(u32 *msg, int len)
 {
 	int ret = 0;
-	unsigned long i;
+	int i;
 
 	for (i = 0; i < len; i++)
-		BB_PRINT_PN("rdr:[ap2lpm3 notifiy] msg[%lu] = 0x%x\n", i, msg[i]);
+		BB_PRINT_PN("rdr:[ap2lpm3 notifiy] msg[%d] = 0x%x\n", i, msg[i]);
 
 	ret = RPROC_ASYNC_SEND(HISI_RPROC_LPM3_MBX17, msg, len);
 	if (ret)
@@ -508,7 +509,7 @@ static int reset_hifi(void)
 	BB_PRINT_START();
 
 
-	hifi_power_status_addr = ioremap_wc(DRV_DSP_POWER_STATUS_ADDR, 0x4);
+	hifi_power_status_addr = ioremap_wc(DRV_DSP_POWER_STATUS_ADDR, (unsigned long)0x4);
 	if (NULL == hifi_power_status_addr) {
 		BB_PRINT_ERR("%s():DRV_DSP_POWER_STATUS_ADDR ioremap failed\n", __func__);
 	} else {
@@ -524,7 +525,6 @@ static int reset_hifi(void)
 	BB_PRINT_END();
 
 	return ret;
-
 }
 
 /*Link used for hifi reset*/
@@ -602,7 +602,7 @@ struct sreset_mgr_lli *reset_do_regcbfunc(struct sreset_mgr_lli *plink, const ch
 	if (NULL != pmgr_unit) {
 		memset((void *)pmgr_unit, 0, (sizeof(*pmgr_unit)));
 		/*赋值*/
-		strncpy(pmgr_unit->cbfuninfo.name, pname, DRV_MODULE_NAME_LEN);
+		strncpy(pmgr_unit->cbfuninfo.name, pname, (unsigned long)DRV_MODULE_NAME_LEN);
 		pmgr_unit->cbfuninfo.priolevel = priolevel;
 		pmgr_unit->cbfuninfo.userdata = userdata;
 		pmgr_unit->cbfuninfo.cbfun = pcbfun;
@@ -657,7 +657,7 @@ int hifireset_doruncbfun(const char *pname, enum DRV_RESET_CALLCBFUN_MOMENT epar
 	BUG_ON(NULL == pname);
 
 	/*不判断模块名字,按顺序执行*/
-	if (strcmp(pname, RESET_CBFUN_IGNORE_NAME) == 0) {
+	if (strncmp(pname, RESET_CBFUN_IGNORE_NAME, strlen(RESET_CBFUN_IGNORE_NAME)) == 0) {
 		while (NULL != phead) {
 			if (NULL != phead->cbfuninfo.cbfun) {
 				iresult = phead->cbfuninfo.cbfun(eparam, phead->cbfuninfo.userdata);
@@ -674,7 +674,7 @@ int hifireset_doruncbfun(const char *pname, enum DRV_RESET_CALLCBFUN_MOMENT epar
 	} else {
 	/*需要判断模块名字，执行指定的回调函数*/
 		while (NULL != phead) {
-			if (strcmp(pname, phead->cbfuninfo.name) == 0
+			if (strncmp(pname, phead->cbfuninfo.name, strlen(phead->cbfuninfo.name)) == 0
 				&& NULL != phead->cbfuninfo.cbfun) {
 				iresult  = phead->cbfuninfo.cbfun(eparam, phead->cbfuninfo.userdata);
 				BB_PRINT_PN("run %s cb function 0x%pK\n", phead->cbfuninfo.name, phead->cbfuninfo.cbfun);
@@ -737,7 +737,7 @@ void rdr_audio_soc_reset(u32 modid, u32 etype, u64 coreid)
 
 	ret = reset_hifi();
 	if (ret) {
-		wake_unlock(&soc_des.rdr_wl);
+		wake_unlock(&soc_des.rdr_wl);/*lint !e455*/
 		BB_PRINT_ERR("rdr:%s():reset hifi error\n", __func__);
 		return;
 	}
@@ -746,7 +746,7 @@ void rdr_audio_soc_reset(u32 modid, u32 etype, u64 coreid)
 	sochifi_watchdog_send_event();
 	hifireset_runcbfun(DRV_RESET_CALLCBFUN_RESET_AFTER);
 
-	wake_unlock(&soc_des.rdr_wl);
+	wake_unlock(&soc_des.rdr_wl);/*lint !e455*/
 
 	BB_PRINT_END();
 
@@ -764,12 +764,12 @@ static irqreturn_t soc_wtd_irq_handler(int irq, void *data)
 
 	up(&soc_des.handler_sem);
 
-	return IRQ_HANDLED;
+	return IRQ_HANDLED;/*lint !e454*/
 }
 
-static int rdr_get_hifi_watchdog_irq_num(void)
+static unsigned int rdr_get_hifi_watchdog_irq_num(void)
 {
-	int irq_num = 0;
+	unsigned int irq_num = 0;
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 13, 0))
 	struct device_node *dev_node = NULL;
 
@@ -812,21 +812,21 @@ int rdr_audio_soc_init(void)
 	soc_des.kdump_task = NULL;
 	soc_des.khandler_task = NULL;
 
-	soc_des.lock_addr = (u32 *)ioremap((unsigned long)DRV_WATCHDOG_LOCK, 0x4);
+	soc_des.lock_addr = (u32 *)ioremap((unsigned long)DRV_WATCHDOG_LOCK, (unsigned long)0x4);
 	if (!soc_des.lock_addr) {
 		BB_PRINT_ERR("rdr: remap watchdog lock addr fail\n");
 		ret = -ENOMEM;
 		goto error;
 	}
 
-	soc_des.control_addr = (u32 *)ioremap((unsigned long)DRV_WATCHDOG_CONTROL, 0x4);
+	soc_des.control_addr = (u32 *)ioremap((unsigned long)DRV_WATCHDOG_CONTROL, (unsigned long)0x4);
 	if (!soc_des.control_addr) {
 		BB_PRINT_ERR("rdr: remap watchdog control addr fail\n");
 		ret = -ENOMEM;
 		goto error;
 	}
 
-	soc_des.intclr_addr = (u32 *)ioremap((unsigned long)DRV_WATCHDOG_INTCLR, 0x4);
+	soc_des.intclr_addr = (u32 *)ioremap((unsigned long)DRV_WATCHDOG_INTCLR, (unsigned long)0x4);
 	if (!soc_des.intclr_addr) {
 		BB_PRINT_ERR("rdr: remap watchdog interrupt clear addr fail\n");
 		ret = -ENOMEM;
@@ -853,7 +853,7 @@ int rdr_audio_soc_init(void)
 		goto error;
 	}
 
-	ret = request_irq(soc_des.wdt_irq_num, soc_wtd_irq_handler, 0, "soc wdt handler", NULL);
+	ret = request_irq(soc_des.wdt_irq_num, soc_wtd_irq_handler, (unsigned long)0, "soc wdt handler", NULL);
 	if (ret) {
 		BB_PRINT_ERR("request_irq soc_wdt_irq_handler failed! return 0x%x\n", ret);
 		goto error;

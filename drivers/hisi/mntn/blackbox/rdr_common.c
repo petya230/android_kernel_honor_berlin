@@ -12,8 +12,10 @@
 #include <linux/syscalls.h>
 #include <linux/slab.h>
 #include <linux/io.h>
+#include <linux/version.h>
 
 #include <linux/hisi/rdr_pub.h>
+
 #include "rdr_inner.h"
 #include "rdr_field.h"
 #include "rdr_print.h"
@@ -55,7 +57,7 @@ unsigned int bbox_check_edition(void)
 	}
 
 	if (tmp >= START_CHAR_0 && tmp <= END_CHAR_9) {
-		type = (unsigned int)(tmp - START_CHAR_0);
+		type = (unsigned int)(unsigned char)(tmp - START_CHAR_0);
 
 		if (OVERSEA_USER == type) {
 			BB_PRINT_DBG("%s: The edition is Oversea BETA, type is %#x\n", __func__, type);
@@ -130,7 +132,11 @@ u64 rdr_get_tick(void)
 {
 	/* use only one int value to save time: */
 	struct timespec uptime;
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4,4,0))
 	do_posix_clock_monotonic_gettime(&uptime);
+#else
+	ktime_get_ts(&uptime);
+#endif
 	get_monotonic_boottime(&uptime);
 	return (u64)uptime.tv_sec;
 }
@@ -157,7 +163,7 @@ char *rdr_get_timestamp(void)
 	memset(&tv, 0, sizeof(struct timeval));
 	memset(&tm, 0, sizeof(struct rtc_time));
 	do_gettimeofday(&tv);
-	tv.tv_sec -= sys_tz.tz_minuteswest * 60;
+	tv.tv_sec -= (long)sys_tz.tz_minuteswest * 60;
 	rtc_time_to_tm(tv.tv_sec, &tm);
 
 	snprintf(databuf, DATA_MAXLEN + 1, "%04d%02d%02d%02d%02d%02d",
@@ -294,23 +300,23 @@ struct blackbox_modid_list g_modid_list[] = {
 	 "MODEM GU NAS"},
 	{HISI_BB_MOD_MODEM_GU_DSP_START, HISI_BB_MOD_MODEM_GU_DSP_END,
 	 "MODEM GU DSP"},
-	{HISI_BB_MOD_AP_START, HISI_BB_MOD_AP_END, "ap"},
-	{HISI_BB_MOD_FASTBOOT_START, HISI_BB_MOD_FASTBOOT_END, "fastboot"},
-	{HISI_BB_MOD_ISP_START, HISI_BB_MOD_ISP_END, "isp"},
-	{HISI_BB_MOD_EMMC_START, HISI_BB_MOD_EMMC_END, "emmc"},
-	{HISI_BB_MOD_CP_START, HISI_BB_MOD_CP_END, "cp"},
-	{HISI_BB_MOD_TEE_START, HISI_BB_MOD_TEE_END, "tee"},
-	{HISI_BB_MOD_HIFI_START, HISI_BB_MOD_HIFI_END, "hifi"},
-	{HISI_BB_MOD_LPM_START, HISI_BB_MOD_LPM_END, "lpm3"},
-	{HISI_BB_MOD_IOM_START, HISI_BB_MOD_IOM_END, "iom3"},
+	{(unsigned int)HISI_BB_MOD_AP_START, (unsigned int)HISI_BB_MOD_AP_END, "ap"},
+	{(unsigned int)HISI_BB_MOD_FASTBOOT_START, (unsigned int)HISI_BB_MOD_FASTBOOT_END, "fastboot"},
+	{(unsigned int)HISI_BB_MOD_ISP_START, (unsigned int)HISI_BB_MOD_ISP_END, "isp"},
+	{(unsigned int)HISI_BB_MOD_EMMC_START, (unsigned int)HISI_BB_MOD_EMMC_END, "emmc"},
+	{(unsigned int)HISI_BB_MOD_CP_START, (unsigned int)HISI_BB_MOD_CP_END, "cp"},
+	{(unsigned int)HISI_BB_MOD_TEE_START, (unsigned int)HISI_BB_MOD_TEE_END, "tee"},
+	{(unsigned int)HISI_BB_MOD_HIFI_START, (unsigned int)HISI_BB_MOD_HIFI_END, "hifi"},
+	{(unsigned int)HISI_BB_MOD_LPM_START, (unsigned int)HISI_BB_MOD_LPM_END, "lpm3"},
+	{(unsigned int)HISI_BB_MOD_IOM_START, (unsigned int)HISI_BB_MOD_IOM_END, "iom3"},
 	{(u32)HISI_BB_MOD_HISEE_START, (u32)HISI_BB_MOD_HISEE_END, "hisee"},
-	{HISI_BB_MOD_BFM_START, HISI_BB_MOD_BFM_END, "bfm"},
-	{HISI_BB_MOD_RESERVED_START, HISI_BB_MOD_RESERVED_END,
+	{(unsigned int)HISI_BB_MOD_BFM_START, (unsigned int)HISI_BB_MOD_BFM_END, "bfm"},
+	{(unsigned int)HISI_BB_MOD_RESERVED_START, (unsigned int)HISI_BB_MOD_RESERVED_END,
 	 "blackbox reserved"},
-	{HISI_BB_MOD_MODEM_LPS_START, HISI_BB_MOD_MODEM_LPS_END, "MODEM LPS"},
-	{HISI_BB_MOD_MODEM_LMSP_START, HISI_BB_MOD_MODEM_LMSP_END,
+	{(unsigned int)HISI_BB_MOD_MODEM_LPS_START, (unsigned int)HISI_BB_MOD_MODEM_LPS_END, "MODEM LPS"},
+	{(unsigned int)HISI_BB_MOD_MODEM_LMSP_START, (unsigned int)HISI_BB_MOD_MODEM_LMSP_END,
 	 "MODEM LMSP"},
-	{HISI_BB_MOD_RANDOM_ALLOCATED_START, HISI_BB_MOD_RANDOM_ALLOCATED_END,
+	{(unsigned int)HISI_BB_MOD_RANDOM_ALLOCATED_START, (unsigned int)HISI_BB_MOD_RANDOM_ALLOCATED_END,
 	 "blackbox random allocated"},
 };
 
@@ -333,9 +339,9 @@ char *rdr_get_exception_type(u64 e_exce_type)
 	int i;
 	char *type = "UNDEF";
 
-	for (i = 0; i < get_reboot_reason_map_size(); i++) {
+	for (i = 0; (unsigned int)i < get_reboot_reason_map_size(); i++) {
 		if (reboot_reason_map[i].num == e_exce_type) {
-			return reboot_reason_map[i].name;
+			return (char *)reboot_reason_map[i].name;
 		}
 	}
 
@@ -550,7 +556,7 @@ int rdr_common_early_init(void)
 	struct device_node *np = NULL;
 	struct resource res;
 	const char *prdr_dumpctrl;
-	u32 value;
+	u32 value, j;
 	u32 data[RDR_CORE_MAX];
 	struct device_node *bbox_addr;
 
@@ -593,7 +599,7 @@ int rdr_common_early_init(void)
 	len = strlen(prdr_dumpctrl);
 	for (i = --len; i >= 0; i--) {
 		if (prdr_dumpctrl[i] == '1')
-			g_nve |= 1 << (len - i);
+			g_nve |= (u64)1 << (len - i);
 	}
 	BB_PRINT_DBG("[%s], get nve [0x%llx] in dts!\n", __func__, g_nve);
 	ret = of_property_read_u32(np, "rdr-log-max-size", &value);
@@ -636,10 +642,10 @@ int rdr_common_early_init(void)
 		return ret;
 	}
 	rdr_set_area_info(0, value);
-	for (i = 1; i < value; i++) {
-		rdr_set_area_info(i, data[i]);
-		BB_PRINT_DBG("[%s], get rdr_area_num[%d]:[0x%x] in dts!\n",
-			     __func__, i, data[i]);
+	for (j = 1; j < value; j++) {
+		rdr_set_area_info(j, data[j]);
+		BB_PRINT_DBG("[%s], get rdr_area_num[%u]:[0x%x] in dts!\n",
+			     __func__, j, data[j]);
 	}
 
 	ret = of_property_read_u32(np, "unexpected-max-reboot-times", &value);
@@ -698,8 +704,8 @@ static int __init early_parse_reboot_reason_cmdline(char *reboot_reason_cmdline)
 	memset(g_reboot_reason, 0x0, RDR_REBOOT_REASON_LEN);
 	memcpy(g_reboot_reason, reboot_reason_cmdline, RDR_REBOOT_REASON_LEN);
 
-	for (i = 0; i < get_reboot_reason_map_size(); i++) {
-		if (!strcmp(reboot_reason_map[i].name, g_reboot_reason)) {
+	for (i = 0; (u32)i < get_reboot_reason_map_size(); i++) {
+		if (!strncmp((char *)reboot_reason_map[i].name, g_reboot_reason, RDR_REBOOT_REASON_LEN)) {
 			g_reboot_type = reboot_reason_map[i].num;
 			break;
 		}
@@ -866,12 +872,12 @@ void rdr_reset_reboot_times(void)
 	}
 	buf = 0;
 	vfs_llseek(fp, 0L, SEEK_SET);
-	length = vfs_write(fp, &buf, sizeof(buf), &(fp->f_pos));
+	length = vfs_write(fp, &buf, sizeof(buf), &(fp->f_pos));/*lint !e613 */
 	if (length == sizeof(buf)) {
 		vfs_fsync(fp, 0);
 	}
 
-	filp_close(fp, NULL);
+	filp_close(fp, NULL);/*lint !e668 */
 	BB_PRINT_END();
 }
 
@@ -901,12 +907,12 @@ void rdr_record_erecovery_reason(void)
 		}
 	}
 	vfs_llseek(fp, 0L, SEEK_SET);
-	length = vfs_write(fp, e_reason, strlen(e_reason) + 1, &(fp->f_pos));
+	length = vfs_write(fp, e_reason, strlen(e_reason) + 1, &(fp->f_pos));/* lint !e613 */
 	if (length == (strlen(e_reason) + 1)) {
 		vfs_fsync(fp, 0);
 	}
 
-	filp_close(fp, NULL);
+	filp_close(fp, NULL);/*lint !e668 */
 	BB_PRINT_END();
 }
 
@@ -933,19 +939,19 @@ int rdr_record_reboot_times2file(void)
 	}
 
 	vfs_llseek(fp, 0L, SEEK_SET);
-	length = vfs_read(fp, &buf, sizeof(buf), &fp->f_pos);
+	length = vfs_read(fp, &buf, sizeof(buf), &fp->f_pos);/*lint !e613 */
 	if (length == 0 || buf == 0) {
 		buf = 0;
 	}
 	buf++;
 
 	vfs_llseek(fp, 0L, SEEK_SET);
-	length = vfs_write(fp, &buf, sizeof(buf), &(fp->f_pos));
+	length = vfs_write(fp, &buf, sizeof(buf), &(fp->f_pos));/*lint !e613 */
 	if (length == sizeof(buf)) {
 		vfs_fsync(fp, 0);
 	}
 
-	filp_close(fp, NULL);
+	filp_close(fp, NULL);/*lint !e668 */
 	BB_PRINT_END();
 	return buf;
 }

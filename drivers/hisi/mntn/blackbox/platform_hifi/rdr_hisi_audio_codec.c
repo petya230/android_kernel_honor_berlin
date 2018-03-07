@@ -28,7 +28,7 @@
 #include "rdr_hisi_audio_adapter.h"
 #include "rdr_hisi_audio_codec.h"
 
-/*lint -e750*/
+/*lint -e750 -e730*/
 
 #define COMMENT_TEXT_LEN		(512)
 #define MAX_DUMP_REG_SIZE		(0x1000)
@@ -160,6 +160,7 @@ static int dump_codec_log(char *filepath)
 	return ret;
 }
 
+/*lint -e838*/
 static int dump_codec(char *filepath)
 {
 	int ret = 0;
@@ -181,13 +182,13 @@ static int dump_codec(char *filepath)
 		    ret ? "fail" : "success");
 	return ret;
 }
-
+/*lint +e838*/
 void rdr_codec_hifi_watchdog_process(void)
 {
 	wake_lock(&codec_des.rdr_wl);
 	up(&codec_des.handler_sem);
-}
-
+}/*lint !e454*/
+/*lint -e715*/
 static int irq_handler_thread(void *arg)
 {
 	BB_PRINT_START();
@@ -228,7 +229,7 @@ static int dump_thread(void *arg)
 			BB_PRINT_DBG
 			    ("begin dump codec hifi done callback, modid: 0x%x\n",
 			     codec_des.modid);
-			codec_des.dumpdone_cb(codec_des.modid, RDR_HIFI);
+			codec_des.dumpdone_cb(codec_des.modid, (unsigned long long)RDR_HIFI);
 			BB_PRINT_DBG("end dump codec hifi done callback\n");
 		}
 	}
@@ -262,13 +263,13 @@ void rdr_audio_codec_reset(u32 modid, u32 etype, u64 coreid)
 	/*       ....send watchdog event.....   */
 	hi64xx_watchdog_send_event();
 
-	wake_unlock(&codec_des.rdr_wl);
+	wake_unlock(&codec_des.rdr_wl);/*lint !e455*/
 
 	BB_PRINT_END();
 
 	return;
 }
-
+/*lint +e715*/
 int rdr_audio_codec_init(void)
 {
 	BB_PRINT_START();

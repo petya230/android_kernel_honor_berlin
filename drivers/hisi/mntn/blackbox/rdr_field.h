@@ -117,6 +117,7 @@ struct field_rec_s {
 	parse_record_t f;
 };
 
+/* cppcheck-suppress * */
 #define RDR_ASSERT(ret) \
 	do { \
 		if ((ret) != 0) \

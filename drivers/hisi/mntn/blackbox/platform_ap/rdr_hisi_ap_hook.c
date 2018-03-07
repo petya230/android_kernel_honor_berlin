@@ -34,6 +34,7 @@
 #include <linux/kobject.h>
 #include <linux/device.h>
 #include <linux/cpu_pm.h>
+#include <linux/version.h>
 #include <linux/hisi/rdr_hisi_ap_hook.h>
 
 #include <linux/hisi/rdr_hisi_ap_ringbuffer.h>
@@ -103,7 +104,8 @@ int single_buffer_init(unsigned char **addr, unsigned int size, hook_type hk,
 int percpu_buffer_init(percpu_buffer_info *buffer_info, u32 ratio[][8],	/* HERE:8 */
 		       u32 cpu_num, u32 fieldcnt, const char *keys, u32 gap)
 {
-	int i, ret;
+	unsigned int i;
+	int ret;
 	percpu_buffer_info *buffer = buffer_info;
 
 	for (i = 0; i < cpu_num; i++) {
@@ -122,7 +124,7 @@ int percpu_buffer_init(percpu_buffer_info *buffer_info, u32 ratio[][8],	/* HERE:
 		}
 
 		printk(KERN_DEBUG
-		       "[%s], [%d]: percpu_addr [0x%pK], percpu_length [0x%x], fieldcnt [%d]\n",
+		       "[%s], [%u]: percpu_addr [0x%pK], percpu_length [0x%x], fieldcnt [%d]\n",
 		       __func__, i, buffer->percpu_addr[i],
 		       buffer->percpu_length[i], fieldcnt);
 
@@ -642,8 +644,13 @@ Input:          NA
 Output:         NA
 Return:         NA
 ********************************************************************************/
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,4,0))
+static int hot_cpu_callback(struct notifier_block *nfb,
+                                            unsigned long action, void *hcpu)
+#else
 static int __cpuinit hot_cpu_callback(struct notifier_block *nfb,
                                            unsigned long action, void *hcpu)
+#endif
 {
 	unsigned int cpu = (unsigned long)hcpu;
 
@@ -671,8 +678,9 @@ static struct notifier_block __refdata hot_cpu_notifier = {
 	.notifier_call = hot_cpu_callback,
 };
 
-/*lint -e607*/
+/*lint -e607 -e1058*/
 /*macro func B*/
+/* cppcheck-suppress * */
 #define HOOK_SYSFS_SWITCH(name, hook_type) \
 static ssize_t show_hook_switch_##name(struct kobject *kobj, struct kobj_attribute *attr, char *buf)\
 {\
@@ -703,7 +711,6 @@ static ssize_t store_hook_switch_##name(struct kobject *kobj, struct kobj_attrib
 static struct kobj_attribute hook_##name##_attr =\
 __ATTR(name, (S_IRUGO | S_IWUSR), show_hook_switch_##name, store_hook_switch_##name);
 /*macro func E*/
-/*lint +e607*/
 
 /*钩子功能sysfs开关*/
 HOOK_SYSFS_SWITCH(irq, HK_IRQ);

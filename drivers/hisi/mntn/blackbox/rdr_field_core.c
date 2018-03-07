@@ -210,7 +210,7 @@ int rdr_field_init(void)
 	rdr_area_mem_addr[last] = rdr_reserved_phymem_addr()
 	    + rdr_reserved_phymem_size();
 	for (index = last - 1; index > 0; index--) {
-		rdr_area_mem_addr[index] = rdr_area_mem_addr[index + 1]
+		rdr_area_mem_addr[index] = rdr_area_mem_addr[index + 1] /*lint !e679*/
 		    - rdr_area_mem_size[index];
 	}
 	rdr_area_mem_addr[0] = rdr_reserved_phymem_addr() + RDR_BASEINFO_SIZE;

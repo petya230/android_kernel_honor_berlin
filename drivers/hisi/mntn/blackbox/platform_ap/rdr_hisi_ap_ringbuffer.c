@@ -70,11 +70,11 @@ Description:	判断ringbuffer是否已经写满；
 Input:		buffer_addr: buffer首地址；
 Return:		0：buffer未满；1：buffer已满；-1: 查询无效；
 *************************************************************************/
-int  hisiap_is_ringbuffer_full(void *buffer_addr)
+int  hisiap_is_ringbuffer_full(const void *buffer_addr)
 {
 	if (NULL == buffer_addr)
 		return -1;
 
-	return ((struct hisiap_ringbuffer_s *)buffer_addr)->is_full;
-}
+	return (int)(((struct hisiap_ringbuffer_s *)buffer_addr)->is_full);
+}/*lint !e818*/
 

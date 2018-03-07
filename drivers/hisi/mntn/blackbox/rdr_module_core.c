@@ -571,6 +571,7 @@ void rdr_print_all_ops(void)
 		BB_PRINT_DBG(" reset-fn:   [0x%pK]\n",
 			     p_module_ops->s_ops.ops_reset);
 		BB_PRINT_DBG("==========[%.2d]-e n d==========\n", index);
+		index++;
 	}
 	spin_unlock(&__rdr_module_ops_list_lock);
 

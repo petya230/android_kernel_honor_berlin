@@ -59,7 +59,7 @@ void rdr_register_system_error(u32 modid, u32 arg1, u32 arg2)
 	p_exce_info = rdr_get_exception_info(modid);
 	spin_lock(&g_rdr_syserr_list_lock);
 	if (p_exce_info != NULL &&
-	    p_exce_info->e_reentrant == RDR_REENTRANT_DISALLOW) {
+	    p_exce_info->e_reentrant == (u32)RDR_REENTRANT_DISALLOW) {
 		list_for_each_safe(cur, next, &g_rdr_syserr_list) {
 			e_cur = list_entry(cur, struct rdr_syserr_param_s, syserr_list);
 			if (e_cur->modid == p->modid) {
@@ -78,7 +78,7 @@ void rdr_register_system_error(u32 modid, u32 arg1, u32 arg2)
 	}
 	spin_unlock(&g_rdr_syserr_list_lock);
 	BB_PRINT_END();
-}
+} /*lint !e593*/
 
 void rdr_system_error(u32 modid, u32 arg1, u32 arg2)
 {
@@ -125,6 +125,7 @@ void rdr_syserr_process_for_ap(u32 modid, u64 arg1, u64 arg2)
 	p_exce_info = rdr_get_exception_info(modid);
 	if (p_exce_info == NULL) {
 		/* rdr_save_history_log_for_undef_exception(&p); */
+		preempt_enable(); /*lint !e730*/
 		BB_PRINT_ERR("get exception info faild.  return.\n");
 		return;
 	}
@@ -170,7 +171,7 @@ void rdr_syserr_process(struct rdr_syserr_param_s *p)
 	int i = 0;
 	int max_reboot_times = rdr_get_reboot_times();
 	int wait_dumplog_timeout = rdr_get_dumplog_timeout();
-	int inter_ms = 500;
+	int inter_ms = 100;
 	u32 mod_id = p->modid;
 	u32 mask = 0;
 	u32 cur_mask = 0;
@@ -293,7 +294,7 @@ out:
 	rdr_count_size();
 	BB_PRINT_DBG("rdr_count_size: done.\n");
 
-	if (p_exce_info->e_upload_flag == RDR_UPLOAD_YES) {
+	if (p_exce_info->e_upload_flag == (u32)RDR_UPLOAD_YES) {
 		BB_PRINT_DBG("rdr_upload log: done.\n");
 	}
 
@@ -362,7 +363,7 @@ static int rdr_main_thread_body(void *arg)
 	struct list_head *next = NULL;
 	u32 e_priority = RDR_PPRI_MAX;
 	struct rdr_exception_info_s *p_exce_info = NULL;
-	long jiffies = 0;
+	long jiffies = 0; /*lint !e578 */
 
 	BB_PRINT_START();
 

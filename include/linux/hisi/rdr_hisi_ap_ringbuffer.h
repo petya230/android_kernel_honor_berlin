@@ -23,5 +23,5 @@ struct hisiap_ringbuffer_s {
 int hisiap_ringbuffer_init(struct hisiap_ringbuffer_s *q, u32 bytes,
 			   u32 fieldcnt, const char *keys);
 void hisiap_ringbuffer_write(struct hisiap_ringbuffer_s *q, u8 *element);
-int  hisiap_is_ringbuffer_full(void *buffer_addr);
+int  hisiap_is_ringbuffer_full(const void *buffer_addr);
 

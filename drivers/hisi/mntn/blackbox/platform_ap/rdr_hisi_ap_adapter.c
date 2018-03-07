@@ -102,38 +102,38 @@ rdr_e_callback e_callback;
 struct rdr_exception_info_s einfo[] = {
 	{{0, 0}, MODID_AP_S_PANIC, MODID_AP_S_PANIC, RDR_ERR,
 	 RDR_REBOOT_NOW, RDR_AP, RDR_AP, RDR_AP,
-	 RDR_REENTRANT_DISALLOW, AP_S_PANIC, RDR_UPLOAD_YES, "ap", "ap",
+	 (u32)RDR_REENTRANT_DISALLOW, (u32)AP_S_PANIC, (u32)RDR_UPLOAD_YES, "ap", "ap",
 	 0, 0, 0},
 	{{0, 0}, MODID_AP_S_NOC, MODID_AP_S_NOC, RDR_ERR,
 	 RDR_REBOOT_NOW, RDR_AP, RDR_AP, RDR_AP,
-	 RDR_REENTRANT_DISALLOW, AP_S_NOC, RDR_UPLOAD_YES, "ap", "ap",
+	 (u32)RDR_REENTRANT_DISALLOW, (u32)AP_S_NOC, (u32)RDR_UPLOAD_YES, "ap", "ap",
 	 0, 0, 0},
 	{{0, 0}, MODID_AP_S_DDRC_SEC, MODID_AP_S_DDRC_SEC, RDR_ERR,
 	 RDR_REBOOT_NOW, RDR_AP, RDR_AP, RDR_AP,
-	 RDR_REENTRANT_DISALLOW, AP_S_DDRC_SEC, RDR_UPLOAD_YES, "ap",
+	 (u32)RDR_REENTRANT_DISALLOW, (u32)AP_S_DDRC_SEC, (u32)RDR_UPLOAD_YES, "ap",
 	 "ap", 0, 0, 0},
 	{{0, 0}, MODID_AP_S_COMBINATIONKEY, MODID_AP_S_COMBINATIONKEY,
 	 RDR_ERR, RDR_REBOOT_NOW, RDR_AP, RDR_AP, RDR_AP,
-	 RDR_REENTRANT_DISALLOW, AP_S_COMBINATIONKEY, RDR_UPLOAD_YES,
+	 (u32)RDR_REENTRANT_DISALLOW, (u32)AP_S_COMBINATIONKEY, (u32)RDR_UPLOAD_YES,
 	 "ap", "ap", 0, 0, 0},
 	{{0, 0}, MODID_AP_S_MAILBOX, MODID_AP_S_MAILBOX, RDR_WARN,
 	 RDR_REBOOT_NO, RDR_AP, 0, RDR_AP,
-	 RDR_REENTRANT_DISALLOW, AP_S_MAILBOX, RDR_UPLOAD_YES, "ap",
+	 (u32)RDR_REENTRANT_DISALLOW, (u32)AP_S_MAILBOX, (u32)RDR_UPLOAD_YES, "ap",
 	 "ap", 0, 0, 0},
 	{{0, 0}, MODID_AP_S_PMU, MODID_AP_S_PMU, RDR_ERR,
 	 RDR_REBOOT_NOW, RDR_AP, RDR_AP, RDR_AP,
-	 RDR_REENTRANT_DISALLOW, AP_S_PMU, RDR_UPLOAD_YES, "ap pmu", "ap pmu",
+	 (u32)RDR_REENTRANT_DISALLOW, (u32)AP_S_PMU, (u32)RDR_UPLOAD_YES, "ap pmu", "ap pmu",
 	 0, 0, 0},
 	 {{0, 0}, MODID_AP_S_SMPL, MODID_AP_S_SMPL, RDR_ERR,
 	 RDR_REBOOT_NOW, RDR_AP, RDR_AP, RDR_AP,
-	 RDR_REENTRANT_DISALLOW, AP_S_SMPL, RDR_UPLOAD_YES, "ap smpl", "ap smpl",
+	 (u32)RDR_REENTRANT_DISALLOW, (u32)AP_S_SMPL, (u32)RDR_UPLOAD_YES, "ap smpl", "ap smpl",
 	 0, 0, 0},
 	 {{0, 0}, MODID_AP_S_SCHARGER, MODID_AP_S_SCHARGER, RDR_ERR,
 	 RDR_REBOOT_NOW, RDR_AP, RDR_AP, RDR_AP,
-	 RDR_REENTRANT_DISALLOW, AP_S_SCHARGER, RDR_UPLOAD_YES, "ap scharger", "ap scharger",
+	 (u32)RDR_REENTRANT_DISALLOW, (u32)AP_S_SCHARGER, (u32)RDR_UPLOAD_YES, "ap scharger", "ap scharger",
 	 0, 0, 0},
-	{{0, 0}, MODID_AP_S_RESUME_SLOWY, MODID_AP_S_RESUME_SLOWY, RDR_ERR,
-	RDR_REBOOT_NOW, RDR_AP, RDR_AP, RDR_AP,
+	{{0, 0}, MODID_AP_S_RESUME_SLOWY, MODID_AP_S_RESUME_SLOWY, RDR_WARN,
+	RDR_REBOOT_NO, RDR_AP, 0, RDR_AP,
 	(u32)RDR_REENTRANT_DISALLOW, AP_S_RESUME_SLOWY, (u32)RDR_UPLOAD_YES,
 	"ap resumeslowy", "ap resumeslowy", 0, 0, 0},
 };
@@ -434,7 +434,7 @@ void get_product_version(char *version, size_t count)
 	}
 
 	while ((length =
-		vfs_read(fp, buf, BUFFER_SIZE, &fp->f_pos)) > 0) {
+		vfs_read(fp, buf, BUFFER_SIZE, &fp->f_pos)) > 0) { /*lint !e613 */
 		for (i = 0; i < BUFFER_SIZE; i++) {
 			if ('\n' == buf[i])
 				break;	/* 找到完整1行 */
@@ -445,7 +445,7 @@ void get_product_version(char *version, size_t count)
 			i--;
 		}
 		if (0 != i) {
-			vfs_read(fp, buf, i, &fp->f_pos);
+			vfs_read(fp, buf, i, &fp->f_pos); /*lint !e613 */
 			p = strstr(buf, BUILD_DISPLAY_ID);
 			if (NULL != p) {
 				p = p + strlen(BUILD_DISPLAY_ID);
@@ -462,14 +462,14 @@ void get_product_version(char *version, size_t count)
 		}
 	}
 
-	filp_close(fp, NULL);
+	filp_close(fp, NULL); /*lint !e668 */
 	printk(KERN_ERR "[%s], version [%s]!\n", __func__, version);
 }
 
 void print_debug_info(void)
 {
 	int i;
-	regs_info *regs_info = g_rdr_ap_root->dump_regs_info;
+	regs_info *regs_info = g_rdr_ap_root->dump_regs_info; /*lint !e578*/
 
 	printk(KERN_INFO "=================AP_EH_ROOT================");
 	printk(KERN_INFO "[%s], dump_magic [0x%x]\n", __func__,
@@ -489,7 +489,7 @@ void print_debug_info(void)
 	printk(KERN_INFO "[%s], num_reg_regions [0x%x]\n", __func__,
 	       g_rdr_ap_root->num_reg_regions);
 
-	for (i = 0; i < g_rdr_ap_root->num_reg_regions; i++) {
+	for (i = 0; (unsigned int)i < g_rdr_ap_root->num_reg_regions; i++) {
 		printk(KERN_INFO
 		       "[%s], reg_name [%s], reg_base [0x%pK], reg_size [0x%x], reg_dump_addr [0x%pK]\n",
 		       __func__, regs_info[i].reg_name,
@@ -569,7 +569,7 @@ int io_resources_init(void)
 		goto timer_ioinit;
 	}
 
-	for (i = 0; i < g_rdr_ap_root->num_reg_regions; i++) {
+	for (i = 0; (unsigned int)i < g_rdr_ap_root->num_reg_regions; i++) {
 		if (of_address_to_resource(np, i, &res)) {
 			printk(KERN_ERR
 			       "[%s], of_address_to_resource [%d] fail!\n",
@@ -651,7 +651,7 @@ timer_ioinit:
 }
 
 static unsigned int get_total_regdump_region_size(regs_info *regs_info)
-{
+{ /*lint !e578 */
 	int i;
 	u32 total = 0;
 
@@ -660,7 +660,7 @@ static unsigned int get_total_regdump_region_size(regs_info *regs_info)
 		return 0;
 	}
 
-	for (i = 0; i < g_rdr_ap_root->num_reg_regions; i++) {
+	for (i = 0; (unsigned int)i < g_rdr_ap_root->num_reg_regions; i++) {
 		total += regs_info[i].reg_size;
 	}
 
@@ -791,7 +791,7 @@ void rdr_hisiap_print_all_dump_addrs(void)
 		return;
 	}
 
-	for (i = 0; i < g_rdr_ap_root->num_reg_regions; i++) {
+	for (i = 0; (unsigned int)i < g_rdr_ap_root->num_reg_regions; i++) {
 		printk(KERN_INFO
 		       "[%s], reg_name [%s], reg_dump_addr [0x%pK] \n",
 		       __func__,
@@ -978,7 +978,7 @@ u64 rdr_get_last_wdt_kick_slice(void)
 	last_kick_slice = g_rdr_ap_root->wdt_kick_slice[0];
 	for (i = 1; i < WDT_KICK_SLICE_TIMES; i++) {
 		last_kick_slice =
-		    max(last_kick_slice, g_rdr_ap_root->wdt_kick_slice[i]);
+		    max(last_kick_slice, g_rdr_ap_root->wdt_kick_slice[i]); /*lint !e1058*/
 	}
 
 	return last_kick_slice;
@@ -987,12 +987,12 @@ u64 rdr_get_last_wdt_kick_slice(void)
 void regs_dump(void)
 {
 	int i;
-	regs_info *regs_info = NULL;
+	regs_info *regs_info = NULL; /*lint !e578 */
 
 	regs_info = g_rdr_ap_root->dump_regs_info;
 
 	/* NOTE:sctrl在上电区, pctrl, pericrg在外设区,A核访问不要做domain域判断 */
-	for (i = 0; i < g_rdr_ap_root->num_reg_regions; i++) {
+	for (i = 0; (unsigned int)i < g_rdr_ap_root->num_reg_regions; i++) {
 		if (IS_ERR_OR_NULL(regs_info[i].reg_map_addr)
 		    || IS_ERR_OR_NULL(regs_info[i].reg_dump_addr)) {
 			regs_info[i].reg_dump_addr = 0;
@@ -1101,7 +1101,7 @@ static void get_product_version_work_fn(struct work_struct *work)
 		return;
 	}
 
-	get_product_version(g_rdr_ap_root->version,
+	get_product_version((char *)g_rdr_ap_root->version,
 			    PRODUCT_VERSION_LEN);
 	printk(KERN_ERR "[%s], exit!\n", __func__);
 }
@@ -1272,8 +1272,6 @@ int __init rdr_hisiap_dump_init(struct rdr_register_module_result *retinfo)
 		return ret;
 	}
 
-	mutex_init(&dump_mem_mutex);
-
 	printk(KERN_ERR "[%s], register_arch_timer_func_ptr start.\n",
 	       __func__);
 	ret = register_arch_timer_func_ptr(get_32k_abs_timer_value);
@@ -1336,6 +1334,7 @@ static void save_bl31_exc_memory(void)
 
 	return;
 }
+
 
 static void save_lpmcu_exc_memory(void)
 {
@@ -1499,6 +1498,7 @@ int save_mntndump_log(void *arg)
 	if (0 == vfs_stat(SRC_KERNELDUMP, &mem_stat)) {
 		save_kernel_dump(arg);
 	}
+
 
 	if (0 == vfs_stat(SRC_DUMPEND, &mem_stat)) {
 		read_dump_end();
@@ -1719,11 +1719,11 @@ void rdr_hisiap_reset(u32 modid, u32 etype, u64 coreid)
 
 int get_pmu_reset_base_addr(void)
 {
-	u64 pmu_reset_reg_addr;
+	u64 pmu_reset_reg_addr = (u64)0;
 	unsigned int fpga_flag = 0;
-
 	struct device_node *np = NULL;
 	int ret;
+
 	np = of_find_compatible_node(NULL, NULL, "hisilicon,hisifb");
 	if (!np) {
 		printk("NOT FOUND device node 'hisilicon,hisifb'!\n");
@@ -1832,7 +1832,7 @@ static void rdr_hisiap_register_exception(void)
 	int i;
 	u32 ret;
 	for (i = 0;
-	     i < sizeof(einfo) / sizeof(struct rdr_exception_info_s);
+	     (unsigned int)i < sizeof(einfo) / sizeof(struct rdr_exception_info_s);
 	     i++) {
 		printk("register exception:%d", einfo[i].e_exce_type);
 		einfo[i].e_callback = hisiap_callback;
@@ -2006,15 +2006,15 @@ static void save_pstore_info(char *dst_dir_str)
 		memset((void *)fullpath_arr, 0, sizeof(fullpath_arr));
 		strncat(fullpath_arr, PSTORE_PATH, ((LOG_PATH_LEN - 1) - strlen(fullpath_arr)));
 		len =
-		    strlen(pbuff + i * MNTN_FILESYS_PURE_DIR_NAME_LEN);
+		    strlen(pbuff + ((unsigned long)i * MNTN_FILESYS_PURE_DIR_NAME_LEN));/*lint !e571*/
 		printk("file is [%s]\n",
-		       (pbuff + i * MNTN_FILESYS_PURE_DIR_NAME_LEN));
+		       (pbuff + ((unsigned long)i * MNTN_FILESYS_PURE_DIR_NAME_LEN)));/*lint !e571*/
 		strncat(fullpath_arr,
-			(const char *)(pbuff + i * MNTN_FILESYS_PURE_DIR_NAME_LEN),
+			(const char *)(pbuff + ((unsigned long)i * MNTN_FILESYS_PURE_DIR_NAME_LEN)),/*lint !e571*/
 			((LOG_PATH_LEN - 1) - strlen(fullpath_arr)));
 
 		/* 如果不是console则目的文件非last_kmsg，为dmesg-ramoops-x */
-		if (0 != strncmp((const char *)(pbuff + i * MNTN_FILESYS_PURE_DIR_NAME_LEN),
+		if (0 != strncmp((const char *)(pbuff + ((unsigned long)i * MNTN_FILESYS_PURE_DIR_NAME_LEN)),/*lint !e571*/
 				"console-ramoops",
 				strlen("console-ramoops"))) {
 			memset((void *)dst_str, 0, NEXT_LOG_PATH_LEN);
@@ -2022,7 +2022,7 @@ static void save_pstore_info(char *dst_dir_str)
 				((NEXT_LOG_PATH_LEN - 1) - strlen(dst_str)));
 			strncat(dst_str, "/", ((NEXT_LOG_PATH_LEN - 1) - strlen(dst_str)));
 			strncat(dst_str,
-				(const char *)(pbuff + i * MNTN_FILESYS_PURE_DIR_NAME_LEN),
+				(const char *)(pbuff + ((unsigned long)i * MNTN_FILESYS_PURE_DIR_NAME_LEN)),/*lint !e571*/
 				((NEXT_LOG_PATH_LEN - 1) - strlen(dst_str)));
 		} else {
 			memset((void *)dst_str, 0, NEXT_LOG_PATH_LEN);
@@ -2044,7 +2044,7 @@ static void save_pstore_info(char *dst_dir_str)
 		}
 
 		/* 如果是console，则不需要删除源文件，否则删除 */
-		if (0 == strncmp((const char *)(pbuff + i * MNTN_FILESYS_PURE_DIR_NAME_LEN),
+		if (0 == strncmp((const char *)(pbuff + ((unsigned long)i * MNTN_FILESYS_PURE_DIR_NAME_LEN)),/*lint !e571*/
 			"console-ramoops",
 			strlen("console-ramoops")))
 			continue;
@@ -2224,8 +2224,8 @@ int record_reason_task(void *arg)
 	char date[DATATIME_MAXLEN];
 	struct rdr_exception_info_s temp = {
 		{0, 0}, 0x80000001, 0x80000001, RDR_ERR, RDR_REBOOT_NOW,
-		RDR_AP, RDR_AP, RDR_AP, RDR_REENTRANT_DISALLOW,
-		COLDBOOT, RDR_UPLOAD_YES, "ap", "ap", 0, (void *)0, 0
+		(u64)RDR_AP, (u64)RDR_AP, (u64)RDR_AP,(u32)RDR_REENTRANT_DISALLOW,
+		(u32)COLDBOOT, (u32)RDR_UPLOAD_YES, "ap", "ap", 0, (void *)0, 0
 	};
 	temp.e_from_core = RDR_AP;
 	temp.e_exce_type = rdr_get_reboot_type();
@@ -2298,6 +2298,8 @@ int __init rdr_hisiap_init(void)
 	u32 reboot_type = 0;
 	int ret = 0;
 	printk("%s init start\n", __func__);
+
+	mutex_init(&dump_mem_mutex);
 
 	if (get_pmu_reset_base_addr())
 		return -1;

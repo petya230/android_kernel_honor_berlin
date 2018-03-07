@@ -125,7 +125,7 @@ u32 rdr_check_modid(u32 modid, u32 modid_end)
  *	!= 0 error
  *	= 0 success
  */
-u32 rdr_check_exception_info(struct rdr_exception_info_s *e)
+int rdr_check_exception_info(struct rdr_exception_info_s *e)
 {
 	BB_PRINT_START();
 	if (e->e_process_priority >= RDR_PPRI_MAX) {
@@ -153,14 +153,14 @@ u32 rdr_check_exception_info(struct rdr_exception_info_s *e)
 		BB_PRINT_END();
 		return -1;
 	}
-	if (e->e_reentrant != RDR_REENTRANT_ALLOW &&
-	    e->e_reentrant != RDR_REENTRANT_DISALLOW) {
+	if (e->e_reentrant != (u32)RDR_REENTRANT_ALLOW &&
+	    e->e_reentrant != (u32)RDR_REENTRANT_DISALLOW) {
 		BB_PRINT_ERR("invaild e_reentrant\n");
 		BB_PRINT_END();
 		return -1;
 	}
-	if (e->e_upload_flag != RDR_UPLOAD_YES &&
-	    e->e_upload_flag != RDR_UPLOAD_NO) {
+	if (e->e_upload_flag != (u32)RDR_UPLOAD_YES &&
+	    e->e_upload_flag != (u32)RDR_UPLOAD_NO) {
 		BB_PRINT_ERR("invaild e_upload_flag\n");
 		BB_PRINT_END();
 		return -1;

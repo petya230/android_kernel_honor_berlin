@@ -25,13 +25,14 @@
 #define PRODUCT_DEVICE_LEN 32
 #define REGS_DUMP_MAX_NUM   10
 #define AP_DUMP_MAGIC   0x19283746
-#define BBOX_VERSION    0x10007	/*v1.0.7 */
+#define BBOX_VERSION    0x10008	/*v1.0.8 */
 #define AP_DUMP_END_MAGIC   0x1F2E3D4C
 #define SIZE_1K         0x400
 #define SYSTEM_BUILD_POP    "/system/build.prop"
 #define AMNTN_MODULE_NAME_LEN 12
 #define NMI_NOTIFY_LPM3_ADDR 0xFFF0A510
 #define WDT_KICK_SLICE_TIMES    (3)
+#define FPGA 1
 
 #define PSTORE_PATH            "/sys/fs/pstore/"
 #define FASTBOOT_LOG_FILE      "/proc/balong/log/fastboot_log"

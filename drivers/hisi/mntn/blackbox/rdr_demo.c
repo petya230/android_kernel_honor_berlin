@@ -94,9 +94,9 @@ int register_exception(void)
 	einfo.e_modid_end = 0x83000001;
 	einfo.e_process_priority = RDR_ERR;
 	einfo.e_reboot_priority = RDR_REBOOT_WAIT;
-	einfo.e_notify_core_mask = RDR_TEEOS | RDR_AP;
+	einfo.e_notify_core_mask = RDR_TEEOS | RDR_AP; /*lint !e655*/
 	einfo.e_reset_core_mask = RDR_TEEOS;
-	einfo.e_reentrant = RDR_REENTRANT_DISALLOW;
+	einfo.e_reentrant = (u32)RDR_REENTRANT_DISALLOW;
 	einfo.e_exce_type = RDR_EXCE_WD;
 	einfo.e_from_core = RDR_TEEOS;
 	memcpy(einfo.e_from_module, "RDR_DEMO_TEST", sizeof("RDR_DEMO_TEST"));
@@ -109,9 +109,9 @@ int register_exception(void)
 	einfo.e_modid_end = 0x83000011;
 	einfo.e_process_priority = RDR_ERR;
 	einfo.e_reboot_priority = RDR_REBOOT_NOW;
-	einfo.e_notify_core_mask = RDR_TEEOS | RDR_AP;
+	einfo.e_notify_core_mask = RDR_TEEOS | RDR_AP; /*lint !e655*/
 	einfo.e_reset_core_mask = RDR_AP;
-	einfo.e_reentrant = RDR_REENTRANT_DISALLOW;
+	einfo.e_reentrant = (u32)RDR_REENTRANT_DISALLOW;
 	einfo.e_exce_type = RDR_EXCE_WD;
 	einfo.e_from_core = RDR_TEEOS;
 	memcpy(einfo.e_from_module, "RDR_DEMO_TEST", sizeof("RDR_DEMO_TEST"));
@@ -126,7 +126,7 @@ int register_exception(void)
 	einfo.e_reboot_priority = RDR_REBOOT_WAIT;
 	einfo.e_notify_core_mask = 0xffffffff;
 	einfo.e_reset_core_mask = 0;
-	einfo.e_reentrant = RDR_REENTRANT_ALLOW;
+	einfo.e_reentrant = (u32)RDR_REENTRANT_ALLOW;
 	einfo.e_exce_type = RDR_EXCE_INITIATIVE;
 	einfo.e_from_core = RDR_TEEOS;
 	memcpy(einfo.e_from_module, "RDR_DEMO_TEST", sizeof("RDR_DEMO_TEST"));

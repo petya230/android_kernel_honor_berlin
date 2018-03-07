@@ -195,6 +195,13 @@ static inline void vmalloc_trace_hook(u8 action, u64 caller, u64 va_addr, struct
 static inline void ion_trace_hook(u8 action, struct ion_client *client, struct ion_handle *handle){}
 static inline void smmu_trace_hook(u8 action, u64 va_addr, u64 phy_addr, u32 size){}
 #endif
+
+#ifdef CONFIG_HISI_TIME_HOOK
+void time_hook(u64 address, u32 dir);
+#else
+static inline void time_hook(u64 address, u32 dir){}
+#endif
+
 int hisi_ap_hook_install(hook_type hk);
 int hisi_ap_hook_uninstall(hook_type hk);
 

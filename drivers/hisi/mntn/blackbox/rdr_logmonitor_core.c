@@ -300,9 +300,10 @@ int rdr_is_logdir_nm_tm(char *buf, int len)
 		}
 	}
 	/* Judge all field range */
-	for (i = 0; i < ARRAY_SIZE(tbl_rdr_logdir_tm_rg); i++, pt_rg++) {
+	for (i = 0; (unsigned int)i < ARRAY_SIZE(tbl_rdr_logdir_tm_rg); i++, pt_rg++) {
 		memcpy(tempstr, buf + pt_rg->idx[0], pt_rg->idx[1]);
 		tempstr[pt_rg->idx[1]] = 0;
+		/* cppcheck-suppress * */
 		if (1 != sscanf(tempstr, "%d", &val)) {
 			BB_PRINT_ERR("[%s], val get failed!\n", __func__);
 			return 0;
@@ -456,7 +457,7 @@ void rdr_add_logpath_list(char *path, struct timespec *time)
 	}
 
 	memset(lp_info, 0, sizeof(struct logpath_info_s));
-	memcpy(lp_info->path, path, strlen(path));
+	memcpy(lp_info->path, path, strnlen(path, sizeof(lp_info->path)));
 	lp_info->ctime.tv_sec = time->tv_sec;
 	lp_info->ctime.tv_nsec = time->tv_nsec;
 	lp_info->logpath_tm = rdr_cal_tm_from_logdir_name(lp_info->path);
@@ -517,6 +518,7 @@ int bbox_chown(const char *path, uid_t user, gid_t group, bool recursion)
 			    && strncmp(d->d_name, ".", sizeof("."))
 			    && strncmp(d->d_name, "..", sizeof(".."))) {	/*处理目录，过滤"."和".."目录，否则会无限递归 */
 				/*递归修改目录及子目录的属主及属组 */
+				/* cppcheck-suppress * */
 				ret = (int)bbox_chown((const char __user *)
 						      fullname, user, group,
 						      true);
@@ -569,6 +571,7 @@ void rdr_print_all_logpath(void)
 		BB_PRINT_DBG(" ctime:   [0x%llx]\n",
 			     (u64) (p_module_ops->ctime.tv_sec));
 		BB_PRINT_DBG("==========[%.2d]-e n d==========\n", index);
+		index++;
 	}
 	spin_unlock(&__rdr_logpath_info_list_lock);
 
@@ -638,8 +641,8 @@ int rdr_check_logpath_legality(char *path)
 
 	size = DATA_MAXLEN + TIME_MAXLEN + 1;
 	for (index = 0; path[index] != '\0' && index < size; index++) {
-		if (path[index] < '0' || path[index] > '9') {
-			if (index == DATA_MAXLEN && path[index] == '-')
+		if (path[index] < '0' || path[index] > '9') { /*lint !e690*/
+			if (index == DATA_MAXLEN && path[index] == '-') /*lint !e690*/
 				continue;
 			BB_PRINT_DBG("invalid path [%s]\n", path);
 			BB_PRINT_END();
@@ -719,6 +722,7 @@ int rdr_dir_size(char *path, bool recursion)
 				}
 
 				if (recursion) {
+					/* cppcheck-suppress * */
 					size += rdr_dir_size(fullname, recursion);
 				} else {
 					/*size += stat.size; */
@@ -876,6 +880,7 @@ static int rdr_rm_dir(char *path)
 					/*BB_PRINT_DBG("check legality: ignore.\n");*/
 					continue;
 				}
+				/* cppcheck-suppress * */
 				rdr_rm_dir(fullname);
 			} else if (d_type == DT_REG) {
 				rdr_rm_file(fullname);

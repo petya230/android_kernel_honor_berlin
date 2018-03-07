@@ -72,7 +72,20 @@ static inline int register_module_dump_mem_func(rdr_hisiap_dump_func_ptr func,
 				  char *module_name, dump_mem_module modu){return -1;}
 static inline bool rdr_get_ap_init_done(void){return 0;}
 static inline bool unsigned long long get_pmu_reset_reg(void){return 0;};
+#endif
 
+#ifdef CONFIG_HISI_IRQ_REGISTER
+void irq_register_hook(struct pt_regs *reg);
+void show_irq_register(void);
+#else
+static inline void irq_register_hook(struct pt_regs *reg) {}
+static inline void show_irq_register(void) {}
+#endif
+
+#ifdef CONFIG_HISI_REENTRANT_EXCEPTION
+void reentrant_exception(void);
+#else
+static inline void reentrant_exception(void) {}
 #endif
 
 #endif
