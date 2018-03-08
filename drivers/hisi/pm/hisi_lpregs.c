@@ -5,6 +5,9 @@
  *
  */
 #include <linux/version.h>
+#if(LINUX_VERSION_CODE >= KERNEL_VERSION(4, 4, 0))
+#include <linux/module.h>
+#endif
 #include <linux/init.h>
 #include <linux/cpu_pm.h>
 #include <linux/suspend.h>
@@ -34,7 +37,6 @@
 #include <linux/debugfs.h>
 #include <linux/seq_file.h>
 #include <linux/uaccess.h>
-/*lint -e322 -esym(750,*) -e7*/
 #include <linux/hisi/hisi_gpio_auto_gen.h>
 #include "m3_rdr_ddr_map.h"
 
@@ -264,7 +266,7 @@ unsigned int g_boardid;
 
 static int map_io_regs(void)
 {
-	int i = 0;
+	unsigned int i = 0;
 	int ret = 0;
 	struct device_node *np = NULL;
 	char *io_buffer = NULL;
@@ -330,7 +332,7 @@ static int map_io_regs(void)
 			goto err_free_io;
 		}
 		sysreg_base.gpio_base[i] = of_iomap(np, 0);
-		pr_debug("%s: sysreg_base.gpio_base[%d] %p\n",
+		pr_debug("%s: sysreg_base.gpio_base[%d] %pK\n",
 				__func__, i, sysreg_base.gpio_base[i]);
 		if (!sysreg_base.gpio_base[i]) {
 			pr_err("%s: gpio%d iomap err.\n", __func__, i);
@@ -393,12 +395,13 @@ static int map_sysregs(void)
 	}
 
 	sysreg_base.uart_base = of_iomap(np, 0);
-	pr_debug("%s: uart_base:%p\n", __func__, sysreg_base.uart_base);
+	pr_debug("%s: uart_base:%pK\n", __func__, sysreg_base.uart_base);
 	if (!sysreg_base.uart_base) {
 		pr_err("%s: uart_base of iomap fail!\n", __func__);
 		ret = -ENOMEM;
 		goto err_put_node;
 	}
+	of_node_put(np);
 
 	np = of_find_compatible_node(NULL, NULL, "hisilicon,sysctrl");
 	if (!np) {
@@ -408,12 +411,13 @@ static int map_sysregs(void)
 		goto err;
 	}
 	sysreg_base.sysctrl_base = of_iomap(np, 0);
-	pr_debug("%s: sysctrl_base:%p\n", __func__, sysreg_base.sysctrl_base);
+	pr_debug("%s: sysctrl_base:%pK\n", __func__, sysreg_base.sysctrl_base);
 	if (!sysreg_base.sysctrl_base) {
 		pr_err("%s: sysctrl_base of iomap fail!\n", __func__);
 		ret = -ENOMEM;
 		goto err_put_node;
 	}
+	of_node_put(np);
 
 	np = of_find_compatible_node(NULL, NULL, "hisilicon,pctrl");
 	if (!np) {
@@ -423,12 +427,13 @@ static int map_sysregs(void)
 		goto err;
 	}
 	sysreg_base.pctrl_base = of_iomap(np, 0);
-	pr_debug("%s: pctrl_base:%p\n", __func__, sysreg_base.pctrl_base);
+	pr_debug("%s: pctrl_base:%pK\n", __func__, sysreg_base.pctrl_base);
 	if (!sysreg_base.pctrl_base) {
 		pr_err("%s: pctrl_base of iomap fail!\n", __func__);
 		ret = -ENOMEM;
 		goto err_put_node;
 	}
+	of_node_put(np);
 
 	np = of_find_compatible_node(NULL, NULL, "hisilicon,pmctrl");
 	if (!np) {
@@ -438,12 +443,13 @@ static int map_sysregs(void)
 		goto err;
 	}
 	sysreg_base.pmctrl_base = of_iomap(np, 0);
-	pr_debug("%s: pmctrl_base:%p\n", __func__, sysreg_base.pmctrl_base);
+	pr_debug("%s: pmctrl_base:%pK\n", __func__, sysreg_base.pmctrl_base);
 	if (!sysreg_base.pmctrl_base) {
 		pr_err("%s: pmctrl_base of iomap fail!\n", __func__);
 		ret = -ENOMEM;
 		goto err_put_node;
 	}
+	of_node_put(np);
 
 	np = of_find_compatible_node(NULL, NULL, "hisilicon,crgctrl");
 	if (!np) {
@@ -453,12 +459,13 @@ static int map_sysregs(void)
 		goto err;
 	}
 	sysreg_base.crg_base = of_iomap(np, 0);
-	pr_debug("%s: crg_base:%p\n", __func__, sysreg_base.crg_base);
+	pr_debug("%s: crg_base:%pK\n", __func__, sysreg_base.crg_base);
 	if (!sysreg_base.crg_base) {
 		pr_err("%s: crg_base of iomap fail!\n", __func__);
 		ret = -ENOMEM;
 		goto err_put_node;
 	}
+	of_node_put(np);
 
 	np = of_find_compatible_node(NULL, NULL, "hisilicon,pmu");
 	if (!np) {
@@ -468,12 +475,13 @@ static int map_sysregs(void)
 		goto err;
 	}
 	sysreg_base.pmic_base = of_iomap(np, 0);
-	pr_debug("%s: pmic_base:%p\n", __func__, sysreg_base.pmic_base);
+	pr_debug("%s: pmic_base:%pK\n", __func__, sysreg_base.pmic_base);
 	if (!sysreg_base.pmic_base) {
 		pr_err("%s: pmic_base of iomap fail!\n", __func__);
 		ret = -ENOMEM;
 		goto err_put_node;
 	}
+	of_node_put(np);
 
 	/* FIXME */
 	np = of_find_compatible_node(NULL, NULL, "hisilicon,HiIPCV230");
@@ -484,12 +492,13 @@ static int map_sysregs(void)
 		goto err;
 	}
 	sysreg_base.nsipc_base = of_iomap(np, 0);
-	pr_info("%s: nsipc_base:%p\n", __func__, sysreg_base.nsipc_base);
+	pr_info("%s: nsipc_base:%pK\n", __func__, sysreg_base.nsipc_base);
 	if (!sysreg_base.nsipc_base) {
 		pr_err("%s: nsipc_base of iomap fail!\n", __func__);
 		ret = -ENOMEM;
 		goto err_put_node;
 	}
+	of_node_put(np);
 
 	return 0;
 
@@ -611,7 +620,7 @@ void ipc_mbx_irq_show(struct seq_file *s, void __iomem *base, unsigned int mbx)
 	/*if ((g_usavedcfg & DEBG_SUSPEND_IPC_DATA_SHOW) > 0) {*/
 	for (i = 0; i < IPC_MBXDATA_MAX; i++) {
 		LOWPM_MSG(s, "SR:[MBXDATA%u]:0x%x\n",
-				i, readl(base + IPC_MBXDATA_OFFSET(mbx, i)));
+				i, readl(base + IPC_MBXDATA_OFFSET(mbx, i))); //lint !e666
 	}
 }
 
@@ -1285,8 +1294,8 @@ EXPORT_SYMBOL_GPL(hisi_sysregs_dump);
  ******************************************************************/
 void dbg_clk_status_show(void)
 {
-	int i = 0;
-	char *ctrl_name;
+	unsigned int i = 0;
+	char *ctrl_name = NULL;
 	unsigned int clk_list_len = g_lp_clk_num;
 
 	if (!(g_usavedcfg & DEBG_SUSPEND_CLK_SHOW))
@@ -1303,6 +1312,7 @@ void dbg_clk_status_show(void)
 		clk_showone(ctrl_name, i);
 
 	kfree(ctrl_name);
+	ctrl_name = NULL;
 
 	pr_info("[%s] %d leave.\n", __func__, __LINE__);
 }
@@ -1334,7 +1344,7 @@ static int init_pmu_table(void)
 
 	buffer = kmalloc(BUFFER_LENGTH * sizeof(char), GFP_KERNEL);
 	if (NULL == buffer) {
-		pr_err("%s: buffer kmalloc fail.\n", __func__);
+		pr_err("%s: %d buffer kmalloc fail.\n", __func__, __LINE__);
 		ret = -ENOMEM;
 		goto err_put_node;
 	}
@@ -1434,7 +1444,7 @@ static int init_pmu_table(void)
 
 	kfree(buffer);
 
-	pr_info("%s, init pmu table success.\n", __func__);
+	pr_info("%s: %d init success.\n", __func__, __LINE__);
 
 	return ret;
 
@@ -1469,8 +1479,8 @@ static int init_clk_table(void)
 
 	np = of_find_compatible_node(NULL, NULL, "hisilicon,lowpm_func");
 	if (!np) {
-		pr_err("%s: hisilicon,lowpm_func No compatible node found\n",
-				__func__);
+		pr_err("%s[%d]: hisilicon,lowpm_func No compatible node found\n",
+				__func__, __LINE__);
 		ret = -ENODEV;
 		goto err;
 	}
@@ -1704,14 +1714,20 @@ static int lowpm_func_probe(struct platform_device *pdev)
 	g_suspended = 0;
 
 	ret = map_sysregs();
-	if (ret)
+	if (ret){
+		pr_err("%s: %d map_sysregs failed.\n", __func__, __LINE__);
 		goto err;
+	}
 	ret = map_io_regs();
-	if (ret)
+	if (ret){
+		pr_err("%s: %d map_io_regs failed.\n", __func__, __LINE__);
 		goto err;
+	}
 	ret = init_lowpm_data();
-	if (ret)
+	if (ret){
+		pr_err("%s: %d init_lowpm_data failed.\n", __func__, __LINE__);
 		goto err;
+	}
 
 	wake_lock_init(&lowpm_wake_lock, WAKE_LOCK_SUSPEND, "lowpm_func");
 

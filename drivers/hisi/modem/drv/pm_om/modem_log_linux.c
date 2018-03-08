@@ -96,13 +96,15 @@ struct modem_log
 static LIST_HEAD(modem_log_list);
 struct modem_log g_modem_log;
 
+/*lint --e{64,826,785,528}*//*64&826:list_for_each_entry, 785 Too few initializers for struct define; 528: module_init*/
+
 static struct logger_log *get_modem_log_from_name(const char* name)
 {
     struct logger_log *log;
 
     list_for_each_entry(log, &modem_log_list, logs)
     {
-	    if (!strcmp(log->misc.name,name))
+	    if (!strncmp(log->misc.name,name, 50))
 	    {
 	        return log;
 	    }
@@ -127,8 +129,9 @@ struct logger_log *get_modem_log_from_minor(int minor)
 }
 
 unsigned long kernel_user_memcpy(void* dest, u32 destMax, const void* src, u32 count)
-{
-	return copy_to_user(dest, src, count);
+{/*lint --e{715} suppress destMax not referenced*/
+	/* coverity[HW_CBG_C_COPY_TO_USER] */
+	return copy_to_user(dest, src, (unsigned long)count);
 }
 
 void modem_log_ring_buffer_get(struct log_usr_info * usr_info, struct ring_buffer *rb)
@@ -191,12 +194,12 @@ static unsigned int modem_log_poll(struct file *file, poll_table *wait)
  *  3) Will set errno to EINVAL if read
  */
 static ssize_t modem_log_read(struct file *file, char __user *buf, size_t count, loff_t *pos)
-{
+{/*lint --e{715} suppress pos not referenced*/
 	struct logger_log *log = (struct logger_log *)file->private_data;
 	struct ring_buffer rb;
-	ssize_t ret = 1;
+	ssize_t ret = 1; /*lint !e446 (Warning -- side effect in initializer)*/
 	u32 len = 0;
-	DEFINE_WAIT(wait);
+	DEFINE_WAIT(wait);/*lint !e446 (Warning -- side effect in initializer)*/
 
 	modem_log_pr_debug("%s entry\n", __func__);
 
@@ -218,7 +221,7 @@ static ssize_t modem_log_read(struct file *file, char __user *buf, size_t count,
 			if (ret)
 			{
 				mutex_unlock(&log->mutex);
-				pr_err_once("[modem log]user(%s) read method invoked\n", log->usr_info->dev_name);
+				pr_err_once("[modem log]user(%s) read method invoked\n", log->usr_info->dev_name); /*lint !e727: (Info -- Symbol '__print_once' not explicitly initialized)*/
 				break;
 			}
 		}
@@ -231,7 +234,7 @@ skip_read:
 			break;
 		}
 		if (file->f_flags & O_NONBLOCK) {
-			modem_log_pr_err_once("try again, when read file flag is O_NONBLOCK\n");
+			modem_log_pr_err_once("try again, when read file flag is O_NONBLOCK\n"); /*lint !e727: (Info -- Symbol '__print_once' not explicitly initialized)*/
 			ret = -EAGAIN;
 			break;
 		}
@@ -241,7 +244,7 @@ skip_read:
 			break;
 		}
 
-		wake_unlock(&g_modem_log.wake_lock);
+		wake_unlock(&g_modem_log.wake_lock); /*lint !e455*/
 		schedule();
 		modem_log_pr_debug("give up cpu in modem_log_read\n");
 	}
@@ -280,7 +283,7 @@ static int modem_log_open(struct inode *inode, struct file *file)
     struct logger_log * log;
 
     log = get_modem_log_from_minor(MINOR(inode->i_rdev));
-    if(unlikely(NULL == log))
+    if(unlikely(NULL == log)) /*lint !e730: (Info -- Boolean argument to function)*/
     {
         modem_log_pr_err("device get fail\n");
         return -ENODEV;
@@ -326,11 +329,11 @@ static int modem_log_open(struct inode *inode, struct file *file)
  * modem_log_release - our log's close() method
  */
 static int modem_log_release(struct inode *inode, struct file *file)
-{
+{/*lint --e{715} suppress inode not referenced*/
     struct logger_log *log;
 
     log = file->private_data;
-    if(unlikely(NULL == log))
+    if(unlikely(NULL == log)) /*lint !e730: (Info -- Boolean argument to function)*/
     {
         modem_log_pr_err("device release fail\n");
         return -ENODEV;
@@ -347,7 +350,7 @@ static int modem_log_release(struct inode *inode, struct file *file)
 	}
 	mutex_unlock(&log->mutex);
 
-	wake_unlock(&g_modem_log.wake_lock);
+	wake_unlock(&g_modem_log.wake_lock); /*lint !e455*/
 
 	modem_log_pr_debug("%s entry\n", __func__);
 	return 0;
@@ -372,7 +375,10 @@ void modem_log_wakeup_all(void)
 		if (log->usr_info->mem && log->usr_info->mem->read != log->usr_info->mem->write)
 		{
 			wake_lock_timeout(&g_modem_log.wake_lock,(long)(HZ));
+			if((&log->wq)!=NULL)
+			{
 			wake_up_interruptible(&log->wq);
+			}
 		}
     }
 }
@@ -382,7 +388,7 @@ void modem_log_wakeup_all(void)
  * modem_log_ipc_handler - wake up waitquque
  */
 void modem_log_ipc_handler(u32 data)
-{
+{/*lint --e{715} suppress data not referenced*/
 	modem_log_pr_debug("ipc = 0x%x\n", data);
 	modem_log_wakeup_all();
 }
@@ -391,7 +397,7 @@ void modem_log_ipc_handler(u32 data)
  * modem_log_notify - modem log pm notify
  */
 s32 modem_log_notify(struct notifier_block *notify_block, unsigned long mode, void *unused)
-{
+{/*lint --e{715} suppress notify_block&unused not referenced*/
     struct logger_log *log;
 
 	modem_log_pr_debug("entry\n");
@@ -404,7 +410,10 @@ s32 modem_log_notify(struct notifier_block *notify_block, unsigned long mode, vo
 			if ((log->usr_info->mem) && (log->usr_info->mem->read != log->usr_info->mem->write) && (log->usr_info->mem->app_is_active))
 			{
 				wake_lock_timeout(&g_modem_log.wake_lock,(long)(HZ));
+				if((&log->wq)!=NULL)
+				{
 				wake_up_interruptible(&log->wq);
+				}
 			}
 	    }
 		break;
@@ -426,7 +435,7 @@ s32 bsp_modem_log_register(struct log_usr_info *usr_info)
 	s32 ret = 0;
 	struct logger_log *log = NULL;
 
-	if (unlikely(NULL == usr_info))
+	if (unlikely(NULL == usr_info)) /*lint !e730: (Info -- Boolean argument to function)*/
 	{
 		ret = (s32)MODEM_LOG_NO_USR_INFO;
 		modem_log_pr_err("no user info to register\n");
@@ -444,7 +453,7 @@ s32 bsp_modem_log_register(struct log_usr_info *usr_info)
 
 	log->misc.minor = MISC_DYNAMIC_MINOR;
 	log->misc.name = kstrdup(usr_info->dev_name, GFP_KERNEL);
-	if (unlikely(log->misc.name == NULL))
+	if (unlikely(log->misc.name == NULL)) /*lint !e730: (Info -- Boolean argument to function)*/
 	{
 		ret = (s32)MODEM_LOG_NO_MEM;
 		goto out_free_log;
@@ -461,15 +470,15 @@ s32 bsp_modem_log_register(struct log_usr_info *usr_info)
 
 	/* finally, initialize the misc device for this log */
 	ret = misc_register(&log->misc);
-	if (unlikely(ret))
+	if (unlikely(ret)) /*lint !e730: (Info -- Boolean argument to function)*/
 	{
-		modem_log_pr_err("failed to register misc device for log '%s'!\n", log->misc.name);
+		modem_log_pr_err("failed to register misc device for log '%s'!\n", log->misc.name); /*lint !e429*/
 		goto out_rm_node;
 	}
 
 	modem_log_pr_debug("created log '%s'\n", log->misc.name);
 	/* coverity[leaked_storage] */
-	return 0;
+	return 0; /*lint !e429*/
 out_rm_node:
 	list_del(&log->logs);
 out_free_log:
@@ -484,7 +493,7 @@ out:
  */
 void bsp_modem_log_fwrite_trigger(struct log_usr_info *usr_info)
 {
-	struct logger_log *log = NULL;
+	struct logger_log *log;
 
 	if (!usr_info)
 	{
@@ -500,13 +509,16 @@ void bsp_modem_log_fwrite_trigger(struct log_usr_info *usr_info)
 	}
 
 	/* if reader is not ready, no need to wakeup waitqueue */
-	if (usr_info->mem && usr_info->mem->app_is_active)
+	if (usr_info->mem && usr_info->mem->app_is_active)  /*lint !e456*/
 	{
-		wake_lock(&g_modem_log.wake_lock);
+		wake_lock(&g_modem_log.wake_lock); /*lint !e454*/
+		if((&log->wq)!=NULL)
+		{
 		wake_up_interruptible(&log->wq);
+		}
 	}
-	modem_log_pr_debug("%s\n", __func__);
-}
+	modem_log_pr_debug("%s\n", __func__); /*lint !e456*/
+} /*lint !e454*/
 
 /**
  * modem_log_fwrite_trigger_force - wakeup acore and trigger file write from ring buffer to log record file
