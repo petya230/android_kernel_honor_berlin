@@ -273,6 +273,7 @@ static TC_NS_Operation *alloc_operation(TC_NS_DEV_File *dev_file,
 				tlogd("temp_buf malloc ok, i = %d.\n", i);
 			}
 			local_temp_buffer[i].temp_buffer = temp_buf;
+			local_temp_buffer[i].size = buffer_size;
 			if ((TEEC_MEMREF_TEMP_INPUT == param_type) ||
 			    (TEEC_MEMREF_TEMP_INOUT == param_type)) {
 				tlogv("client_param->memref.buffer=0x%llx\n",
@@ -290,7 +291,6 @@ static TC_NS_Operation *alloc_operation(TC_NS_DEV_File *dev_file,
 			}
 			operation->params[i].memref.buffer = virt_to_phys((void *)temp_buf);
 			operation->buffer_h_addr[i] = virt_to_phys((void *)temp_buf) >> 32;
-			local_temp_buffer[i].size = buffer_size;
 			operation->params[i].memref.size = buffer_size;
 			/*TEEC_MEMREF_TEMP_INPUT equal
 			 * to TEE_PARAM_TYPE_MEMREF_INPUT*/

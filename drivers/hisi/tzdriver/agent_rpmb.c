@@ -214,13 +214,16 @@ static void dump_memory(uint8_t *data, uint32_t count)
 
 	for (i = 0; i < count / 16 ; i++) {
 
-		j = snprintf_s((char *)buffer, 256, 64, "%x: ", i * 16);
+		j = snprintf_s((char *)buffer, 256, 64, "%x: ", (i * 16));
 
 		if (j < 0)
 			break;
 
 		j = snprintf_s((char *)(buffer + j), 256 - j, 64, "%08x %08x %08x %08x ",
-				*p, *(p+1), *(p+2), *(p+3));
+			       *p, *(p + 1), *(p + 2), *(p + 3));
+		if (j < 0)
+			break;
+
 		p += 4;
 
 		tloge("%s\n", buffer);
@@ -228,7 +231,7 @@ static void dump_memory(uint8_t *data, uint32_t count)
 	}
 
 	if (count % 16) {
-		j = snprintf_s((char *)buffer, 256, 64, "%x: ", (count / 16) * 16);
+		j = snprintf_s((char *)buffer, 256, 64, "%x: ", ((count / 16) * 16));
 
 		for (i = 0; i < 4; i++) {
 			if (j < 0)
@@ -243,7 +246,7 @@ static void dump_memory(uint8_t *data, uint32_t count)
 
 }
 
-static int rpmb_check_data(struct rpmb_ctrl_t * trans_ctrl)
+static int rpmb_check_data(struct rpmb_ctrl_t *trans_ctrl)
 {
 	uint16_t obj_crc;
 	size_t buf_crc_start_offset;
@@ -271,8 +274,8 @@ static int rpmb_check_data(struct rpmb_ctrl_t * trans_ctrl)
 	buf_crc_start_offset = offsetof(struct rpmb_ctrl_t, buf_start)
 				+ sizeof(trans_ctrl->buf_crc);
 	obj_crc =  tee_calc_crc16((uint8_t *)trans_ctrl + buf_crc_start_offset,
-				   (uint32_t)(offsetof(struct rpmb_ctrl_t, buf_start)
-				   - buf_crc_start_offset + trans_ctrl->buf_len));
+				  (uint32_t)(offsetof(struct rpmb_ctrl_t, buf_start)
+					     - buf_crc_start_offset + trans_ctrl->buf_len));
 
 	if (obj_crc != trans_ctrl->buf_crc) {
 		tloge("rpmb check buf crc error, should be 0x%x, now is 0x%x, offset %zd, size is %zd\n",
@@ -374,8 +377,6 @@ static int rpmb_agent_work(struct tee_agent_kernel_ops *agent_instance)
 	return 0;
 }
 
-/*lint -restore*/
-
 static int rpmb_agent_crash_work(struct tee_agent_kernel_ops *agent_instance,
 				 TC_NS_ClientContext * context,
 				 unsigned int dev_file_id)
@@ -396,6 +397,7 @@ static struct tee_agent_kernel_ops rpmb_agent_ops = {
 
 	.list = LIST_HEAD_INIT(rpmb_agent_ops.list)
 };
+/*lint -restore*/
 
 int rpmb_agent_register(void)
 {

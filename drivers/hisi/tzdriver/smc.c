@@ -471,10 +471,10 @@ void wakeup_tc_siq(void)
 
 static int sec_s_power_on(void)
 {
+	int ret = 0;
+
 	if (of_get_property(np, "sec-s-regulator-enable", NULL)) {
 		/*power on ccs */
-		int ret = 0;
-
 		if (of_get_property(np, "sec-s-power-ctrl-en", NULL)) {
 			ret = clk_prepare_enable(secs_clk);
 			if (ret < 0) {
@@ -492,10 +492,10 @@ static int sec_s_power_on(void)
 
 static int sec_s_power_down(void)
 {
+	int ret = 0;
+
 	if (of_get_property(np, "sec-s-regulator-enable", NULL)) {
 		/*power down ccs */
-		int ret = 0;
-
 		if (of_get_property(np, "sec-s-power-ctrl-en", NULL))
 			clk_disable_unprepare(secs_clk);
 		ret = regulator_bulk_disable(1, &regu_burning);

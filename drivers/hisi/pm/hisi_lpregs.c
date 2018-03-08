@@ -663,7 +663,7 @@ void pm_status_show(struct seq_file *s)
 			return;
 	}
 
-	wake_status = readb(sysreg_base.reserved_base + PM_WAKE_STATUS_OFFSET);
+	wake_status = readb(sysreg_base.reserved_base + PM_WAKE_STATUS_OFFSET); //lint !e578
 	LOWPM_MSG(s,
 		"SR:wakelock status, ap:%d, modem:%d, hifi:%d, iomcu:%d, gps:%d, hotplug:%d,%d.\n",
 		(wake_status & WAKE_STATUS_AP_MASK) ? 1 : 0,
@@ -677,7 +677,7 @@ void pm_status_show(struct seq_file *s)
     power_monitor_report(IOM3_SLEEP,"%d",(wake_status & WAKE_STATUS_IOMCU_MASK) ? 1 : 0);
 
 	LOWPM_MSG(s, "SR:system sleeped %u times.\n",
-		readl(sysreg_base.reserved_base + PM_SYS_SLEEP_CNT_OFFSET));
+		readl(sysreg_base.reserved_base + PM_SYS_SLEEP_CNT_OFFSET)); //lint !e666
 	LOWPM_MSG(s,
 		"SR:wake times, system:%u, woken up by ap:%u, modem:%u, hifi:%u, iomcu:%u, lpm3:%u.\n",
 		readl(sysreg_base.reserved_base + PM_SYS_WAKE_CNT_OFFSET),
@@ -1447,7 +1447,6 @@ static int init_pmu_table(void)
 	kfree(buffer);
 
 	pr_info("%s: %d init success.\n", __func__, __LINE__);
-
 	return ret;
 
 err_free_lookups:
