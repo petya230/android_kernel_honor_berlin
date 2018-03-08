@@ -202,7 +202,7 @@ check_barrier:
 	return 0;
 }
 
-
+// cppcheck-suppress *
 #define store_one(object, min, max)						\
 static ssize_t store_##object						\
 (struct device *dev, struct device_attribute *attr, const char *buf, size_t count)	\
@@ -224,19 +224,30 @@ static ssize_t store_##object						\
 	return ret;								\
 }
 
+// cppcheck-suppress *
 store_one(vsync_upthreshold, DFMO_MIN_UPTHRESHOLD, DFMO_MAX_UPTHRESHOLD)
+// cppcheck-suppress *
 store_one(vsync_downdifferential, DFMO_MIN_DOWNDIFFERENCTIAL, DFMO_MAX_DOWNDIFFERENCTIAL)
+// cppcheck-suppress *
 store_one(no_vsync_upthreshold, DFMO_MIN_UPTHRESHOLD, DFMO_MAX_UPTHRESHOLD)
+// cppcheck-suppress *
 store_one(no_vsync_downdifferential, DFMO_MIN_DOWNDIFFERENCTIAL, DFMO_MAX_DOWNDIFFERENCTIAL)
+// cppcheck-suppress *
 store_one(animation_boost, DFMO_ANIMATION_BOOST_DN, DFMO_ANIMATION_BOOST_ON)
+// cppcheck-suppress *
 store_one(animation_boost_freq, DFMO_MIN_ANIMATION_BOOST_FREQ, DFMO_MAX_ANIMATION_BOOST_FREQ)
+// cppcheck-suppress *
 store_one(hispeed_freq, DFMO_MIN_HISPEED_FREQ, DFMO_MAX_HISPEED_FREQ)
 #ifdef DFMO_REQUEST_QOS_CPU_DMA_LATENCY
+// cppcheck-suppress *
 store_one(qos_cpu_dma_latency_request_freq, DFMO_MIN_FREQ_FOR_QOS_CPU_DMA_LATENCY, DFMO_MAX_FREQ_FOR_QOS_CPU_DMA_LATENCY)
+// cppcheck-suppress *
 store_one(qos_cpu_dma_latency_request_value, DFMO_MIN_QOS_CPU_DMA_LATENCY_REQUEST_VALUE, DFMO_MAX_QOS_CPU_DMA_LATENCY_REQUEST_VALUE)
+// cppcheck-suppress *
 store_one(qos_cpu_dma_latency_request_delay, DFMO_MIN_QOS_CPU_DMA_LATENCY_REQUEST_DELAY, DFMO_MAX_QOS_CPU_DMA_LATENCY_REQUEST_DELAY)
 #endif
 
+// cppcheck-suppress *
 #define show_one(object)					\
 static ssize_t show_##object					\
 (struct device *dev, struct device_attribute *attr, char *buf)	\

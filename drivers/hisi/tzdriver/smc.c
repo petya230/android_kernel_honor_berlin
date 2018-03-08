@@ -197,7 +197,7 @@ static int smc_thread_fn(void *arg)
 			}
 
 			if (cmd.ret_val == TEEC_PENDING
-			    || cmd.ret_val == TEEC_PENDING2) {
+			    || cmd.ret_val == TEEC_PENDING2) { /*lint !e650 */
 				tlogd("wakeup command %d\n", cmd.event_nr);
 			}
 			if ((TEE_ERROR_TAGET_DEAD == cmd.ret_val) ||
@@ -207,7 +207,7 @@ static int smc_thread_fn(void *arg)
 				if (0 > teeos_log_exception_archive())
 					tloge("log_exception_archive failed\n");
 			}
-			if (cmd.ret_val == TEEC_PENDING2) {
+			if (cmd.ret_val == TEEC_PENDING2) { /*lint !e650 */
 				unsigned int agent_id = cmd.agent_id;
 
 				/* If the agent does not exist post
@@ -332,7 +332,7 @@ next_cmd:
 	/* Wake up all the waiting threads */
 	mutex_lock(&wait_th_lock);
 	list_for_each_entry(we, &wait_list, list) {
-		we->cmd->ret_val = TEEC_ERROR_GENERIC;
+		we->cmd->ret_val = TEEC_ERROR_GENERIC; /*lint !e570 */
 		complete(&we->done);
 	}
 	mutex_unlock(&wait_th_lock);
@@ -341,7 +341,7 @@ next_cmd:
 		set_current_state(TASK_INTERRUPTIBLE);
 		schedule();
 	}
-	return 0;
+	return 0; /*lint !e527 */
 }
 
 static void smc_work_no_wait(struct work_struct *work)
@@ -408,6 +408,7 @@ static unsigned int smc_send_func(TC_NS_SMC_CMD *cmd, uint32_t cmd_type,
 	mutex_unlock(&wait_th_lock);
 
 	if (!queue_kthread_work(&cmd_worker, &work.kthwork)) {
+		tloge("cmd work did't queue successfully, was already pending.\n");
 		kfree(we);
 		return (unsigned int)TEEC_ERROR_GENERIC;
 
@@ -446,7 +447,7 @@ bool is_tee_hungtask(struct task_struct *t)
 		return false;
 
 	for (i=0; i < HUNGTASK_LIST_LEN; i++) {
-		if (!strcmp(t->comm, g_hungtask_monitor_list[i])) {
+		if (!strcmp(t->comm, g_hungtask_monitor_list[i])) { /*lint !e421 */
 			tloge("tee_hungtask detected:the hungtask is %s\n",t->comm);
 			return true;
 		}
@@ -521,8 +522,10 @@ unsigned int TC_NS_SMC(TC_NS_SMC_CMD *cmd, uint8_t flags)
 	unsigned int ret = 0;
 	int spi_ret;
 
-	if (sys_crash)
+	if (sys_crash) {
+		tloge("ERROR: sys crash happened!!!\n");
 		return (unsigned int)TEEC_ERROR_GENERIC;
+	}
 
 	if (!cmd) {
 		tloge("invalid cmd\n");
@@ -540,8 +543,8 @@ unsigned int TC_NS_SMC(TC_NS_SMC_CMD *cmd, uint8_t flags)
 		goto spi_err;
 	}
 
-	tlogd(KERN_INFO "***TC_NS_SMC call start on cpu %d %p***\n",
-		raw_smp_processor_id(), cmd);
+	tlogd(KERN_INFO "***TC_NS_SMC call start on cpu %d ***\n",
+		raw_smp_processor_id());
 	/* TODO
 	 * directily call smc_send on cpu0 will call SMP PREEMPT error,
 	 * so just use thread to send smc
@@ -574,11 +577,11 @@ unsigned int TC_NS_SMC_WITH_NO_NR(TC_NS_SMC_CMD *cmd, uint8_t flags)
 	int spi_ret;
 
 	if (sys_crash)
-		return TEEC_ERROR_GENERIC;
+		return TEEC_ERROR_GENERIC; /*lint !e570 */
 
 	if (!cmd) {
 		tloge("invalid cmd\n");
-		return TEEC_ERROR_GENERIC;
+		return TEEC_ERROR_GENERIC; /*lint !e570 */
 	}
 
 	power_ret = (unsigned int)sec_s_power_on();
@@ -598,8 +601,8 @@ unsigned int TC_NS_SMC_WITH_NO_NR(TC_NS_SMC_CMD *cmd, uint8_t flags)
 		goto spi_err;
 	}
 
-	tlogd(KERN_INFO "***TC_NS_SMC call start on cpu %d %p***\n",
-		raw_smp_processor_id(), cmd);
+	tlogd(KERN_INFO "***TC_NS_SMC call start on cpu %d ***\n",
+		raw_smp_processor_id());
 	/* TODO
 	 * directily call smc_send on cpu0 will call SMP PREEMPT error,
 	 * so just use thread to send smc
@@ -638,16 +641,16 @@ unsigned int TC_NS_POST_SMC(TC_NS_SMC_CMD *cmd)
 		.we = NULL
 	};
 	if (sys_crash)
-		return TEEC_ERROR_GENERIC;
+		return TEEC_ERROR_GENERIC; /*lint !e570 */
 
 	if (!cmd) {
 		tloge("invalid cmd\n");
-		return TEEC_ERROR_GENERIC;
+		return TEEC_ERROR_GENERIC; /*lint !e570 */
 	}
 
 	atomic_inc(&outstading_cmds);
 	if (!queue_kthread_work(&cmd_worker, &work.kthwork))
-		return TEEC_ERROR_GENERIC;
+		return TEEC_ERROR_GENERIC; /*lint !e570 */
 
 	/* We need to make sure the flush the work
 	 * so it has made it all the way to the smc thread! */

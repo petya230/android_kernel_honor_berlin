@@ -68,9 +68,10 @@ enum SVC_SECBOOT_IMG_TYPE {
 	WAS,
 	CAS,
 	MODEM_DTB,
-    ISP,
+	ISP,
 	SOC_MAX
 };
+
 /**
  * @ingroup  TEEC_COMMON_DATA
  *

@@ -69,6 +69,7 @@ store_bd_utilization(struct device *dev, struct device_attribute *attr,
 	unsigned int input;
 	int ret = 0;
 
+	// cppcheck-suppress *
 	ret = sscanf(buf, "%u", &input);
 	if ((ret != 1) || (input > DFPQ_MAX_BDUTILIZATION) ||
 		(input < DFPQ_MIN_BDUTILIZATION))
@@ -211,6 +212,7 @@ devfreq_pm_qos_notifier(struct notifier_block *nb, unsigned long val, void *v)
 	return NOTIFY_OK;
 }
 
+/*lint -e429*/
 static int devfreq_pm_qos_gov_init(struct devfreq *df)
 {
 	int ret;
@@ -260,6 +262,7 @@ static int devfreq_pm_qos_gov_init(struct devfreq *df)
 
 	return 0;
 }
+/*lint +e429*/
 
 static void devfreq_pm_qos_gov_exit(struct devfreq *df)
 {

@@ -119,7 +119,7 @@ static inline int copy_from_client(void *dest, void __user *src, size_t size,
 
 	if (kernel_api) {
 		/* Source is kernel valid address */
-		if ((virt_addr_valid(src) || vmalloc_addr_valid(src))) {
+		if ((virt_addr_valid(src) || vmalloc_addr_valid(src))) { /*lint !e648 */
 			s_ret = memcpy_s(dest, size, src, size);
 			if (EOK != s_ret) {
 				tloge("copy_from_client _s fail. line=%d, s_ret=%d.\n",
@@ -159,7 +159,7 @@ static inline int copy_to_client(void __user *dest, void *src, size_t size,
 		return ret;
 
 	/* Source is kernel valid address */
-	if (kernel_api && (virt_addr_valid(dest) || vmalloc_addr_valid(dest))) {
+	if (kernel_api && (virt_addr_valid(dest) || vmalloc_addr_valid(dest))) { /*lint !e648 */
 		s_ret = memcpy_s(dest, size, src, size);
 		if (EOK != s_ret) {
 			tloge("copy_to_client _s fail. line=%d, s_ret=%d.\n",
@@ -263,7 +263,7 @@ static TC_NS_Operation *alloc_operation(TC_NS_DEV_File *dev_file,
 				break;
 			}
 			temp_buf = (void *)__get_free_pages(GFP_KERNEL | __GFP_ZERO,
-							    get_order(ROUND_UP(buffer_size, SZ_4K)));
+							    get_order(ROUND_UP(buffer_size, SZ_4K))); /*lint !e647 */
 			/* If buffer size is zero or malloc failed */
 			if (!temp_buf) {
 				tloge("temp_buf malloc failed, i = %d.\n", i);
@@ -601,8 +601,8 @@ static int free_operation(TC_NS_ClientContext *client_context,
 			/* free temp buffer */
 			/* TODO: this is all sorts of bad */
 			temp_buf = local_temp_buffer[i].temp_buffer;
-			tlogd("Free temp buf %p, i = %d\n", temp_buf, i);
-			if (virt_addr_valid(temp_buf) &&
+			tlogd("Free temp buf, i = %d\n", i);
+			if (virt_addr_valid(temp_buf) && /*lint !e648 */
 			    !ZERO_OR_NULL_PTR(temp_buf))
 				free_pages((unsigned long)temp_buf,
 					   get_order(ROUND_UP
@@ -639,7 +639,7 @@ int tc_client_call(TC_NS_ClientContext *client_context,
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 13, 0))
 	kuid_t kuid;
 
-	kuid = current_uid(); /*lint !e666 */
+	kuid = current_uid(); /*lint !e666 !e64 */
 	uid = kuid.val;
 #else
 	uid = current_uid();
@@ -718,7 +718,7 @@ int tc_client_call(TC_NS_ClientContext *client_context,
 	client_context->session_id = smc_cmd->context_id;
 
 	if (tee_ret != 0) {
-		while (TEEC_PENDING == tee_ret) {
+		while (TEEC_PENDING == tee_ret) { /*lint !e650 */
 			mutex_lock(&dev_file->service_lock);
 			service = tc_find_service(&dev_file->services_list,
 					client_context->uuid); /*lint !e64 */
@@ -753,7 +753,7 @@ int tc_client_call(TC_NS_ClientContext *client_context,
 		}
 		/* Client was interrupted, return and let it handle it's own
 		 * signals first then retry */
-		if (TEEC_CLIENT_INTR == tee_ret) {
+		if (TEEC_CLIENT_INTR == tee_ret) { /*lint !e650 */
 			ret = -ERESTARTSYS;
 			goto error;
 		} else if (tee_ret) {
@@ -780,7 +780,7 @@ int tc_client_call(TC_NS_ClientContext *client_context,
 	goto error;
 
 error1:
-	if (TEEC_ERROR_SHORT_BUFFER == tee_ret) {
+	if (TEEC_ERROR_SHORT_BUFFER == tee_ret) { /*lint !e650 */
 		/* update size */
 		if (operation) {
 			ret = update_client_operation(dev_file, client_context,

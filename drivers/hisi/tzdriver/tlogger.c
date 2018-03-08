@@ -205,7 +205,7 @@ start:
 
 	if (ring_flag != reader->r_ver /*ring_flag not same */) {
 		if ((reader->r_off > log->w_off)
-		    && ((ring_flag - reader->r_ver) == 1)) {
+			&& ((ring_flag - reader->r_ver) == 1)) {
 			sub = (m_addr_end - reader->r_off) + (log->w_off - m_addr_start);
 		} else {
 			reader->r_off = log->w_off;
@@ -542,7 +542,7 @@ static int __init create_log(char *log_name, int size)
 	struct logger_log *log;
 	unsigned char *buffer;
 
-	buffer = m_log_buffer;
+	buffer = m_log_buffer; /*lint !e64 */
 
 	if (buffer == NULL)
 		return -ENOMEM;
@@ -627,7 +627,7 @@ int tlogger_store_lastmsg(void)
 	loff_t pos = 0;
 	int ret;
 
-	if (!virt_addr_valid(tmp_log_buffer)) {
+	if (!virt_addr_valid(tmp_log_buffer)) { /*lint !e648 */
 		tloge("tmp_log_buffer is not valid addr\n");
 		return -EFAULT;
 	}
@@ -660,7 +660,7 @@ int tlogger_store_lastmsg(void)
 	tlogd("Succeed to filp_open last_teemsg\n");
 
 	old_fs = get_fs();
-	set_fs(KERNEL_DS);
+	set_fs(KERNEL_DS); /*lint !e501 */
 
 	ret = (int)sys_chown((const char __user *)LOG_PATH_TEE_LOG_FILE, ROOT_UID, SYSTEM_GID);
 	if (ret)

@@ -375,7 +375,7 @@ int TC_NS_register_agent(TC_NS_DEV_File *dev_file, unsigned int agent_id,
 	}
 
 error:
-	return ret;
+	return ret; /*lint !e429 */
 }
 
 

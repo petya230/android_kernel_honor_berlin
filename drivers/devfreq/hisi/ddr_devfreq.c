@@ -25,6 +25,7 @@
 #endif
 #include <linux/clk.h>
 
+/*lint -save -e715 -e785 -e747*/
 
 /*===tele_mntn===*/
 #if defined (CONFIG_HISILICON_PLATFORM_TELE_MNTN)
@@ -224,7 +225,7 @@ static struct devfreq_pm_qos_data ddr_devfreq_up_th_pm_qos_data = {
 static int ddr_devfreq_target(struct device *dev, unsigned long *freq, u32 flags)
 {
 	struct platform_device *pdev = container_of(dev,
-					struct platform_device, dev);
+					struct platform_device, dev);  //lint !e826
 	struct ddr_devfreq_device *ddev = platform_get_drvdata(pdev);
 	struct devfreq_pm_qos_data *data;
 	struct devfreq *devfreq;
@@ -278,7 +279,7 @@ static int ddr_devfreq_target(struct device *dev, unsigned long *freq, u32 flags
 	*freq = clk_get_rate(ddev->get);
 
 	/* check */
-	for (lev = 0; lev < devfreq->profile->max_state; lev++)
+	for (lev = 0; lev < devfreq->profile->max_state; lev++)	//lint !e574 !e737
 		if (*freq == devfreq->profile->freq_table[lev])
 			goto out;
 
@@ -287,7 +288,7 @@ static int ddr_devfreq_target(struct device *dev, unsigned long *freq, u32 flags
 	dev_err(dev,
 		"odd freq status.\n<Target: %09lu hz>\n<Status: %09lu hz>\n%s",
 		_freq, *freq, "--- freq table ---\n");
-	for (lev = 0; lev < devfreq->profile->max_state; lev++) {
+	for (lev = 0; lev < devfreq->profile->max_state; lev++) {	//lint !e574 !e737
 		pr_err("<%d> %09u hz\n",
 			lev, devfreq->profile->freq_table[lev]);
 	}
@@ -317,7 +318,7 @@ ddr_devfreq_get_dev_status(struct device *dev, struct devfreq_dev_status *stat)
 static int ddr_devfreq_get_cur_status(struct device *dev, unsigned long *freq)
 {
 	struct platform_device *pdev = container_of(dev,
-					struct platform_device, dev);
+					struct platform_device, dev);	/*lint !e826 */
 	struct ddr_devfreq_device *ddev = platform_get_drvdata(pdev);
 
 	if(NULL == ddev)
@@ -335,6 +336,7 @@ static struct devfreq_dev_profile ddr_devfreq_dev_profile = {
 	.get_cur_freq		= ddr_devfreq_get_cur_status,
 };
 
+/*lint -e429*/
 static int ddr_devfreq_probe(struct platform_device *pdev)
 {
     struct ddr_devfreq_device *ddev = NULL;
@@ -537,6 +539,7 @@ no_type:
 out:
 	return ret;
 }
+/*lint +e429*/
 
 static int ddr_devfreq_remove(struct platform_device *pdev)
 {
@@ -576,7 +579,9 @@ static const struct of_device_id ddr_devfreq_of_match[] = {
 };
 MODULE_DEVICE_TABLE(of, ddr_devfreq_of_match);
 #endif
+/*lint -restore */
 
+/*lint -e64 -e785 */
 static struct platform_driver ddr_devfreq_driver = {
 	.probe = ddr_devfreq_probe,
 	.remove = ddr_devfreq_remove,
@@ -586,4 +591,9 @@ static struct platform_driver ddr_devfreq_driver = {
 		.of_match_table = of_match_ptr(ddr_devfreq_of_match),
 	},
 };
+/*lint +e64 +e785 */
+
+/*lint -e528 -esym(528,*) -e64 -esym(64,*) */
 module_platform_driver(ddr_devfreq_driver);
+/*lint -e528 +esym(528,*) +e64 +esym(64,*) */
+

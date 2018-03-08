@@ -77,7 +77,7 @@ struct rpmb_ctrl_t {
 
 /*lint -e754 +esym(754,*)*/
 
-static struct rpmb_ctrl_t* m_rpmb_ctrl;
+static struct rpmb_ctrl_t *m_rpmb_ctrl;
 /*
  * the data_ptr from SecureOS is physical address,
  * so, we MUST update to the virtual address,
@@ -122,9 +122,9 @@ static int process_rpmb_lock(struct tee_agent_kernel_ops *agent_instance)
 		lock_info.dev_id = event_data->cmd.dev_file_id;
 		lock_info.lock_need_free = true;
 		tlogd("rpmb counter lock context: dev_id=%d\n",
-			lock_info.dev_id);
+		      lock_info.dev_id);
 	}
-	return 0;
+	return 0; /*lint !e454 */
 }
 
 static int process_rpmb_unlock(struct tee_agent_kernel_ops *agent_instance)
@@ -136,7 +136,7 @@ static int process_rpmb_unlock(struct tee_agent_kernel_ops *agent_instance)
 	}
 
 	lock_info.lock_need_free = false;
-	mutex_unlock(&rpmb_counter_lock);
+	mutex_unlock(&rpmb_counter_lock); /*lint !e455 */
 	tlogd("free rpmb device lock\n");
 	return 0;
 }
@@ -160,7 +160,7 @@ static void send_ioccmd(struct tee_agent_kernel_ops *agent_instance)
 		process_rpmb_lock(agent_instance);
 
 	ret = hisi_rpmb_ioctl_cmd(RPMB_FUNC_ID_SECURE_OS, m_rpmb_ctrl->op_type,
-		&m_rpmb_ctrl->args.send_ioccmd.ioc_rpmb);
+				  &m_rpmb_ctrl->args.send_ioccmd.ioc_rpmb);
 	if (ret)
 		tloge("mmc_blk_ioctl_rpmb_cmd failed: %d\n", ret);
 
@@ -200,15 +200,17 @@ static uint16_t tee_calc_crc16(uint8_t *pChar, int32_t lCount)
 	return (usCrc & 0xFFFF) ;
 }
 
-static void dump_memory(uint8_t* data, uint32_t count)
+static void dump_memory(uint8_t *data, uint32_t count)
 {
 	uint32_t i;
 	int j;
-	uint32_t *p = (uint32_t*)data;
+	uint32_t *p;
 	uint8_t  buffer[256];
 
 	if (NULL == data)
 		return;
+
+	p = (uint32_t *)data;
 
 	for (i = 0; i < count / 16 ; i++) {
 
@@ -258,8 +260,8 @@ static int rpmb_check_data(struct rpmb_ctrl_t * trans_ctrl)
 	obj_crc = tee_calc_crc16((uint8_t *)trans_ctrl,	(uint32_t)(offsetof(struct rpmb_ctrl_t, head_crc)));
 	if (obj_crc != trans_ctrl->head_crc) {
 		tloge("rpmb head crc error, should be 0x%x, now is 0x%x, offset %zd, size is %zd\n",
-			obj_crc, trans_ctrl->head_crc, offsetof(struct rpmb_ctrl_t, head_crc),
-			sizeof(struct rpmb_ctrl_t));
+		      obj_crc, trans_ctrl->head_crc, offsetof(struct rpmb_ctrl_t, head_crc),
+		      sizeof(struct rpmb_ctrl_t)); /*lint !e559 */
 		dump_memory((uint8_t *)trans_ctrl, (uint32_t)sizeof(struct rpmb_ctrl_t));
 
 		return -1;
@@ -274,9 +276,9 @@ static int rpmb_check_data(struct rpmb_ctrl_t * trans_ctrl)
 
 	if (obj_crc != trans_ctrl->buf_crc) {
 		tloge("rpmb check buf crc error, should be 0x%x, now is 0x%x, offset %zd, size is %zd\n",
-			obj_crc, trans_ctrl->buf_crc, buf_crc_start_offset ,
-			offsetof(struct rpmb_ctrl_t, buf_start)
-				   - buf_crc_start_offset + trans_ctrl->buf_len);
+		      obj_crc, trans_ctrl->buf_crc, buf_crc_start_offset ,
+		      offsetof(struct rpmb_ctrl_t, buf_start)
+		      - buf_crc_start_offset + trans_ctrl->buf_len);
 		dump_memory((uint8_t *)trans_ctrl, (uint32_t)(sizeof(struct rpmb_ctrl_t) +  trans_ctrl->buf_len));
 
 		return -1;
@@ -294,7 +296,7 @@ static int rpmb_agent_work(struct tee_agent_kernel_ops *agent_instance)
 	uint32_t copy_len;
 
 	if (NULL == agent_instance || NULL == agent_instance->agent_buffer
-		|| NULL == agent_instance->agent_buffer->kernel_addr)
+	    || NULL == agent_instance->agent_buffer->kernel_addr)
 		return -1;
 
 	trans_ctrl = (struct rpmb_ctrl_t *)agent_instance->agent_buffer->kernel_addr;
@@ -312,7 +314,7 @@ static int rpmb_agent_work(struct tee_agent_kernel_ops *agent_instance)
 
 		}
 		rc = memcpy_s((void *)m_rpmb_ctrl, agent_instance->agent_buffer->len,
-			(void *)trans_ctrl, sizeof(struct rpmb_ctrl_t) + trans_ctrl->buf_len);
+			      (void *)trans_ctrl, sizeof(struct rpmb_ctrl_t) + trans_ctrl->buf_len);
 		if (EOK != rc) {
 			tloge("memcpy_s failed: 0x%x\n", rc);
 			trans_ctrl->ret = TEEC_ERROR_SECURITY;
@@ -349,9 +351,9 @@ static int rpmb_agent_work(struct tee_agent_kernel_ops *agent_instance)
 		}
 
 		copy_len = agent_instance->agent_buffer->len
-				- offsetof(struct rpmb_ctrl_t, buf_start);
+			   - offsetof(struct rpmb_ctrl_t, buf_start);
 		rc = memcpy_s((void *)trans_ctrl->buf_start, copy_len,
-				(void *)m_rpmb_ctrl->buf_start, copy_len);
+			      (void *)m_rpmb_ctrl->buf_start, copy_len);
 		if (EOK != rc) {
 			tloge("memcpy_s 2 failed: 0x%x\n", rc);
 			trans_ctrl->ret = TEEC_ERROR_SECURITY;
@@ -398,6 +400,7 @@ static struct tee_agent_kernel_ops rpmb_agent_ops = {
 int rpmb_agent_register(void)
 {
 	tee_agent_kernel_register(&rpmb_agent_ops);
+
 	return 0;
 }
 

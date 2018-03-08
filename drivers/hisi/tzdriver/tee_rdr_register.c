@@ -77,6 +77,7 @@ int teeos_register_exception(void)
 	    return ret_s;
 	}
 
+/*lint -save -e570*/
 	einfo.e_modid = TEEOS_MODID;
 	einfo.e_modid_end = TEEOS_MODID_END;
 	einfo.e_process_priority = RDR_ERR;
@@ -87,7 +88,7 @@ int teeos_register_exception(void)
 	einfo.e_exce_type = TEE_S_EXCEPTION;
 	einfo.e_from_core = RDR_TEEOS;
 	einfo.e_upload_flag = RDR_UPLOAD_YES;
-
+/*lint -restore*/
 	ret_s = memcpy_s(einfo.e_from_module, sizeof(einfo.e_from_module),
 			tee_module_name, sizeof(tee_module_name));
 	if (ret_s) {

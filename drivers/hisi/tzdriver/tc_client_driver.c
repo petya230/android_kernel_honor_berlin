@@ -225,6 +225,7 @@ static int tee_init_crypto(char *hash_type);
 #define BUF_MAX_SIZE 1024
 #define MAX_PATH_SIZE 512
 #define SHA256_DIGEST_LENTH 32
+/*lint -save -e569 */
 static char ca_hash[SHA256_DIGEST_LENTH] = {0x59, 0xc0, 0xd6, 0x84,
 					    0x8e, 0x52, 0x88, 0xc0,
 					    0x6b, 0x22, 0xde, 0xba,
@@ -234,6 +235,7 @@ static char ca_hash[SHA256_DIGEST_LENTH] = {0x59, 0xc0, 0xd6, 0x84,
 					    0xc9, 0x24, 0x47, 0xf,
 					    0x77, 0x91, 0x61, 0x49,
 					   };
+/*lint -restore */
 
 #define SYSTEM_SERVER "system_server"
 #define APK_64_PROCESS_PATH "/data/dalvik-cache/arm64/system@framework@boot.oat"
@@ -307,7 +309,7 @@ static int calc_teecd_path_hash(unsigned char *data, unsigned long len, char *di
 	desc->shash.tfm = g_tee_shash_tfm;
 	desc->shash.flags = 0;
 
-	rc = crypto_shash_digest(&desc->shash, data, len, digest);
+	rc = crypto_shash_digest(&desc->shash, data, len, digest); /*lint !e64 */
 
 	kfree(desc);
 
@@ -329,7 +331,7 @@ static int check_teecd_access(struct task_struct *ca_task)
 		return -EPERM;
 	}
 
-	cred = get_task_cred(ca_task);/*lint -e838*/
+	cred = get_task_cred(ca_task); /*lint !e838 */
 	if (NULL == cred) {
 		TCERR("cred is NULL\n");
 		return -EPERM;
@@ -374,7 +376,7 @@ static int check_teecd_access(struct task_struct *ca_task)
 #endif
 
 		if (message_size > 0) {
-			ret =  calc_teecd_path_hash(ca_cert, message_size, digest);
+			ret =  calc_teecd_path_hash(ca_cert, message_size, digest); /*lint !e64 */
 			if (!ret) {
 				if (!memcmp(digest, ca_hash,
 							SHA256_DIGEST_LENTH)) {
@@ -816,7 +818,7 @@ uint32_t TC_NS_get_uid(void)
 
 	if (!cred) {
 		TCERR("failed to get uid of the task\n");
-		return -1;
+		return -1; /*lint !e64 !e570 */
 	}
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 13, 0))
@@ -963,7 +965,7 @@ static int set_login_information(TC_NS_DEV_File *dev_file,
 		/* If get public key failed, then get uid in kernel */
 		uint32_t ca_uid = TC_NS_get_uid();
 
-		if (-1 == ca_uid) {
+		if (-1 == ca_uid) { /*lint !e64 !e650 */
 			TCERR("Failed to get uid of the task\n");
 			goto error;
 		}
@@ -1009,7 +1011,7 @@ int TC_NS_RegisterServiceCallbackFunc(char *uuid, void *func,
 	list_for_each_entry(callback_func,
 			&g_ta_callback_func_list.callback_list, head) {
 		if (0 == memcmp(callback_func->uuid, uuid, 16)) {
-			callback_func->callback_func = (void (*)(void *))func;
+			callback_func->callback_func = (void (*)(void *))func; /*lint !e611 */
 			TCDEBUG("succeed to find uuid ta_callback_func_list\n");
 			goto find_callback;
 		}
@@ -1033,14 +1035,14 @@ int TC_NS_RegisterServiceCallbackFunc(char *uuid, void *func,
 	TCDEBUG("ta_callback_func_list.callback_count is %d\n",
 		g_ta_callback_func_list.callback_count);
 	INIT_LIST_HEAD(&new_callback->head);
-	new_callback->callback_func = (void (*)(void *))func;
+	new_callback->callback_func = (void (*)(void *))func; /*lint !e611 */
 	mutex_init(&new_callback->callback_lock);
 	list_add_tail(&new_callback->head,
 		      &g_ta_callback_func_list.callback_list);
 
 find_callback:
 	mutex_unlock(&g_ta_callback_func_list.callback_list_lock);
-	return ret;
+	return ret; /*lint !e593 */
 }
 EXPORT_SYMBOL(TC_NS_RegisterServiceCallbackFunc);
 
@@ -1114,7 +1116,7 @@ static void callback_demo_main(char *uuid)
 	TC_TIME_DEBUG("step into callback_demo_main\n");
 
 	ret = TC_NS_RegisterServiceCallbackFunc(uuid,
-						(void *)&timer_callback_func,
+						(void *)&timer_callback_func, /*lint !e611 */
 						NULL);
 	if (ret != 0)
 		TCERR("failed to TC_NS_RegisterServiceCallbackFunc\n");
@@ -1186,7 +1188,7 @@ static int TC_NS_Client_Login(TC_NS_DEV_File *dev_file, void __user *buffer)
 	}
 
 	cert_buffer += sizeof(dev_file->pkg_name_len);
-	sret = strncpy_s(dev_file->pkg_name, MAX_PACKAGE_NAME_LEN, cert_buffer,
+	sret = strncpy_s(dev_file->pkg_name, MAX_PACKAGE_NAME_LEN, cert_buffer, /*lint !e64 */
 			dev_file->pkg_name_len);
 	if (EOK != sret) {
 		ret = -ENOMEM;
@@ -1245,7 +1247,7 @@ int TC_NS_OpenSession(TC_NS_DEV_File *dev_file, TC_NS_ClientContext *context)
 		return ret;
 	}
 	mutex_lock(&dev_file->service_lock);
-	service = tc_find_service(&dev_file->services_list, context->uuid);
+	service = tc_find_service(&dev_file->services_list, context->uuid); /*lint !e64 */
 
 	/* Need service init or not */
 	if (service)
@@ -1645,7 +1647,7 @@ static int TC_NS_load_image(TC_NS_DEV_File *dev_file, void *argp, unsigned cmd)
 
 	if (!dev_file) {
 		TCERR("dev file id erro\n");
-		return IMG_LOAD_FIND_NO_DEV_ID;
+		return IMG_LOAD_FIND_NO_DEV_ID; /*lint !e569 */
 	}
 
 	if (copy_from_user(&client_context, argp,
@@ -1701,7 +1703,7 @@ static int TC_NS_load_image(TC_NS_DEV_File *dev_file, void *argp, unsigned cmd)
 	}
 
 	k_register_buf = k_register_buf_p;
-	for (index = 0; index < reg_buf_size/sizeof(struct reg_buf_st);
+	for (index = 0; index < reg_buf_size/sizeof(struct reg_buf_st); /*lint !e574 */
 			index++) {
 		errno_t sret;
 		/* large buffer, use share-memory to share with secure world */
@@ -1765,7 +1767,7 @@ static int TC_NS_load_image(TC_NS_DEV_File *dev_file, void *argp, unsigned cmd)
 		TCDEBUG("smc cmd ret %d\n", ret);
 		if (ret != 0) {
 			TCERR("smc_call returns error ret 0x%x\n", ret);
-			ret = IMG_LOAD_SECURE_RET_ERROR;
+			ret = IMG_LOAD_SECURE_RET_ERROR; /*lint !e569 */
 			goto out1;
 		}
 	}
@@ -1792,7 +1794,7 @@ static int TC_NS_need_load_image(TC_NS_DEV_File *dev_file,
 
 	if (!dev_file) {
 		TCERR("dev file id erro\n");
-		return IMG_LOAD_FIND_NO_DEV_ID;
+		return IMG_LOAD_FIND_NO_DEV_ID; /*lint !e569 */
 	}
 	if (!argp) {
 		TCERR("argp is NULL input buffer\n");
@@ -1833,7 +1835,7 @@ static int TC_NS_need_load_image(TC_NS_DEV_File *dev_file,
 
 	ret = TC_NS_load_image_operation(&client_context, operation, dev_file);
 	if (ret < 0) {
-		ret = IMG_LOAD_FIND_NO_SHARE_MEM;
+		ret = IMG_LOAD_FIND_NO_SHARE_MEM; /*lint !e569 */
 		goto buf_erro;
 	}
 
@@ -1853,7 +1855,7 @@ static int TC_NS_need_load_image(TC_NS_DEV_File *dev_file,
 
 	if (ret != 0) {
 		TCERR("smc_call returns error ret 0x%x\n", ret);
-		ret = IMG_LOAD_SECURE_RET_ERROR;
+		ret = IMG_LOAD_SECURE_RET_ERROR; /*lint !e569 */
 	}
 
 	/* error: */
@@ -2501,8 +2503,8 @@ skip_tui:
 	drm_ion_client = hisi_ion_client_create("DRM_ION");
 
 	if (IS_ERR(drm_ion_client)) {
-		TCERR("in %s err: drm ion client create failed! client %p\n",
-		      __func__, drm_ion_client);
+		TCERR("in %s err: drm ion client create failed!\n",
+		      __func__);
 		ret = -EFAULT;
 		goto free_tui;
 	}

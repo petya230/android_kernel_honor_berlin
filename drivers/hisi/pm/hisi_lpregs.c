@@ -37,6 +37,7 @@
 #include <linux/debugfs.h>
 #include <linux/seq_file.h>
 #include <linux/uaccess.h>
+
 #include <linux/hisi/hisi_gpio_auto_gen.h>
 #include "m3_rdr_ddr_map.h"
 
@@ -684,7 +685,7 @@ void pm_status_show(struct seq_file *s)
 		readl(sysreg_base.reserved_base + PM_MODEM_WAKE_CNT_OFFSET),
 		readl(sysreg_base.reserved_base + PM_HIFI_WAKE_CNT_OFFSET),
 		readl(sysreg_base.reserved_base + PM_IOMCU_WAKE_CNT_OFFSET),
-		readl(sysreg_base.reserved_base + PM_LPM3_WAKE_CNT_OFFSET));
+		readl(sysreg_base.reserved_base + PM_LPM3_WAKE_CNT_OFFSET)); //lint !e666
 	LOWPM_MSG(s,
 		"SR:sr times of sub system, ap:s-%u, r-%u, modem:s-%u, r-%u, hifi:s-%u, r-%u, iomcu:s-%u, r-%u.\n",
 		readl(sysreg_base.reserved_base + PM_AP_SUSPEND_CNT_OFFSET),
@@ -694,13 +695,13 @@ void pm_status_show(struct seq_file *s)
 		readl(sysreg_base.reserved_base + PM_HIFI_SUSPEND_CNT_OFFSET),
 		readl(sysreg_base.reserved_base + PM_HIFI_RESUME_CNT_OFFSET),
 		readl(sysreg_base.reserved_base + PM_IOMCU_SUSPEND_CNT_OFFSET),
-		readl(sysreg_base.reserved_base + PM_IOMCU_RESUME_CNT_OFFSET));
+		readl(sysreg_base.reserved_base + PM_IOMCU_RESUME_CNT_OFFSET)); //lint !e666
 
 	if (sysreg_base.sysctrl_base != NULL) {
 		LOWPM_MSG(s, "SR:SCINT_STAT:0x%x.\n",
-				readl(sysreg_base.sysctrl_base + SCINT_STAT_OFFSET));
+				readl(sysreg_base.sysctrl_base + SCINT_STAT_OFFSET)); //lint !e666
 		LOWPM_MSG(s, "SR:SCINT_STAT1:0x%x.\n",
-				readl(sysreg_base.sysctrl_base + SCINT_STAT1_OFFSET));
+				readl(sysreg_base.sysctrl_base + SCINT_STAT1_OFFSET)); //lint !e666
 	}
 
 	wake_irq = readl(sysreg_base.reserved_base + PM_WAKE_IRQ_OFFSET);
@@ -759,10 +760,10 @@ void pm_status_show(struct seq_file *s)
 
 	LOWPM_MSG(s, "light sleep 0x%x times,resume 0x%x times.\n",
 		readl(sysreg_base.reserved_base + IDLE_SLEEP_CNT_OFFSET),
-		readl(sysreg_base.reserved_base + IDLE_RESUME_CNT_OFFSET));
+		readl(sysreg_base.reserved_base + IDLE_RESUME_CNT_OFFSET)); //lint !e666
 
 	LOWPM_MSG(s, "sleep 0x%x times.\n",
-		readl(sysreg_base.reserved_base + SLEEP_CNT_OFFSET));
+		readl(sysreg_base.reserved_base + SLEEP_CNT_OFFSET)); //lint !e666
 }
 
 void set_wakelock(int iflag)
@@ -770,8 +771,8 @@ void set_wakelock(int iflag)
 	if ((1 == iflag) && (0 == wake_lock_active(&lowpm_wake_lock)))
 		wake_lock(&lowpm_wake_lock);
 	else if ((0 == iflag) && (0 != wake_lock_active(&lowpm_wake_lock)))
-		wake_unlock(&lowpm_wake_lock);
-}
+		wake_unlock(&lowpm_wake_lock); //lint !e455
+} //lint !e454 !e456
 
 #define GPIO_DIR(x)		((x) + 0x400)
 #define GPIO_DATA(x, y)		((x) + (1 << (2 + y)))
@@ -916,6 +917,7 @@ void dbg_io_status_show(void)
 	}
 }
 
+
 /*****************************************************************
  * function:    dbg_pmu_status_show
  * description:
@@ -982,7 +984,7 @@ void dbg_pmu_status_show(void)
 void clk_showone(char *ctrl_name, int index)
 {
 	u32 regval = 0;
-	u32	bitval = 0;
+	u32 bitval = 0;
 	u32 regoff = 0;
 	u32 bit_idx = 0;
 	void __iomem *regbase = NULL;
@@ -1267,7 +1269,7 @@ void sysreg_showone(char *ctrl_name, int index)
 void hisi_sysregs_dump(void)
 {
 	int i = 0;
-	char *ctrl_name;
+	char *ctrl_name = NULL;
 
 	pr_info("[%s] %d enter.\n", __func__, __LINE__);
 
@@ -1718,11 +1720,13 @@ static int lowpm_func_probe(struct platform_device *pdev)
 		pr_err("%s: %d map_sysregs failed.\n", __func__, __LINE__);
 		goto err;
 	}
+
 	ret = map_io_regs();
 	if (ret){
 		pr_err("%s: %d map_io_regs failed.\n", __func__, __LINE__);
 		goto err;
 	}
+
 	ret = init_lowpm_data();
 	if (ret){
 		pr_err("%s: %d init_lowpm_data failed.\n", __func__, __LINE__);

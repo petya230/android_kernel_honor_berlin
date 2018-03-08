@@ -162,7 +162,7 @@ static TEEC_Result TEEK_Encode(TC_NS_ClientContext *cli_context,
 		} else {
 			tloge("param_type[%d]=%d not correct\n",
 					param_cnt, param_type[param_cnt]);
-			return TEEC_ERROR_BAD_PARAMETERS;
+			return TEEC_ERROR_BAD_PARAMETERS; /*lint !e570*/
 		}
 	}
 	cli_context->paramTypes =
@@ -713,7 +713,7 @@ TEEC_Result TEEK_RegisterSharedMemory(TEEC_Context *context,
 				      TEEC_SharedMemory *sharedMem)
 {
 	tloge("TEEK_RegisterSharedMemory not supported\n");
-	return TEEC_ERROR_NOT_SUPPORTED;
+	return TEEC_ERROR_NOT_SUPPORTED; /*lint !e570*/
 }
 EXPORT_SYMBOL(TEEK_RegisterSharedMemory);
 
@@ -730,7 +730,7 @@ TEEC_Result TEEK_AllocateSharedMemory(TEEC_Context *context,
 				      TEEC_SharedMemory *sharedMem)
 {
 	tloge("TEEK_AllocateSharedMemory not supported\n");
-	return TEEC_ERROR_NOT_SUPPORTED;
+	return TEEC_ERROR_NOT_SUPPORTED; /*lint !e570*/
 }
 EXPORT_SYMBOL(TEEK_AllocateSharedMemory);
 

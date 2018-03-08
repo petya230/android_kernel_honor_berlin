@@ -45,7 +45,7 @@ void tc_mem_free(TC_NS_Shared_MEM *shared_mem)
 		free_pages((unsigned long)shared_mem->kernel_addr,
 			   get_order(ROUND_UP(shared_mem->len, SZ_4K))); /*lint !e647 !e866 !e747 !e647  !e834 !e732*/
 	} else if (shared_mem->kernel_addr == g_mem_pre_allocated) {
-		mutex_unlock(&prealloc_lock);
+		mutex_unlock(&prealloc_lock); /*lint !e455 */
 	} else {
 	    tloge("failed to release the memory pages of share mem!\n");
 	}
@@ -90,7 +90,7 @@ TC_NS_Shared_MEM *tc_mem_allocate(TC_NS_DEV_File *dev, size_t len)
 				/* In case we could not use the preallocated
 				 * memory unlock the mutex */
 			} else
-				mutex_unlock(&prealloc_lock);
+				mutex_unlock(&prealloc_lock); /*lint !e455 */
 		}
 		/* If we couldn't use the preallocated memory then return */
 		if (!addr) {

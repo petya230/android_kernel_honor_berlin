@@ -35,13 +35,6 @@ config TEE_TUI_HI3650
 	help
 	  Trusted user interface diver
 
-config TEE_RANDOM
-	tristate "TEE based random driver"
-	default n
-	depends on TZDRIVER
-	help
-	  TEE based random diver
-
 config HISI_SPI_SMC
 	bool "hisi spi smc"
 	default n
