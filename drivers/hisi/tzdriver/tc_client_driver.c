@@ -341,7 +341,8 @@ static int check_teecd_access(struct task_struct *ca_task)
 	tpath = kmalloc(MAX_PATH_SIZE, GFP_KERNEL);
 	if (NULL == tpath) {
 		TCERR("tpath kmalloc fail\n");
-		put_cred(cred);
+		if (cred)
+			put_cred(cred);
 		return -EPERM;
 	}
 
@@ -349,7 +350,8 @@ static int check_teecd_access(struct task_struct *ca_task)
 	if (NULL == ca_cert) {
 		TCERR("ca_cert kmalloc fail\n");
 		kfree(tpath);
-		put_cred(cred);
+		if (cred)
+			put_cred(cred);
 		return -EPERM;
 	}
 
@@ -362,6 +364,7 @@ static int check_teecd_access(struct task_struct *ca_task)
 			TCERR("memset_s error sret is %d\n", sret);
 			kfree(tpath);
 			kfree(ca_cert);
+		if (cred)
 			put_cred(cred);
 			return -EPERM;
 		}
@@ -382,7 +385,8 @@ static int check_teecd_access(struct task_struct *ca_task)
 							SHA256_DIGEST_LENTH)) {
 					kfree(tpath);
 					kfree(ca_cert);
-					put_cred(cred);
+					if (cred)
+						put_cred(cred);
 					return 0;
 				}
 			}
@@ -391,7 +395,8 @@ static int check_teecd_access(struct task_struct *ca_task)
 
 	kfree(tpath);
 	kfree(ca_cert);
-	put_cred(cred);
+	if (cred)
+		put_cred(cred);
 	return -EPERM;
 }
 
@@ -562,8 +567,10 @@ TC_NS_Session *tc_find_session(struct list_head *session_list,
 {
 	TC_NS_Session *session = NULL;
 
-	if (!session_list)
-		return NULL;
+	if (!session_list) {
+		TCERR("session_list is Null.\n");
+		return ERR_PTR(-EINVAL); /*lint !e747*/
+	}
 
 	list_for_each_entry(session, session_list, head) {
 		if (session->session_id == session_id)
@@ -712,7 +719,7 @@ static void tc_notify_timer_fn(struct notify_data_entry *notify_data_entry)
 		TC_TIME_DEBUG("timer60 wake up event\n");
 		if (enc_found && temp_ses) {
 			temp_ses->wait_data.send_wait_flag = 1;
-			wake_up_interruptible(&temp_ses->wait_data.send_cmd_wq);
+			wake_up(&temp_ses->wait_data.send_cmd_wq);
 			put_session_struct(temp_ses);
 		}
 	} else {
@@ -1641,7 +1648,7 @@ static int TC_NS_load_image(TC_NS_DEV_File *dev_file, void *argp, unsigned cmd)
 	TC_NS_Operation *operation = NULL;
 	TC_NS_ClientContext client_context;
 	unsigned char uuid[17] = {0};
-	int reg_buf_size = 0;
+	unsigned int reg_buf_size = 0;
 	struct reg_buf_st  *k_register_buf, *k_register_buf_p;
 	TC_NS_Shared_MEM *shared_mem = NULL;
 
