@@ -8,7 +8,7 @@
 
 #define AGENT_FS_ID 0x46536673	/*FSfs*/
 #define AGENT_MISC_ID 0x4d495343	/*MISC*/
-#define AGENT_RPMB_ID 0x4abe6198	/*RPMB*/
+#define TEE_RPMB_AGENT_ID 0x4abe6198	/*RPMB*/
 #define AGENT_SOCKET_ID 0x69e85664	/*socket*/
 
 struct __smc_event_data *find_event_control(unsigned int agent_id);
@@ -53,7 +53,7 @@ int agent_init(void);
 
 int agent_exit(void);
 
-unsigned int agent_process_work(TC_NS_SMC_CMD *smc_cmd, unsigned int agent_id);
+int agent_process_work(TC_NS_SMC_CMD *smc_cmd, unsigned int agent_id);
 
 int is_agent_alive(unsigned int agent_id);
 

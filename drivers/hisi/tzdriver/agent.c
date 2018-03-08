@@ -153,7 +153,7 @@ struct __smc_event_data *find_event_control(unsigned int agent_id)
 }
 
 
-unsigned int agent_process_work(TC_NS_SMC_CMD *smc_cmd, unsigned int agent_id)
+int agent_process_work(TC_NS_SMC_CMD *smc_cmd, unsigned int agent_id)
 {
 	struct __smc_event_data *event_data;
 
@@ -394,7 +394,7 @@ int TC_NS_unregister_agent(unsigned int agent_id)
 		return TEEC_ERROR_GENERIC;
 	}
 	if (AGENT_FS_ID == agent_id || AGENT_MISC_ID == agent_id ||
-	    AGENT_RPMB_ID == agent_id || AGENT_SOCKET_ID == agent_id ||
+	    TEE_RPMB_AGENT_ID == agent_id || AGENT_SOCKET_ID == agent_id ||
 	    TEE_TUI_AGENT_ID == agent_id) {
 		tloge("system agent is not allowed to unregister\n");
 		return TEEC_ERROR_GENERIC;
