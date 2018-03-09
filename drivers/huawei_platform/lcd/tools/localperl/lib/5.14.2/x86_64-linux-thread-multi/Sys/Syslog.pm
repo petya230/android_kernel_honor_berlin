@@ -436,7 +436,7 @@ sub syslog {
 
 sub _syslog_send_console {
     my ($buf) = @_;
-    chop($buf);
+    chop($buf); # delete the NUL from the end
     # The console print is a method which could block
     # so we do it in a child process and always return success
     # to the caller.

@@ -307,7 +307,15 @@ struct regnode_charclass_class {
  * ANYOF_NONBITMAP_NON_UTF8 bit is also set. */
 #define ANYOF_NONBITMAP(node)	(ARG(node) != ANYOF_NONBITMAP_EMPTY)
 
-
+/* Flags for node->flags of ANYOF.  These are in short supply, so some games
+ * are done to share them, as described below.  If necessary, the ANYOF_LOCALE
+ * and ANYOF_CLASS bits could be shared with a space penalty for locale nodes,
+ * but this isn't quite so easy, as the optimizer also uses ANYOF_CLASS.
+ * Once the planned change to compile all the above-latin1 code points is done,
+ * then the UNICODE_ALL bit can be freed up, with a small performance penalty.
+ * If flags need to be added that are applicable to the synthetic start class
+ * only, with some work, they could be put in the next-node field, or in an
+ * unused bit of the classflags field. */
 
 #define ANYOF_LOCALE		 0x01	    /* /l modifier */
 
@@ -520,7 +528,24 @@ EXTCONST regexp_engine PL_core_reg_engine = {
 END_EXTERN_C
 
 
-
+/* .what is a character array with one character for each member of .data
+ * The character describes the function of the corresponding .data item:
+ *   a - AV for paren_name_list under DEBUGGING
+ *   f - start-class data for regstclass optimization
+ *   n - Root of op tree for (?{EVAL}) item
+ *   o - Start op for (?{EVAL}) item
+ *   p - Pad for (?{EVAL}) item
+ *   s - swash for Unicode-style character class, and the multicharacter
+ *       strings resulting from casefolding the single-character entries
+ *       in the character class
+ *   t - trie struct
+ *   u - trie struct's widecharmap (a HV, so can't share, must dup)
+ *       also used for revcharmap and words under DEBUGGING
+ *   T - aho-trie struct
+ *   S - sv for named capture lookup
+ * 20010712 mjd@plover.com
+ * (Remember to update re_dup() and pregfree() if you add any items.)
+ */
 struct reg_data {
     U32 count;
     U8 *what;

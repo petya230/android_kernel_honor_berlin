@@ -384,6 +384,7 @@ my %ENTITIES = (
 'lt'    => '<',  # less than
  quot   => '"',  # double quote
 
+ # PUBLIC ISO 8879-1986//ENTITIES Added Latin 1//EN//HTML
  AElig  => 'Æ',  # capital AE diphthong (ligature)
  Aacute => 'Á',  # capital A, acute accent
  Acirc  => 'Â',  # capital A, circumflex accent

@@ -5432,6 +5432,7 @@ sub postponed_sub {
         my ( $file, $i ) = ( find_sub($subname) =~ /^(.*):(\d+)-.*$/ );
         if ($i) {
 
+            # We got the start line. Add the offset '+<n>' from
             # $postponed{subname}.
             $i += $offset;
 
@@ -6402,6 +6403,7 @@ sub resetterm {    # We forked, so we need a different TTY
     # resetterm(1): just forked.
     my $systemed = $in > 1 ? '-' : '';
 
+    # If there's already a list of pids, add this to the end.
     if ($pids) {
         $pids =~ s/\]/$systemed->$$]/;
     }

@@ -263,6 +263,7 @@ sub splitdir {
     }
     else {
         #
+        # since there was a trailing separator, add a file name to the end, 
         # then do the split, then replace it with ''.
         #
         my( @directories )= split( m|[\\/]|, "${directories}dummy" ) ;

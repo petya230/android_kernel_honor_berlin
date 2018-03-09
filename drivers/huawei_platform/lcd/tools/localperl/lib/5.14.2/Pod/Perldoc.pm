@@ -809,6 +809,7 @@ sub maybe_generate_dynamic_pod {
         my ($buffd, $buffer) = $self->new_tempfile('pod', 'dyn');
         
         push @{ $self->{'temp_file_list'} }, $buffer;
+         # I.e., it MIGHT be deleted at the end.
         
 	my $in_list = $self->opt_f || $self->opt_v;
 

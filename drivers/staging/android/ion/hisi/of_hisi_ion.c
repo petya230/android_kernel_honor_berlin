@@ -61,6 +61,9 @@ static const struct hisi_ion_type_table ion_type_table[] = {
 	{"ion_custom", ION_HEAP_TYPE_CUSTOM},
 	{"ion_sec", ION_HEAP_TYPE_SECCM},
 	{"ion_dma_pool", ION_HEAP_TYPE_DMA_POOL},
+#ifdef CONFIG_ION_HISI_FAMA_MISC
+	{"ion_fama_misc", ION_HEAP_TYPE_FAMA_MISC},
+#endif
 };
 
 static struct ion_device *idev;
@@ -109,7 +112,7 @@ static struct hisi_ion_dynamic_area* find_dynamic_area_by_name(const char* name)
 
 	for (; i < MAX_HISI_ION_DYNAMIC_AREA_NUM; i++) {
 		pr_err("name = %s, table name %s \n", name, ion_dynamic_area_table[i].name);
-		if (!strcmp(name, ion_dynamic_area_table[i].name)) {
+		if (!strcmp(name, ion_dynamic_area_table[i].name)) { /*lint !e421 */
 			return &ion_dynamic_area_table[i];
 		}
 	}
@@ -145,8 +148,7 @@ static int  hisi_ion_reserve_area(struct reserved_mem *rmem)
 
 	return 0;
 }
-RESERVEDMEM_OF_DECLARE(hisi_ion, "hisi_ion", hisi_ion_reserve_area);
-
+RESERVEDMEM_OF_DECLARE(hisi_ion, "hisi_ion", hisi_ion_reserve_area); /*lint !e611 */
 struct ion_device *get_ion_device(void) {
 	return idev;
 }
@@ -285,8 +287,10 @@ static long hisi_ion_custom_ioctl(struct ion_client *client,
 		}
 		handle = ion_import_dma_buf(client, data.shared_fd);
 
-		if (IS_ERR(handle))
+		if (IS_ERR(handle)) {
 			pr_err("ION_HISI_CUSTOM_SET_FLAG error handle\n");
+			return -EINVAL;
+		}
 
 		ret = ion_change_flags(client, handle, data.flags);
 		ion_free(client, handle);
@@ -432,8 +436,6 @@ static long __attribute__((unused)) compat_hisi_ion_custom_ioctl(
 	default:
 		return -ENOTTY;
 	}
-
-	return ret;
 }
 
 #endif
@@ -442,10 +444,10 @@ extern int hisi_ion_enable_iommu(struct platform_device *pdev);
 
 static int get_type_by_name(const char *name, enum ion_heap_type *type)
 {
-	int i;
+	unsigned int i;
 
-	for (i = 0; i < ARRAY_SIZE(ion_type_table); i++) {
-		if (strcmp(name, ion_type_table[i].name))
+	for (i = 0; i < ARRAY_SIZE(ion_type_table); i++) { /*lint !e527 */
+		if (strcmp(name, ion_type_table[i].name)) /*lint !e421 */
 			continue;
 
 		*type = ion_type_table[i].type;
@@ -463,7 +465,7 @@ static int hisi_set_platform_data(struct platform_device *pdev)
 	const char *heap_name;
 	const char *type_name;
 	const char *status;
-	enum ion_heap_type type = 0;
+	enum ion_heap_type type = 0; /*lint !e64 */
 	int ret = 0;
 	struct device_node *np;
 	struct device_node *phandle_node;

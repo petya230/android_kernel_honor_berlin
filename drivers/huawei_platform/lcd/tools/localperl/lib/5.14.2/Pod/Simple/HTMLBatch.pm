@@ -408,7 +408,7 @@ sub _prep_contents_breakdown {
     ;
     ++$toplevel_form_freq{ lc $toplevel }{ $toplevel };
     push @{ $toplevel{ lc $toplevel } }, $entry;
-    push @$entry, lc($entry->[0]);
+    push @$entry, lc($entry->[0]); # add a sort-order key to the end
   }
 
   foreach my $toplevel (sort keys %toplevel) {

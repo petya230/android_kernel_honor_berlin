@@ -644,6 +644,7 @@ sub alternate_language_tags {
    #  If you, as a user, are so bizarre that the /only/ language
    #  you claim to accept is Galician, then no, we won't do you
    #  the favor of providing Catalan as a panic-fallback for
+   #  you.  Because if I start trying to add "little languages" in
    #  here, I'll just go crazy.
 
    # Scandinavian lgs.  All based on opinion and hearsay.

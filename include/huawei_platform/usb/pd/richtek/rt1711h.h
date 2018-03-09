@@ -179,6 +179,8 @@
 #define RT1711_INFO(foramt, args...)
 #endif
 
+#ifdef CONFIG_HUAWEI_DSM
 int rt_dsm_report(int err_no, void *buf);
+#endif
 
 #endif /* #ifndef __LINUX_RT1711H_H */

@@ -74,6 +74,7 @@ sub _set_rules {
       map { 'ARRAY' eq ref $_ ? $_ : [ $_, $_ ] } @$tests;
     my $schedule = $self->_rule_clause( $rules, \@tests );
 
+    # If any tests are left add them as a sequential block at the end of
     # the run.
     $schedule = [ [ $schedule, @tests ] ] if @tests;
 

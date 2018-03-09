@@ -24,6 +24,6 @@ typedef struct
 	char name[6];
 }slice_info;
 
-extern  slice_info  slice;
+//extern  slice_info  slice;
 
 #endif

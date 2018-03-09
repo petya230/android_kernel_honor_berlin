@@ -415,7 +415,7 @@ sub initialize {
     unless exists $self->{StartWithNewPage};
   $self->{TableOfContents}  = 0    # Add table of contents
     unless exists $self->{TableOfContents};  # only relevent if AddPreamble=1
-   $self->{AddPostamble}     = 1
+   $self->{AddPostamble}     = 1          # Add closing latex code at end
     unless exists $self->{AddPostamble}; #  effectively end{document} and index
   $self->{MakeIndex}        = 1         # Add index (only relevant AddPostamble
     unless exists $self->{MakeIndex};   # and AddPreamble)

@@ -697,7 +697,7 @@ following methods are available on the object:
     $t->tzoffset            # timezone offset in a Time::Seconds object
 
     $t->julian_day          # number of days since Julian period began
-    $t->mjd
+    $t->mjd                 # modified Julian date (JD-2400000.5 days)
 
     $t->week                # week number (ISO 8601)
 

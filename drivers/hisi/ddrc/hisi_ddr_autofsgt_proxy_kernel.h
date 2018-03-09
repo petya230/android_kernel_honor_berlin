@@ -8,6 +8,7 @@ extern "C" {
 #endif
 
 /*same as vender/hisi/confidential/lpmcu/.../ddr_auto_fsgt.h*/
+#ifdef CONFIG_HI3660_DDR_AUTO_FSGT
 typedef enum {
 	DDR_AUTOFSGT_ENABLE = 1,
 	DDR_AUTOFSGT_DISABLE,
@@ -31,7 +32,9 @@ typedef enum {
 	DDR_AUTOFSGT_PROXY_CLIENT_BUTT,
 } DDR_AUTOFSGT_PROXY_CLIENT_ID;
 
-
+#else
+#include <ddr_define.h>
+#endif
 /*s32 ddr_autofsgt_ctrl(DDR_AUTOFSGT_PROXY_CLIENT_ID client, DDR_AUTOFSGT_CMD_ID cmd)*/
 extern int ddr_autofsgt_ctrl(unsigned int client, unsigned int cmd);
 

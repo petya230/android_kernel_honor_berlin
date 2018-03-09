@@ -17,7 +17,9 @@
 
  * Don't forget to re-run regen/embed.pl to propagate changes! */
 
-
+/* New variables must be added to the very end for binary compatibility.
+ * XSUB.h provides wrapper functions via perlapi.h that make this
+ * irrelevant, but not all code may be expected to #include XSUB.h. */
 
 /* Don't forget to add your variable also to perl_clone()! */
 
@@ -170,11 +172,50 @@ PERLVARI(Irehash_seed_set, bool, FALSE)	/* 582 hash initialized? */
 
 PERLVARA(Icolors,6,	char *)		/* from regcomp.c */
 
+/*
+=for apidoc Amn|peep_t|PL_peepp
 
+Pointer to the per-subroutine peephole optimiser.  This is a function
+that gets called at the end of compilation of a Perl subroutine (or
+equivalently independent piece of Perl code) to perform fixups of
+some ops and to perform small-scale optimisations.  The function is
+called once for each subroutine that is compiled, and is passed, as sole
+parameter, a pointer to the op that is the entry point to the subroutine.
+It modifies the op tree in place.
+
+The peephole optimiser should never be completely replaced.  Rather,
+add code to it by wrapping the existing optimiser.  The basic way to do
+this can be seen in L<perlguts/Compile pass 3: peephole optimization>.
+If the new code wishes to operate on ops throughout the subroutine's
+structure, rather than just at the top level, it is likely to be more
+convenient to wrap the L</PL_rpeepp> hook.
+
+=cut
+*/
 
 PERLVARI(Ipeepp,	peep_t, Perl_peep)
 
+/*
+=for apidoc Amn|peep_t|PL_rpeepp
 
+Pointer to the recursive peephole optimiser.  This is a function
+that gets called at the end of compilation of a Perl subroutine (or
+equivalently independent piece of Perl code) to perform fixups of some
+ops and to perform small-scale optimisations.  The function is called
+once for each chain of ops linked through their C<op_next> fields;
+it is recursively called to handle each side chain.  It is passed, as
+sole parameter, a pointer to the op that is at the head of the chain.
+It modifies the op tree in place.
+
+The peephole optimiser should never be completely replaced.  Rather,
+add code to it by wrapping the existing optimiser.  The basic way to do
+this can be seen in L<perlguts/Compile pass 3: peephole optimization>.
+If the new code wishes to operate only on ops at a subroutine's top level,
+rather than throughout the structure, it is likely to be more convenient
+to wrap the L</PL_peepp> hook.
+
+=cut
+*/
 
 PERLVARI(Irpeepp,	peep_t, Perl_rpeep)
 
@@ -753,4 +794,10 @@ PERLVAR(Icustom_ops, HV *)      /* custom op registrations */
 /* If you are adding a U8 or U16, check to see if there are 'Space' comments
  * above on where there are gaps which currently will be structure padding.  */
 
-
+/* Within a stable branch, new variables must be added to the very end, before
+ * this comment, for binary compatibility (the offsets of the old members must
+ *  not change).
+ * (Don't forget to add your variable also to perl_clone()!)
+ * XSUB.h provides wrapper functions via perlapi.h that make this
+ * irrelevant, but not all code may be expected to #include XSUB.h.
+ */
