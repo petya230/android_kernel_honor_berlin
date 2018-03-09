@@ -130,6 +130,10 @@ static int process_rpmb_lock(struct tee_agent_kernel_ops *agent_instance)
 static int process_rpmb_unlock(struct tee_agent_kernel_ops *agent_instance)
 {
 	errno_t rc = EOK;
+
+	if (NULL == agent_instance)
+		return -1;
+
 	rc = memset_s(&lock_info, sizeof(lock_info), 0, sizeof(lock_info));/*lint !e838*/
 	if (rc != EOK) {
 		return -1;
@@ -270,7 +274,7 @@ static int rpmb_check_data(struct rpmb_ctrl_t *trans_ctrl)
 		return -1;
 	}
 
-
+	// CRC calculation differs between Honor 6X and Honor 7X
 	buf_crc_start_offset = offsetof(struct rpmb_ctrl_t, buf_start)
 				+ sizeof(trans_ctrl->buf_crc);
 	obj_crc =  tee_calc_crc16((uint8_t *)trans_ctrl + buf_crc_start_offset,
@@ -377,23 +381,25 @@ static int rpmb_agent_work(struct tee_agent_kernel_ops *agent_instance)
 	return 0;
 }
 
-static int rpmb_agent_crash_work(struct tee_agent_kernel_ops *agent_instance,
-				 TC_NS_ClientContext * context,
-				 unsigned int dev_file_id)
+static int rpmb_agent_exit(struct tee_agent_kernel_ops *agent_instance)
 {
-	tlogd("check free lock or not, dev_id=%d\n", dev_file_id);
-	if (lock_info.lock_need_free && (lock_info.dev_id == dev_file_id)) {
-		tloge("CA crash, need to free lock\n");
-		process_rpmb_unlock(agent_instance);
+	tloge("rpmb agent is exit is being invoked\n");
+
+	if (NULL != m_rpmb_ctrl) {
+		kfree(m_rpmb_ctrl);
+		m_rpmb_ctrl = NULL;
 	}
+
 	return 0;
 }
 
 static struct tee_agent_kernel_ops rpmb_agent_ops = {
 	.agent_name = "rpmb",
-	.agent_id = 0x4abe6198,
+	.agent_id = TEE_RPMB_AGENT_ID,
+	.tee_agent_init = NULL,
 	.tee_agent_work = rpmb_agent_work,
-	.tee_agent_crash_work = rpmb_agent_crash_work,
+	.tee_agent_exit = rpmb_agent_exit,
+	.tee_agent_crash_work = NULL,
 
 	.list = LIST_HEAD_INIT(rpmb_agent_ops.list)
 };
