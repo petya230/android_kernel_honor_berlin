@@ -13,7 +13,7 @@ struct section_info {
 	unsigned int page_size;
 	unsigned int align;
 };
-struct hisi_iommu_domain {
+struct ion_iommu_domain {
 	struct iommu_domain *domain;
 	struct gen_pool *iova_pool;
 	struct section_info range;

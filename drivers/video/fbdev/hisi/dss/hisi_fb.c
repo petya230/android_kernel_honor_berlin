@@ -2168,20 +2168,15 @@ static int hisi_fb_register(struct hisi_fb_data_type *hisifd)
 static int hisi_fb_enable_iommu(struct platform_device *pdev)
 {
 	struct iommu_domain *hisi_domain = NULL;
-	struct device *dev = NULL;
 
 	BUG_ON(pdev == NULL);
 
-	dev = &pdev->dev;
-
 	/* create iommu domain */
-	hisi_domain = iommu_domain_alloc(dev->bus);
+	hisi_domain = hisi_ion_enable_iommu(pdev);
 	if (!hisi_domain) {
 		HISI_FB_ERR("iommu_domain_alloc failed!\n");
 		return -EINVAL;
 	}
-
-	iommu_attach_device(hisi_domain, dev);
 
 	g_hisi_domain = hisi_domain;
 
