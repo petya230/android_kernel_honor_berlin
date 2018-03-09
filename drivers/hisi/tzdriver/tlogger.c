@@ -152,6 +152,8 @@ static ssize_t tlogger_read(struct file *file, char __user *buf, size_t count, l
 	DEFINE_WAIT(wait);
 
 	tlogd("logger_read  start  ++\n");
+	if (count < 1024)
+		return -EINVAL;
 
 start:
 	while (1) {
