@@ -200,9 +200,10 @@ static int smc_thread_fn(void *arg)
 			    || cmd.ret_val == TEEC_PENDING2) { /*lint !e650 */
 				tlogd("wakeup command %d\n", cmd.event_nr);
 			}
-			if ((TEE_ERROR_TAGET_DEAD == cmd.ret_val) ||
-				(TEE_ERROR_CA_AUTH_FAIL == (TEEC_Result)cmd.ret_val)) {
-				tloge("error smc call: ret = %x\n", cmd.ret_val);
+			if ((TEE_ERROR_TAGET_DEAD == cmd.ret_val) || /*lint !e650 */
+				(TEE_ERROR_CA_AUTH_FAIL == (TEEC_Result)cmd.ret_val)) { /*lint !e650 */
+				tloge("error smc call: ret = %x and cmd.err_origin=%x\n",
+						cmd.ret_val, cmd.err_origin);
 				tlogger_store_lastmsg();
 				if (0 > teeos_log_exception_archive())
 					tloge("log_exception_archive failed\n");
@@ -486,8 +487,9 @@ static int sec_s_power_on(void)
 		if (ret)
 			pr_err("failed to enable sec_s regulators %d\n", ret);
 		return ret;
-	} else
-		return 0;
+	}
+
+	return ret;
 }
 
 static int sec_s_power_down(void)

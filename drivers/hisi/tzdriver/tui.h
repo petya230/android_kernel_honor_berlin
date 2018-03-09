@@ -147,11 +147,11 @@ void unregister_tui_driver(const char *name);
  */
 int send_tui_msg_config(int type, int val, void *data);
 void tui_poweroff_work_start(void);
-int tui_get_keyCode(void);
 
 void set_tui_attach_device(unsigned int id);
 unsigned int tui_attach_device(void);
 int load_ttf_file(unsigned int ttf_file_size);
+void do_ns_tui_release(void);
 #else
 static inline int init_tui(struct device *dev)
 {
@@ -191,6 +191,9 @@ static inline int load_ttf_file(unsigned int ttf_file_size)
 	return 0;
 }
 
+static inline void do_ns_tui_release(void)
+{
+}
 #endif
 
 #endif

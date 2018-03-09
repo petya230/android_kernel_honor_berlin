@@ -34,8 +34,6 @@
 	(((paramTypes) >> (4*(index))) & 0x0F)
 #define ROUND_UP(N, S) ((((N) + (S) - 1) / (S)) * (S))
 
-struct ion_handle *drm_ion_handle;
-
 int tc_user_param_valid(TC_NS_ClientContext *client_context, int n)
 {
 	TC_NS_ClientParam *client_param;
@@ -410,13 +408,12 @@ static TC_NS_Operation *alloc_operation(TC_NS_DEV_File *dev_file,
 			if ((int)operation->params[i].value.a >= 0) {
 				unsigned int ion_shared_fd =
 					operation->params[i].value.a;
-				drm_ion_handle =
+				struct ion_handle *drm_ion_handle =
 					ion_import_dma_buf(drm_ion_client,
 							   ion_shared_fd);
 				if (IS_ERR(drm_ion_handle)) {
-					tloge("in %s err: client=%p handle=%p fd=%d\n",
-					      __func__, drm_ion_client,
-					      drm_ion_handle, ion_shared_fd);
+					tloge("in %s err: fd=%d\n",
+					      __func__, ion_shared_fd);
 					ret = -EFAULT;
 					break;
 				}
@@ -426,9 +423,8 @@ static TC_NS_Operation *alloc_operation(TC_NS_DEV_File *dev_file,
 					       &drm_ion_phys, &drm_ion_size);
 
 				if (ret) {
-					tloge("in %s err:ret=%d client=%p handle=%p fd=%d\n",
-					      __func__, ret, drm_ion_client,
-					      drm_ion_handle, ion_shared_fd);
+					tloge("in %s err:ret=%d fd=%d\n",
+					      __func__, ret, ion_shared_fd);
 					ret = -EFAULT;
 					break;
 				}
@@ -442,7 +438,6 @@ static TC_NS_Operation *alloc_operation(TC_NS_DEV_File *dev_file,
 					(unsigned int)drm_ion_size;
 				trans_paramtype_to_tee[i] = param_type;
 				ion_free(drm_ion_client, drm_ion_handle);
-				drm_ion_handle = NULL;
 			} else {
 				tloge("in %s err: drm ion handle invaild!\n", __func__);
 				ret = -EFAULT;
@@ -738,11 +733,9 @@ int tc_client_call(TC_NS_ClientContext *client_context,
 
 			if (wq) {
 				tlogv("before wait event\n");
-				if (wait_event_interruptible
-						(wq->send_cmd_wq,
-						 wq->send_wait_flag)) {
-					tlogd("wait event error\n");
-				}
+				/* use wait_event instead of wait_event_interruptible so
+				 * that ap suspend will not wake up the TEE wait call */
+				wait_event(wq->send_cmd_wq, wq->send_wait_flag);
 				wq->send_wait_flag = 0;
 				put_session_struct(session);
 			}
