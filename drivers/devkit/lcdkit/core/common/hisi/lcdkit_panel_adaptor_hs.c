@@ -244,7 +244,7 @@ void lcdkit_dsi_tx(void* pdata, struct lcdkit_dsi_panel_cmds* cmds)
     hisifd = (struct hisi_fb_data_type*) pdata;
     mipi_dsi0_base = hisifd->mipi_dsi0_base;
 
-    ret =  mipi_dsi_cmds_tx(cmd, cmds->cmd_cnt, mipi_dsi0_base);
+    (void)mipi_dsi_cmds_tx(cmd, cmds->cmd_cnt, mipi_dsi0_base);
 
     kfree(cmd);
 
@@ -311,14 +311,14 @@ void lcdkit_hs_lp_switch(void* pdata, int mode)
     switch(mode)
     {
         case LCDKIT_DSI_LP_MODE:
-            LCDKIT_INFO("lcdkit switch to lp mode\n");
+            LCDKIT_DEBUG("lcdkit switch to lp mode\n");
             /* set mipi in lp mode */
             set_reg(mipi_dsi0_base + MIPIDSI_CMD_MODE_CFG_OFFSET, 0x7f, 7, 8);
             set_reg(mipi_dsi0_base + MIPIDSI_CMD_MODE_CFG_OFFSET, 0xf, 4, 16);
             set_reg(mipi_dsi0_base + MIPIDSI_CMD_MODE_CFG_OFFSET, 0x1, 1, 24);
             break;
         case LCDKIT_DSI_HS_MODE:
-            LCDKIT_INFO("lcdkit switch to hs mode\n");
+            LCDKIT_DEBUG("lcdkit switch to hs mode\n");
             /* set mipi in hs mode */
             set_reg(mipi_dsi0_base + MIPIDSI_CMD_MODE_CFG_OFFSET, 0x0, 7, 8);
             set_reg(mipi_dsi0_base + MIPIDSI_CMD_MODE_CFG_OFFSET, 0x0, 4, 16);

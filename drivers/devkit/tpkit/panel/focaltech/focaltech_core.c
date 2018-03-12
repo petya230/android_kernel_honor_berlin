@@ -307,7 +307,7 @@ int focal_hardware_reset_to_rom_update_model(void)
 	u32 chip_id = 0;
 
 	delay_time = 6;
-	for (i = 0; i < 10; i++) {
+	for (i = 0; i < FTS_RETRY_TIMES; i++) {
 
 		if (i != 0)
 			delay_time += 2;
@@ -363,7 +363,7 @@ int focal_hardware_reset_to_bootloader(void)
 	u32 chip_id = 0;
 
 	delay_time = 6;
-	for (i = 0; i < 10; i++) {
+	for (i = 0; i < FTS_RETRY_TIMES; i++) {
 
 		if (i != 0)
 			delay_time += 2;

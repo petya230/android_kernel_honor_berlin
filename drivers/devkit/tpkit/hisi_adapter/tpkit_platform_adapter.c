@@ -25,8 +25,10 @@ enum ts_charger_type get_charger_type(void)
 	return hisi_get_charger_type();
 }
 void set_tp_dev_flag(void)
-{	
+{
+#ifdef CONFIG_HUAWEI_HW_DEV_DCT
     set_hw_dev_flag(DEV_I2C_TOUCH_PANEL);
+#endif
 }
 int read_tp_color_adapter(char * buf)
 {

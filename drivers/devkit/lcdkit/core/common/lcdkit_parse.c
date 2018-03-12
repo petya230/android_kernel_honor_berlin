@@ -124,7 +124,7 @@ static int lcdkit_parse_dcs_cmds(struct device_node* np, char* cmd_key,
     memset(pcmds, 0, sizeof(struct lcdkit_dsi_panel_cmds));
     data = of_get_property(np, cmd_key, &blen);
 
-    if (!data)
+    if (!data || (0 == blen))
     {
         LCDKIT_ERR(" failed, key = %s\n", cmd_key);
         return -ENOMEM;

@@ -19,6 +19,12 @@
 #define RES_ERF			2
 #define RES_CRF			3
 #define RES_ERT_THR		2
+#define SENCOND_TO_MILLISECOND      1000
+#define SENCOND_TO_NANOSECOND       1000000
+
+#define TEMP_EDGE           20
+#define START_EDGE          30
+#define START_STUDY_EDGE    40
 
 static int stop_left = 0;
 static int stop_right = 0;
@@ -33,7 +39,7 @@ static int temp_up = 0;
 static int temp_down = 0;
 static int start_up = 0;
 static int start_down = 0;
-
+/*lint -save -e* */
 extern struct ts_kit_platform_data g_ts_kit_platform_data;
 static struct timespec curr_time[FILTER_GLOVE_NUMBER] = {{0,0}};
 
@@ -80,10 +86,6 @@ struct ghost_finger_touch{
 	int finger_event;
 	int x[TS_MAX_FINGER];
 	int y[TS_MAX_FINGER];
-#if 0
-	int pre_x[TS_MAX_FINGER];
-	int pre_y[TS_MAX_FINGER];
-#endif
 };
 static struct ghost_finger_touch finger_touch;
 static struct ghost_finger_touch pre_finger_touch;
@@ -118,9 +120,6 @@ static void ts_algo_det_ght_finger_release(void){
 **/
 static void ts_algo_det_ght_finger_press(int index, int x, int y){
 	struct timeval tv;
-#if 0
-	int delta_x = 0, delta_y = 0;
-#endif
 
 	TS_LOG_DEBUG("%s:%s finger press, index:%d\n", __func__, GHOST_LOG_TAG, index);
 	do_gettimeofday(&tv);
@@ -134,23 +133,6 @@ static void ts_algo_det_ght_finger_press(int index, int x, int y){
 		finger_touch.finger_num_flag |= 1 << index;
 		memcpy(&(finger_touch.finger_press_tv[index]), &tv, sizeof(struct timeval));
 	}
-#if 0
-	if (finger_touch.finger_num_flag & (1 << 0) && 0 != index
-		&& (finger_touch.pre_x[index] || finger_touch.pre_y[index])){
-		delta_x = finger_touch.x[0] - finger_touch.x[index];
-		delta_y = finger_touch.y[0] - finger_touch.y[index];
-		if (delta_x > 500 || delta_x < -500 || delta_y > 500 || delta_y < -500){
-			delta_x = finger_touch.pre_x[index] - finger_touch.x[index];
-			delta_y = finger_touch.pre_y[index] - finger_touch.y[index];
-			if (delta_x > 200 || delta_x < -200 || delta_y > 200 || delta_y < -200){
-				g_one_operate_ghost_record++;//add time condition
-			}
-		}
-	}
-
-	finger_touch.pre_x[index] = x;
-	finger_touch.pre_y[index] = y;
-#endif
 	return ;
 }
 
@@ -272,8 +254,8 @@ static int filter_illegal_glove(u8 n_finger, struct ts_fingers *in_info)
 
 			case FINGER_STATE:
 				ktime_get_ts(&curr_time[n_finger]);
-				interval_time = (curr_time[n_finger].tv_sec - pre_finger_time[n_finger].tv_sec)*1000
-					+ (curr_time[n_finger].tv_nsec - pre_finger_time[n_finger].tv_nsec)/1000000;
+				interval_time = (curr_time[n_finger].tv_sec - pre_finger_time[n_finger].tv_sec)*SENCOND_TO_MILLISECOND
+					+ (curr_time[n_finger].tv_nsec - pre_finger_time[n_finger].tv_nsec)/SENCOND_TO_NANOSECOND;
 				if (interval_time > 0 && interval_time <= FINGER_REL_TIME) {
 					ktime_get_ts(&pre_finger_time[n_finger]);
 				} else {
@@ -313,10 +295,14 @@ static int filter_illegal_glove(u8 n_finger, struct ts_fingers *in_info)
 
 int ts_kit_algo_t2(struct ts_kit_device_data *dev_data, struct ts_fingers *in_info, struct ts_fingers *out_info)
 {
-	int index;
+	int index = 0;
 	int id = 0;
 	struct anti_false_touch_param *local_param = NULL;
 
+	if(!in_info || !out_info){
+		TS_LOG_ERR("%s : find a null pointer\n", __func__);
+		return -EINVAL;
+	}
 	if (NULL == dev_data){
 		TS_LOG_DEBUG("%s anti false touch get chip data NULL\n", __func__);
 		local_param = NULL;
@@ -376,11 +362,15 @@ int ts_kit_algo_t2(struct ts_kit_device_data *dev_data, struct ts_fingers *in_in
 
 int ts_kit_algo_t1(struct ts_kit_device_data *dev_data, struct ts_fingers *in_info, struct ts_fingers *out_info)
 {
-	int index;
-	int id;
-	int finger_cnt  = 0;
+	int index = 0;
+	int id = 0;
+	int finger_cnt = 0;
 	struct anti_false_touch_param *local_param = NULL;
 
+	if(!in_info || !out_info){
+		TS_LOG_ERR("%s : find a null pointer\n", __func__);
+		return -EINVAL;
+	}
 	if (NULL == dev_data){
 		TS_LOG_ERR("%s anti false touch get chip data NULL\n", __func__);
 		local_param = NULL;
@@ -532,10 +522,14 @@ static int update_restrain_area(int y, int *point)
 
 int ts_kit_algo_t3(struct ts_kit_device_data *dev_data, struct ts_fingers *in_info, struct ts_fingers *out_info)
 {
-	int index;
-	int temp_x, temp_y, temp_val;
-	int *temp_point;
+	int index = 0;
+	int temp_x = 0, temp_y = 0, temp_val = 0;
+	int *temp_point = NULL;
 
+	if(!in_info || !out_info){
+		TS_LOG_ERR("%s : find a null pointer\n", __func__);
+		return -EINVAL;
+	}
 	if (0 == g_ts_kit_platform_data.edge_wideth)
 	{	
 		return NO_ERR;
@@ -544,19 +538,19 @@ int ts_kit_algo_t3(struct ts_kit_device_data *dev_data, struct ts_fingers *in_in
 	{
 		stop_left = g_ts_kit_platform_data.edge_wideth;
 		stop_right = EDGE_X_MAX - stop_left;
-		temp_left = stop_left + 20;
-		temp_right = stop_right - 20;
+		temp_left = stop_left + TEMP_EDGE;
+		temp_right = stop_right - TEMP_EDGE;
 
-		start_left = stop_left + 30;
-		start_right = stop_right - 30;
+		start_left = stop_left + START_EDGE;
+		start_right = stop_right - START_EDGE;
 
 		temp_up = Y_TEMP_W;
 		temp_down = EDGE_Y_MAX - Y_TEMP_W;
 		start_up = Y_START_W;
 		start_down = EDGE_Y_MAX - Y_START_W;
 
-		start_study_left = stop_left + 40;
-		start_study_right = stop_right - 40;
+		start_study_left = stop_left + START_STUDY_EDGE;
+		start_study_right = stop_right - START_STUDY_EDGE;
 	}
 
 	if (in_info->cur_finger_number == 0)
@@ -824,3 +818,4 @@ int ts_kit_register_algo_func(struct ts_kit_device_data *chip_data)
 
 	return retval;
 }
+/*lint -restore*/

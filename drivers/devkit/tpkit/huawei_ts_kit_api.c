@@ -32,7 +32,7 @@ extern struct dsm_client *ts_dclient;
 #endif
 extern struct ts_kit_platform_data g_ts_kit_platform_data;
 atomic_t g_ts_kit_data_report_over = ATOMIC_INIT(1);
-
+/*lint -save -e* */
 void ts_proc_bottom_half(struct ts_cmd_node* in_cmd, struct ts_cmd_node* out_cmd)
 {
     struct ts_kit_device_data* dev = g_ts_kit_platform_data.chip_data;
@@ -87,11 +87,15 @@ out:
 
 void ts_check_touch_window(struct ts_fingers* finger)
 {
-    int id;
+    int id = 0;
     int flag = 0;
-    int x0, y0, x1, y1;
-    int window_enable;
+    int x0 =0, y0 =0, x1 =0, y1 =0;
+    int window_enable = 0;
 
+    if(!finger){
+        TS_LOG_ERR("%s : find a null pointer\n", __func__);
+        return;
+    }
     window_enable = g_ts_kit_platform_data.feature_info.window_info.window_enable;
     x0 = g_ts_kit_platform_data.feature_info.window_info.top_left_x0;
     y0 = g_ts_kit_platform_data.feature_info.window_info.top_left_y0;
@@ -193,7 +197,7 @@ void ts_report_input(struct ts_cmd_node* in_cmd, struct ts_cmd_node* out_cmd)
 #else
 	int x_y_distance = 0;
 	short tmp_distance = 0;
-	char *p;
+	char *p = NULL;
 #endif
 
 	if (g_ts_kit_platform_data.chip_data){
@@ -488,8 +492,8 @@ bool ts_cmd_need_process(struct ts_cmd_node* cmd)
 				}
                     break;
                 case TS_GET_CHIP_INFO:
-                    is_need_process = true;
-                    break;
+			is_need_process = true;
+			break;
                 default:
                     is_need_process = false;
                     break;
@@ -537,7 +541,7 @@ bool ts_cmd_need_process(struct ts_cmd_node* cmd)
 
 int ts_kit_power_control_notify(enum ts_pm_type pm_type, int timeout)
 {
-    int error;
+    int error = 0;
     struct ts_cmd_node cmd;
     TS_LOG_INFO("ts_kit_power_control_notify called,pm_type is %d",pm_type);
     if (TS_UNINIT == atomic_read(&g_ts_kit_platform_data.state))

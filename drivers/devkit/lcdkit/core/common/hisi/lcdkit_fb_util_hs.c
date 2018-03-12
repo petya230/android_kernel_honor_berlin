@@ -2806,175 +2806,18 @@ ssize_t alpm_function_show(struct device* dev,
                            struct device_attribute* attr, char* buf)
 {
     ssize_t ret = -1;
-#if 0
-    struct fb_info* fbi = NULL;
-    struct hisi_fb_data_type* hisifd = NULL;
-
-    if (!dev)
-    {
-        HISI_FB_ERR("NULL dev Pointer!\n");
-        return -1;
-    }
-
-    if (!buf)
-    {
-        HISI_FB_ERR("NULL buf Pointer!\n");
-        return -1;
-    }
-
-    fbi = dev_get_drvdata(dev);
-
-    if (!fbi)
-    {
-        HISI_FB_ERR("NULL fbi Pointer!\n");
-        return -1;
-    }
-
-    hisifd = (struct hisi_fb_data_type*)fbi->par;
-
-    if (!hisifd)
-    {
-        HISI_FB_ERR("NULL hisifd Pointer!\n");
-        return -1;
-    }
-
-    ret = snprintf(buf, PAGE_SIZE, "aod_function = %d \n", hisifd->aod_function);
-#endif
     return ret;
 }
 
 ssize_t alpm_function_store(struct device* dev,
                             struct device_attribute* attr, const char* buf, size_t count)
 {
-#if 0
-    struct fb_info* fbi = NULL;
-    struct hisi_fb_data_type* hisifd = NULL;
-    ssize_t ret = 0;
-
-    if (!dev)
-    {
-        HISI_FB_ERR("NULL dev Pointer!\n");
-        return -1;
-    }
-
-    if (!buf)
-    {
-        HISI_FB_ERR("NULL buf Pointer!\n");
-        return -1;
-    }
-
-    fbi = dev_get_drvdata(dev);
-
-    if (!fbi)
-    {
-        HISI_FB_ERR("NULL fbi Pointer!\n");
-        return -1;
-    }
-
-    hisifd = (struct hisi_fb_data_type*)fbi->par;
-
-    if (!hisifd)
-    {
-        HISI_FB_ERR("NULL hisifd Pointer!\n");
-        return -1;
-    }
-
-    if (strlen(buf) >= MAX_BUF)
-    {
-        HISI_FB_ERR("buf overflow!\n");
-        return -1;
-    }
-
-    if (!hisifd->panel_power_on)
-    {
-        HISI_FB_ERR("fb%d, panel power off!\n", hisifd->index);
-        return -1;
-    }
-
-    ret = sscanf(buf, "%u", &hisifd->aod_function);
-
-    if (!ret)
-    {
-        HISI_FB_ERR("sscanf return invaild:%d\n", ret);
-        return -1;
-    }
-
-    HISI_FB_INFO("aod_function:%d\n", hisifd->aod_function);
-#endif
     return count;
 }
 
 ssize_t alpm_setting_store(struct device* dev,
                            struct device_attribute* attr, const char* buf, size_t count)
 {
-#if 0
-    struct fb_info* fbi = NULL;
-    struct hisi_fb_data_type* hisifd = NULL;
-    struct hisi_panel_info* pinfo = NULL;
-    struct hisi_fb_panel_data* pdata = NULL;
-    ssize_t ret = 0;
-
-    if (!dev)
-    {
-        HISI_FB_ERR("NULL dev Pointer!\n");
-        return -1;
-    }
-
-    if (!buf)
-    {
-        HISI_FB_ERR("NULL buf Pointer!\n");
-        return -1;
-    }
-
-    fbi = dev_get_drvdata(dev);
-
-    if (!fbi)
-    {
-        HISI_FB_ERR("NULL fbi Pointer!\n");
-        return -1;
-    }
-
-    hisifd = (struct hisi_fb_data_type*)fbi->par;
-
-    if (!hisifd)
-    {
-        HISI_FB_ERR("NULL hisifd Pointer!\n");
-        return -1;
-    }
-
-    if (strlen(buf) >= MAX_BUF)
-    {
-        HISI_FB_ERR("buf overflow!\n");
-        return -1;
-    }
-
-    pdata = dev_get_platdata(&hisifd->pdev->dev);
-
-    if (!pdata)
-    {
-        HISI_FB_ERR("NULL pdata Pointer!\n");
-        return -1;
-    }
-
-    down(&hisifd->blank_sem);
-    pinfo = &(hisifd->panel_info);
-
-    if (!hisifd->panel_power_on)
-    {
-        HISI_FB_ERR("fb%d, panel power off!\n", hisifd->index);
-        goto err_out;
-    }
-
-    if (pdata->amoled_alpm_setting_store)
-    {
-        hisifb_activate_vsync(hisifd);
-        ret = pdata->amoled_alpm_setting_store(hisifd->pdev, buf, count);
-        hisifb_deactivate_vsync(hisifd);
-    }
-
-err_out:
-    up(&hisifd->blank_sem);
-#endif
     return count;
 }
 

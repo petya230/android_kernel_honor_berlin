@@ -102,6 +102,13 @@ static int devfreq_mali_ondemand_func(struct devfreq *df,
 	if(data == NULL)
 		return -EINVAL;
 
+	/* Assume MAX if it is going to be divided by zero  &&
+	   Set MAX if we do not know the initial frequency */
+	if (unlikely(stat.current_frequency == 0 || stat.total_time == 0)) {
+		*freq = max;
+		return 0;
+	}
+
 	if (data) {
 		data->vsync = stat.private_data ? 1 : 0;
 		data->utilisation = stat.busy_time * 100 / stat.total_time;
@@ -119,13 +126,6 @@ static int devfreq_mali_ondemand_func(struct devfreq *df,
 		pr_err("%s: invalid performance parameter, upth[%d], diff[%d]\n",
 			__func__, dfso_upthreshold, dfso_downdifferential);
 		return -EINVAL;
-	}
-
-	/* Assume MAX if it is going to be divided by zero  &&
-	   Set MAX if we do not know the initial frequency */
-	if (unlikely(stat.total_time == 0 || stat.current_frequency == 0)) {
-		*freq = max;
-		return 0;
 	}
 
 	/* Prevent overflow */
@@ -209,14 +209,14 @@ static ssize_t store_##object						\
 {										\
 	struct devfreq *devfreq = to_devfreq(dev);				\
 	struct devfreq_mali_ondemand_data *data;				\
-	unsigned int input;							\
+	int input;							\
 	int ret = 0;								\
-	ret = sscanf(buf, "%u", &input);					\
+	ret = sscanf(buf, "%d", &input);					\
 	if (ret != 1 || input > max || input < min)				\
 		return -EINVAL;							\
 	mutex_lock(&devfreq->lock);						\
 	data = devfreq->data;							\
-	data->object = input;							\
+	data->object = (unsigned int)input;							\
 	ret = update_devfreq(devfreq);						\
 	if (ret == 0)								\
 		ret = count;							\
@@ -359,6 +359,8 @@ static int mali_ondemand_init(struct devfreq *devfreq)
 			DFMO_QOS_CPU_DMA_LATENCY_RELEASED;
 #endif
 		devfreq->data = data;
+	} else {
+		return -ENOMEM;
 	}
 
 	err = sysfs_create_group(&devfreq->dev.kobj, &dev_attr_group);

@@ -215,6 +215,7 @@ typedef VOS_UINT32 (*DS2TLV)(VOS_UINT8 Tag,VOS_UINT8 *pDes,VOS_UINT8 *pSrc,VOS_U
 
 #define STK_REFRESH_CNF_TIMER_STOP                          VOS_StopRelTimer(&gstSTKRefreshCnfTimer)
 
+/* Added by h59254 for V7R1C50 setup call 20120920 begin */
 #define STK_SETUP_CALL_DURATION_TIMER_START(ulLength)       VOS_StartRelTimer(&gstSTKSetupCallDurationTimer, MAPS_STK_PID,\
                                                                             ulLength, STK_SETUP_CALL_DURATION_TIMER_NAME, 0,VOS_RELTIMER_NOLOOP, VOS_TIMER_PRECISION_10)
 
@@ -223,6 +224,7 @@ typedef VOS_UINT32 (*DS2TLV)(VOS_UINT8 Tag,VOS_UINT8 *pDes,VOS_UINT8 *pSrc,VOS_U
 #define STK_DTMF_PAUSE_TIMER_START(ulLength)                VOS_StartRelTimer(&gstSTKDtmfPauseTimer, MAPS_STK_PID,\
                                                                             ulLength, STK_DTMF_PAUSE_TIMER_NAME, 0,VOS_RELTIMER_NOLOOP, VOS_TIMER_PRECISION_10)
 
+/* Added by h59254 for V7R1C50 setup call 20120920 end */
 #define STK_RESEND_TIMER_START(TimerId, TimerName, Length)  (VOS_VOID)VOS_StopRelTimer(TimerId);\
                                                             (VOS_VOID)VOS_StartRelTimer(TimerId, MAPS_STK_PID,\
                                                                             Length*1000, TimerName, 0, VOS_RELTIMER_NOLOOP, VOS_TIMER_PRECISION_5)
@@ -992,9 +994,11 @@ extern HTIMER                           gstSTKINDTimer;
 
 extern HTIMER                           gstSTKRefreshCnfTimer;
 
+/* Added by h59254 for V7R1C50 setup call 20120920 begin */
 extern HTIMER                           gstSTKSetupCallDurationTimer;
 
 extern HTIMER                           gstSTKDtmfPauseTimer;
+/* Added by h59254 for V7R1C50 setup call 20120920 end */
 
 extern HTIMER                           gstSTKNMRTimer;
 
