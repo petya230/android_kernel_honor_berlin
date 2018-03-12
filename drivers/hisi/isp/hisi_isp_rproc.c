@@ -191,7 +191,7 @@ static inline int is_ispup(void)
 static int need_powerup(unsigned int refs)
 {
 	if (refs == 0xffffffff)
-		pr_err("%s:need_powerup exc, refs == 0xffffffff\n", __func__);
+		pr_err("[%s] need_powerup exc, refs == 0xffffffff\n", __func__);
 
 	return ((refs == 0) ? 1 : 0);
 }
@@ -199,47 +199,48 @@ static int need_powerup(unsigned int refs)
 static int need_powerdn(unsigned int refs)
 {
     if (refs == 0xffffffff)
-		pr_err("%s:need_powerdn exc, refs == 0xffffffff\n", __func__);
+		pr_err("[%s] need_powerdn exc, refs == 0xffffffff\n", __func__);
 
     return ((refs == 1) ? 1 : 0);
 }
 
+//lint -save -e529 -e438
 static void ispmmu_init(void)
 {
-	struct hisi_isp_nsec *dev = &nsec_rproc_dev;
+    struct hisi_isp_nsec *dev = &nsec_rproc_dev;
     int i = 0, num = 0;
-	void __iomem *smmu_base = dev->isp_regs_base + ISP_BASE_ADDR_SSMMU;
-	unsigned int pgt_addr = dev->pgd_base;
+    void __iomem *smmu_base = dev->isp_regs_base + ISP_BASE_ADDR_SSMMU;
+    unsigned int pgt_addr = dev->pgd_base;
 
-    pr_info("%s: +\n", __func__);
+    pr_info("[%s] +\n", __func__);
 
     writel((readl(ISP_020010_MODULE_CGR_TOP + dev->isp_regs_base) | SMMU_CLK_ENABLE),
             ISP_020010_MODULE_CGR_TOP + dev->isp_regs_base);
 
-	for (i = 0; i < sizeof(ispmmu_up_regs) / sizeof(struct hisi_ispmmu_regs_s); i++) {
-        for (num = 0; num < ispmmu_up_regs[i].num; num++) {
-            writel(ispmmu_up_regs[i].data, smmu_base + ispmmu_up_regs[i].offset + num * 4);
+        for (i = 0; i < sizeof(ispmmu_up_regs) / sizeof(struct hisi_ispmmu_regs_s); i++) {
+            for (num = 0; num < ispmmu_up_regs[i].num; num++) {
+                writel(ispmmu_up_regs[i].data, smmu_base + ispmmu_up_regs[i].offset + num * 4);
+            }
         }
-	}
 
-	writel(pgt_addr, SMMU_APB_REG_SMMU_CB_TTBR0_REG + smmu_base);
-	writel(pgt_addr, SMMU_APB_REG_SMMU_SCB_TTBR_REG + smmu_base);
-	writel(0x1, SMMU_APB_REG_SMMU_SCB_TTBCR_REG + smmu_base);
-	writel(0x1, SMMU_APB_REG_SMMU_CB_TTBCR_REG + smmu_base);
-	/*set jpeg for nosec*/
+    writel(pgt_addr, SMMU_APB_REG_SMMU_CB_TTBR0_REG + smmu_base);
+    writel(pgt_addr, SMMU_APB_REG_SMMU_SCB_TTBR_REG + smmu_base);
+    writel(0x1, SMMU_APB_REG_SMMU_SCB_TTBCR_REG + smmu_base);
+    writel(0x1, SMMU_APB_REG_SMMU_CB_TTBCR_REG + smmu_base);
+    /*set jpeg for nosec*/
     //writel(0x6,ISP_BASE_ADDR_SUB_CTRL + ISP_CORE_CTRL_S);
     //writel(0x8,ISP_SUB_CTRL_S + ISP_BASE_ADDR_SUB_CTRL);
 
-	/*set mid*/
+    /*set mid*/
     writel(MID_FOR_JPGEN, dev->isp_regs_base + ISP_BASE_ADDR_CVDR_SRT + CVDR_SRT_AXI_CFG_VP_WR_25);
     writel(MID_FOR_JPGEN, dev->isp_regs_base + ISP_BASE_ADDR_CVDR_SRT + CVDR_SRT_AXI_CFG_NR_RD_1);
 
-    pr_info("%s: -\n", __func__);
+    pr_info("[%s] -\n", __func__);
 }
-
+//lint -restore
 static int ispmmu_exit(void)
 {
-    pr_info("%s: +\n", __func__);
+    pr_info("[%s] +\n", __func__);
 
     return 0;
 }
@@ -252,7 +253,7 @@ static void ispcvdr_init(void)
     void __iomem *ispsrt_base = dev->isp_regs_base + ISP_BASE_ADDR_CVDR_SRT;
     void __iomem *ispsctrl_base = dev->isp_regs_base + ISP_SUB_CTRL_BASE_ADDR;
 
-    pr_info("%s: +\n", __func__);
+    pr_info("[%s] +\n", __func__);
     writel((readl(ISP_020010_MODULE_CGR_TOP + isp_base) | CVDR_CLK_ENABLE),
             ISP_020010_MODULE_CGR_TOP + isp_base);
 
@@ -284,21 +285,21 @@ static void ispcvdr_init(void)
     //SRT WRITE
     writel(0x00027210, ispsctrl_base + SUB_CTRL_ISP_FLUX_CTRL3_0_REG);
     writel(0x0000024E, ispsctrl_base + SUB_CTRL_ISP_FLUX_CTRL3_1_REG);
-    pr_info("%s: -\n", __func__);
+    pr_info("[%s] -\n", __func__);
 }
 
 static void set_isp_nonsec(void)
 {
-    pr_alert("%s: +\n", __func__);
+    pr_alert("[%s] +\n", __func__);
     atfisp_set_nonsec();
-    pr_alert("%s: -\n", __func__);
+    pr_alert("[%s] -\n", __func__);
 }
 
 static void disreset_a7(unsigned int remap_addr)
 {
-    pr_info("%s:enter\n", __func__);
+    pr_info("[%s] +\n", __func__);
     atfisp_disreset_a7(remap_addr);
-    pr_info("%s:exit\n", __func__);
+    pr_info("[%s] -\n", __func__);
 }
 
 static void isp_a7_qos_cfg(struct hisi_isp_nsec *dev)
@@ -307,7 +308,7 @@ static void isp_a7_qos_cfg(struct hisi_isp_nsec *dev)
 
     pr_info("[%s] +\n", __func__);
     if (vivobus_base == NULL) {
-        pr_err("%s: vivobus_base remap fail\n", __func__);
+        pr_err("[%s] vivobus_base remap fail\n", __func__);
         return;
     }
 
@@ -414,10 +415,16 @@ static void ispfunc_clk_disable(struct hisi_isp_nsec *dev)
     clk_disable_unprepare(dev->ispclk[FUNC_CLK]);
 }
 
-static int nsec_isp_powerup(struct hisp_pwr_ops *ops)
+int hisp_powerup(void)
 {
     struct hisi_isp_nsec *dev = &nsec_rproc_dev;
+    struct hisp_pwr_ops *ops = dev->isp_ops;
     int ret;
+
+    if (!ops) {
+        pr_info("[%s] Failed : ops.%pK\n", __func__, ops);
+        return -ENXIO;
+    }
 
     pr_info("[%s] + refs_isp.0x%x\n", __func__, ops->refs_isp);
     if (!need_powerup(ops->refs_isp)) {
@@ -425,10 +432,9 @@ static int nsec_isp_powerup(struct hisp_pwr_ops *ops)
         pr_info("[%s] + refs_isp.0x%x\n", __func__, ops->refs_isp);
         return 0;
     }
-    if (!dev->clk_flag)
-    {
+    if (!dev->clk_flag) {
         if ((ret = ispfunc_setclk_enable(dev)) < 0) {
-            pr_err("Failed: ispfunc_setclk_enable.%d\n", ret);
+            pr_err("[%s] Failed: isp regulator_enable.%d\n", __func__, ret);
             return ret;
         }
 
@@ -436,7 +442,7 @@ static int nsec_isp_powerup(struct hisp_pwr_ops *ops)
             pr_err("Failed: ispa7_setclk_enable.%d\n", ret);
             goto ispa7_err;
         }
-     }
+    }
 
     if ((ret = regulator_enable(dev->ispsrt_supply)) != 0) {
         pr_err("Failed: regulator_enable.%d\n", ret);
@@ -469,13 +475,18 @@ ispa7_err:
     return ret;
 }
 
-static int nsec_isp_powerdn(struct hisp_pwr_ops *ops)
+int hisp_powerdn(void)
 {
     struct hisi_isp_nsec *dev = &nsec_rproc_dev;
+    struct hisp_pwr_ops *ops = dev->isp_ops;
     int ret = 0;
 
-    pr_info("[%s] + refs_isp.0x%x\n", __func__, ops->refs_isp);
+    if (!ops) {
+        pr_info("[%s] Failed : ops.%pK\n", __func__, ops);
+        return -ENXIO;
+    }
 
+    pr_info("[%s] + refs_isp.0x%x\n", __func__, ops->refs_isp);
     if (!need_powerdn(ops->refs_isp)) {
         ops->refs_isp--;
         pr_info("[%s] + refs_isp.0x%x\n", __func__, ops->refs_isp);
@@ -489,7 +500,7 @@ static int nsec_isp_powerdn(struct hisp_pwr_ops *ops)
     }
 
     if ((ret = regulator_disable(dev->ispsrt_supply)) != 0)
-        pr_err("Failed: regulator_disable.%d\n", ret);
+        pr_err("[%s] Failed: ispsrt regulator_disable.%d\n", __func__, ret);
 
     if (!dev->clk_flag)
     {
@@ -501,6 +512,16 @@ static int nsec_isp_powerdn(struct hisp_pwr_ops *ops)
     pr_info("[%s] - refs_isp.0x%x\n", __func__, ops->refs_isp);
 
     return 0;
+}
+
+static int nsec_isp_powerup(struct hisp_pwr_ops *ops)
+{
+    return hisp_powerup();
+}
+
+static int nsec_isp_powerdn(struct hisp_pwr_ops *ops)
+{
+    return hisp_powerdn();
 }
 
 static int nsec_isp_init(struct hisp_pwr_ops *ops)
@@ -533,7 +554,7 @@ static int nsec_isp_exit(struct hisp_pwr_ops *ops)
     }
 
 	if ((ret = ispmmu_exit()))
-		pr_err("%s: failed, ispmmu_exit, ret.%d\n", __func__, ret);
+		pr_err("[%s] Failed : ispmmu_exit.%d\n", __func__, ret);
 
 	ops->refs_ispinit--;
     pr_err("[%s] - refs_ispinit.%x\n", __func__, ops->refs_ispinit);
@@ -542,13 +563,13 @@ static int nsec_isp_exit(struct hisp_pwr_ops *ops)
 }
 
 static struct hisp_pwr_ops isp_pwr_ops = {
-    .lock   = __MUTEX_INITIALIZER(isp_pwr_ops.lock),
-    .a7up   = nsec_a7_powerup,
-    .a7dn   = nsec_a7_powerdn,
-	.ispup  = nsec_isp_powerup,
-	.ispdn  = nsec_isp_powerdn,
-    .ispinit = nsec_isp_init,
-    .ispexit = nsec_isp_exit,
+    .lock       = __MUTEX_INITIALIZER(isp_pwr_ops.lock),
+    .a7up       = nsec_a7_powerup,
+    .a7dn       = nsec_a7_powerdn,
+	.ispup      = nsec_isp_powerup,
+	.ispdn      = nsec_isp_powerdn,
+    .ispinit    = nsec_isp_init,
+    .ispexit    = nsec_isp_exit,
 };
 
 int hisp_nsec_jpeg_powerup(void)
@@ -557,17 +578,17 @@ int hisp_nsec_jpeg_powerup(void)
     struct hisp_pwr_ops *ops = dev->isp_ops;
     int ret = 0;
 
-    pr_info("%s: +\n", __func__);
+    pr_info("[%s] +\n", __func__);
     if (!ops) {
-        pr_err("%s: failed, isp_ops.0x%p is null.\n", __func__, ops);
+        pr_err("[%s] Failed : ops.%pK\n", __func__, ops);
 		return -EINVAL;
     }
 
     mutex_lock(&ops->lock);
-
     ret = ops->ispup(ops);
     if (0 != ret) {
-        pr_err("%s: ispup failed, ret.%d\n", __func__, ret);
+        pr_err("[%s] Failed : ispup.%d\n", __func__, ret);
+        mutex_unlock(&ops->lock);
         return ret;
     }
 
@@ -578,29 +599,29 @@ int hisp_nsec_jpeg_powerup(void)
 
 	ret = ops->ispinit(ops);
     if (0 != ret) {
-        pr_err("%s: jpegup failed, ret.%d\n", __func__, ret);
+        pr_err("[%s] ispinit.%d\n", __func__, ret);
         goto isp_down;
     }
 
-    pr_info("%s:refs_a7.0x%x, refs_isp.0x%x, refs_ispinit.0x%x\n", __func__,
+    pr_info("[%s] refs_a7.0x%x, refs_isp.0x%x, refs_ispinit.0x%x\n", __func__,
             ops->refs_a7, ops->refs_isp, ops->refs_ispinit);
-
     mutex_unlock(&ops->lock);
+
     return 0;
 
 isp_down:
     if ((ops->ispdn(ops)) != 0)
-        pr_err("%s: failed, ispdn\n", __func__);
+        pr_err("[%s] Failed : ispdn\n", __func__);
 
-    pr_info("%s:refs_a7.0x%x, refs_isp.0x%x, refs_ispinit.0x%x\n", __func__,
+    pr_info("[%s] refs_a7.0x%x, refs_isp.0x%x, refs_ispinit.0x%x\n", __func__,
             ops->refs_a7, ops->refs_isp, ops->refs_ispinit);
-
     mutex_unlock(&ops->lock);
-    pr_info("%s: -\n", __func__);
+    pr_info("[%s] -\n", __func__);
+
     return ret;
 }
 EXPORT_SYMBOL(hisp_nsec_jpeg_powerup);
-
+/*lint -save -e631 -e613*/
 int hisp_nsec_jpeg_powerdn(void)
 {
     struct hisi_isp_nsec *dev = &nsec_rproc_dev;
@@ -627,6 +648,7 @@ int hisp_nsec_jpeg_powerdn(void)
     pr_info("%s: -\n", __func__);
     return 0;
 }
+/*lint -restore */
 EXPORT_SYMBOL(hisp_nsec_jpeg_powerdn);
 
 int nonsec_isp_device_enable(void)
@@ -636,14 +658,15 @@ int nonsec_isp_device_enable(void)
     int ret = 0;
 
     if (!ops) {
-        pr_err("%s: failed, isp_ops is null.\n", __func__);
+        pr_err("[%s] Failed : ops.%pK\n", __func__, ops);
+        return -1;
     }
 
     mutex_lock(&ops->lock);
-
     ret = ops->ispup(ops);
     if (0 != ret) {
-        pr_err("%s: ispup failed, ret.%d\n", __func__, ret);
+        pr_err("[%s] Failed : ispup.%d\n", __func__, ret);
+        mutex_unlock(&ops->lock);
         return ret;
     }
 
@@ -654,30 +677,30 @@ int nonsec_isp_device_enable(void)
 
     ret = ops->ispinit(ops);
     if (0 != ret) {
-        pr_err("%s: jpegup failed, ret.%d\n", __func__, ret);
+        pr_err("[%s] Failed : ispinit.%d\n", __func__, ret);
         goto isp_down;
     }
 
     ret = ops->a7up(ops);
     if (0 != ret) {
-        pr_err("%s: a7up failed, ret.%d\n", __func__, ret);
+        pr_err("[%s] Failed : a7up.%d\n", __func__, ret);
         goto isp_exit;
     }
 
-    pr_info("%s:%d refs_a7.0x%x, refs_isp.0x%x, refs_ispinit.0x%x\n", __func__, __LINE__,
+    pr_info("[%s] refs_a7.0x%x, refs_isp.0x%x, refs_ispinit.0x%x\n", __func__,
             ops->refs_a7, ops->refs_isp, ops->refs_ispinit);
-
     mutex_unlock(&ops->lock);
+
     return ret;
 
 isp_exit:
     if ((ops->ispexit(ops)) != 0)
-        pr_err("%s: failed, jpegdn\n", __func__);
+        pr_err("[%s] Failed : ispexit\n", __func__);
 isp_down:
     if ((ops->ispdn(ops)) != 0)
-        pr_err("%s: failed, ispdn\n", __func__);
+        pr_err("[%s] Failed : ispdn\n", __func__);
 
-    pr_info("%s:refs_a7.0x%x, refs_isp.0x%x, refs_ispinit.0x%x\n", __func__,
+    pr_info("[%s] refs_a7.0x%x, refs_isp.0x%x, refs_ispinit.0x%x\n", __func__,
             ops->refs_a7, ops->refs_isp, ops->refs_ispinit);
     mutex_unlock(&ops->lock);
 
@@ -692,23 +715,22 @@ int nonsec_isp_device_disable(void)
     int ret = 0;
 
     if (!ops) {
-        pr_err("%s: failed, isp_ops is null.\n", __func__);
+        pr_err("[%s] Failed : ops.%pK\n", __func__, ops);
+        return -1;
     }
 
     mutex_lock(&ops->lock);
-
     if ((ret = ops->a7dn(ops)) != 0)
-        pr_err("%s: a7dn faled, ret.%d\n", __func__, ret);
+        pr_err("[%s] a7dn faled, ret.%d\n", __func__, ret);
 
     if ((ret = ops->ispexit(ops)))
-        pr_err("%s: jpegdn faled, ret.%d\n", __func__, ret);
+        pr_err("[%s] jpegdn faled, ret.%d\n", __func__, ret);
 
     if ((ret = ops->ispdn(ops)) != 0)
-        pr_err("%s: ispdn faled, ret.%d\n", __func__, ret);
+        pr_err("[%s] ispdn faled, ret.%d\n", __func__, ret);
 
-    pr_info("%s:refs_a7.0x%x, refs_isp.0x%x, refs_ispinit.0x%x\n", __func__,
+    pr_info("[%s] refs_a7.0x%x, refs_isp.0x%x, refs_ispinit.0x%x\n", __func__,
             ops->refs_a7, ops->refs_isp, ops->refs_ispinit);
-
     mutex_unlock(&ops->lock);
 
     return 0;
@@ -720,28 +742,29 @@ static int set_nonsec_pgd(struct rproc *rproc)
     struct hisi_isp_nsec *dev = &nsec_rproc_dev;
     struct iommu_domain_data *info = NULL;
     struct iommu_domain *domain = rproc->domain;
-    struct rproc_shared_para *share_para = rproc_get_share_para();
-
-    if (!share_para) {
-        pr_err("%s:rproc_get_share_para failed.\n", __func__);
-        return -EINVAL;
-    }
+    struct rproc_shared_para *param = NULL;
 
     if (NULL == domain) {
-        pr_info("%s:%d get_nonsec_pgd failed.\n", __func__, __LINE__);
+        pr_info("[%s] Failed : domain.%pK\n", __func__, domain);
         return -EINVAL;
     }
 
     info = (struct iommu_domain_data *)domain->priv;
     if (NULL == info) {
-        pr_info("%s:%d get_nonsec_pgd failed.\n", __func__, __LINE__);
+        pr_info("[%s] Failed : info.%pK\n", __func__, info);
         return -EINVAL;
     }
 
-    dev->pgd_base = (unsigned int)info->phy_pgd_base;
-    share_para->dynamic_pgtable_base = dev->pgd_base;
+    dev->pgd_base = info->phy_pgd_base;
 
-    pr_info("%s: dev->pgd_base.0x%x == info->phy_pgd_base.0x%llx\n", __func__,
+    param = rproc_get_share_para();
+    if (!param) {
+        pr_err("[%s] Failed : param.%pK\n", __func__, param);
+        return -EINVAL;
+    }
+    param->dynamic_pgtable_base = dev->pgd_base;
+
+    pr_info("[%s] dev->pgd_base.0x%llx == info->phy_pgd_base.0x%llx\n", __func__,
             dev->pgd_base, info->phy_pgd_base);
 
     return 0;
@@ -752,10 +775,10 @@ int hisi_isp_rproc_pgd_set(struct rproc *rproc)
     int err = 0;
 
     if (use_nonsec_isp()) {
-        pr_info("%s: enter.\n", __func__);
+        pr_info("[%s] +\n", __func__);
         err = set_nonsec_pgd(rproc);
         if (0 != err) {
-            pr_err("Failed : set_nonsec_pgd.%d\n", err);
+            pr_err("[%s] Failed : set_nonsec_pgd.%d\n", __func__, err);
             return err;
         }
     }
@@ -767,26 +790,26 @@ static int hisi_isp_nsec_getdts(struct platform_device *pdev, struct hisi_isp_ns
 {
     struct device *device = &pdev->dev;
     struct device_node *np = device->of_node;
+    const char *clk_name[CLK_MAX];
     int ret, i;
 
-    const char *clk_name[CLK_MAX];
     if (!np) {
-        pr_err("[%s] Failed : np.%p.\n", __func__, np);
+        pr_err("[%s] Failed : np.%pK\n", __func__, np);
         return -ENODEV;
     }
 
-    pr_info("%s:%d +\n", __func__, __LINE__);
+    pr_info("[%s] +\n", __func__);
     dev->device = device;
-    dev->ispsrt_supply = get_isp_regulator();
+    dev->ispsrt_supply = devm_regulator_get(device, "isp-srt");
     if (IS_ERR(dev->ispsrt_supply)) {
-        pr_err("[%s] Failed : devm_regulator_get.%p\n", __func__, dev->ispsrt_supply);
+        pr_err("[%s] Failed : ISPSRT devm_regulator_get.%pK\n", __func__, dev->ispsrt_supply);
         return -EINVAL;
     }
 
     dev->remap_addr = dev->isp_dma;
     set_a7mem_pa(dev->remap_addr);
     set_a7mem_va(dev->isp_dma_va);
-    pr_info("%s: remap_addr.0x%x, dma_va.0x%p\n", __func__, dev->remap_addr, dev->isp_dma_va);
+    pr_info("[%s] remap_addr.0x%llx, dma_va.%pK\n", __func__, dev->remap_addr, dev->isp_dma_va);
 
     if ((ret = of_property_read_string_array(np, "clock-names", clk_name, CLK_MAX)) < 0) {
         pr_err("[%s] Failed : of_property_read_string_array.%d\n", __func__, ret);
@@ -813,7 +836,8 @@ static int hisi_isp_nsec_getdts(struct platform_device *pdev, struct hisi_isp_ns
         pr_info("[%s] ISP clock.%d.%s: %d M\n", __func__, i, clk_name[i], dev->ispclk_value[i]);
     }
 
-    pr_info("%s:%d -\n", __func__, __LINE__);
+    pr_info("[%s] -\n", __func__);
+
     return 0;
 }
 
@@ -821,29 +845,29 @@ static int isp_remap_rsc(struct hisi_isp_nsec *dev)
 {
     dev->crgperi_base = (void __iomem *)ioremap(REG_BASE_CRGPERI_PHY, SZ_4K);
     if (dev->crgperi_base == NULL) {
-        pr_err("crgperi_base err 0x%x(0x%x)\n", REG_BASE_CRGPERI_PHY, SZ_4K);
+        pr_err("[%s] crgperi_base err 0x%x(0x%x)\n", __func__, REG_BASE_CRGPERI_PHY, SZ_4K);
         return -ENOMEM;
     }
 
     dev->vivobus_base = (void __iomem *)ioremap(REG_BASE_VIVOBUS_PHY, SZ_4K);
     if (dev->vivobus_base == NULL) {
-        pr_err("vivobus_base err 0x%x(0x%x)\n", REG_BASE_VIVOBUS_PHY, SZ_4K);
+        pr_err("[%s] vivobus_base err 0x%x(0x%x)\n", __func__, REG_BASE_VIVOBUS_PHY, SZ_4K);
         goto free_crgperi_base;
     }
 
 	dev->isp_regs_base = (void __iomem *)ioremap(REG_BASE_ISP_PHY, REG_BASE_ISP_SIZE);
 	if (unlikely(!dev->isp_regs_base)) {
-        pr_err("%s: isp_regs_base 0x%x.0x%x\n", __func__, REG_BASE_ISP_PHY, REG_BASE_ISP_SIZE);
+        pr_err("[%s] isp_regs_base 0x%x.0x%x\n", __func__, REG_BASE_ISP_PHY, REG_BASE_ISP_SIZE);
         goto free_vivobus_base;
     }
 
     dev->isp_dma_va = dma_alloc_coherent(dev->device, ISP_MEM_SIZE, &dev->isp_dma, GFP_KERNEL);
     if (unlikely(!dev->isp_dma_va)) {
-        pr_err("%s: isp_dma_va failed\n", __func__);
+        pr_err("[%s] isp_dma_va failed\n", __func__);
         goto free_regs_base;
     }
 
-	pr_info("%s: crgperi_base.0x%p, vivobus_base.0x%p, isp_regs_base.0x%p, isp_dma_va.0x%p, dma.0x%llx\n", __func__,
+	pr_info("[%s] crgperi_base.%pK, vivobus_base.%pK, isp_regs_base.%pK, isp_dma_va.%pK, dma.0x%llx\n", __func__,
 			dev->crgperi_base, dev->vivobus_base, dev->isp_regs_base, dev->isp_dma_va, dev->isp_dma);
 
     return 0;
@@ -884,11 +908,11 @@ static ssize_t sec_nsec_isp_show(struct device *dev, struct device_attribute *at
 {
 	ssize_t size = 0;
 	char *tmp;
-	pr_info("%s: +.\n", __func__);
+	pr_info("[%s] +\n", __func__);
 
 	tmp = (char *)kzalloc(TMP_SIZE, GFP_KERNEL);
 	if (unlikely(!tmp)) { /*lint !e730 */
-		pr_err("%s: kzalloc failed.\n", __func__);
+		pr_err("[%s] Failed : kzalloc\n", __func__);
 		return 0;
 	}
 
@@ -904,14 +928,15 @@ static ssize_t sec_nsec_isp_show(struct device *dev, struct device_attribute *at
 	memcpy((void *)buf, (void *)tmp, TMP_SIZE);
 	kfree((void *)tmp);
 
-	pr_info("%s: -.\n", __func__);
+	pr_info("[%s] -\n", __func__);
+
 	return size;
 }
 
 static ssize_t sec_nsec_isp_store(struct device *dev, struct device_attribute *attr,
                  const char *buf, size_t count)
 {
-	pr_info("%s: +.\n", __func__);
+	pr_info("[%s] +\n", __func__);
 	if (!strncmp("DEFAULT_CASE", buf, sizeof("DEFAULT_CASE") -1 )) {
 		pr_info("%s: DEFAULT_CASE.\n", __func__);
 		hisi_isp_rproc_case_set(DEFAULT_CASE);
@@ -924,12 +949,13 @@ static ssize_t sec_nsec_isp_store(struct device *dev, struct device_attribute *a
 	} else {
 		pr_info("%s: INVAL_CASE.\n", __func__);
 	}
-	pr_info("%s: -.\n", __func__);
+	pr_info("[%s] -\n", __func__);
+
 	return count; /*lint !e713*/
 }
 
 static DEVICE_ATTR(sec_nsec_isp, (S_IRUGO | S_IWUSR | S_IWGRP), sec_nsec_isp_show,
-					sec_nsec_isp_store);
+                    sec_nsec_isp_store);/*lint !e846 !e778 !e866 !e84 !e514 */
 
 static struct miscdevice nsec_isp_miscdev = {
 	.minor = 255,
@@ -942,7 +968,7 @@ int hisi_isp_nsec_probe(struct platform_device *pdev)
     struct hisp_pwr_ops *ops = &isp_pwr_ops;
     int ret = 0;
 
-    pr_alert("%s:%d +\n", __func__, __LINE__);
+    pr_alert("[%s] +\n", __func__);
     ops->refs_a7 = 0;
     ops->refs_isp = 0;
     ops->refs_ispinit = 0;
@@ -952,7 +978,7 @@ int hisi_isp_nsec_probe(struct platform_device *pdev)
     dev->isp_ops = ops;
 
     if ((ret = isp_remap_rsc(dev)) != 0) {
-        pr_err("%s: failed, isp_remap_src.%d\n", __func__, ret);
+        pr_err("[%s] failed, isp_remap_src.%d\n", __func__, ret);
         return ret;
     }
 
@@ -963,22 +989,24 @@ int hisi_isp_nsec_probe(struct platform_device *pdev)
 
 	ret = misc_register(&nsec_isp_miscdev);
 	if (0 != ret) {
-		pr_err("%s: misc_register failed, ret.%d\n", __func__, ret);
+		pr_err("[%s] misc_register failed, ret.%d\n", __func__, ret);
 		goto out;
 	}
 
 	ret = device_create_file(nsec_isp_miscdev.this_device, &dev_attr_sec_nsec_isp);
 	if (0 != ret) {
-		pr_err("%s: device_create_file failed, ret.%d\n", __func__, ret);
+		pr_err("[%s] device_create_file failed, sec_nsec_isp ret.%d\n", __func__, ret);
 		goto misc_de;
 	}
 
-    pr_alert("%s:%d -\n", __func__, __LINE__);
+    pr_alert("[%s] -\n", __func__);
+
     return 0;
 misc_de:
 	misc_deregister(&nsec_isp_miscdev);
 out:
     isp_unmap_rsc(dev);
+
     return ret;
 }
 
@@ -987,7 +1015,6 @@ int hisi_isp_nsec_remove(struct platform_device *pdev)
     struct hisi_isp_nsec *dev = &nsec_rproc_dev;
     isp_unmap_rsc(dev);
 	misc_deregister(&nsec_isp_miscdev);
-
     return 0;
 }
 

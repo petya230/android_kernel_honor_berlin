@@ -2097,7 +2097,6 @@
                         (0 << SMMU_APB_REG_SMR_NSCFG_EN_0_OFFSET) | \
                         (0 << SMMU_APB_REG_SMR_NSCFG_0_OFFSET)
 
-
 extern int dis_rststat_poll(void __iomem *addr, unsigned int value);
 
 #endif /* _HISI_ISP_HISI_ISP_RPROC_H */

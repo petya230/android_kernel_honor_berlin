@@ -78,7 +78,7 @@ void hisi_atfisp_cma_free(void)
     pr_info("%s: atfer ISP_SEC_CLOSE.\n", __func__);
 
     if (dev->cma_va == NULL || dev->cma_dma == 0) {
-        pr_info("%s: cma_va.0x%p, cma_dma.0x%llx\n", __func__, dev->cma_va, dev->cma_dma);
+        pr_info("%s: cma_va.%pK, cma_dma.0x%llx\n", __func__, dev->cma_va, dev->cma_dma);
         return;
     }
 

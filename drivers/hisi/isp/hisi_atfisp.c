@@ -216,16 +216,6 @@ noinline int atfd_hisi_service_isp_smc(u64 funcid, u64 arg0, u64 arg1, u64 arg2)
     return (int)funcid;
 }
 
-struct regulator *get_isp_regulator(void)
-{
-    struct hisi_atfisp_s *dev = (struct hisi_atfisp_s *)&atfisp_dev;
-
-    if (NULL == dev->ispsrt_supply)
-        return NULL;
-
-    return dev->ispsrt_supply;
-}
-
 static void isp_iova_pool_destroy(struct gen_pool *pool)
 {
     gen_pool_destroy(pool);
@@ -286,6 +276,7 @@ static struct gen_pool *isp_iova_pool_setup(unsigned long start,
 
     return pool;
 }
+
 /*lint -restore */
 int hisp_getsglist(void *listmem, void **vaddr, int size)
 {
@@ -297,24 +288,24 @@ int hisp_getsglist(void *listmem, void **vaddr, int size)
     unsigned long long *plist = listmem;
     pgprot_t pageprot = PAGE_KERNEL;
 
-    if ((npages = PAGE_ALIGN(size) / PAGE_SIZE) <= 0) {
+    if ((npages = PAGE_ALIGN(size) / PAGE_SIZE) <= 0) {/*lint !e573 */
         pr_err("[%s] Failed : npages.0x%x, size.0x%x\n", __func__, npages, size);
         return -EINVAL;
     }
 
     if ((table = kzalloc(sizeof(struct sg_table), GFP_KERNEL)) == NULL) {
-        pr_err("[%s] Failed : kzalloc.%p\n", __func__, table);
+        pr_err("[%s] Failed : kzalloc.%pK\n", __func__, table);
         return -ENOMEM;
     }
 
     if ((ret = sg_alloc_table(table, npages, GFP_KERNEL)) != 0) {
-        pr_err("[%s] Failed : sg_alloc_table.%d, table.%p, npages.%d\n", __func__, ret, table, npages);
+        pr_err("[%s] Failed : sg_alloc_table.%d, table.%pK, npages.%d\n", __func__, ret, table, npages);
         kfree(table);
         return -ENOMEM;
     }
 
     if ((pages = vmalloc(npages * sizeof(struct page *))) == NULL) {
-        pr_err("[%s] Failed : vmalloc.%p\n", __func__, pages);
+        pr_err("[%s] Failed : vmalloc.%pK\n", __func__, pages);
         sg_free_table(table);
         kfree(table);
         return -ENOMEM;
@@ -325,7 +316,7 @@ int hisp_getsglist(void *listmem, void **vaddr, int size)
 
     pageprot = pgprot_noncached(pageprot);
     if ((*vaddr = vmap(pages, npages, VM_MAP, pageprot)) == NULL) {
-        pr_err("[%s] Failed : vmap.%p\n", __func__, *vaddr);
+        pr_err("[%s] Failed : vmap.%pK\n", __func__, *vaddr);
         sg_free_table(table);
         kfree(table);
         for (i = 0; i < npages; i ++){
@@ -344,7 +335,7 @@ int hisp_getsglist(void *listmem, void **vaddr, int size)
             dma_addr = sg_phys(sg);
 
         *plist = (unsigned long long)dma_addr;
-        //pr_err("[%s] size.(0x%x, 0x%x), vmap.%p, dma_addr.0x%llx, tmppages.%p, *plist.(%p, 0x%llx, %p)\n", __func__, size, npages, *vaddr, dma_addr, tmppages, *plist, *plist, plist);
+        //pr_err("[%s] size.(0x%x, 0x%x), vmap.%pK, dma_addr.0x%llx, tmppages.%pK, *plist.(%pK, 0x%llx, %pK)\n", __func__, size, npages, *vaddr, dma_addr, tmppages, *plist, *plist, plist);
         plist ++;
         tmppages ++;
         sg = sg_next(sg);
@@ -369,7 +360,7 @@ int hisp_unmap_a7ispmem(void *listmem, void **vaddr, int size)
 void dump_mem(void *addr, int size)
 {
     int i;
-    pr_err("[%s] addr.%p, size.0x%x\n", __func__, addr, size);
+    pr_err("[%s] addr.%pK, size.0x%x\n", __func__, addr, size);
     for (i = 0; i < size; i += 16)
         printk("0x%08x 0x%08x 0x%08x 0x%08x\n", __raw_readl(addr + i + 0), __raw_readl(addr + i + 4), __raw_readl(addr + i + 8), __raw_readl(addr + i + 12));
 }
@@ -400,7 +391,7 @@ int hisp_jpeg_powerdn(void)
     }
 
     if (!dev->ispops) {
-        pr_err("[%s] Failed : ispops.%p\n", __func__, dev->ispops);
+        pr_err("[%s] Failed : ispops.%pK\n", __func__, dev->ispops);
         return -EINVAL;
     }
 
@@ -422,7 +413,7 @@ int hisp_a7isp_powerdn(void)
     int ret = 0;
 
     if (!dev->ispops) {
-        pr_err("[%s] Failed : ispops.%p\n", __func__, dev->ispops);
+        pr_err("[%s] Failed : ispops.%pK\n", __func__, dev->ispops);
         return -EINVAL;
     }
 
@@ -444,7 +435,7 @@ int hisp_jpeg_powerup(void)
     }
 
     if (!dev->ispops) {
-        pr_err("[%s] Failed : ispops.%p\n", __func__, dev->ispops);
+        pr_err("[%s] Failed : ispops.%pK\n", __func__, dev->ispops);
         return -EINVAL;
     }
 
@@ -479,7 +470,7 @@ int hisp_a7isp_powerup(void)
 	int ret = 0;
 
 	if (!dev->ispops) {
-		pr_err("[%s] Failed : ispops.%p\n", __func__, dev->ispops);
+		pr_err("[%s] Failed : ispops.%pK\n", __func__, dev->ispops);
 		return -EINVAL;
 	}
 
@@ -526,7 +517,7 @@ static int bsp_read_bin(const char *partion_name, unsigned int offset,
 	loff_t pos = 0;
 
 	if ((NULL == partion_name) || (NULL == buffer)) {
-		pr_err("partion_name(%p) or buffer(%p) is null", partion_name, buffer);
+		pr_err("partion_name(%pK) or buffer(%pK) is null", partion_name, buffer);
 		return -1;
 	}
 
@@ -557,10 +548,10 @@ static int bsp_read_bin(const char *partion_name, unsigned int offset,
 	}
 
 	fs = get_fs();
-	set_fs(KERNEL_DS);
+	set_fs(KERNEL_DS);/*lint !e501 */
 
-	pos = fp->f_pos;
-	ret = vfs_read(fp, (char __user *)buffer, length, &pos);
+	pos = fp->f_pos;/*lint !e613 */
+	ret = vfs_read(fp, (char __user *)buffer, length, &pos);/*lint !e613 */
 	if (ret != length) {
 		pr_err("read ops failed, ret=%d(len=%d)", ret, length);
 		set_fs(fs);
@@ -568,7 +559,7 @@ static int bsp_read_bin(const char *partion_name, unsigned int offset,
 	}
 	set_fs(fs);
 
-    filp_close(fp, NULL);
+    filp_close(fp, NULL);/*lint !e668 */
 
     /*free resource*/
     if(NULL != pathname) {
@@ -579,7 +570,7 @@ static int bsp_read_bin(const char *partion_name, unsigned int offset,
     return 0;
 
 error2:
-    filp_close(fp, NULL);
+    filp_close(fp, NULL);/*lint !e668 */
 
 error:
     if(NULL != pathname) {
@@ -895,7 +886,7 @@ int secisp_device_enable(void)
     struct hisi_atfisp_s *dev = (struct hisi_atfisp_s *)&atfisp_dev;
 
     if (!dev->secisp_kthread) {
-        pr_err("[%s] Failed : secisp_kthread.%p\n", __func__, dev->secisp_kthread);
+        pr_err("[%s] Failed : secisp_kthread.%pK\n", __func__, dev->secisp_kthread);
         return -ENXIO;
     }
 
@@ -990,16 +981,12 @@ int secisp_device_disable(void)
     int ret, cpu_no;
 
     cpumask_clear(&cpu_mask);
-
-    for (cpu_no = 1; cpu_no < 4; cpu_no++)
-    {
+    for (cpu_no = 1; cpu_no < 4; cpu_no++) {
         cpumask_set_cpu(cpu_no, &cpu_mask);
     }
 
     if(sched_setaffinity(current->pid, &cpu_mask) < 0)
-    {
         pr_err("%s: Couldn't set affinity to cpu\n", __func__);
-    }
 
     mutex_lock(&dev->pwrlock);
     if ((ret = atfa7_module_exit()) < 0)
@@ -1017,16 +1004,6 @@ int secisp_device_disable(void)
 
     return 0;
 }
-
-static ssize_t atfisp_show(struct device *, struct device_attribute *, char *);
-static ssize_t atfisp_store(struct device *, struct device_attribute *, const char *, size_t);
-static ssize_t regs_show(struct device *, struct device_attribute *, char *);
-static ssize_t regs_store(struct device *, struct device_attribute *, const char *, size_t);
-static ssize_t dump_show(struct device *, struct device_attribute *, char *);
-static ssize_t dump_store(struct device *, struct device_attribute *, const char *, size_t);
-static DEVICE_ATTR(atfisp, (S_IRUGO | S_IWUSR | S_IWGRP), atfisp_show, atfisp_store);
-static DEVICE_ATTR(regs, (S_IRUGO | S_IWUSR | S_IWGRP), regs_show, regs_store);
-static DEVICE_ATTR(dump, (S_IRUGO | S_IWUSR | S_IWGRP), dump_show, dump_store);
 
 static struct miscdevice atf_ispdev = {
     .minor = 255,
@@ -1180,7 +1157,7 @@ int hisp_meminit(unsigned int etype, unsigned long paddr)
 	int ret, index;
 
     if (!np) {
-        pr_err("[%s] Failed : np.%p\n", __func__, np);
+        pr_err("[%s] Failed : np.%pK\n", __func__, np);
         return -EINVAL;	
     }
 
@@ -1190,7 +1167,7 @@ int hisp_meminit(unsigned int etype, unsigned long paddr)
     }
 
     if (dev->shrdmem == NULL) {
-        pr_err("[%s] Failed : shrdmem.(%p = %p)\n", __func__, dev->shrdmem, dev->atfshrd_vaddr);
+        pr_err("[%s] Failed : shrdmem.(%pK = %pK)\n", __func__, dev->shrdmem, dev->atfshrd_vaddr);
         return -ENOMEM;	
     }
 
@@ -1222,20 +1199,20 @@ int hisp_meminit(unsigned int etype, unsigned long paddr)
 
         dev->shrdmem->a7mapping[etype].a7pa = dev->atfshrd_paddr + offset;
         addr = offset + dev->atfshrd_vaddr;
-        pr_err("[%s] atfshrd_vaddr.0x%llx, addr.0x%p, vaddr.0x%p, offset.0x%x, size.0x%x\n", __func__, (long long unsigned int)dev->atfshrd_vaddr, addr, vaddr, offset, size);
+        pr_err("[%s] atfshrd_vaddr.0x%llx, addr.%pK, vaddr.%pK, offset.0x%x, size.0x%x\n", __func__, (long long unsigned int)dev->atfshrd_vaddr, addr, vaddr, offset, size);
         switch (etype) {
             case A7DYNAMIC:
                 dev->ap_dyna_array = addr;
                 dev->ap_dyna = (struct hisi_a7mapping_s *)&dev->shrdmem->a7mapping[etype];
-                pr_err("[%s] dyna_array.0x%p\n", __func__, dev->ap_dyna_array);
+                pr_err("[%s] dyna_array.%pK\n", __func__, dev->ap_dyna_array);
                 break;
             default :
                 if ((ret = hisp_getsglist(addr, &vaddr, size)) < 0) {
-                    pr_err("[%s] hisp_getsglist.0x%p\n", __func__, vaddr);
+                    pr_err("[%s] hisp_getsglist.%pK\n", __func__, vaddr);
                     return -ENOMEM;
                 }
                 dev->shrdmem->a7mapping[etype].apva = vaddr;
-                pr_err("[%s] etype.0x%x, addr.%p, vaddr.%p, size.0x%x\n", __func__, etype, addr, vaddr, size);
+                pr_err("[%s] etype.0x%x, addr.%pK, vaddr.%pK, size.0x%x\n", __func__, etype, addr, vaddr, size);
                 break;
         }
     }
@@ -1269,7 +1246,7 @@ static int hisp_rsctablemem_init(struct hisi_atfisp_s *dev)
     dma_addr_t dma_addr = 0;
 
     if ((dev->rsctable_vaddr = dma_alloc_coherent(dev->device, RSC_SIZE, &dma_addr, GFP_KERNEL)) == NULL) {
-        pr_err("[%s] rsctable_vaddr.0x%p\n", __func__, dev->rsctable_vaddr);
+        pr_err("[%s] rsctable_vaddr.%pK\n", __func__, dev->rsctable_vaddr);
         return -ENOMEM;
     }
     dev->rsctable_paddr = (unsigned long long)dma_addr;
@@ -1285,7 +1262,7 @@ static int hisp_sharedmem_init(struct hisi_atfisp_s *dev)
     int ret;
 
     if ((dev->atfshrd_vaddr = hisi_fstcma_alloc(&dma_addr, LISTENTRY_SIZE, GFP_KERNEL)) == NULL) {
-        pr_err("[%s] atfshrd_vaddr.0x%p\n", __func__, dev->atfshrd_vaddr);
+        pr_err("[%s] atfshrd_vaddr.%pK\n", __func__, dev->atfshrd_vaddr);
         return -ENOMEM;
     }
     dev->atfshrd_paddr = (unsigned long long)dma_addr;
@@ -1313,7 +1290,7 @@ static int hisi_atf_getdts(struct platform_device *pdev)
     int ret, i;
 
     if (!np) {
-        pr_err("[%s] Failed : np.%p.\n", __func__, np);
+        pr_err("[%s] Failed : np.%pK\n", __func__, np);
         return -ENODEV;
     }
 
@@ -1402,7 +1379,7 @@ void a7_map_set_pa_list(void *listmem, struct scatterlist *sg, unsigned int size
         maplist->size = len;
         if (last_len != len) {
             if (last_len != 0)
-                pr_info("[%s] list.(0x%p + 0x%p), maplist.(0x%llx, 0x%x X 0x%x)\n", __func__, listmem, maplist, (unsigned long long)dma_addr, last_counts, last_len);
+                pr_info("[%s] list.(%pK + %pK), maplist.(0x%llx, 0x%x X 0x%x)\n", __func__, listmem, maplist, (unsigned long long)dma_addr, last_counts, last_len);
             last_counts = 1;
             last_len = len;
         } else {
@@ -1412,7 +1389,7 @@ void a7_map_set_pa_list(void *listmem, struct scatterlist *sg, unsigned int size
         sg = sg_next(sg);
     }
 
-    pr_info("[%s] list.(0x%p + 0x%p), maplist.(0x%llx, 0x%x X 0x%x)\n", __func__, listmem, maplist, (unsigned long long)dma_addr, last_counts, last_len);
+    pr_info("[%s] list.(%pK + %pK), maplist.(0x%llx, 0x%x X 0x%x)\n", __func__, listmem, maplist, (unsigned long long)dma_addr, last_counts, last_len);
     pr_info("%s: size.0x%x == set_size.0x%x\n", __func__, size, set_size);
 }
 /*lint -save -e838 */
@@ -1509,7 +1486,7 @@ int hisp_rsctable_init(void)
 
     pr_info("[%s] +\n", __func__);
     if (!dev->rsctable_vaddr) {
-        pr_err("[%s] rsctable_vaddr.0x%p\n", __func__, dev->rsctable_vaddr);
+        pr_err("[%s] rsctable_vaddr.%pK\n", __func__, dev->rsctable_vaddr);
         return -ENOMEM;
     }
 
@@ -1543,7 +1520,6 @@ static int secisp_work_fn(void *data)
         pr_err("%s: Couldn't set affinity to cpu\n", __func__);
     }
 
-
     while (1) {
         if (kthread_should_stop())
             break;
@@ -1564,7 +1540,7 @@ void hisi_ispsec_share_para_set(void)
 {
 	struct hisi_atfisp_s *dev = (struct hisi_atfisp_s *)&atfisp_dev;
 	isp_share_para = dev->sec_isp_share_para;
-	pr_info("%s.%d: isp_share_para.%p, dev->sec_isp_share_para.%p, case.%u\n",
+	pr_info("%s.%d: isp_share_para.%pK, dev->sec_isp_share_para.%pK, case.%u\n",
 			__func__, __LINE__, isp_share_para, dev->sec_isp_share_para,
 			hisi_isp_rproc_case_get());
 }
@@ -1585,18 +1561,6 @@ int hisi_atfisp_probe(struct platform_device *pdev)
     atfisp_ops.refs_dts             = UNINITIAL;
     atfisp_ops.refs_fw              = UNINITIAL;
     dev->ispops                     = &atfisp_ops;
-
-    if ((ret = misc_register(&atf_ispdev)) != 0) {
-        pr_err("[%s] Failed : misc_register.%d.\n", __func__, ret);
-        return ret;
-	}
-
-    if ((ret = device_create_file(atf_ispdev.this_device, &dev_attr_atfisp)) != 0)
-        pr_err("[%s] Faield : atfisp device_create_file.%d\n", __func__, ret);
-    if ((ret = device_create_file(atf_ispdev.this_device, &dev_attr_regs)) != 0)
-        pr_err("[%s] Faield : regs device_create_file.%d\n", __func__, ret);
-    if ((ret = device_create_file(atf_ispdev.this_device, &dev_attr_dump)) != 0)
-        pr_err("[%s] Faield : dump device_create_file.%d\n", __func__, ret);
 
     ret = hisi_atfisp_cma_alloc();
     if (0 != ret) {
@@ -1621,7 +1585,7 @@ int hisi_atfisp_probe(struct platform_device *pdev)
 	dev->sec_isp_share_para = isp_share_para;
 
     if ((dev->domain = iommu_domain_alloc(device->bus)) == NULL) {
-        pr_err("[%s] Failed : iommu_domain_alloc.%p\n", __func__, dev->domain);
+        pr_err("[%s] Failed : iommu_domain_alloc.%pK\n", __func__, dev->domain);
         return -ENODEV;
     }
 
@@ -1635,31 +1599,30 @@ int hisi_atfisp_probe(struct platform_device *pdev)
     if ((info = (struct iommu_domain_data *)dev->domain->priv) == NULL) {
 		iommu_detach_device(dev->domain, device);
         iommu_domain_free(dev->domain);
-        pr_err("[%s] Failed : info.%p\n",__func__, info);
+        pr_err("[%s] Failed : info.%pK\n",__func__, info);
         ret = -ENODEV;
         goto out;
     }
     dev->phy_pgd_base = info->phy_pgd_base;
     pr_info("[%s] info.iova.(0x%x, 0x%x) phy_pgd_base.0x%llx\n", __func__,
-            info->iova_start,
-            info->iova_size,
-			dev->phy_pgd_base);
+		    info->iova_start, info->iova_size, dev->phy_pgd_base);
 	iommu_detach_device(dev->domain, device);
 	iommu_domain_free(dev->domain);
 
     mutex_init(&dev->isp_iova_pool_mutex);
 
-    dev->isp_iova_pool =  isp_iova_pool_setup(dev->isp_iova_start, dev->isp_iova_size, 0x8000);
+    dev->isp_iova_pool = isp_iova_pool_setup((unsigned long)dev->isp_iova_start,
+				(unsigned long)dev->isp_iova_size, 0x8000);
+
     if(dev->isp_iova_pool == NULL)
     {
-        pr_err("[%s] Failed : isp_iova_pool.%p\n",__func__,dev->isp_iova_pool);
+        pr_err("[%s] Failed : isp_iova_pool.%pK\n",__func__,dev->isp_iova_pool);
         ret = -ENOMEM;
         goto out;
     }
-    pr_info("[%s] sucessfully : isp_iova_pool.%p\n",__func__,dev->isp_iova_pool);
+    pr_info("[%s] sucessfully : isp_iova_pool.%pK\n",__func__,dev->isp_iova_pool);
 
     mutex_init(&dev->pwrlock);
-
     init_waitqueue_head(&dev->secisp_wait);
     dev->secisp_kthread = kthread_create(secisp_work_fn, NULL, "secispwork");
     if (IS_ERR(dev->secisp_kthread)) {
@@ -1696,205 +1659,7 @@ MODULE_DESCRIPTION("Hisilicon atfisp module");
 MODULE_AUTHOR("chentao20@huawei.com");
 MODULE_LICENSE("GPL");
 
-/* For debug */
-static int debug_ispsrtup(void)
-{
-    int ret;
-
-    if ((ret = atfispsrt_subsysup()) < 0) {
-        pr_err("[%s] Failed : atfispsrt_subsysup.%d\n", __func__, ret);
-        return ret;
-    }
-
-    return 0;
-}
-
-static int debug_ispsrtdn(void)
-{
-    int ret;
-
-    if ((ret = atfispsrt_subsysdown()) < 0)
-        pr_err("[%s] Failed : atfispsrt_subsysdown.%d\n", __func__, ret);
-
-    return 0;
-}
-
-static int debug_ispinit(void)
-{
-    int ret;
-
-    if ((ret = atfispsrt_subsysup()) < 0) {
-        pr_err("[%s] Failed : atfispsrt_subsysup.%d\n", __func__, ret);
-        return ret;
-    }
-
-    if ((ret = atfisp_module_init()) < 0) {
-        int err_ret;
-        pr_err("[%s] Failed : atfisp_module_init.%d\n", __func__, ret);
-        if ((err_ret = atfispsrt_subsysdown()) < 0)
-            pr_err("[%s] Failed : atfisp_subsysdown.%d\n", __func__, err_ret);
-        return ret;
-    }
-
-    return 0;
-}
-
-static int debug_ispexit(void)
-{
-    int ret;
-
-    if ((ret = atfisp_module_exit()) < 0)
-        pr_err("[%s] Failed : atfisp_module_exit.%d\n", __func__, ret);
-
-    if ((ret = atfispsrt_subsysdown()) < 0)
-        pr_err("[%s] Failed : atfispsrt_subsysdown.%d\n", __func__, ret);
-
-    return 0;
-}
-
-static int debug_a7up(void)
-{
-    return secisp_device_enable();
-}
-
-static int debug_a7dn(void)
-{
-    return secisp_device_disable();
-}
-
-static int debug_rscup(void)
-{
-    int ret;
-
-    if ((ret = hisp_rsctable_init()) < 0) {
-        pr_err("[%s] Failed : hisp_rsctable_init.%d\n", __func__, ret);
-        return ret;
-    }
-
-    return 0;
-}
-
-static int debug_rscdn(void)
-{
-    return 0;
-}
-
-struct isp_powerdebug_s {
-    char pwrup_cmd[8];
-    char pwrdn_cmd[8];
-    int (*pwrup_handler)(void);
-    int (*pwrdn_handler)(void);
-    char info[32];
-} pwrdbg[] = {
-    {
-	"up", "dn", debug_ispsrtup, debug_ispsrtdn, "ispsrt"}, {
-	"up", "dn", debug_ispinit, debug_ispexit, "ispinit"}, {
-	"ld", "de", atfisp_loaddts, NULL, "dts"}, {
-	"ld", "de", atfisp_loadfw, NULL, "fw"}, {
-	"up", "dn", debug_a7up, debug_a7dn, "a7"}, {
-	"up", "dn", debug_rscup, debug_rscdn, "rsc"},};
-
-static ssize_t atfisp_show(struct device *pdev,
-			       struct device_attribute *attr, char *buf)
-{
-    struct hisi_atfisp_s *dev = (struct hisi_atfisp_s *)&atfisp_dev;
-	char *s = buf;
-
-    s += snprintf(s, MAX_SIZE, "BoardID: 0x%x\n", dev->boardid);
-    if (dev->ispops) {
-        s += snprintf(s, MAX_SIZE, "Vote: ispsrt.%d\n", dev->ispops->refs_ispsrt_subsys);
-        s += snprintf(s, MAX_SIZE, "Vote: initisp.%d\n", dev->ispops->refs_isp_module);
-        s += snprintf(s, MAX_SIZE, "Vote: inita7.%d\n", dev->ispops->refs_a7_module);
-        s += snprintf(s, MAX_SIZE, "Load: dts.%d\n", dev->ispops->refs_dts);
-        s += snprintf(s, MAX_SIZE, "Load: fw.%d\n", dev->ispops->refs_fw);
-        s += snprintf(s, MAX_SIZE, "Load: rsc.%d\n", dev->ispops->refs_rsc);
-        s += snprintf(s, MAX_SIZE, "Load: setparams.%d\n", dev->ispops->refs_setparams);
-    } else {
-        s += snprintf(s, MAX_SIZE, "Vote: NULL point!!!\n");
-    }
-
-	return (s - buf);
-}
-
-static void atfisp_usage(void)
-{
-	int i = 0;
-
-	pr_info("<Usage: >\n");
-	for (i = 0; i < sizeof(pwrdbg) / sizeof(struct isp_powerdebug_s); i ++)
-		pr_info("echo <%s>:<%s/%s> > atfisp\n", pwrdbg[i].info, pwrdbg[i].pwrup_cmd, pwrdbg[i].pwrdn_cmd);
-}
-
-static ssize_t atfisp_store(struct device *pdev,
-				struct device_attribute *attr, const char *buf,
-				size_t count)
-{
-    int i = 0, len = 0, flag = 1;
-    char *p = NULL;
-
-    p = memchr(buf, ':', count);
-    len = p ? p - buf : count;
-
-    for (i = 0; i < sizeof(pwrdbg) / sizeof(struct isp_powerdebug_s); i++) {
-        if (!strncmp(buf, pwrdbg[i].info, len)) {
-            p += 1;
-			flag = 0;
-            if (!strncmp(p, pwrdbg[i].pwrup_cmd,
-                strlen(pwrdbg[i].pwrup_cmd)))
-				pwrdbg[i].pwrup_handler();
-            else if (!strncmp(p, pwrdbg[i].pwrdn_cmd,
-                strlen(pwrdbg[i].pwrdn_cmd)))
-				pwrdbg[i].pwrdn_handler();
-            else
-				flag = 1;
-            break;
-        }
-    }
-
-	if (flag)
-		atfisp_usage();
-
-    return count;
-}
-
-static ssize_t regs_show(struct device *pdev,
-			       struct device_attribute *attr, char *buf)
-{
-    struct hisi_atfisp_s *dev = (struct hisi_atfisp_s *)&atfisp_dev;
-	char *s = buf;
-
-    s += snprintf(s, MAX_SIZE, "BoardID: 0x%x\n", dev->boardid);
-
-	return (s - buf);
-}
-
-static ssize_t regs_store(struct device *pdev,
-				struct device_attribute *attr, const char *buf,
-				size_t count)
-{
-    return count;
-}
-
 void hisi_secisp_dump(void)
 {
     atfisp_setparams(HISP_PARAMS_DUMP, 1, 0);
 }
-
-static ssize_t dump_show(struct device *pdev,
-			       struct device_attribute *attr, char *buf)
-{
-	char *s = buf;
-
-    hisi_secisp_dump();
-    s += snprintf(s, MAX_SIZE, "hisi_secisp_dump\n");
-
-	return (s - buf);
-}
-
-static ssize_t dump_store(struct device *pdev,
-                struct device_attribute *attr, const char *buf,
-                size_t count)
-{
-    return count;
-}
-
