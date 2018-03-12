@@ -29,6 +29,10 @@
 #include <net/tcp_crosslayer.h>
 #endif
 
+#ifdef CONFIG_HW_QTAGUID_PID
+#include <huawei_platform/net/qtaguid_pid/qtaguid_pid.h>
+#endif
+
 #ifdef INET_CSK_DEBUG
 const char inet_csk_timer_bug_msg[] = "inet_csk BUG: unknown timer value\n";
 EXPORT_SYMBOL(inet_csk_timer_bug_msg);
@@ -756,6 +760,10 @@ void inet_csk_destroy_sock(struct sock *sk)
 
 	/* If it has not 0 inet_sk(sk)->inet_num, it must be bound */
 	WARN_ON(inet_sk(sk)->inet_num && !inet_csk(sk)->icsk_bind_hash);
+
+#ifdef CONFIG_HW_QTAGUID_PID
+	qtaguid_pid_remove(sk);
+#endif
 
 #ifdef CONFIG_HW_CROSSLAYER_OPT
 	aspen_unmark_hashtable(sk);

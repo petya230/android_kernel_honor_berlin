@@ -78,6 +78,10 @@ static inline int current_has_network(void)
 }
 #endif
 
+#ifdef CONFIG_HW_QTAGUID_PID
+#include <huawei_platform/net/qtaguid_pid/qtaguid_pid.h>
+#endif
+
 MODULE_AUTHOR("Cast of dozens");
 MODULE_DESCRIPTION("IPv6 protocol stack for Linux");
 MODULE_LICENSE("GPL");
@@ -264,6 +268,10 @@ lookup_protocol:
 		}
 	}
 out:
+#ifdef CONFIG_HW_QTAGUID_PID
+	if(!err)
+		qtaguid_pid_put(sk);
+#endif
 	return err;
 out_rcu_unlock:
 	rcu_read_unlock();

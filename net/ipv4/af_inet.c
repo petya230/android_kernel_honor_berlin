@@ -137,6 +137,10 @@ static inline int current_has_network(void)
 }
 #endif
 
+#ifdef CONFIG_HW_QTAGUID_PID
+#include <huawei_platform/net/qtaguid_pid/qtaguid_pid.h>
+#endif
+
 /* The inetsw table contains everything that inet_create needs to
  * build a new socket.
  */
@@ -402,6 +406,10 @@ lookup_protocol:
 			sk_common_release(sk);
 	}
 out:
+#ifdef CONFIG_HW_QTAGUID_PID
+	if(!err)
+		qtaguid_pid_put(sk);
+#endif
 	return err;
 out_rcu_unlock:
 	rcu_read_unlock();

@@ -840,7 +840,7 @@ next:
 
 			next = htb_lookup_leaf(hprio, prio);
 
-			if (cl == start)
+			if (cl == start)	/* fix start if we just deleted it */
 				start = next;
 			cl = next;
 			goto next;
@@ -984,7 +984,6 @@ static void htb_reset(struct Qdisc *sch)
 			}
 			cl->prio_activity = 0;
 			cl->cmode = HTB_CAN_SEND;
-
 		}
 	}
 	qdisc_watchdog_cancel(&q->watchdog);
