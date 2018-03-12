@@ -318,6 +318,7 @@ static const struct file_operations pm_qos_debug_fops = {
  * This function returns 1 if the aggregated constraint value has changed, 0
  *  otherwise.
  */
+/*lint -e616 -e571*/
 int pm_qos_update_target(struct pm_qos_constraints *c, struct plist_node *node,
 			 enum pm_qos_req_action action, int value)
 {
@@ -433,6 +434,7 @@ bool pm_qos_update_flags(struct pm_qos_flags *pqf,
 	trace_pm_qos_update_flags(action, prev_value, curr_value);
 	return prev_value != curr_value;
 }
+/*lint -e616 -e571*/
 
 /**
  * pm_qos_request - returns current system wide qos expectation

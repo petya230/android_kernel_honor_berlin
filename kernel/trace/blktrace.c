@@ -1791,8 +1791,11 @@ void blk_fill_rwbs(char *rwbs, u32 rw, int bytes)
 	if (rw & REQ_FLUSH)
 		rwbs[i++] = 'F';
 
-	if (rw & WRITE)
+	if (rw & WRITE) {
 		rwbs[i++] = 'W';
+		if (rw & REQ_DISCARD)
+			rwbs[i++] = 'D';
+	}
 	else if (rw & REQ_DISCARD)
 		rwbs[i++] = 'D';
 	else if (bytes)

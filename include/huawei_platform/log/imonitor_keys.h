@@ -246,6 +246,17 @@ extern "C" {
 	/* Interrupt Time Type */
 	#define E901004001_INTTIMETYPE_VARCHAR 6
 
+	/* Event 901004002
+		Hung task Detector */
+	/* PID of D-State Task */
+	#define E901004002_PID_INT 0
+	/* TGID of D-State Task */
+	#define E901004002_TGID_INT 1
+	/* NAME of D-State Task */
+	#define E901004002_NAME_VARCHAR 2
+	/* TYPE of D-State Task */
+	#define E901004002_TYPE_INT 3
+
 	/* Event 901005000
 		Boot Fail Error */
 	/* Boot Error Number */

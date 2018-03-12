@@ -53,7 +53,8 @@ static ssize_t last_resume_reason_show(struct kobject *kobj, struct kobj_attribu
 
 	spin_lock(&resume_reason_lock);
 	if (suspend_abort) {
-		buf_offset = sprintf(buf, "Abort: %s", abort_reason);
+		// cppcheck-suppress *
+		buf_offset = sprintf(buf, "Abort: %s", abort_reason); //lint !e421
 	} else {
 		for (irq_no = 0; irq_no < irqcount; irq_no++) {
 			if (g_ap_irq_name && g_ap_irq_name[irq_list[irq_no]]) {
@@ -61,8 +62,9 @@ static ssize_t last_resume_reason_show(struct kobject *kobj, struct kobj_attribu
 				buf_offset += snprintf(buf + buf_offset, IRQ_NAME_LEN,
 						"%d %s\n", irq_list[irq_no], irq_name);
 			} else {
+				// cppcheck-suppress *
 				buf_offset += sprintf(buf + buf_offset, "%d\n",
-						irq_list[irq_no]);
+						irq_list[irq_no]); //lint !e421
 			}
 		}
 	}
@@ -77,14 +79,17 @@ static ssize_t last_resume_reason_show(struct kobject *kobj, struct kobj_attribu
 	struct irq_desc *desc;
 	spin_lock(&resume_reason_lock);
 	if (suspend_abort) {
+		// cppcheck-suppress *
 		buf_offset = sprintf(buf, "Abort: %s", abort_reason);
 	} else {
 		for (irq_no = 0; irq_no < irqcount; irq_no++) {
 			desc = irq_to_desc(irq_list[irq_no]);
 			if (desc && desc->action && desc->action->name)
+				// cppcheck-suppress *
 				buf_offset += sprintf(buf + buf_offset, "%d %s\n",
 						irq_list[irq_no], desc->action->name);
 			else
+				// cppcheck-suppress *
 				buf_offset += sprintf(buf + buf_offset, "%d\n",
 						irq_list[irq_no]);
 		}
@@ -117,9 +122,10 @@ static ssize_t last_suspend_time_show(struct kobject *kobj,
 	sleep_time = timespec_sub(total_time, suspend_resume_time);
 
 	/* Export suspend_resume_time and sleep_time in pair here. */
+	// cppcheck-suppress *
 	return sprintf(buf, "%lu.%09lu %lu.%09lu\n",
 				suspend_resume_time.tv_sec, suspend_resume_time.tv_nsec,
-				sleep_time.tv_sec, sleep_time.tv_nsec);
+				sleep_time.tv_sec, sleep_time.tv_nsec); //lint !e421
 }
 
 static struct kobj_attribute resume_reason = __ATTR_RO(last_resume_reason);

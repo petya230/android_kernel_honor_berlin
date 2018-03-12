@@ -25,6 +25,7 @@
 #include <linux/posix-timers.h>
 #include <linux/workqueue.h>
 #include <linux/freezer.h>
+#include <linux/module.h>
 
 /**
  * struct alarm_base - Alarm timer bases
@@ -195,7 +196,7 @@ static enum hrtimer_restart alarmtimer_fired(struct hrtimer *timer)
 	}
 	spin_unlock_irqrestore(&base->lock, flags);
 
-	return ret;/*[false alarm]:return */
+	return ret;/*[false alarm]:return *//*lint !e64 */
 
 }
 
@@ -205,6 +206,13 @@ ktime_t alarm_expires_remaining(const struct alarm *alarm)
 	return ktime_sub(alarm->node.expires, base->gettime());
 }
 EXPORT_SYMBOL_GPL(alarm_expires_remaining);
+
+bool hw_alarm_stop = 0;
+module_param(hw_alarm_stop, bool, 0644);
+MODULE_PARM_DESC(hw_alarm_stop, "stop or not alarm");
+EXPORT_SYMBOL(hw_alarm_stop);
+
+extern unsigned int runmode_is_factory(void);
 
 #ifdef CONFIG_RTC_CLASS
 /**
@@ -229,6 +237,11 @@ static int alarmtimer_suspend(struct device *dev)
 	struct rtc_device *rtc;
 	int i;
 	int ret;
+
+	if (hw_alarm_stop && runmode_is_factory()){
+		pr_err("runmode_is_factory 1, forbid alarms\n");
+		return 0;
+	}
 
 	spin_lock_irqsave(&freezer_delta_lock, flags);
 	min = freezer_delta;

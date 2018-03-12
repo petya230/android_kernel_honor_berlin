@@ -243,6 +243,9 @@ void panic(const char *fmt, ...)
 		}
 		mdelay(PANIC_TIMER_STEP);
 	}
+#ifdef CONFIG_HUAWEI_PRINTK_CTRL
+	printk_level_setup(sysctl_printk_level);
+#endif
 }
 
 EXPORT_SYMBOL(panic);

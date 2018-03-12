@@ -241,6 +241,7 @@ struct printk_log {
 static DEFINE_RAW_SPINLOCK(logbuf_lock);
 #ifdef CONFIG_HISI_TIME
 raw_spinlock_t *g_logbuf_lock_ex = &logbuf_lock;
+raw_spinlock_t *g_sem_lock_ex = &console_sem.lock;
 #endif
 #ifdef CONFIG_HUAWEI_PRINTK_CTRL
 raw_spinlock_t *g_logbuf_level_lock_ex = &logbuf_lock;
@@ -455,7 +456,11 @@ static int log_store(int facility, int level,
 	}
 
 	if (log_next_idx + size + sizeof(struct printk_log) > log_buf_len) {
-		
+		/*
+		 * This message + an additional empty header does not fit
+		 * at the end of the buffer. Add an empty header with len == 0
+		 * to signify a wrap around.
+		 */
 		memset(log_buf + log_next_idx, 0, sizeof(struct printk_log));
 		log_next_idx = 0;
 	}

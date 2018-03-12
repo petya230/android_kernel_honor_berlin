@@ -62,7 +62,7 @@ u64 hisi_getcurtime(void)
 		do_div(ts, 12);
 		pcurtime = pcurtime * 1000000000 + ts;
 	} else {
-		ts = do_div(pcurtime, 32768);
+		ts = do_div(pcurtime, 32764);
 		ts = ts * 1953125;
 		do_div(ts, 64);
 		pcurtime = pcurtime * 1000000000 + ts;
@@ -85,6 +85,7 @@ size_t print_time(u64 ts, char *buf)
 				);
 	}
 
+	// cppcheck-suppress *
 	temp = sprintf(buf, "[%5lu.%06lus]",
 			(unsigned long)ts, rem_nsec/1000
 			);
