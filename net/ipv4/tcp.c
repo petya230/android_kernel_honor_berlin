@@ -1136,8 +1136,9 @@ int tcp_sendmsg(struct sock *sk, struct msghdr *msg, size_t size)
 
 #ifdef CONFIG_HUAWEI_BASTET
 #if defined(CONFIG_PPPOLAC) || defined(CONFIG_PPPOPNS)
-	BST_FG_HOOK_UL_STUB(sk, msg);
+	BST_FG_Hook_Ul_Stub(sk, msg);
 #endif
+#if 0
 	err = bastet_send_priority_msg(sk, msg, size);
 	if (err < 0) {
 		goto out_err;
@@ -1146,7 +1147,7 @@ int tcp_sendmsg(struct sock *sk, struct msghdr *msg, size_t size)
 		return size;
 	}
 #endif
-
+#endif
 	/* This should be in poll */
 	clear_bit(SOCK_ASYNC_NOSPACE, &sk->sk_socket->flags);
 
@@ -2296,6 +2297,10 @@ int tcp_disconnect(struct sock *sk, int flags)
 	tcp_set_ca_state(sk, TCP_CA_Open);
 	tcp_clear_retrans(tp);
 	inet_csk_delack_init(sk);
+	/* Initialize rcv_mss to TCP_MIN_MSS to avoid division by 0
+	 * issue in __tcp_select_window()
+	 */
+	icsk->icsk_ack.rcv_mss = TCP_MIN_MSS;
 	tcp_init_send_head(sk);
 	memset(&tp->rx_opt, 0, sizeof(tp->rx_opt));
 	__sk_dst_reset(sk);

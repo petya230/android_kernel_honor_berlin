@@ -17,8 +17,9 @@
 
 #include <linux/file.h>
 #include <net/tcp.h>
+#include <net/sock.h>
 #include <huawei_platform/power/bastet/bastet_utils.h>
-
+#include <huawei_platform/power/bastet/bastet.h>
 extern int inet_release(struct socket *sock);
 
 struct sk_reconn {

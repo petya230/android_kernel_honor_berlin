@@ -41,7 +41,8 @@
 #define BST_MAX_REPLY_LEN				1024
 /* Current Max Traffic report task number is 32 */
 #define BST_TRAFFIC_LEN(len)			(len > 0XFF ? 0XFF : len)
-
+#define BST_MAX_PROXY_NUM               32
+#define APP_MAX_PID_NUM                 500
 #ifdef CONFIG_HUAWEI_BASTET_COMM
 #define BST_ACORE_CORE_MSG_TYPE_DSPP    0
 #endif
@@ -259,6 +260,12 @@ static long bastet_ioctl(struct file *flip, unsigned int cmd, unsigned long arg)
 			rc = 0;
 			break;
 		}
+
+		if (flow_p.cnt > BST_MAX_PROXY_NUM) {
+			BASTET_LOGE("proxy count is exceed the max");
+			break;
+		}
+
 		buf_len = BST_TRAFFIC_LEN(flow_p.cnt);
 		buf_len *= sizeof(struct bst_traffic_flow_prop);
 		buf = (uint8_t *)kmalloc(buf_len, GFP_KERNEL);
@@ -465,6 +472,12 @@ static long bastet_ioctl(struct file *flip, unsigned int cmd, unsigned long arg)
 		}
 		BASTET_LOGI("BST_IOC_UID_PROP_MONITOR: uid=%d, cmd=%d, count=%d",
 			prop.uid, prop.cmd, prop.tid_count);
+
+		if (prop.tid_count > APP_MAX_PID_NUM) {
+			BASTET_LOGE("tid_count exceed the max value");
+			break;
+		}
+
 		if (prop.tid_count > 0) {
 			tids = (int32_t *)kmalloc(prop.tid_count * sizeof(int32_t),
 				GFP_KERNEL);

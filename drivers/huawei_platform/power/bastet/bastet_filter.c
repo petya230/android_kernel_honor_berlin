@@ -19,6 +19,7 @@
 #include <linux/file.h>
 #include <net/tcp.h>
 #include <linux/list.h>
+#include <uapi/linux/netfilter_ipv4.h>
 #include <uapi/linux/netfilter_ipv6.h>
 #include <huawei_platform/power/bastet/bastet_utils.h>
 #include <net/icmp.h> /*icmp_send*/
@@ -136,7 +137,9 @@ static unsigned int hook_local_out_cb(unsigned int hooknum,
 
 static struct nf_hook_ops ipv4_local_out_ops = {
 	.hook		=	hook_local_out_cb,
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 4, 0))
 	.owner		=	THIS_MODULE,
+#endif
 	.pf			=	NFPROTO_IPV4,
 	.hooknum	=	NF_INET_LOCAL_OUT,
 	.priority	=	NF_IP_PRI_FIRST,
@@ -144,14 +147,24 @@ static struct nf_hook_ops ipv4_local_out_ops = {
 
 static struct nf_hook_ops ipv6_local_out_ops = {
 	.hook		=	hook_local_out_cb,
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 4, 0))
 	.owner		=	THIS_MODULE,
+#endif
 	.pf			=	NFPROTO_IPV6,
 	.hooknum	=	NF_INET_LOCAL_OUT,
 	.priority	=	NF_IP6_PRI_FIRST,
 };
 
 
-
+/**
+ * Function: add_proc_info_to_white_list
+ * Description: add process_info to the white list
+ * Input:set_process_info
+ * Output:
+ * Return:
+ * Date: 2015.12.24
+ * Author: Zhang Kaige ID: 00220931
+ */
 static int add_proc_info_to_white_list(struct set_process_info *info)
 {
 	struct st_proc_info_node *new_node = NULL;
@@ -201,7 +214,15 @@ static int add_proc_info_to_white_list(struct set_process_info *info)
 	return 0;
 }
 
-
+/**
+ * Function: del_proc_info_from_white_list
+ * Description: delete one process_info in the white list
+ * Input:set_process_info
+ * Output:
+ * Return:
+ * Date: 2015.12.24
+ * Author: Zhang Kaige ID: 00220931
+ */
 static int del_proc_info_from_white_list(struct set_process_info *info)
 {
 	struct st_proc_info_node *tmp_node;
@@ -230,7 +251,15 @@ static int del_proc_info_from_white_list(struct set_process_info *info)
 	return 0;
 }
 
-
+/**
+ * Function: del_all_proc_info_from_white_list
+ * Description: delete all process_info in the white list
+ * Input:set_process_info
+ * Output:
+ * Return:
+ * Date: 2015.12.24
+ * Author: Zhang Kaige ID: 00220931
+ */
 static int del_all_proc_info_from_white_list(void)
 {
 	struct st_proc_info_node *tmp_node;

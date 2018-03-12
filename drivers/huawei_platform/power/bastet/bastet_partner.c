@@ -315,14 +315,20 @@ static int post_unique_sock_prop(uid_t uid,
 	bool found = false;
 
 	for (i = 0; i < tid_num; i++) {
+		rcu_read_lock();
 		task = find_task_by_vpid(tids[i]);
-		if (!task)
+		if (!task) {
+			rcu_read_unlock();
 			return -EFAULT;
-
+		}
+		get_task_struct(task);
+		rcu_read_unlock();
 		files = task->files;
-		if (NULL == files)
+		if (NULL == files) {
+			put_task_struct(task);
 			return -EFAULT;
-
+		}
+		put_task_struct(task);
 		fdt = files_fdtable(files);
 		for (fd = 0; fd < fdt->max_fds; fd++) {
 			if (check_sock_valid(fd, tids[i], &comm)) {

@@ -19,6 +19,8 @@
 #include <linux/file.h>
 #include <net/tcp.h>
 #include <net/inet_sock.h>
+#include <net/sock.h>
+#include <huawei_platform/power/bastet/bastet.h>
 #include <huawei_platform/power/bastet/bastet_utils.h>
 
 #define BST_PRIO_NORM					0

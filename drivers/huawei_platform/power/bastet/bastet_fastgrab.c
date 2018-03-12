@@ -54,6 +54,8 @@
    5 全局变量定义
 ******************************************************************************/
 BST_FG_APP_INFO_STRU g_FastGrabAppInfo[BST_FG_MAX_APP_NUMBER];
+uid_t      g_CurrntAccUId;
+
 /******************************************************************************
    6 函数实现
 ******************************************************************************/
@@ -83,6 +85,7 @@ void BST_FG_Init(void)
 		for (usLooper2 = 0; usLooper2 < BST_FG_MAX_KW_NUMBER; usLooper2++)
 			g_FastGrabAppInfo[usLooper1].pstKws[usLooper2] = NULL;
 	}
+	g_CurrntAccUId = BST_FG_INVALID_UID;
 }
 
 /*****************************************************************************
@@ -120,6 +123,55 @@ static void BST_FG_ProcWXSock(struct sock *pstSock, int state)
 		return;
 	}
 }
+
+/*****************************************************************************
+ 函 数 名  : BST_FG_ProcWXMatchKeyWord_DL
+ 功能描述  : 处理微信socket下行勾包，仅对push信道起作用
+ 输入参数  :
+    BST_FG_KEYWORD_STRU *pstKwdIns   需要匹配的关键字
+    uint8_t*    pData,   收到的下行数据(来自skbuff)
+    uint32_t    ulLength,   承载的最大有效数据长度
+ 输出参数  : 无
+ 返 回 值  : 无
+ 调用函数  :
+ 被调函数  :
+ 修改历史  :
+    1.日     期   : 2016年12月19日
+      作     者   : z00371705
+     修改内容   : 新生成函数
+*****************************************************************************/
+static bool BST_FG_ProcWXMatchKeyWord_DL(
+	BST_FG_KEYWORD_STRU *pstKwdIns,
+	uint8_t *pData,
+	uint32_t ulLength)
+{
+    uint64_t usTotLen;
+
+	if (NULL == pstKwdIns)
+		return false;
+	/**
+	* probe log, get the packet head
+	*/
+
+
+	/**
+		* match the length of XML to dl packet
+		*/
+	if ((ulLength > pstKwdIns->stLenPorp.usMax)
+		|| (ulLength < pstKwdIns->stLenPorp.usMin))
+		return false;
+
+	/**
+		* match keywords
+		*/
+    usTotLen = pstKwdIns->stKeyWord.usTotLen;
+	if (0 == memcmp(&pstKwdIns->stKeyWord.aucData[0],
+	pData, usTotLen)) {
+		return true;
+	}
+	return false;
+}
+
 /*****************************************************************************
  函 数 名  : BST_FG_ProcWXPacket_DL
  功能描述  : 处理微信socket下行勾包，仅对push信道起作用
@@ -141,43 +193,62 @@ static uint8_t BST_FG_ProcWXPacket_DL(
 	uint8_t *pData,
 	uint32_t ulLength)
 {
-	BST_FG_KEYWORD_STRU *pstKwdIns = NULL;
-	static uint32_t usHbCounter;
+	BST_FG_KEYWORD_STRU *pstKwdIns;
+	BST_FG_KEYWORD_STRU *pstKwdInsNew;
+	bool         bFound;
 
 	if (BST_FG_WECHAT_PUSH != pstSock->fg_Spec)
 		return 0;
 	/**
-	 * Set the "PUSH"( 0 0 4 ) SIP-Command to be compared object.
-	 */
+		 * Set the "PUSH"( 0 0 4 ) SIP-Command to be compared object.
+		*/
 	pstKwdIns = BST_FG_GetAppIns(BST_FG_IDX_WECHAT)
 		->pstKws[BST_FG_FLAG_WECHAT_PUSH];
-	if (NULL == pstKwdIns)
-		return 0;
-	/**
-	 * probe log, get the packet head
-	 */
-	if (ulLength >= 3)
-		BASTET_LOGI("BST_FG_ProcWXPacket_DL length=%d, Data[0]=%d, Data[1]=%d, Data[2]=%d",
-			ulLength, pData[0], pData[1], pData[2]);
+	bFound = BST_FG_ProcWXMatchKeyWord_DL(pstKwdIns,pData,ulLength);
+	if( bFound )
+	{
+		return 1;
+	}
 
-	/**
-	 * match the length of XML to dl packet
-	 */
-	if ((ulLength > pstKwdIns->stLenPorp.usMax)
-		|| (ulLength < pstKwdIns->stLenPorp.usMin))
-		return 0;
-
-	/**
-	 * match keywords
-	 */
-	if (0 == memcmp(&pstKwdIns->stKeyWord.aucData[0],
-		pData, pstKwdIns->stKeyWord.usTotLen)) {
-		usHbCounter++;
-		BASTET_LOGI("BST_FG_ProcWXPacket_DL Got Successfully, Total=%d",
-			usHbCounter);
+	pstKwdInsNew = BST_FG_GetAppIns(BST_FG_IDX_WECHAT)
+		->pstKws[BST_FG_FLAG_WECHAT_PUSH_NEW];
+	bFound = BST_FG_ProcWXMatchKeyWord_DL(pstKwdInsNew,pData,ulLength);
+	if( bFound )
+	{
 		return 1;
 	}
 	return 0;
+}
+
+/*****************************************************************************
+ 函 数 名  : BST_FG_Proc_Send_RPacket_Priority
+ 功能描述  : 处理微信数据判断是否为微信数据
+ 输入参数  :
+    struct sock    *pstSock,    sock对象
+    uint8_t*        pData,      收到的下行数据(强制转换msg，iov用户空间数据)
+    uint32_t        ulLength,   承载的最大有效数据长度
+ 输出参数  : 无
+ 返 回 值  :
+    0               没有关键数据信息
+    1               有关键数据信息
+ 调用函数  :tcp_output.c/tcp_write_xmit中调用。
+ 被调函数  :
+ 修改历史  :
+    1.日    期   : 2016年05月25日
+      作    者   : h00359249
+      修改内容   : 新生成函数
+*****************************************************************************/
+
+uint8_t BST_FG_Proc_Send_RPacket_Priority(struct sock *pstSock) {
+    if(!pstSock) {
+        return 0;
+    }
+    if(pstSock->fg_Spec == BST_FG_WECHAT_HONGBAO)
+    {
+        BASTET_LOGI( "BST_FG_Proc_Send_RPacket_Priority Hongbao_packet" );
+        return 1;
+    }
+    return 0;
 }
 
 /*****************************************************************************
@@ -408,20 +479,25 @@ static int BST_FG_SetHongbaoPushSock(int32_t tid_num, int32_t *tids)
 		/**
 		 * Find task message head
 		 */
+		rcu_read_lock();
 		pstTask = find_task_by_vpid(tids[usLooper]);
 		if (NULL == pstTask) {
 			BASTET_LOGE("BST_FG_SetHongbaoPushSock pstTask error");
+			rcu_read_unlock();
 			return -EFAULT;
 		}
+		get_task_struct(pstTask);
+		rcu_read_unlock();
 		/**
 		 * Find File sys head according to task
 		 */
 		pstFiles = pstTask->files;
 		if (NULL == pstFiles) {
+			put_task_struct(pstTask);
 			BASTET_LOGE("BST_FG_SetHongbaoPushSock pstFiles error");
 			return -EFAULT;
 		}
-
+		put_task_struct(pstTask);
 		/**
 		 * list the fd table
 		 */
@@ -559,6 +635,7 @@ static void BST_FG_SaveKeyword(unsigned long arg)
 			 * Get keyword data block from usr space
 			 */
 			if (pstKwdSrc->stKeyWord.usTotLen > BST_FG_MAX_KW_LEN) {
+				kfree(pstKwdDst);
 				break;
 			}
 			if (copy_from_user(&pstKwdDst->stKeyWord.aucData[0],
@@ -575,10 +652,17 @@ static void BST_FG_SaveKeyword(unsigned long arg)
 			kfree(pstAppIns->pstKws[usLooper]);
 
 		pstAppIns->pstKws[usLooper] = pstKwdDst;
-		usLooper += 1;
 
-		if (usCopyed >= stKwsComm.usKeyLength)
+
+		if (usCopyed > stKwsComm.usKeyLength) {
+			kfree(pstKwdDst);
+			pstAppIns->pstKws[usLooper] = NULL;
 			break;
+		}
+		usLooper += 1;
+		if (usLooper >= (uint16_t)BST_FG_MAX_KW_NUMBER) {
+			break;
+		}
 	}
 	kfree(pstKwdSrc);
 	spin_unlock_bh(&pstAppIns->stLocker);
@@ -724,6 +808,189 @@ static void BST_FG_SaveDscpInfo(unsigned long arg)
 	return;
 }
 
+/*****************************************************************************
+ 函 数 名  : BST_FG_Update_Acc
+ 功能描述  : 上层通知加速
+ 输入参数  : lUid 应用的uid
+ 输出参数  : 无
+ 返 回 值  : 无
+ 调用函数  :
+ 被调函数  :
+ 修改历史  :
+    1.日     期   : 2016年12月13日
+      作     者   : z00371705
+      修改内容   : 新生成函数
+*****************************************************************************/
+
+static void BST_FG_Update_Acc(unsigned long arg)
+{
+	void __user *argp = (void __user *)arg;
+	uid_t      lUid = 0;
+
+	/**
+	 * Get dscp message from usr space
+	 */
+	if (copy_from_user(&lUid, argp, sizeof(lUid))) {
+		BASTET_LOGE("BST_FG_Add_AccUId copy_from_user for uid error\n");
+		return;
+	}
+
+	g_CurrntAccUId = lUid;
+
+
+	return;
+}
+
+
+
+/*****************************************************************************
+ 函 数 名  : BST_FG_Check_AccUid
+ 功能描述  : 检查上行数据包是否要加速
+ 输入参数  : lUid 应用的uid
+ 输出参数  : 无
+ 返 回 值  : 无
+ 调用函数  :
+ 被调函数  :
+ 修改历史  :
+    1.日     期   : 2016年12月13日
+      作     者   : z00371705
+      修改内容   : 新生成函数
+*****************************************************************************/
+
+static bool BST_FG_Check_AccUid(uid_t lUid)
+{
+	if(!BST_FG_IsUidValid(lUid))
+	{
+		return false;
+	}
+
+	if( g_CurrntAccUId == lUid )
+	{
+		return true;
+	}
+	return false;
+}
+
+
+#if defined(CONFIG_PPPOLAC) || defined(CONFIG_PPPOPNS)
+#ifndef CONFIG_HUAWEI_XENGINE
+/*****************************************************************************
+ 函 数 名  : BST_FG_Hook_Ul_Stub
+ 功能描述  : 勾取上行数据包
+ 输入参数  : struct sock *pstSock  socket对象
+                           struct msghdr *msg   发送的消息结构体
+ 输出参数  : 无
+ 返 回 值  : 无
+ 调用函数  :
+ 被调函数  :
+ 修改历史  :
+    1.日    期   : 2015年12月13日
+      作    者   : z00371705
+      修改内容   : 新生成函数
+*****************************************************************************/
+
+void BST_FG_Hook_Ul_Stub(struct sock *pstSock, struct msghdr *msg)
+{
+	uid_t lSockUid;
+	bool  bFound;
+
+	if(( NULL == pstSock ) || ( NULL == msg ))
+	{
+		return ;
+	}
+
+	/*if the socket has matched keyword, keep acc always until socket destruct*/
+	if ( BST_FG_WECHAT_HONGBAO == pstSock->fg_Spec )
+	{
+		BST_FG_SetAccState( pstSock,BST_FG_ACC_HIGH );
+		return;
+	}
+
+	/*if matched keyword, accelerate socket*/
+	if (BST_FG_NO_SPEC != pstSock->fg_Spec) 
+	{
+		if (BST_FG_HookPacket(pstSock, (uint8_t *)msg, (uint32_t)(msg->msg_iter.iov->iov_len), BST_FG_ROLE_SNDER)) 
+		{
+			BST_FG_SetAccState( pstSock, BST_FG_ACC_HIGH );
+			return;
+		}
+	}
+
+	/**
+	 * if uid equals current acc uid, accelerate it,else stop it
+	 */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 10)
+	lSockUid = sock_i_uid(pstSock).val;
+#else
+	lSockUid = sock_i_uid(pstSock);
+#endif
+	bFound  = BST_FG_Check_AccUid(lSockUid);
+	if(bFound)
+	{
+		BST_FG_SetAccState(pstSock, BST_FG_ACC_HIGH );
+	}
+	else
+	{
+		BST_FG_SetAccState(pstSock, BST_FG_ACC_NORMAL );
+	}
+	return;
+}
+#else
+/*****************************************************************************
+ 函 数 名  : BST_FG_Hook_Ul_Stub
+ 功能描述  : 勾取上行数据包
+ 输入参数  : struct sock *pstSock  socket对象
+                           struct msghdr *msg   发送的消息结构体
+ 输出参数  : 无
+ 返 回 值  : 是否加速
+ 调用函数  :
+ 被调函数  :
+ 修改历史  :
+    1.日    期   : 2015年12月13日
+      作    者   : z00371705
+      修改内容   : 新生成函数
+*****************************************************************************/
+bool BST_FG_Hook_Ul_Stub(struct sock *pstSock, struct msghdr *msg)
+{
+	uid_t lSockUid;
+	bool  bFound;
+
+	if(( NULL == pstSock ) || ( NULL == msg ))
+	{
+		return false;
+	}
+
+	/*if the socket has matched keyword, keep acc always until socket destruct*/
+	if ( BST_FG_WECHAT_HONGBAO == pstSock->fg_Spec )
+	{
+		return true;
+	}
+
+	/*if matched keyword, accelerate socket*/
+	if (BST_FG_NO_SPEC != pstSock->fg_Spec) 
+	{
+		if (BST_FG_HookPacket(pstSock, (uint8_t *)msg, (uint32_t)(msg->msg_iter.iov->iov_len), BST_FG_ROLE_SNDER)) 
+		{
+			return true;
+		}
+	}
+
+	/**
+	 * if uid equals current acc uid, accelerate it,else stop it
+	 */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 10)
+	lSockUid = sock_i_uid(pstSock).val;
+#else
+	lSockUid = sock_i_uid(pstSock);
+#endif
+	bFound  = BST_FG_Check_AccUid(lSockUid);
+	return bFound;
+}
+
+#endif
+
+#endif
+
 
 /*****************************************************************************
  函 数 名  : BST_FG_IoCtrl
@@ -771,6 +1038,9 @@ void BST_FG_IoCtrl(unsigned long arg)
 		break;
 	case CMD_UPDATE_DSCP:
 		BST_FG_SaveDscpInfo(arg + sizeof(fastgrab_info));
+		break;
+	case CMD_UPDATE_ACC_UID:
+		BST_FG_Update_Acc(arg + sizeof(fastgrab_info));
 		break;
 	default:
 		break;

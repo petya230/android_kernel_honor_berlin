@@ -18,6 +18,7 @@
 #include <net/tcp.h>
 #include <net/inet_sock.h>
 #include <huawei_platform/power/bastet/bastet_utils.h>
+#include <huawei_platform/power/bastet/bastet.h>
 
 #define BST_MAX_SEQ_VALUE				0xFFFFFFFF
 
@@ -253,7 +254,6 @@ static void request_sock_bastet_timeout(struct sock *sk)
 	if (BST_USER_START == bsk->user_ctrl) {
 		/* Before send or recv data, set state to BST_SOCK_VALID*/
 		bsk->bastet_sock_state = BST_SOCK_VALID;
-		process_sock_send_and_recv(sk);
 	} else {
 		bsk->bastet_sock_state = BST_SOCK_NOT_USED;
 	}

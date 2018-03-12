@@ -198,19 +198,31 @@ static int bastet_drop_hb_reply(struct sock *sk, struct msghdr *msg, int len)
 	struct bastet_sock *bsk = sk->bastet;
 	int offset = bsk->hbm.reply_offset;
 	int ret = len;
-	bool flag;
+	bool notMatched = 1;
+	unsigned int minLen = 0;
+
+	if (len < 0) {
+		return -EFAULT;
+	}
+	if ( (NULL == msg) || (NULL == bsk) ) {
+		return -EFAULT;
+	}
+	if (!access_ok(VERIFY_READ, msg->msg_iter.iov->iov_base, len)) {
+		return -EFAULT;
+	}
+	minLen = len > bsk->hbm.reply_len ? bsk->hbm.reply_len : len;
 
 	if (bsk->hbm.reply_content) {
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 10)
 		if(msg->msg_iter.iov->iov_base != NULL) {
-			flag = memcmp(bsk->hbm.reply_content + offset,
-			    msg->msg_iter.iov->iov_base, len);
+			notMatched = memcmp(bsk->hbm.reply_content + offset,
+			    msg->msg_iter.iov->iov_base, minLen);
 		}
 #else
-		flag = memcmp(bsk->hbm.reply_content + offset,
-			msg->msg_iov->iov_base - len, len);
+		notMatched = memcmp(bsk->hbm.reply_content + offset,
+			msg->msg_iov->iov_base - len, minLen);
 #endif
-		if (flag == 0) {
+		if ( !notMatched ) {
 			bsk->hbm.reply_offset += len;
 			/* check whether heartbeat reply */
 			/* matching has been completed */

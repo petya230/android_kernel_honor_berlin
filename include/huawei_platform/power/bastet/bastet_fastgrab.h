@@ -28,7 +28,7 @@
 *****************************************************************************/
 #define BST_FG_MAX_APP_NUMBER	(0x01U)
 #define BST_FG_MAX_KW_LEN		(0xFFU) // Current Max keyword lenght is 16
-#define BST_FG_MAX_KW_NUMBER	(0x03U)
+#define BST_FG_MAX_KW_NUMBER	(0x04U)
 #define BST_FG_MAX_PID_NUMBER	(0x200U)
 
 #define BST_FG_ROLE_SNDER	(0x01U)
@@ -43,6 +43,8 @@
 #define BST_FG_FLAG_WECHAT_PUSH	(0x00U)
 #define BST_FG_FLAG_WECHAT_RCVD	(0x01U)
 #define BST_FG_FLAG_WECHAT_GET	(0x02U)
+#define BST_FG_FLAG_WECHAT_PUSH_NEW (0x03U)
+
 
 #define BST_FG_INVALID_UID	(0)
 #define BST_FG_INVALID_INET_ADDR	(0)
@@ -73,6 +75,12 @@
 		bh_unlock_sock(sk); \
 	}
 
+#define BST_FG_SetAccState(sk, value) \
+    { \
+        (sk)->acc_state = (value); \
+    }
+
+
 #define BST_FG_HOOK_DL_STUB(sk, skb, hrd_len) \
 	bastet_mark_hb_reply(sk, skb, hrd_len); \
 	{ \
@@ -83,16 +91,6 @@
 		} \
 	}
 
-#if defined(CONFIG_PPPOLAC) || defined(CONFIG_PPPOPNS)
-#define BST_FG_HOOK_UL_STUB(sk, msg) \
-	{ \
-		if (BST_FG_NO_SPEC != (sk)->fg_Spec) { \
-			if (BST_FG_HookPacket(sk, (uint8_t *)msg, msg->msg_iter.iov->iov_len, BST_FG_ROLE_SNDER)) { \
-				msg->msg_flags |= MSG_HRT; \
-			} \
-		} \
-	}
-#endif
 
 typedef void(*BST_FG_PKT_PROC_T)(struct sock *, uint8_t*, uint32_t uint32_t);
 
@@ -104,6 +102,7 @@ typedef enum {
 	CMD_UPDATE_UID,
 	CMD_UPDATE_TID,
 	CMD_UPDATE_DSCP,
+	CMD_UPDATE_ACC_UID,
 } fastgrab_cmd;
 
 typedef enum {
@@ -118,6 +117,12 @@ typedef enum {
 	BST_FG_INIT_STEP = 0,
 	BST_FG_STEP_BUTT,
 } bastet_fg_sock_step;
+
+typedef enum {
+	BST_FG_ACC_NORMAL = 0,
+	BST_FG_ACC_HIGH,
+} bastet_fg_acc_state;
+
 
 /*****************************************************************************
   4 结构定义
@@ -197,6 +202,9 @@ void BST_FG_IoCtrl(unsigned long arg);
 void BST_FG_CheckSockUid(struct sock *pstSock, int state);
 uint8_t BST_FG_HookPacket(struct sock *pstSock, uint8_t *pData,
 		uint32_t ulLength, uint32_t ulRole);
+#if defined(CONFIG_PPPOLAC) || defined(CONFIG_PPPOPNS)
+void BST_FG_Hook_Ul_Stub(struct sock *pstSock, struct msghdr *msg);
+#endif
 
 /*****************************************************************************
   9 OTHERS定义

@@ -28,6 +28,7 @@
 #include <linux/atomic.h>
 #include <net/tcp.h>
 #include <huawei_platform/power/bastet/bastet_utils.h>
+#include <huawei_platform/power/bastet/bastet.h>
 
 #define BASTET_WAKE_LOCK				"bastet_wl"
 #define BASTET_DEFAULT_NET_DEV			"rmnet0"
@@ -282,16 +283,22 @@ static struct file *fget_by_pid(unsigned int fd, pid_t pid)
 	struct task_struct *task;
 	struct files_struct *files;
 
+	rcu_read_lock();
 	task = find_task_by_vpid(pid);
-	if (!task)
+	if (!task) {
+		rcu_read_unlock();
 		return NULL;
-
+	}
+	get_task_struct(task);
+	rcu_read_unlock();
 	files = task->files;
 
 	/*process is removed, task isn't null, but files is null*/
-	if (NULL == files)
+	if (NULL == files) {
+		put_task_struct(task);
 		return NULL;
-
+	}
+	put_task_struct(task);
 	rcu_read_lock();
 	file = fcheck_files(files, fd);
 	if (file) {
@@ -359,16 +366,21 @@ int get_fd_by_addr(struct addr_to_fd *guide)
 
 	if (guide == NULL)
 		return -EFAULT;
-
+	rcu_read_lock();
 	task = find_task_by_vpid(guide->pid);
-	if (!task)
+	if (!task) {
+		rcu_read_unlock();
 		return -EFAULT;
-
+	}
+	get_task_struct(task);
+	rcu_read_unlock();
 	files = task->files;
 
 	/*process is removed, task isn't null, but files is null*/
-	if (NULL == files)
+	if (NULL == files) {
+		put_task_struct(task);
 		return -EFAULT;
+	}
 
 	fdt = files_fdtable(files);
 	for (i = 0; i <= fdt->max_fds; i++) {
@@ -388,6 +400,7 @@ int get_fd_by_addr(struct addr_to_fd *guide)
 		}
 		sock_put(sk);
 	}
+	put_task_struct(task);
 	if (count == 1) {
 		guide->fd = fd;
 		BASTET_LOGE("fd=%d", fd);
@@ -410,10 +423,14 @@ int get_pid_cmdline(struct get_cmdline *cmdline)
 
 	if (NULL == cmdline)
 		return -1;
-
+	rcu_read_lock();
 	task = find_task_by_vpid(cmdline->pid);
-	if (!task)
+	if (!task) {
+		rcu_read_unlock();
 		return -1;
+	}
+	get_task_struct(task);
+	rcu_read_unlock();
 	mm = get_task_mm(task);
 	if (!mm)
 		goto out;
@@ -443,10 +460,13 @@ int get_pid_cmdline(struct get_cmdline *cmdline)
 			res = strnlen(buffer, res);
 		}
 	}
-	strcpy(cmdline->name, buffer);
+	if (res > 0 && res < MAX_PID_NAME_LEN) {
+		strncpy(cmdline->name, buffer, res);
+	}
 out_mm:
 	mmput(mm);
 out:
+	put_task_struct(task);
 	return 0;
 }
 
@@ -622,15 +642,21 @@ next_nolock:
 		goto fail_unlock;
 	}
 	extb->fastreuse = 0;
-
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 4, 0))
+	sk = sk_alloc(net, PF_INET, GFP_KERNEL, &tcp_prot, true);
+#else
 	sk = sk_alloc(net, PF_INET, GFP_KERNEL, &tcp_prot);
+#endif
 	if (sk == NULL) {
 		inet_bind_bucket_destroy(hashinfo->bind_bucket_cachep, tb);
 		inet_bind_bucket_destroy(hashinfo->bind_bucket_cachep, extb);
 		goto fail_unlock;
 	}
-
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 4, 0))
+	exsk = sk_alloc(net, PF_INET, GFP_KERNEL, &tcp_prot, true);
+#else
 	exsk = sk_alloc(net, PF_INET, GFP_KERNEL, &tcp_prot);
+#endif
 	if (exsk == NULL) {
 		inet_bind_bucket_destroy(hashinfo->bind_bucket_cachep, tb);
 		inet_bind_bucket_destroy(hashinfo->bind_bucket_cachep, extb);
@@ -707,7 +733,9 @@ int unbind_local_ports(u16 local_port)
 	}
 
 	if (find_port && ex_find_port) {
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 4, 0))
 		atomic_dec(&hashinfo->bsockets);
+#endif
 		tb->num_owners--;
 		sk = hlist_entry(tb->owners.first, struct sock, sk_bind_node);
 		__sk_del_bind_node(sk);
@@ -715,8 +743,9 @@ int unbind_local_ports(u16 local_port)
 			sk_free(sk);
 
 		inet_bind_bucket_destroy(hashinfo->bind_bucket_cachep, tb);
-
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 4, 0))
 		atomic_dec(&hashinfo->bsockets);
+#endif
 		extb->num_owners--;
 		exsk = hlist_entry(extb->owners.first,
 			struct sock, sk_bind_node);
@@ -793,15 +822,18 @@ int get_uid_by_pid(struct set_process_info *info)
 		BASTET_LOGE("invalid parameter");
 		return -EFAULT;
 	}
-
+	rcu_read_lock();
 	task = find_task_by_vpid(info->pid);
 	if (!task) {
 		BASTET_LOGE("find task by pid failed");
+		rcu_read_unlock();
 		return -EFAULT;
 	}
-
+	get_task_struct(task);
+	rcu_read_unlock();
 	if (!(task->real_cred)) {
 		BASTET_LOGE("task->real_cred is NULL");
+		put_task_struct(task);
 		return -EFAULT;
 	}
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 10)
@@ -810,7 +842,7 @@ int get_uid_by_pid(struct set_process_info *info)
 	info->uid = (int32_t)task->real_cred->uid;
 #endif
 	BASTET_LOGI("uid=%d", info->uid);
-
+	put_task_struct(task);
 	return 0;
 }
 /**
