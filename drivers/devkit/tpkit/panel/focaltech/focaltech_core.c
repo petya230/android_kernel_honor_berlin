@@ -80,7 +80,7 @@ static int focal_irq_bottom_half(struct ts_cmd_node *in_cmd,
 static int focal_set_glove_switch(u8 glove_switch);
 static int focal_set_holster_switch(u8 holster_switch);
 static int focal_set_roi_switch(u8 roi_switch);
-static int focal_rmi4_status_resume(void);
+static int focal_status_resume(void);
 static int focal_get_brightness_info(void);
 
 struct ts_device_ops ts_focal_ops = {
@@ -241,11 +241,10 @@ int focal_write_reg(u8 addr, u8 value)
 	return focal_write(buf, sizeof(buf));
 }
 
-int focal_hardware_reset(int model)
+int focal_gpio_reset(void)
 {
 	int ret = 0;
 	int reset_gpio = 0;
-	int reset_enable_delay = 0;
 
 	reset_gpio = g_focal_dev_data->ts_platform_data->reset_gpio;
 
@@ -268,6 +267,20 @@ int focal_hardware_reset(int model)
 	ret = gpio_direction_output(reset_gpio, 1);
 	if (ret) {
 		TS_LOG_ERR("%s:gpio direction output to 1 fail, ret=%d\n",
+				   __func__, ret);
+		return ret;
+	}
+	return 0;
+}
+
+int focal_hardware_reset(int model)
+{
+	int ret = 0;
+	int reset_enable_delay = 0;
+
+	ret = focal_gpio_reset();
+	if(ret){
+		TS_LOG_ERR("%s:gpio_reset fail, ret=%d\n",
 				   __func__, ret);
 		return ret;
 	}
@@ -533,13 +546,13 @@ static int focal_read_roidata(void)
 {
 	u8 buf[1] = { 0 };
 	int ret = -1;
-	buf[0] = 0x7E; 
+	buf[0] = FTS_ROI_BUFF0_ADDR;
 	unsigned char temp[2] = {0};
 	TS_LOG_DEBUG("%s: Enter!\n", __func__);
 	ret = focal_read( buf, 1, focal_roi_data+2,ROI_DATA_READ_LENGTH);
 	if (ret < 0) {
 		TS_LOG_ERR("%s  failed.\n", __func__);
-		return ret;//
+		return ret;
 	}
 	temp[0] = focal_roi_data[2];
 	temp[1] = focal_roi_data[3];
@@ -676,8 +689,9 @@ static int focal_irq_bottom_half(struct ts_cmd_node *in_cmd,
 	TS_LOG_DEBUG("%s:algo_order:%d\n", __func__, algo_p->algo_order);
 
 	ret = focal_read_touch_data(&st_touch_data);
-	if (ret)
+	if (ret){
 		return ret;
+	}
 
 	for (i = 0; i < st_touch_data.touch_point; i++) {
 		x = st_touch_data.position_x[i];
@@ -734,8 +748,9 @@ static int focal_fw_update_sd(void)
 		FTS_FW_MANUAL_UPDATE_FILE_NAME);
 	if (ret < 0) {
 		TS_LOG_ERR("Failed to update fw sd  err: %d\n",  ret);
+		return ret;
 	}
-	ret = focal_rmi4_status_resume();
+	ret = focal_status_resume();
 	if (ret < 0) {
 		TS_LOG_ERR("status resume  err: %d\n",  ret);
 	}
@@ -784,7 +799,7 @@ static int focal_resume(void)
 	return NO_ERR;
 }
 
-static int focal_rmi4_status_resume(void)
+static int focal_status_resume(void)
 {
 	int retval = 0;
 	struct ts_feature_info *info = &g_focal_dev_data->ts_platform_data->feature_info;
@@ -814,11 +829,16 @@ static int focal_rmi4_status_resume(void)
 }
 
 static int focal_after_resume(void *feature_info)
-{	
-	int retval = 0;
-	
-	retval = focal_rmi4_status_resume();
-	return retval;
+{
+	int ret = 0;
+
+	ret = focal_status_resume();
+	if(ret < 0)
+	{
+		TS_LOG_ERR("%s: failed to resume status\n",__func__, ret);
+		return -EINVAL;
+	}
+	return ret;
 }
 
 static int focal_wakeup_gesture_enable_switch(
@@ -840,7 +860,6 @@ static int focal_input_config(struct input_dev *input_dev)
 	set_bit(EV_ABS, input_dev->evbit);
 	set_bit(BTN_TOUCH, input_dev->keybit);
 	set_bit(BTN_TOOL_FINGER, input_dev->keybit);
-
 	set_bit(TS_PALM_COVERED, input_dev->keybit);
 
 #ifdef INPUT_PROP_DIRECT
@@ -1494,14 +1513,6 @@ static int focal_chip_detect(struct ts_kit_platform_data *pdata)
 			__func__, ret);
 		goto exit;
 	}
-#if 0
-	ret = gpio_request(g_focal_dev_data->reset_gpio, "ts_reset_gpio");
-	if (ret < 0) {
-		TS_LOG_ERR("%s:Fail request gpio:%d, ret=%d\n",
-			__func__, g_focal_dev_data->reset_gpio, ret);
-		goto exit;
-	}
-#endif
 	ret = focal_hardware_reset(FTS_MODEL_FIRST_START);
 	if (ret) {
 		TS_LOG_ERR("%s:hardware reset fail, ret=%d\n",

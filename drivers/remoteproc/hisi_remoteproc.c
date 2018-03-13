@@ -1229,10 +1229,10 @@ int set_plat_parameters(void)
     param->plat_cfg.perf_power      = perf_para;
     param->plat_cfg.platform_id     = hw_is_fpga_board();
     param->plat_cfg.isp_local_timer = dev->tmp_plat_cfg.isp_local_timer;
-    param->logx_switch             |= A7ISP_LOG_USE_APCTRL;
+    param->logx_switch             |= ISPCPU_RDR_USE_APCTRL;
     isp_loglevel_init(param);
     if (get_a7log_mode())
-        param->logx_switch         |= A7ISP_LOG_TIMESTAMP_FPGAMOD;
+        param->logx_switch         |= ISPCPU_RDR_TIMESTAMP_FPGAMOD;
 
     param->bootware_paddr           = get_a7remap_addr();
     RPROC_INFO("platform_id = %d, isp_local_timer = %d, perf_power = %d, logx_switch.0x%x, bootware_addr.0x%x\n",

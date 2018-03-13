@@ -42,7 +42,7 @@ extern struct dsm_client *ts_dclient;
 #define FTS_PROJECT_ID_LEN		11
 #define FTS_VENDOR_NAME_LEN		8
 #define FTS_REPORT_BTN_TOUCH
-
+#define FTS_ROI_BUFF0_ADDR     0x7E
 #define FTS_FW_MANUAL_UPDATE_FILE_NAME	"ts/touch_screen_firmware.img"
 
 #define FTS_VDDIO_GPIO_NAME		"ts_vddio_gpio"

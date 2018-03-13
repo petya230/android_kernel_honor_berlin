@@ -642,46 +642,46 @@ struct log_level_switch_s {
 	char info[32];
 } loglevel[] = {
 	{
-	A7ISP_LOG_USE_APCTRL, "yes", "no", "LOG Controlled by AP"}, {
-	A7ISP_LOG_TIMESTAMP_FPGAMOD, "yes", "no",
+	ISPCPU_RDR_USE_APCTRL, "yes", "no", "LOG Controlled by AP"}, {
+	ISPCPU_RDR_TIMESTAMP_FPGAMOD, "yes", "no",
 		    "LOG Timestamp syscounter Mode"}, {
-	A7ISP_LOG_FORCE_UART, "enable", "disable", "uart"}, {
-	A7ISP_LOG_LEVEL_WATCHDOG, "enable", "disable", "watchdog"}, {
-	A7ISP_LOG_RESERVE_27, "enable", "disable", "reserved 27"}, {
-	A7ISP_LOG_RESERVE_26, "enable", "disable", "reserved 26"}, {
-	A7ISP_LOG_RESERVE_25, "enable", "disable", "reserved 25"}, {
-	A7ISP_LOG_RESERVE_24, "enable", "disable", "reserved 24"}, {
-	A7ISP_LOG_RESERVE_23, "enable", "disable", "reserved 23"}, {
-	A7ISP_LOG_RESERVE_22, "enable", "disable", "reserved 22"}, {
-	A7ISP_LOG_RESERVE_21, "enable", "disable", "reserved 21"}, {
-	A7ISP_LOG_RESERVE_20, "enable", "disable", "reserved 20"}, {
-	A7ISP_LOG_RESERVE_19, "enable", "disable", "reserved 19"}, {
-	A7ISP_LOG_RESERVE_18, "enable", "disable", "reserved 18"}, {
-	A7ISP_LOG_RESERVE_17, "enable", "disable", "reserved 17"}, {
-	A7ISP_LOG_RESERVE_16, "enable", "disable", "reserved 16"}, {
-	A7ISP_LOG_RESERVE_15, "enable", "disable", "reserved 15"}, {
-	A7ISP_LOG_RESERVE_14, "enable", "disable", "reserved 14"}, {
-	A7ISP_LOG_RESERVE_13, "enable", "disable", "reserved 13"}, {
-	A7ISP_LOG_RESERVE_12, "enable", "disable", "reserved 12"}, {
-	A7ISP_LOG_RESERVE_11, "enable", "disable", "reserved 11"}, {
-	A7ISP_LOG_RESERVE_10, "enable", "disable", "reserved 10"}, {
-	A7ISP_LOG_RESERVE_09, "enable", "disable", "reserved 9"}, {
-	A7ISP_LOG_RESERVE_08, "enable", "disable", "reserved 8"}, {
-	A7ISP_LOG_LEVEL_DEBUG_ALGO, "enable", "disable", "algodebug"}, {
-	A7ISP_LOG_LEVEL_ERR_ALGO, "enable", "disable", "algoerr"}, {
-	A7ISP_LOG_LEVEL_TRACE, "enable", "disable", "trace"}, {
-	A7ISP_LOG_LEVEL_DUMP, "enable", "disable", "dump"}, {
-	A7ISP_LOG_LEVEL_DBG, "enable", "disable", "dbg"}, {
-	A7ISP_LOG_LEVEL_INFO, "enable", "disable", "info"}, {
-	A7ISP_LOG_LEVEL_WARN, "enable", "disable", "warn"}, {
-	A7ISP_LOG_LEVEL_ERR, "enable", "disable", "err"},};
+	ISPCPU_RDR_FORCE_UART, "enable", "disable", "uart"}, {
+	ISPCPU_RDR_LEVEL_WATCHDOG, "enable", "disable", "watchdog"}, {
+	ISPCPU_RDR_RESERVE_27, "enable", "disable", "reserved 27"}, {
+	ISPCPU_RDR_RESERVE_26, "enable", "disable", "reserved 26"}, {
+	ISPCPU_RDR_RESERVE_25, "enable", "disable", "reserved 25"}, {
+	ISPCPU_RDR_RESERVE_24, "enable", "disable", "reserved 24"}, {
+	ISPCPU_RDR_RESERVE_23, "enable", "disable", "reserved 23"}, {
+	ISPCPU_RDR_RESERVE_22, "enable", "disable", "reserved 22"}, {
+	ISPCPU_RDR_RESERVE_21, "enable", "disable", "reserved 21"}, {
+	ISPCPU_RDR_RESERVE_20, "enable", "disable", "reserved 20"}, {
+	ISPCPU_RDR_RESERVE_19, "enable", "disable", "reserved 19"}, {
+	ISPCPU_RDR_RESERVE_18, "enable", "disable", "reserved 18"}, {
+	ISPCPU_RDR_RESERVE_17, "enable", "disable", "reserved 17"}, {
+	ISPCPU_RDR_RESERVE_16, "enable", "disable", "reserved 16"}, {
+	ISPCPU_RDR_RESERVE_15, "enable", "disable", "reserved 15"}, {
+	ISPCPU_RDR_RESERVE_14, "enable", "disable", "reserved 14"}, {
+	ISPCPU_RDR_RESERVE_13, "enable", "disable", "reserved 13"}, {
+	ISPCPU_RDR_RESERVE_12, "enable", "disable", "reserved 12"}, {
+	ISPCPU_RDR_RESERVE_11, "enable", "disable", "reserved 11"}, {
+	ISPCPU_RDR_RESERVE_10, "enable", "disable", "reserved 10"}, {
+	ISPCPU_RDR_RESERVE_09, "enable", "disable", "reserved 9"}, {
+	ISPCPU_RDR_RESERVE_08, "enable", "disable", "reserved 8"}, {
+	ISPCPU_RDR_LEVEL_DEBUG_ALGO, "enable", "disable", "algodebug"}, {
+	ISPCPU_RDR_LEVEL_ERR_ALGO, "enable", "disable", "algoerr"}, {
+	ISPCPU_RDR_LEVEL_TRACE, "enable", "disable", "trace"}, {
+	ISPCPU_RDR_LEVEL_DUMP, "enable", "disable", "dump"}, {
+	ISPCPU_RDR_LEVEL_DBG, "enable", "disable", "dbg"}, {
+	ISPCPU_RDR_LEVEL_INFO, "enable", "disable", "info"}, {
+	ISPCPU_RDR_LEVEL_WARN, "enable", "disable", "warn"}, {
+	ISPCPU_RDR_LEVEL_ERR, "enable", "disable", "err"},};
 
 void isp_loglevel_init(struct rproc_shared_para *param)
 {
 	struct rdr_isp_device *dev = &rdr_isp_dev;
 
-	param->logx_switch = (param->logx_switch & ~A7ISP_LOG_LEVEL_MASK) |
-						(dev->offline_loglevel & A7ISP_LOG_LEVEL_MASK);
+	param->logx_switch = (param->logx_switch & ~ISPCPU_RDR_LEVEL_MASK) |
+						(dev->offline_loglevel & ISPCPU_RDR_LEVEL_MASK);
 	pr_info("[%s] 0x%x = 0x%x\n", __func__, param->logx_switch,
 		dev->offline_loglevel);
 }
@@ -720,8 +720,8 @@ static void usage_isplogctrl(void)
 
 	pr_info("<Usage: >\n");
 	for (i = 0; i < sizeof(loglevel) / sizeof(struct log_level_switch_s); i++) {
-		if (loglevel[i].log_level == A7ISP_LOG_USE_APCTRL
-		    || loglevel[i].log_level == A7ISP_LOG_TIMESTAMP_FPGAMOD)
+		if (loglevel[i].log_level == ISPCPU_RDR_USE_APCTRL
+		    || loglevel[i].log_level == ISPCPU_RDR_TIMESTAMP_FPGAMOD)
 			continue;
 		pr_info("echo <%s>:<%s/%s> > isplogctrl\n", loglevel[i].info,
 		       loglevel[i].enable_cmd, loglevel[i].disable_cmd);
@@ -741,8 +741,8 @@ static ssize_t isplogctrl_store(struct device *pdev,
 	len = p ? p - buf : count;
 	for (i = 0; i < sizeof(loglevel) / sizeof(struct log_level_switch_s);
 	     i++) {
-		if (loglevel[i].log_level == A7ISP_LOG_USE_APCTRL
-		    || loglevel[i].log_level == A7ISP_LOG_TIMESTAMP_FPGAMOD)
+		if (loglevel[i].log_level == ISPCPU_RDR_USE_APCTRL
+		    || loglevel[i].log_level == ISPCPU_RDR_TIMESTAMP_FPGAMOD)
 			continue;
 		if (!strncmp(buf, loglevel[i].info, len)) {
 			flag = 1;
@@ -765,8 +765,8 @@ static ssize_t isplogctrl_store(struct device *pdev,
 	param = rproc_get_share_para();
 	if (param != NULL) {
 		param->logx_switch =
-		    (param->logx_switch & ~A7ISP_LOG_LEVEL_MASK) |
-		    (dev->offline_loglevel & A7ISP_LOG_LEVEL_MASK);
+		    (param->logx_switch & ~ISPCPU_RDR_LEVEL_MASK) |
+		    (dev->offline_loglevel & ISPCPU_RDR_LEVEL_MASK);
 		pr_info("[%s] loglevel.0x%x >> online.0x%x\n", __func__,
 			dev->offline_loglevel, param->logx_switch);
 	}
@@ -859,7 +859,7 @@ int __init rdr_isp_init(void)
 		       ret);
 		return ret;
 	}
-	dev->offline_loglevel = A7ISP_DEFAULT_LOG_LEVEL;
+	dev->offline_loglevel = ISPCPU_DEFAULT_LOG_LEVEL;
 
     pr_info("[%s] -\n", __func__);
 

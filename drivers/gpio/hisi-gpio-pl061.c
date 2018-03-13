@@ -16,7 +16,7 @@ int pl061_parse_gpio_base(struct device *dev)
 	struct device_node *np = dev->of_node;
 	int ret = -EINVAL;
 
-	if (of_property_read_u32(np, "linux,gpio-base", &ret))
+	if (of_property_read_u32(np, "linux,gpio-base", (u32 *)&ret))
 		return -ENOENT;
 	if (ret >= 0)
 		return ret;
