@@ -12,6 +12,7 @@
 #include <linux/rpmsg.h>
 #include <uapi/linux/histarisp.h>
 #include <media/huawei/camera.h>
+#include <linux/platform_data/remoteproc-hisi.h>
 
 typedef enum _voltage_e
 {
@@ -89,7 +90,7 @@ static int check_sensor_name(int index, const char *name, hwsensor_board_info **
 			printk("[%s] %d, NULL pointer", __func__, __LINE__);
 			return -EINVAL;
 		}
-        if((!strcmp(tmp_sensor_info->sensor_name, name)) 
+        if((!strcmp(tmp_sensor_info->sensor_name, name)) /*lint !e421 */
 			&& (tmp_sensor_info->camera_id == index))
         {
             printk("[%s]find sensor %s@%d that is on the ISP board\n", 
@@ -107,10 +108,10 @@ static int check_sensor_name(int index, const char *name, hwsensor_board_info **
     *sensor_info = tmp_sensor_info;
     return 0;
 }
-
+/*lint -save -e429*/
 int rpmsg_sensor_register(struct platform_device *pdev, void *psensor)
 {
-    struct device_node *of_node = pdev->dev.of_node;
+    struct device_node *of_node = pdev->dev.of_node;/*lint !e578 */
 	int rc = 0;
 	u32 i, index = 0;
 	char *gpio_tag = NULL;
@@ -143,13 +144,13 @@ int rpmsg_sensor_register(struct platform_device *pdev, void *psensor)
 	} 
 
 	rc = of_property_read_u32(of_node, "huawei,sensor_index",
-		&sensor_info->camera_id);
+		&sensor_info->camera_id);/*lint !e64 */
 	if (rc < 0) {
 		printk("%s failed %d\n", __func__, __LINE__);
 		goto fail;
 	}
     	
-	for(i = 0; i < sensor_info->gpio_num; i++) {
+	for(i = 0; i < (u32)(sensor_info->gpio_num); i++) {
 		rc = of_property_read_string_index(of_node, "huawei,gpio-ctrl-types",
 			i, (const char **)&gpio_tag);
 		if(rc < 0) {
@@ -157,7 +158,7 @@ int rpmsg_sensor_register(struct platform_device *pdev, void *psensor)
 			goto fail;
 		}
 		for(index = 0; index < GPIO_MAX; index++) {
-			if(!strcmp(gpio_ctrl_types[index], gpio_tag)){
+			if(!strcmp(gpio_ctrl_types[index], gpio_tag)){/*lint !e421 */
                 sensor_info->gpios[index].gpio = of_get_gpio(of_node, i);
             }
 		}
@@ -172,7 +173,7 @@ fail:
 
 	return rc;
 }
-
+/*lint -restore */
 void rpmsg_sensor_unregister(void *ptr_sensor)
 {
     hwsensor_board_info *sensor_info = NULL;
@@ -199,7 +200,8 @@ void rpmsg_sensor_unregister(void *ptr_sensor)
 static int do_gpio_config_on(hwsensor_board_info *sensor_info)
 {
 	int ret = 0;
-	
+
+#if 1 //This should be controlled by isp firmware for FPGA
 	ret = hw_sensor_gpio_config(RESET, sensor_info, HIGH);
 	if(ret < 0)
 		return ret;
@@ -228,14 +230,15 @@ static int do_gpio_config_on(hwsensor_board_info *sensor_info)
 	if(ret < 0)
 		return ret;
     ret = hw_sensor_gpio_config(CAM_VCM_2V85_EN, sensor_info, HIGH);
-
+#endif
 	return ret;
 }
 
 static int do_gpio_config_off(hwsensor_board_info *sensor_info)
 {
 	int ret = 0;
-	
+
+#if 1 //This should be controlled by isp firmware for FPGA
 	ret = hw_sensor_gpio_config(CAM_VCM_POWER, sensor_info, LOW);
 	if(ret < 0)
 		return ret;
@@ -264,7 +267,7 @@ static int do_gpio_config_off(hwsensor_board_info *sensor_info)
 	if(ret < 0)
 		return ret;
     ret = hw_sensor_gpio_config(CAM_VCM_2V85_EN, sensor_info, LOW);
-
+#endif
 	return ret;
 }
 

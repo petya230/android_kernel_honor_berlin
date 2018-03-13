@@ -101,4 +101,7 @@ struct rproc_shared_para {
 
 extern struct rproc_shared_para *isp_share_para;
 extern struct rproc_shared_para *rproc_get_share_para(void);
+extern void hisp_lock_sharedbuf(void);
+extern void hisp_unlock_sharedbuf(void);
+
 #endif /* _INCLUDE_LINUX_RPROC_SHARE_H */

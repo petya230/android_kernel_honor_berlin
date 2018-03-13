@@ -680,14 +680,10 @@ static int rpmsg_hisi_probe(struct rpmsg_channel *rpdev)
     hisi_serv->cdev = &cdev_local.isp_cdev;
     hisi_serv->dev = cdev_local.isp_dev;
     hisi_isp_serv = hisi_serv;
-
     hisi_serv->rpdev = rpdev;
-
     dev_set_drvdata(&rpdev->dev, hisi_serv);
-
     rpmsg_info("new HISI connection srv channel: %u -> %u!\n",
                         rpdev->src, rpdev->dst);
-
     rpmsg_dbg("Exit ...\n");
     return 0;
 }
@@ -732,7 +728,7 @@ static struct rpmsg_device_id rpmsg_hisi_id_table[] = {
     { },
 };
 MODULE_DEVICE_TABLE(platform, rpmsg_hisi_id_table);
-
+/*lint -save -e485*/
 static struct rpmsg_driver rpmsg_hisi_driver = {
     .drv.name   = KBUILD_MODNAME,
     .drv.owner  = THIS_MODULE,
@@ -741,6 +737,7 @@ static struct rpmsg_driver rpmsg_hisi_driver = {
     .callback   = rpmsg_hisi_driver_cb,
     .remove     = rpmsg_hisi_remove,
 };
+/*lint -restore */
 
 static ssize_t rpmsgctrl_show(struct device *pdev, struct device_attribute *attr,
 			char *buf)

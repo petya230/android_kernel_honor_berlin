@@ -46,6 +46,8 @@
 #include "hisi_partition.h"
 #include "partition.h"
 #include <isp_ddr_map.h>
+#include <linux/list.h>
+#include "libhwsecurec/securec.h"
 
 #define MAX_SIZE    64
 #define ISP_ATF_CPU 1
@@ -678,22 +680,6 @@ static int atfisp_loadfw(void)
 #define RSC_SIZE                (0x00001000)
 #define LISTENTRY_SIZE          (0x00140000)
 
-void atfisp_set_nonsec(void)
-{
-    atfd_hisi_service_isp_smc(ISP_FN_SET_NONSEC, 0, 0, 0);
-}
-
-void atfisp_disreset_a7(unsigned int remap_addr)
-{
-    atfd_hisi_service_isp_smc(ISP_FN_DISRESET_A7, remap_addr, 0, 0);
-}
-
-static int atfisp_setparams(unsigned int type, unsigned int param1, unsigned int param2)
-{
-	atfd_hisi_service_isp_smc(ISP_FN_SET_PARAMS, type, param1, param2);
-	return 0;
-}
-
 static int ispa7_setclk_enable(struct hisi_atfisp_s *dev)
 {
 	int ret;
@@ -731,6 +717,22 @@ static int ispfunc_setclk_enable(struct hisi_atfisp_s *dev)
 static void ispa7_clk_disable(struct hisi_atfisp_s *dev)
 {
     clk_disable_unprepare(dev->ispclk[ISP_A7_CLK]);
+}
+
+void atfisp_set_nonsec(void)
+{
+    atfd_hisi_service_isp_smc(ISP_FN_SET_NONSEC, 0, 0, 0);
+}
+
+void atfisp_disreset_a7(u64 remap_addr)
+{
+    atfd_hisi_service_isp_smc(ISP_FN_DISRESET_A7, remap_addr, 0, 0);
+}
+
+static int atfisp_setparams(unsigned int type, unsigned int param1, unsigned int param2)
+{
+	atfd_hisi_service_isp_smc(ISP_FN_SET_PARAMS, type, param1, param2);
+	return 0;
 }
 
 static void ispfunc_clk_disable(struct hisi_atfisp_s *dev)
@@ -935,7 +937,7 @@ static void isp_a7_qos_cfg(void)
 
 static int do_secisp_device_enable(void)
 {
-    int ret, err_ret;;
+    int ret, err_ret;
 
     if ((ret = atfispsrt_subsysup()) < 0) {
         pr_err("[%s] Failed : atfispsrt_subsysup.%d\n", __func__, ret);

@@ -757,12 +757,15 @@ static int set_nonsec_pgd(struct rproc *rproc)
 
     dev->pgd_base = info->phy_pgd_base;
 
+    hisp_lock_sharedbuf();
     param = rproc_get_share_para();
     if (!param) {
         pr_err("[%s] Failed : param.%pK\n", __func__, param);
+        hisp_unlock_sharedbuf();
         return -EINVAL;
     }
     param->dynamic_pgtable_base = dev->pgd_base;
+    hisp_unlock_sharedbuf();
 
     pr_info("[%s] dev->pgd_base.0x%llx == info->phy_pgd_base.0x%llx\n", __func__,
             dev->pgd_base, info->phy_pgd_base);

@@ -29,7 +29,7 @@
 #include <linux/firmware.h>
 #include <linux/remoteproc.h>
 #include <linux/elf.h>
-
+#include <linux/platform_data/remoteproc-hisi.h>
 #include "remoteproc_internal.h"
 
 static int
@@ -58,7 +58,7 @@ rproc_bin_find_rsc_table(struct rproc *rproc, const struct firmware *fw,
 	int tablesize;
 
     if ((table = (struct resource_table *)get_rsctable(&tablesize)) == NULL)
-        pr_err("[%s] Failed : get_rsctable.%p\n", __func__, table);
+        pr_err("[%s] Failed : get_rsctable.%pK\n", __func__, table);
 
     *tablesz = tablesize;
 	return table;

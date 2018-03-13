@@ -117,6 +117,7 @@ enum fw_resource_type {
 	RSC_DEVMEM	= 1,
 	RSC_TRACE	= 2,
 	RSC_VDEV	= 3,
+#ifdef CONFIG_HISI_REMOTEPROC
 	RSC_VERSION	= 4,
 	RSC_RDR_MEMORY	= 5,
 	RSC_DYNAMIC_MEMORY	= 6,
@@ -124,6 +125,9 @@ enum fw_resource_type {
 	RSC_CDA	= 8,
 	RSC_SHARED_PARA	= 9,
 	RSC_LAST	= 10,
+#else
+	RSC_LAST	= 4,
+#endif
 };
 
 #define FW_RSC_ADDR_ANY (0xFFFFFFFFFFFFFFFF)
@@ -509,7 +513,6 @@ struct rproc {
 	struct iommu_domain *domain;
 	const char *name;
 	const char *firmware;
-	const char *bootware;
 	void *priv;
 	const struct rproc_ops *ops;
 	struct device dev;
@@ -520,33 +523,36 @@ struct rproc {
 	struct dentry *dbg_dir;
 	struct list_head traces;
 	int num_traces;
-	int num_cdas;
 	struct list_head carveouts;
 	struct list_head mappings;
-	struct list_head dynamic_mems;
-	struct list_head reserved_mems;
-	struct list_head cdas;
-	struct list_head caches;
-	struct list_head pages;
 	struct completion firmware_loading_complete;
 	u32 bootaddr;
-	bool rproc_enable_flag;
-	bool sync_flag;
-	unsigned int ipc_addr;
 	struct list_head rvdevs;
 	struct idr notifyids;
 	int index;
 	struct work_struct crash_handler;
 	unsigned crash_cnt;
 	struct completion crash_comp;
-	struct completion boot_comp;
 	bool recovery_disabled;
 	int max_notifyid;
 	struct resource_table *table_ptr;
 	struct resource_table *cached_table;
 	u32 table_csum;
 	bool has_iommu;
+#ifdef CONFIG_HISI_REMOTEPROC
+	const char *bootware;
+	int num_cdas;
+	struct list_head dynamic_mems;
+	struct list_head reserved_mems;
+	struct list_head cdas;
+	struct list_head caches;
+	struct list_head pages;
+	bool rproc_enable_flag;
+	bool sync_flag;
+	unsigned int ipc_addr;
+	struct completion boot_comp;
 	struct work_struct sec_rscwork;
+#endif
 };
 
 /* we currently support only two vrings per rvdev */
@@ -617,8 +623,6 @@ static inline struct rproc *vdev_to_rproc(struct virtio_device *vdev)
 }
 
 extern int rproc_enable(struct rproc *rproc);
-extern unsigned int get_a7remap_addr(void);
-extern unsigned int get_a7sharedmem_addr(void);
 extern u64 get_isprdr_addr(void);
 extern struct rproc_shared_para *isp_share_para;
 void isp_loglevel_init(struct rproc_shared_para *param);
@@ -633,7 +637,6 @@ int rproc_handle_dynamic_memory(struct rproc *rproc, struct fw_rsc_dynamic_memor
 int rproc_handle_reserved_memory(struct rproc *rproc, struct fw_rsc_reserved_memory *rsc, int offset, int avail);
 int rproc_handle_rdr_memory(struct rproc *rproc, struct fw_rsc_carveout *rsc, int offset, int avail);
 int rproc_handle_shared_memory(struct rproc *rproc, struct fw_rsc_carveout *rsc, int offset, int avail);
-int rproc_bw_load(struct rproc *rproc, const struct firmware *fw);
 int rproc_set_shared_para(void);
 int rproc_bootware_attach(struct rproc *rproc, const char *bootware);
 

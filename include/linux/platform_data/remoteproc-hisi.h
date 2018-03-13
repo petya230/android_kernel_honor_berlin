@@ -90,14 +90,15 @@ void *hisi_fstcma_alloc(dma_addr_t *dma_handle, size_t size, gfp_t flag);
 void hisi_fstcma_free(void *va, dma_addr_t dma_handle, size_t size);
 
 void atfisp_set_nonsec(void);
-void atfisp_disreset_a7(unsigned int);
+void atfisp_disreset_a7(u64);
 int use_nonsec_isp(void);
 int use_sec_isp(void);
-unsigned int get_a7sharedmem_addr(void);
+u64 get_a7sharedmem_addr(void);
+u64 get_a7remap_addr(void);
 void *getsec_a7sharedmem_addr(void);
 void *get_a7remap_va(void);
 void *get_a7sharedmem_va(void);
-void set_a7mem_pa(unsigned int addr);
+void set_a7mem_pa(u64 addr);
 void set_a7mem_va(void *addr);
 void set_a7sharedmem_addr(unsigned int addr);
 int hisi_isp_nsec_probe(struct platform_device *pdev);
@@ -123,6 +124,14 @@ extern void hisi_isp_boot_stat_dump(void);
 extern u64 hisi_getcurtime(void);
 extern size_t print_time(u64 ts, char *buf);
 extern unsigned int get_slice_time(void);
+
+void virtqueue_sg_init(struct scatterlist *sg, void *va, dma_addr_t dma, int size);
+int rpmsg_vdev_map_resource(struct virtio_device *vdev, dma_addr_t dma, int total_space);
+
+extern void *hisp_rproc_da_to_va(struct rproc *rproc, u64 da, int len);
+extern void hisp_virtio_boot_complete(struct rproc *rproc, int flag);
+extern int hisp_rproc_boot(struct rproc *rproc);
+extern int rproc_fw_boot(struct rproc *rproc, const struct firmware *fw);
 
 #endif /* _PLAT_REMOTEPROC_HISI_ISP_H */
 
