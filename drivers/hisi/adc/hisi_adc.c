@@ -291,7 +291,7 @@ static int __init hisi_adc_driver_init(void)
 	}
 
 	hisi_adc_dev->tx_msg[ADC_IPC_CMD_TYPE] = ADC_IPC_DATA;
-	hisi_adc_dev->tx_msg[ADC_IPC_CMD_CHANNEL] = ADC_RESULT_ERR;
+	hisi_adc_dev->tx_msg[ADC_IPC_CMD_CHANNEL] = (mbox_msg_t)ADC_RESULT_ERR;
 
 	mutex_init(&hisi_adc_dev->mutex);
 	init_completion(&hisi_adc_dev->completion);

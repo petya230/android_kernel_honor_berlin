@@ -19,7 +19,7 @@
 #include <dsm/dsm_pub.h>
 
 #include <linux/hisi/hi64xx/hi64xx_resmgr.h>
-
+/*lint -e429 -e454 -e455*/
 
 enum pll_rel_state {
 	REL_IDLE,

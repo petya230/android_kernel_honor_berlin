@@ -17,6 +17,7 @@
 #include <linux/cpu.h>
 #include <linux/err.h>
 #include <linux/mm.h>
+#include <linux/module.h>
 #include <linux/platform_device.h>
 #ifdef CONFIG_HISI_AXI_TEST
 #include <linux/slab.h>
@@ -97,7 +98,7 @@ static int hisi_axi_request_irq(void)
 		acpu_sctrl_base_virt = of_iomap(node, 0);
 		if (acpu_sctrl_base_virt) {
 			ret = of_property_read_u32_index(node, "offset", 0,
-						       &axi_enable_offset);
+						       (u32 *)&axi_enable_offset);
 			if (ret) {
 				pr_err("read axi_enable_offset is failed!\n");
 				return ret;

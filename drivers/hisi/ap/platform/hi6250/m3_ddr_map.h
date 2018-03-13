@@ -6,21 +6,9 @@
 extern "C" {
 #endif
 #endif
-#if (defined CONFIG_ARCH_HI3650) || (defined PLATFORM_3650) || (defined FASTBOOT_PLAT_HI3650)
 #define LPMCU_RAM_SIZE (128*1024)
 #define OCBC_RAM_SIZE (0)
 #define UCE_RAM_SIZE (0)
-#elif (defined CONFIG_ARCH_HI6250) || (defined PLATFORM_6250) || (defined FASTBOOT_PLAT_HI6250)
-#define LPMCU_RAM_SIZE (128*1024)
-#define OCBC_RAM_SIZE (0)
-#define UCE_RAM_SIZE (0)
-#elif (defined CONFIG_ARCH_HI3660) || (defined PLATFORM_3660) || (defined FASTBOOT_PLAT_HI3660)
-#define LPMCU_RAM_SIZE (128*1024)
-#define OCBC_RAM_SIZE (0*1024)
-#define UCE_RAM_SIZE (28*1024)
-#else
-#error "lpmcu ram size undefine!!!"
-#endif
 #ifdef __FASTBOOT__
 #ifdef CONFIG_HISI_FAMA
 #define M3_DDR_MEM_BASE_ADDR (HISI_RESERVED_LPMX_CORE_PHYMEM_BASE_FAMA)

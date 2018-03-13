@@ -18,7 +18,7 @@
 
 #include <linux/hisi/hi64xx/hi_cdc_ctrl.h>
 
-/*lint -e838 -e730 -e774 -e747 -e529 -e438 -e826 -e778*/
+/*lint -e838 -e730 -e774 -e747 -e529 -e438 -e826 -e778 -e527 -e574*/
 
 struct reg_ops {
 	unsigned int (*read8)(unsigned int reg);
@@ -283,7 +283,7 @@ void hi_cdc_bus_type_select(struct hi_cdc_ctrl_priv *priv,
 	const char *str;
 
 	ret = of_property_read_string(np, "hisilicon,bus-sel", &str);
-	if (ret == 0 && !strcmp(str, "slimbus")) {
+	if (ret == 0 && !strncmp(str, "slimbus", 7)) {
 		priv->cdc_ctrl.bus_sel = BUSTYPE_SELECT_SLIMBUS;
 		priv->reg_ops.read8 = slimbus_read_1byte;
 		priv->reg_ops.read32 = slimbus_read_4byte;
@@ -309,9 +309,9 @@ void hi_cdc_platform_type_read(struct platform_device *pdev, struct hi_cdc_ctrl_
 	priv->cdc_ctrl.platform_type = HI_CDCCTRL_PLATFORM_PHONE;
 
 	if (!of_property_read_string(pdev->dev.of_node, "platform-type", &platformtype)) {
-		if (!strcmp(platformtype, "UDP"))
+		if (!strncmp(platformtype, "UDP", 3))
 			priv->cdc_ctrl.platform_type = HI_CDCCTRL_PLATFORM_UDP;
-		else if (!strcmp(platformtype, "FPGA"))
+		else if (!strncmp(platformtype, "FPGA", 4))
 			priv->cdc_ctrl.platform_type = HI_CDCCTRL_PLATFORM_FPGA;
 	}
 

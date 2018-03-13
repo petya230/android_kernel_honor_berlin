@@ -5,7 +5,7 @@
 #include <linux/vmalloc.h>
 #include <dsm/dsm_pub.h>
 
-/*lint -e750*/
+/*lint -e750 -e679*/
 
 #define SIZE_MAX_HI64xxDUMP            0x5000
 #define AUDIO_DEBUG_DIR                "audio"

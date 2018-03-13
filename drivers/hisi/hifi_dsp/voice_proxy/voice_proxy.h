@@ -50,7 +50,8 @@
 
 /* The size limit for the in and out parameters of read/write/mailbox*/
 #define VOICE_PROXY_LIMIT_PARAM_SIZE (300)
-#define VOICE_PROXY_QUEUE_SIZE_MAX 50
+/* QUEUE_SIZE_MUST_GREATER_THAN_SECRET_KEY_NEGOTIATION_SIZE(500) */
+#define VOICE_PROXY_QUEUE_SIZE_MAX 600
 
 enum send_tfagent_data_type {
 	VOLTE_NONE,
@@ -121,6 +122,5 @@ void voice_proxy_set_send_sign(bool first, bool *cnf, int64_t *timestamp);
 int32_t voice_proxy_add_cmd(uint16_t msg_id);
 int32_t voice_proxy_add_data(voice_proxy_add_data_cb callback, int8_t *data, uint32_t size, uint16_t msg_id);
 int64_t voice_proxy_get_time_ms(void);
-void debug_test_buf(int8_t *buf, uint32_t buf_size);
 #endif /* end of voice_proxy.h */
 

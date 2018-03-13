@@ -26,7 +26,7 @@
 #include <linux/hisi/hi64xx/asp_dma.h>
 #include <linux/delay.h>
 
-/*lint -e774 -e747*/
+/*lint -e774 -e747 -e502*/
 
 #define ASP_DMA_HWLOCK_ID (6)
 #define HWLOCK_WAIT_TIME (50)
@@ -128,7 +128,7 @@ static void _dmac_reg_clr_bit(unsigned int reg, unsigned int offset)
 	spin_lock_irqsave(&priv->lock, flag_sft);
 
 	value = readl(priv->asp_dma_reg_base_addr + reg);
-	value &= ~(1 << offset);
+	value &= ~(1UL << offset);
 	writel(value, priv->asp_dma_reg_base_addr + reg);
 
 	spin_unlock_irqrestore(&priv->lock, flag_sft);
@@ -387,7 +387,7 @@ void asp_dma_stop(unsigned short dma_channel)
 	dev_info(priv->dev, "dma_channel:%d stop succ\n", dma_channel);
 }
 EXPORT_SYMBOL(asp_dma_stop);
-
+/*lint -e429*/
 static int asp_dma_probe (struct platform_device *pdev)
 {
 	int ret = 0;
@@ -467,7 +467,7 @@ err_exit:
 
 	return ret;
 }
-
+/*lint +e429*/
 static int asp_dma_remove (struct platform_device *pdev)
 {
 	struct asp_dma_priv *priv =

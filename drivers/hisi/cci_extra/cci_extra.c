@@ -307,46 +307,46 @@ static int cci_extra_init(void)
 		if (!ret)
 			base = ioremap(res.start, resource_size(&res));
 
-		if (ret || !base) {
+		if (ret || !base) { /*lint !e644*/
 			WARN(1, "unable to ioremap CCI port %d\n", i);
 			continue;
 		}
 
-		port_configs[i].base = base;/*[false alarm]*/
+		port_configs[i].base = base;/*[false alarm]*/ /*lint !e613*/
 		ret = of_property_read_u32(cp, "qos-control", &val);
 		if (!ret) {
-			port_configs[i].qcr_set = 1;
-			port_configs[i].qcr_val = val;
+			port_configs[i].qcr_set = 1; /*lint !e613*/
+			port_configs[i].qcr_val = val; /*lint !e613*/
 		}
 
 		ret = of_property_read_u32(cp, "regulator-target", &val);
 		if (!ret) {
-			port_configs[i].rtr_set = 1;
-			port_configs[i].rtr_val = val;
+			port_configs[i].rtr_set = 1; /*lint !e613*/
+			port_configs[i].rtr_val = val; /*lint !e613*/
 		}
 
 		ret = of_property_read_u32(cp, "scalar", &val);
 		if (!ret) {
-			port_configs[i].sfr_set = 1;
-			port_configs[i].sfr_val = val;
+			port_configs[i].sfr_set = 1; /*lint !e613*/
+			port_configs[i].sfr_val = val; /*lint !e613*/
 		}
 
 		ret = of_property_read_u32(cp, "qos-range", &val);
 		if (!ret) {
-			port_configs[i].qrr_set = 1;
-			port_configs[i].qrr_val = val;
+			port_configs[i].qrr_set = 1; /*lint !e613*/
+			port_configs[i].qrr_val = val; /*lint !e613*/
 		}
 
 		ret = of_property_read_u32(cp, "read-qos-override", &val);
 		if (!ret) {
-			port_configs[i].rqor_set = 1;
-			port_configs[i].rqor_val = val;
+			port_configs[i].rqor_set = 1; /*lint !e613*/
+			port_configs[i].rqor_val = val; /*lint !e613*/
 		}
 
 		ret = of_property_read_u32(cp, "write-qos-override", &val);
 		if (!ret) {
-			port_configs[i].wqor_set = 1;
-			port_configs[i].wqor_val = val;
+			port_configs[i].wqor_set = 1; /*lint !e613*/
+			port_configs[i].wqor_val = val; /*lint !e613*/
 		}
 
 		i++;

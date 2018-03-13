@@ -40,7 +40,7 @@
 /*lint -e773*/
 #define HI_DECLARE_SEMAPHORE(name) \
 	struct semaphore name = __SEMAPHORE_INITIALIZER(name, 0)
-HI_DECLARE_SEMAPHORE(hifi_log_sema);
+HI_DECLARE_SEMAPHORE(hifi_log_sema);/*lint !e64 !e570 !e651*/
 /*lint +e773*/
 struct hifi_om_s g_om_data;
 
@@ -133,7 +133,7 @@ static void hifi_get_time_stamp(char *timestamp_buf, unsigned int len)
 	memset(&tm, 0, sizeof(struct rtc_time));
 
 	do_gettimeofday(&tv);
-	tv.tv_sec -= sys_tz.tz_minuteswest * 60;
+	tv.tv_sec -= (long)sys_tz.tz_minuteswest * 60;
 	rtc_time_to_tm(tv.tv_sec, &tm);
 
 	snprintf(timestamp_buf, len, "%04d%02d%02d%02d%02d%02d",
@@ -152,7 +152,7 @@ static int hifi_chown(char *path, uid_t user, gid_t group)
 		return -1;
 
 	old_fs = get_fs();
-	set_fs(KERNEL_DS);
+	set_fs(KERNEL_DS);/*lint !e501*/
 
 	ret = (int)sys_chown((const char __user *)path, user, group);
 	if (ret) {
@@ -175,7 +175,7 @@ static int hifi_create_dir(char *path)
 	}
 
 	old_fs = get_fs();
-	set_fs(KERNEL_DS);
+	set_fs(KERNEL_DS);/*lint !e501*/
 
 	fd = sys_access(path, 0);
 	if (0 != fd) {

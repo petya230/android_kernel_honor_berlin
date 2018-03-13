@@ -59,6 +59,8 @@ struct vowifi_priv {
 
 	/* this handle is get from voice proxy when register sign init callback*/
 	int32_t sign_handle;
+
+	struct mutex ioctl_mutex;
 };
 
 static struct vowifi_priv priv;
@@ -375,7 +377,9 @@ static long vowifi_ioctl(struct file *fd, unsigned int cmd, unsigned long arg)
 	switch (cmd) {
 		case VOICE_PROXY_WAKE_UP_VOWIFI_READ:/*lint !e845*/
 			//logi("receive VOICE_PROXY_WAKE_UP_VOWIFI_READ cmd\n");
+			mutex_lock(&priv.ioctl_mutex);
 			vowifi_wake_up_read();
+			mutex_unlock(&priv.ioctl_mutex);
 			break;
 
 		default:
@@ -440,6 +444,7 @@ static int vowifi_probe(struct platform_device *pdev)
 
 	spin_lock_init(&priv.vowifi_read_lock);
 	init_waitqueue_head(&priv.vowifi_read_waitq);
+	mutex_init(&priv.ioctl_mutex);
 
 	ret = misc_register(&vowifi_misc_device);
 	if (ret) {

@@ -211,17 +211,6 @@ static void hisi_dma_enable_dma(struct hisi_dma_dev *d, bool on)
 	}
 }
 
-#if 0
-static void print_desc(struct hisi_dma_phy *phy)
-{
-	printk("hw->lli is 0x%x\n", readl(phy->base + CX_LLI));
-	printk("hw->count is 0x%x\n", readl(phy->base + CX_CNT));
-	printk("hw->saddr is 0x%x\n", readl(phy->base + CX_SRC));
-	printk("hw->daddr is 0x%x\n", readl(phy->base + CX_DST));
-	printk("hw->config is 0x%x\n", readl(phy->base + CX_CONFIG));
-}
-#endif
-
 static irqreturn_t hisi_dma_int_handler(int irq, void *dev_id)
 {
 	struct hisi_dma_dev *d = (struct hisi_dma_dev *)dev_id;
@@ -379,7 +368,7 @@ static void hisi_dma_tasklet(unsigned long arg)
 			/* Mark this channel allocated */
 			p->vchan = c;
 			c->phy = p;
-			dev_dbg(d->slave.dev, "pchan %u: alloc vchan %p\n", pch, &c->vc);
+			dev_dbg(d->slave.dev, "pchan %u: alloc vchan %pK\n", pch, &c->vc);
 		}
 	}
 	spin_unlock_irqrestore(&d->lock,flags);
@@ -491,12 +480,12 @@ static void hisi_dma_issue_pending(struct dma_chan *chan)
 				list_add_tail(&c->node, &d->chan_pending);
 				/* check in tasklet */
 				tasklet_schedule(&d->task);
-				dev_dbg(d->slave.dev, "vchan %p: issued\n", &c->vc);
+				dev_dbg(d->slave.dev, "vchan %pK: issued\n", &c->vc);
 			}
 		}
 		spin_unlock(&d->lock);
 	} else
-		dev_dbg(d->slave.dev, "vchan %p: nothing to issue\n", &c->vc);
+		dev_dbg(d->slave.dev, "vchan %pK: nothing to issue\n", &c->vc);
 	spin_unlock_irqrestore(&c->vc.lock, flags);
 }
 
@@ -527,17 +516,17 @@ static struct dma_async_tx_descriptor *hisi_dma_prep_memcpy(
 	num = DIV_ROUND_UP(len, DMA_MAX_SIZE);
 	ds = kzalloc(sizeof(*ds) + num * sizeof(ds->desc_hw[0]), GFP_ATOMIC | GFP_DMA);
 	if (!ds) {
-		dev_dbg(chan->device->dev, "vchan %p: kzalloc fail\n", (void*)&c->vc);
+		dev_dbg(chan->device->dev, "vchan %pK: kzalloc fail\n", (void*)&c->vc);
 		return NULL;
 	}
-	ds->desc_hw_lli = __virt_to_phys((unsigned long)&ds->desc_hw[0]);
+	ds->desc_hw_lli = __virt_to_phys((unsigned long)&ds->desc_hw[0]);/*lint !e648*/
 	ds->size = len;
 	ds->desc_num = num;
 	num = 0;
 
 	if (!c->ccfg) {
 		/* default is memtomem, without calling device_control */
-		c->ccfg = CCFG_SRCINCR | CCFG_DSTINCR | CCFG_EN;
+		c->ccfg = CCFG_SRCINCR | CCFG_DSTINCR | CCFG_EN;/*lint !e648*/
 		c->ccfg |= (0xf << 20) | (0xf << 24);	/* burst = 16 */
 		c->ccfg |= (0x3 << 12) | (0x3 << 16);	/* width = 64 bit */
 	}
@@ -578,7 +567,7 @@ static struct dma_async_tx_descriptor *hisi_dma_prep_slave_sg(
 	if (sgl == 0)
 		return NULL;
 
-	for_each_sg(sgl, sg, sglen, i) {
+	for_each_sg(sgl, sg, sglen, i) {/*lint !e574*/
 		avail = sg_dma_len(sg);
 		if (avail > DMA_MAX_SIZE)
 			num += DIV_ROUND_UP(avail, DMA_MAX_SIZE) - 1;
@@ -586,14 +575,14 @@ static struct dma_async_tx_descriptor *hisi_dma_prep_slave_sg(
 
 	ds = kzalloc(sizeof(*ds) + num * sizeof(ds->desc_hw[0]), GFP_ATOMIC | GFP_DMA);
 	if (!ds) {
-		dev_dbg(chan->device->dev, "vchan %p: kzalloc fail\n", &c->vc);
+		dev_dbg(chan->device->dev, "vchan %pK: kzalloc fail\n", &c->vc);
 		return NULL;
 	}
-	ds->desc_hw_lli = __virt_to_phys((unsigned long)&ds->desc_hw[0]);
+	ds->desc_hw_lli = __virt_to_phys((unsigned long)&ds->desc_hw[0]);/*lint !e648*/
 	ds->desc_num = num;
 	num = 0;
 
-	for_each_sg(sgl, sg, sglen, i) {
+	for_each_sg(sgl, sg, sglen, i) {/*lint !e574*/
 		addr = sg_dma_address(sg);
 		avail = sg_dma_len(sg);
 		total += avail;
@@ -622,7 +611,7 @@ static struct dma_async_tx_descriptor *hisi_dma_prep_slave_sg(
 	                           ds->desc_num * sizeof(ds->desc_hw[0]), DMA_TO_DEVICE);
 #endif
 	ds->size = total;
-	return vchan_tx_prep(&c->vc, &ds->vd, flags);
+	return vchan_tx_prep(&c->vc, &ds->vd, flags);/*lint !e593*/
 }
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 13, 0))
@@ -647,12 +636,12 @@ static int hisi_dma_config(struct dma_chan *chan, struct dma_slave_config *confi
 			maxburst = config->src_maxburst;
 			width = config->src_addr_width;
 		} else if (c->dir == DMA_MEM_TO_DEV) {
-			c->ccfg = CCFG_SRCINCR;
+			c->ccfg = CCFG_SRCINCR;/*lint !e648*/
 			c->dev_addr = config->dst_addr;
 			maxburst = config->dst_maxburst;
 			width = config->dst_addr_width;
 		} else if(c->dir == DMA_MEM_TO_MEM) {
-			c->ccfg = CCFG_SRCINCR | CCFG_DSTINCR;
+			c->ccfg = CCFG_SRCINCR | CCFG_DSTINCR;/*lint !e648*/
 		}
 
 		switch (width) {
@@ -697,7 +686,7 @@ static int hisi_dma_pause(struct dma_chan *chan)
 		return -EINVAL;
 	}
 
-    dev_dbg(d->slave.dev, "vchan %p: pause\n", &c->vc);
+    dev_dbg(d->slave.dev, "vchan %pK: pause\n", &c->vc);
 	if (c->status == DMA_IN_PROGRESS) {
 		c->status = DMA_PAUSED;
 		spin_lock_irqsave(&d->lock,flags);
@@ -725,7 +714,7 @@ static int hisi_dma_resume(struct dma_chan *chan)
 		return -EINVAL;
 	}
 
-    dev_dbg(d->slave.dev, "vchan %p: resume\n", &c->vc);
+    dev_dbg(d->slave.dev, "vchan %pK: resume\n", &c->vc);
 	spin_lock_irqsave(&c->vc.lock, flags);
 	p = c->phy;
 	if (c->status == DMA_PAUSED) {
@@ -755,7 +744,7 @@ static int hisi_dma_terminate_all(struct dma_chan *chan)
 		return -EINVAL;
 	}
 
-    dev_dbg(d->slave.dev, "vchan %p: terminate all\n", &c->vc);
+    dev_dbg(d->slave.dev, "vchan %pK: terminate all\n", &c->vc);
 	/* Prevent this channel being scheduled */
 	spin_lock_irqsave(&d->lock,flags);
 	list_del_init(&c->node);
@@ -852,7 +841,7 @@ static int hisi_dma_control(struct dma_chan *chan, enum dma_ctrl_cmd cmd,
 		break;
 
 	case DMA_TERMINATE_ALL:
-		dev_dbg(d->slave.dev, "vchan %p: terminate all\n", &c->vc);
+		dev_dbg(d->slave.dev, "vchan %pK: terminate all\n", &c->vc);
 		/* Prevent this channel being scheduled */
 		spin_lock_irqsave(&d->lock,flags);
 		list_del_init(&c->node);
@@ -882,7 +871,7 @@ static int hisi_dma_control(struct dma_chan *chan, enum dma_ctrl_cmd cmd,
 		break;
 
 	case DMA_PAUSE:
-		dev_dbg(d->slave.dev, "vchan %p: pause\n", &c->vc);
+		dev_dbg(d->slave.dev, "vchan %pK: pause\n", &c->vc);
 		if (c->status == DMA_IN_PROGRESS) {
 			c->status = DMA_PAUSED;
 			spin_lock_irqsave(&d->lock,flags);
@@ -898,7 +887,7 @@ static int hisi_dma_control(struct dma_chan *chan, enum dma_ctrl_cmd cmd,
 		break;
 
 	case DMA_RESUME:
-		dev_dbg(d->slave.dev, "vchan %p: resume\n", &c->vc);
+		dev_dbg(d->slave.dev, "vchan %pK: resume\n", &c->vc);
 		spin_lock_irqsave(&c->vc.lock, flags);
 		p = c->phy;
 		if (c->status == DMA_PAUSED) {
@@ -931,7 +920,7 @@ void show_dma_reg(struct dma_chan *chan)
 	    return;
 	}
 
-    printk(KERN_ERR "%s: chan[0x%p] id[%d] cookie[%d-%d]!\n", __func__,
+    printk(KERN_ERR "%s: chan[0x%pK] id[%d] cookie[%d-%d]!\n", __func__,
             chan, chan->chan_id, chan->cookie, chan->completed_cookie);
 
 	if (!chan->device) {
@@ -968,20 +957,12 @@ void show_dma_reg(struct dma_chan *chan)
 	}
 
     p = c->phy;
-    printk(KERN_ERR "%s: chan[%p] ccfg[0x%x] dir[%d] dev_addr[0x%llx] status[%d]\n",
+    printk(KERN_ERR "%s: chan[%pK] ccfg[0x%x] dir[%d] dev_addr[0x%llx] status[%d]\n",
             __func__, c, c->ccfg, c->dir, c->dev_addr, c->status);
-    printk(KERN_ERR "%s: phy idx[0x%x] ds_run[%p] ds_done[p%p]\n",
+    printk(KERN_ERR "%s: phy idx[0x%x] ds_run[%pK] ds_done[%pK]\n",
             __func__, p->idx, p->ds_run, p->ds_done);
-#if 0
-    dev_info(d->slave.dev, "CX_CONFIG =%x\n",   readl(c->phy->base + CX_CONFIG));
-    dev_info(d->slave.dev, "CX_AXI_CONF =%x\n", readl(c->phy->base + AXI_CONFIG));
-    dev_info(d->slave.dev, "SRC =%x\n",         readl(c->phy->base + CX_SRC));
-    dev_info(d->slave.dev, "DST =%x\n",         readl(c->phy->base + CX_DST));
-    dev_info(d->slave.dev, "CNT0 =%x\n",        readl(c->phy->base + CX_CNT));
-    dev_info(d->slave.dev, "CX_CURR_CNT0 =%x\n",readl(c->phy->base + CX_CUR_CNT));
-#endif
 
-	for (i = d->dma_min_chan; i < d->dma_channels; i++) {
+	for (i = d->dma_min_chan; i < d->dma_channels; i++) {/*lint !e574*/
 		p = &d->phy[i];
         printk(KERN_ERR "idx[%2d]:CX_CONFIG:[0x%8x], CX_AXI_CONF:[0x%8x], "
             "SRC:[0x%8x], DST:[0x%8x], CNT0:[0x%8x], CX_CURR_CNT0:[0x%8x]\n",
@@ -1064,7 +1045,7 @@ static int hisi_dma_probe(struct platform_device *op)
 	d->base = devm_request_and_ioremap(&op->dev, iores);
 #endif
 	if (!d->base)
-		return -EADDRNOTAVAIL;
+		return -EADDRNOTAVAIL;/*lint !e429*/
 
 	of_id = of_match_device(hisi_pdma_dt_ids, &op->dev);
 	if (of_id) {
@@ -1074,14 +1055,14 @@ static int hisi_dma_probe(struct platform_device *op)
 	if (ret) {
 		dev_err(&op->dev,"%s doesn't have dma-channels property!\n",
 		        __func__);
-		return ret;
+		return ret;/*lint !e429*/
 	}
 	ret = of_property_read_u32((&op->dev)->of_node,
 	                           "dma-requests", &d->dma_requests);
 	if (ret) {
 		dev_err(&op->dev,"%s doesn't have dma-request property!\n",
 		        __func__);
-		return ret;
+		return ret;/*lint !e429*/
 	}
 
 	of_property_read_u32((&op->dev)->of_node,
@@ -1102,7 +1083,7 @@ static int hisi_dma_probe(struct platform_device *op)
 	d->clk = devm_clk_get(&op->dev, NULL);
 	if (IS_ERR(d->clk)) {
 		dev_err(&op->dev, "no dma clk\n");
-		return PTR_ERR(d->clk);
+		return PTR_ERR(d->clk);/*lint !e429*/
 	}
 
 	irq = platform_get_irq(op, 0);
@@ -1114,18 +1095,18 @@ static int hisi_dma_probe(struct platform_device *op)
 	                       hisi_dma_int_handler, IRQF_DISABLED, DRIVER_NAME, d);
 #endif
 	if (ret)
-		return ret;
+		return ret;/*lint !e429*/
 
 	/* init phy channel */
 	d->phy = devm_kzalloc(&op->dev,
 	                      d->dma_channels * sizeof(struct hisi_dma_phy), GFP_KERNEL);
 	if (d->phy == NULL)
-		return -ENOMEM;
+		return -ENOMEM;/*lint !e429*/
 
-	for (i = d->dma_min_chan; i < d->dma_channels; i++) {
+	for (i = d->dma_min_chan; i < d->dma_channels; i++) {/*lint !e574*/
 		struct hisi_dma_phy *p = &d->phy[i];
 		p->idx = i;
-		p->base = d->base + i * 0x40;
+		p->base = d->base + i * 0x40;/*lint !e679*/
 	}
 
 	INIT_LIST_HEAD(&d->slave.channels);
@@ -1156,9 +1137,9 @@ static int hisi_dma_probe(struct platform_device *op)
 	d->chans = devm_kzalloc(&op->dev,
 	                        d->dma_requests * sizeof(struct hisi_dma_chan), GFP_KERNEL);
 	if (d->chans == NULL)
-		return -ENOMEM;
+		return -ENOMEM;/*lint !e429*/
 
-	for (i = 0; i < d->dma_requests; i++) {
+	for (i = 0; i < d->dma_requests; i++) {/*lint !e574*/
 		struct hisi_dma_chan *c = &d->chans[i];
 
 		c->status = DMA_IN_PROGRESS;
@@ -1181,7 +1162,7 @@ static int hisi_dma_probe(struct platform_device *op)
 	ret = clk_prepare_enable(d->clk);
 	if (ret < 0) {
 		dev_err(&op->dev, "clk_prepare_enable failed: %d\n", ret);
-		return -EINVAL;
+		return -EINVAL;/*lint !e429*/
 	}
 	hisi_dma_enable_dma(d, true);
 #endif

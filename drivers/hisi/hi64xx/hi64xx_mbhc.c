@@ -35,7 +35,7 @@
 #include <sound/soc.h>
 
 #include "../../../sound/soc/codecs/hs_auto_calib/hs_auto_calib.h"
-/*lint -e750 -e838 -e732*/
+/*lint -e750 -e838 -e732 -e655 -e64*/
 #define HI64xx_BTN_MASK	(SND_JACK_BTN_0 | SND_JACK_BTN_1 | SND_JACK_BTN_2)
 
 
@@ -573,6 +573,7 @@ static irqreturn_t hi64xx_btndown_handler(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
+/*lint -save -e613 -e548 -e730*/
 static irqreturn_t hi64xx_btnup_comp2_handler(int irq, void *data)
 {
 	struct hi64xx_mbhc_priv *priv =
@@ -606,6 +607,7 @@ static irqreturn_t hi64xx_btndown_comp2_handler(int irq, void *data)
 
 	return IRQ_HANDLED;
 }
+/*lint -restore*/
 
 static irqreturn_t hi64xx_btnup_eco_handler(int irq, void *data)
 {

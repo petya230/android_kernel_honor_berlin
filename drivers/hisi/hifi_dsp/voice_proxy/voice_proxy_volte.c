@@ -111,20 +111,6 @@ static void volte_sign_init(void)
 	priv.first_ciphertext = true;
 }
 
-void debug_test_buf(int8_t *buf, uint32_t buf_size)
-{
-	int i;
-	printk(KERN_ERR "debug_data_print:\n");
-	for (i = 0; i < buf_size; i++) {/*lint !e574 !e737*/
-		if ( 0 == i%16) {
-			printk(KERN_ERR "\n%08X : ", i);
-		}
-		printk(KERN_ERR " %02X ", buf[i]);
-	}
-
-	return;
-}
-
 static int32_t volte_add_decrypted_data(int8_t *data, uint32_t size)
 {
 	struct voice_proxy_data_node *node;
@@ -186,8 +172,6 @@ static int32_t volte_send_data(struct voice_proxy_data_node *node, struct send_t
 		rx->msg_id = ID_PROXY_VOICE_LTE_RX_NTF;
 		node->list_data.size = sizeof(*rx);
 
-		loge("debug_test_buf %d, %s, %s", __LINE__, __FUNCTION__, __FILE__);
-		debug_test_buf((int8_t *)rx->data, PROXY_VOICE_CODEC_MAX_DATA_LEN);
 		ret = voice_proxy_add_data(volte_add_decrypted_data,
 		                           (int8_t *)node,
 		                           (unsigned int)sizeof(*node),
@@ -199,8 +183,6 @@ static int32_t volte_send_data(struct voice_proxy_data_node *node, struct send_t
 		tx->msg_id = ID_PROXY_VOICE_LTE_TX_NTF;
 		node->list_data.size = sizeof(*tx);
 
-		loge("debug_test_buf %d, %s, %s", __LINE__, __FUNCTION__, __FILE__);
-		debug_test_buf((int8_t *)tx->data, PROXY_VOICE_CODEC_MAX_DATA_LEN);
 		ret = voice_proxy_add_data(volte_add_encrypted_data,
 		                           (int8_t *)node,
 		                           (unsigned int)sizeof(*node),
@@ -266,8 +248,6 @@ int32_t proxy_push_data(void *data)
 				node = NULL;
 			} else if (node->list_data.id == buf->id) {
 				logi("send this node\n");
-				loge("debug_test_buf %d, %s, %s", __LINE__, __FUNCTION__, __FILE__);
-				debug_test_buf((int8_t*)buf, (unsigned int)sizeof(struct send_tfagent_data));
 				volte_send_data(node, buf);
 				break;
 			} else {
@@ -331,8 +311,6 @@ int32_t proxy_pull_data(int8_t *data, int32_t size)
 		if (node->list_data.size <= size) {
 			memcpy(data, node->list_data.data, node->list_data.size);/*lint !e732 !e747*/
 			ret = node->list_data.size;
-			loge("debug_test_buf %d, %s, %s", __LINE__, __FUNCTION__, __FILE__);
-			debug_test_buf(data, (unsigned int)ret);
 		} else {
 			loge("data size err, data size(%d)>size(%d)\n", node->list_data.size, size);
 			ret = -EFAULT;
@@ -504,8 +482,6 @@ static void volte_receive_undecrypt_ntf(int8_t *rev_buf, uint32_t buf_size)
 	BUG_ON(NULL == rev_buf);/*lint !e730*/
 
 	loge("volte_receive_undecrypt_ntf\n");
-	loge("debug_test_buf %d, %s, %s", __LINE__, __FUNCTION__, __FILE__);
-	debug_test_buf(rev_buf, buf_size);
 
 	ret = volte_add_pull_data(rev_buf, buf_size, PROXY_TO_TF_UNDECRYPT_DATA);
 	if (ret) {
@@ -527,8 +503,6 @@ static void volte_receive_unencrypt_ntf(int8_t *rev_buf, uint32_t buf_size)
 	BUG_ON(NULL == rev_buf);/*lint !e730*/
 
 	loge("volte_receive_unencrypt_ntf\n");
-	loge("debug_test_buf %d, %s, %s", __LINE__, __FUNCTION__, __FILE__);
-	debug_test_buf(rev_buf, buf_size);
 
 	ret = volte_add_pull_data(rev_buf, buf_size, PROXY_TO_TF_UNENCRYPT_DATA);
 	if (ret) {
@@ -659,8 +633,6 @@ static void volte_handle_decrypted_ntf(int8_t *data, uint32_t *size, uint16_t *m
 	}
 	*msg_id = ID_PROXY_VOICE_LTE_RX_NTF;
 
-	loge("debug_test_buf %d, %s, %s", __LINE__, __FUNCTION__, __FILE__);
-	debug_test_buf(data, *size);
 }
 
 static void volte_handle_decrypted_cnf(int8_t *data, uint32_t *size, uint16_t *msg_id)
@@ -677,9 +649,6 @@ static void volte_handle_decrypted_cnf(int8_t *data, uint32_t *size, uint16_t *m
 
 	volte_get_decryped_data(data, size);
 	*msg_id = ID_PROXY_VOICE_LTE_RX_NTF;
-
-	loge("debug_test_buf %d, %s, %s", __LINE__, __FUNCTION__, __FILE__);
-	debug_test_buf(data, *size);
 }
 
 static void volte_handle_encrypted_ntf(int8_t *data, uint32_t *size, uint16_t *msg_id)
@@ -700,8 +669,6 @@ static void volte_handle_encrypted_ntf(int8_t *data, uint32_t *size, uint16_t *m
 	}
 	*msg_id = ID_PROXY_VOICE_LTE_TX_NTF;
 
-	loge("debug_test_buf %d, %s, %s", __LINE__, __FUNCTION__, __FILE__);
-	debug_test_buf(data, *size);
 }
 
 static void volte_handle_encrypted_cnf(int8_t *data, uint32_t *size, uint16_t *msg_id)
