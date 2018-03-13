@@ -304,7 +304,7 @@ ERR_PROBE_DUMP_END:
 	for (i = 0; i < sizeof(*pt_dump) / 16; i++) {
 		pr_info("(%03d~%03d)%08x %08x %08x %08x\n", 4 * i, 4 * i + 3,
 			ptr[4 * i], ptr[4 * i + 1], ptr[4 * i + 2],
-			ptr[4 * i + 3]);
+			ptr[4 * i + 3]); /*lint !e679*/
 	}
 
 malloc_free:
@@ -344,13 +344,13 @@ int noc_dump_init(void)
 
 	/* Init noc_dump_reg_list Array. */
 	for (i = 0; i < hisi_noc_get_dump_reg_list_num(); i++) {
-		if (!strcmp(noc_dump_reg_list[i].name, "PCTRL"))
+		if (!strncmp(noc_dump_reg_list[i].name, "PCTRL", sizeof("PCTRL")))
 			noc_dump_reg_list[i].addr = g_noc_dump_info.noc_device_ptr->pctrl_base;
-		else if (!strcmp(noc_dump_reg_list[i].name, "SCTRL"))
+		else if (!strncmp(noc_dump_reg_list[i].name, "SCTRL", sizeof("SCTRL")))
 			noc_dump_reg_list[i].addr = g_noc_dump_info.noc_device_ptr->sctrl_base;
-		else if (!strcmp(noc_dump_reg_list[i].name, "PMCTRL"))
+		else if (!strncmp(noc_dump_reg_list[i].name, "PMCTRL", sizeof("PMCTRL")))
 			noc_dump_reg_list[i].addr = g_noc_dump_info.noc_device_ptr->pmctrl_base;
-		else if (!strcmp(noc_dump_reg_list[i].name, "CRGPERIPH"))
+		else if (!strncmp(noc_dump_reg_list[i].name, "CRGPERIPH", sizeof("CRGPERIPH")))
 			noc_dump_reg_list[i].addr = g_noc_dump_info.noc_device_ptr->pcrgctrl_base;
 		else
 			pr_err("[%s] noc_dump_reg_list Info Error!\n", __func__);

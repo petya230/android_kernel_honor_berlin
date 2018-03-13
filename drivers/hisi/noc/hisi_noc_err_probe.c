@@ -123,7 +123,7 @@ u64 print_errlog1(unsigned int val, unsigned int idx, int *pinitflow)
 
 	shift = ffs((int)noc_bus->initflow_mask) - 1;
 	initflow = (int)((val & (noc_bus->initflow_mask)) >> shift);
-	if (initflow < noc_bus->initflow_array_size) {
+	if ((unsigned int)initflow < noc_bus->initflow_array_size) {
 		*pinitflow = initflow;
 		noc_info_backup.init_flow = initflow;
 		pr_err("\t[init_flow=%d]: %s\n", initflow,
@@ -136,7 +136,7 @@ u64 print_errlog1(unsigned int val, unsigned int idx, int *pinitflow)
 
 	shift = ffs((int)noc_bus->targetflow_mask) - 1;
 	targetflow = (int)((val & (noc_bus->targetflow_mask)) >> shift);
-	if (targetflow < noc_bus->targetflow_array_size)
+	if ((unsigned int)targetflow < noc_bus->targetflow_array_size)
 		pr_err("\t[target_flow=%d]: %s\n", targetflow,
 		       noc_bus->targetflow_array[targetflow]);
 	else
@@ -278,7 +278,7 @@ void noc_err_get_msg_log1(uint *reg_val_buf, uint idx,
 	shift = ffs(noc_bus->initflow_mask) - 1;
 	initflow = (val & (noc_bus->initflow_mask)) >> shift;
 	pt_err_msg->init_flow.val = initflow;
-	if (initflow < noc_bus->initflow_array_size)
+	if ((unsigned int)initflow < noc_bus->initflow_array_size)
 		pt_err_msg->init_flow.pt_str =
 		    noc_bus->initflow_array[initflow];
 	else
@@ -287,7 +287,7 @@ void noc_err_get_msg_log1(uint *reg_val_buf, uint idx,
 	shift = ffs(noc_bus->targetflow_mask) - 1;
 	targetflow = (val & (noc_bus->targetflow_mask)) >> shift;
 	pt_err_msg->target_flow.val = targetflow;
-	if (targetflow < noc_bus->targetflow_array_size)
+	if ((unsigned int)targetflow < noc_bus->targetflow_array_size)
 		pt_err_msg->target_flow.pt_str =
 		    noc_bus->targetflow_array[targetflow];
 	else
@@ -535,7 +535,7 @@ void enable_err_probe(void __iomem *base)
 
 		noc_bus_info_num = hisi_noc_get_bus_info_num();
 
-		if (bus_id >= 0 && bus_id < noc_bus_info_num) {
+		if (bus_id >= 0 && (unsigned int)bus_id < noc_bus_info_num) {
 			print_errlog(base, bus_id);
 		} else {
 			val = readl_relaxed((u8 __iomem *)base +

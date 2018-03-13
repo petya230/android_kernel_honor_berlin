@@ -141,7 +141,7 @@ void noc_transcation_probe_hanlder(const struct noc_node *node,
 {
 	unsigned int val;
 
-	pr_err("noc_packet_probe_hanlder +++++++++++++++++++++%d\n", idx);
+	pr_err("noc_transaction_probe_hanlder +++++++++++++++++++++%d\n", idx);
 	val = (u32) readl_relaxed((char *)base + TRANS_M_COUNTERS_0_VAL);
 	pr_err("the TRANS_M_COUNTERS_0_VAL is 0x%x\n", val);
 

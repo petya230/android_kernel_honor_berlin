@@ -40,7 +40,7 @@
 #include "hi3xxx_asp_dma.h"
 #include "asp_dma.h"
 
-/*lint -e749*/
+/*lint -e749 -e64 -e647 -e429*/
 
 #define HI3XXX_MAX_BUFFER_SIZE  (1024 * 1024)
 #define PCM_PORTS_MAX           (4) /* max ports num for all stream type - same as soc hifi */
@@ -495,9 +495,9 @@ static int hi3xxx_intr_dmac_handle(unsigned short int_type, unsigned long para, 
 	BUG_ON(NULL == prtd);
 
 	if (SNDRV_PCM_STREAM_PLAYBACK == substream->stream) {
-		log_tag = "StreamPlayback";
+		log_tag = (unsigned char *)"StreamPlayback";
 	} else {
-		log_tag = "StreamCapture";
+		log_tag = (unsigned char *)"StreamCapture";
 	}
 
 	if (error_interrupt_handle(prtd, int_type, dma_channel)) {
@@ -517,7 +517,7 @@ static int hi3xxx_intr_dmac_handle(unsigned short int_type, unsigned long para, 
 
 	spin_lock(&prtd->lock);
 	if (0 > hi3xxx_intr_dmac_check(prtd, intervalNormalMs, dma_channel)) {
-		pr_warn("[%s:%d][%s] IRQ_TIME_ERROR! dma_channel: %d\n", __FUNCTION__, __LINE__, log_tag, dma_channel);
+		pr_err("[%s:%d][%s] IRQ_TIME_ERROR! dma_channel: %d\n", __FUNCTION__, __LINE__, log_tag, dma_channel);
 		spin_unlock(&prtd->lock);
 		return -EFAULT;
 	}
@@ -721,13 +721,13 @@ static int hi3xxx_asp_dmac_get_codec(struct snd_soc_pcm_runtime *rtd, struct hi3
 	}
 
 	pr_info("[%s:%d] codec_name : %s\n", __FUNCTION__, __LINE__, codec_name);
-	if (!strcmp(codec_name, CODEC_NAME_HI6402)) {
+	if (!strncmp(codec_name, CODEC_NAME_HI6402, strlen(CODEC_NAME_HI6402))) {
 		prtd->pcm_port_tbl = pcm_port_tbl_6402;
 		prtd->dma_cfg_tbl = dma_cfg_slimbus_6402;
-	} else if (!strcmp(codec_name, CODEC_NAME_HI6403ES)) {
+	} else if (!strncmp(codec_name, CODEC_NAME_HI6403ES, strlen(CODEC_NAME_HI6403ES))) {
 		prtd->pcm_port_tbl = pcm_port_tbl_6403es;
 		prtd->dma_cfg_tbl = dma_cfg_slimbus_6403;
-	} else if (!strcmp(codec_name, CODEC_NAME_HI6403)) {
+	} else if (!strncmp(codec_name, CODEC_NAME_HI6403, strlen(CODEC_NAME_HI6403))) {
 		prtd->pcm_port_tbl = pcm_port_tbl_6403;
 		prtd->dma_cfg_tbl = dma_cfg_slimbus_6403;
 	} else {
@@ -759,7 +759,10 @@ static int hi3xxx_asp_dmac_open(struct snd_pcm_substream *substream)
 	rtd = (struct snd_soc_pcm_runtime *)substream->private_data;
 	pdata = (struct hi3xxx_asp_dmac_data *)snd_soc_platform_get_drvdata(rtd->platform);
 
-	BUG_ON(NULL == pdata);
+	if (NULL == pdata) {
+		kfree(prtd);
+		return -ENOMEM;
+	}
 
 	ret = hi3xxx_asp_dmac_regulator_enable(pdata);
 	if (ret != 0) {

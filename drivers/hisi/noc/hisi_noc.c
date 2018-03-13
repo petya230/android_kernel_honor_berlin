@@ -186,8 +186,8 @@ int noc_node_try_to_giveup_idle(struct noc_node *node)
 	pm_idlereq_reg =
 		noc_dev->pmctrl_base + noc_dev->preg_list->pmctrl_power_idlereq_offset;
 	status = readl_relaxed(pm_idlereq_reg);
-	status &= ~(1 << (node->pwrack_bit));
-	status |= (1 << (node->pwrack_bit + 16));
+	status &= ~((unsigned long)(1UL << (node->pwrack_bit)));
+	status |= (unsigned)(1 << (node->pwrack_bit + 16));
 	writel_relaxed(status, pm_idlereq_reg);
 
 	status = readl_relaxed(noc_dev->pmctrl_base +
@@ -450,7 +450,7 @@ static int find_bus_id_by_name(const char *bus_name)
 	pt_noc_arr = noc_get_buses_info();
 	pt_noc_bus_info = pt_noc_arr->ptr;
 
-	for (i = 0; i < pt_noc_arr->len; i++) {
+	for (i = 0; (unsigned int)i < pt_noc_arr->len; i++) {
 		if (strncmp(bus_name, pt_noc_bus_info[i].name, 256) == 0)
 			return i;
 	}
@@ -541,7 +541,7 @@ static int register_noc_node(struct device_node *np)
 			node->eprobe_autoenable = true;
 
 		ret = of_property_read_u32(np, "eprobe-hwirq",
-					 &node->eprobe_hwirq);
+					 (u32 *)&node->eprobe_hwirq);
 		if (ret < 0) {
 			node->eprobe_hwirq = -1;
 			pr_debug("the node doesnot have err probe!\n");
@@ -559,7 +559,7 @@ static int register_noc_node(struct device_node *np)
 	}
 
 	if (node->eprobe_hwirq >= 0) {
-		ret = of_property_read_u32(np, "hwirq-type", &node->hwirq_type);
+		ret = of_property_read_u32(np, "hwirq-type", (u32 *)&node->hwirq_type);
 		if (ret < 0) {
 			node->hwirq_type = -1;
 			pr_err("the node doesnot have hwirq type!\n");
@@ -579,7 +579,7 @@ static int register_noc_node(struct device_node *np)
 		goto err_iomap;
 	}
 
-	if (!strcmp(node->name, noc_property_dt.stop_cpu_bus_node_name)) {
+	if (!strcmp(node->name, noc_property_dt.stop_cpu_bus_node_name)) { /*lint !e421*/
 		struct hisi_noc_device *noc_dev = platform_get_drvdata(g_this_pdev);
 		if ((NULL == noc_dev)||(NULL == noc_dev->perr_probe_reg)) {
 			pr_err("get noc_dev error!\n");
@@ -658,7 +658,7 @@ void register_irqdata(void)
 		}
 		if ((node->hwirq_type >= NOC_ERR_PROBE_IRQ)
 		    && (node->hwirq_type <= NOC_TRANS_PROBE_IRQ)) {
-			noc_irqdata[node->eprobe_hwirq].type = node->hwirq_type;
+			noc_irqdata[node->eprobe_hwirq].type = (enum NOC_IRQ_TPYE)node->hwirq_type;
 			noc_irqdata[node->eprobe_hwirq].node = node;
 
 			if (NOC_TRANS_PROBE_IRQ == node->hwirq_type)
@@ -687,12 +687,12 @@ void register_noc_nodes(void)
 static void unregister_noc_nodes(void)
 {
 	struct noc_node *node = NULL;
-	int i = 0;
+	unsigned int i;
 
 	for (i = 0; i < nodes_array_idx; i++) {
 		GET_NODE_FROM_ARRAY(node, i);
 		if (!node) {
-			pr_err("[%s]: nodes_array index %d not found.\n",
+			pr_err("[%s]: nodes_array index %u not found.\n",
 			       __func__, i);
 			continue;
 		}
@@ -724,14 +724,14 @@ static void unregister_noc_nodes(void)
 void __iomem *get_errprobe_base(const char *name)
 {
 	struct noc_node *node = NULL;
-	int i = 0;
+	unsigned int i;
 
 	if (!name)
 		return NULL;
 	for (i = 0; i < nodes_array_idx; i++) {
 		GET_NODE_FROM_ARRAY(node, i);
 		if (!node) {
-			pr_err("[%s]: nodes_array index %d not found.\n",
+			pr_err("[%s]: nodes_array index %u not found.\n",
 			       __func__, i);
 			continue;
 		}
@@ -751,12 +751,12 @@ EXPORT_SYMBOL(get_errprobe_base);
 int get_bus_id_by_base(const void __iomem *base)
 {
 	struct noc_node *node = NULL;
-	int i = 0;
+	unsigned int i;
 
 	for (i = 0; i < nodes_array_idx; i++) {
 		GET_NODE_FROM_ARRAY(node, i);
 		if (!node) {
-			pr_err("[%s]: nodes_array index %d not found.\n",
+			pr_err("[%s]: nodes_array index %u not found.\n",
 			       __func__, i);
 			continue;
 		}
@@ -770,12 +770,12 @@ int get_bus_id_by_base(const void __iomem *base)
 struct noc_node *get_probe_node(const char *name)
 {
 	struct noc_node *node = NULL;
-	int i = 0;
+	unsigned int i;
 
 	for (i = 0; i < nodes_array_idx; i++) {
 		GET_NODE_FROM_ARRAY(node, i);
 		if (!node) {
-			pr_err("[%s]: nodes_array index %d not found.\n",
+			pr_err("[%s]: nodes_array index %u not found.\n",
 			       __func__, i);
 			continue;
 		}
@@ -1101,7 +1101,7 @@ static int hisi_noc_part_probe(struct platform_device *pdev,
 		return -1;
 	}
 
-	ret = of_property_read_u32(np, "reg-dump-nums", &nums);
+	ret = of_property_read_u32(np, "reg-dump-nums", (u32 *)&nums);
 	if (ret) {
 		pr_err("[%s], cannot find reg-dump-nums in dts!\n",
 		       __func__);
@@ -1117,7 +1117,7 @@ static int hisi_noc_part_probe(struct platform_device *pdev,
 	for (i = 0; i < NOC_MAX_BASE; i++)
 		reg_base[i] = NULL;
 
-	for (i = 0; i < nums; i++) {
+	for (i = 0; i < (unsigned int)nums; i++) {
 		reg_base[i] = of_iomap(np, i);
 		BUG_ON(!reg_base[i]);
 	}
@@ -1129,19 +1129,19 @@ static int hisi_noc_part_probe(struct platform_device *pdev,
 	noc_dev->pctrl_base    = reg_base[NOC_PCTRL_BASE];
 	if (!noc_dev->pctrl_base) {
 		BUG_ON(1);
-		goto err_sctrl;
+		goto err_sctrl; /*lint !e527*/
 	}
 
 	noc_dev->pcrgctrl_base = reg_base[NOC_PCRGCTRL_BASE];
 	if (!noc_dev->pcrgctrl_base) {
 		BUG_ON(1);
-		goto err_crgctrl;
+		goto err_crgctrl; /*lint !e527*/
 	}
 
 	noc_dev->pmctrl_base   = reg_base[NOC_PMCTRL_BASE];
 	if (!noc_dev->pmctrl_base) {
 		BUG_ON(1);
-		goto err_pmctrl;
+		goto err_pmctrl; /*lint !e527*/
 	}
 
 	/* Record Media1-CRG base address. */
@@ -1344,7 +1344,7 @@ static int hisi_noc_probe(struct platform_device *pdev)
 	if (NULL == match) {
 		pr_err("hisi_noc_probe: mismatch of hisi noc driver\n\r");
 		BUG_ON(1);
-		goto err;
+		goto err; /*lint !e527*/
 	}
 
 	/* get the pwrctrl_reg offset  */
@@ -1477,10 +1477,10 @@ static int hisi_noc_probe(struct platform_device *pdev)
 
 	noc_err_probe_init();
 	g_noc_init = 1;
-	return 0;
+	return 0; /*lint !e429*/
 
 err:
-	return ret;
+	return ret; /*lint !e429 !e593*/
 }
 
 static int hisi_noc_remove(struct platform_device *pdev)

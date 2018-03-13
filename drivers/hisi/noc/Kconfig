@@ -10,4 +10,4 @@ config HISI_NOC_DBG
 	bool "Support HiSilicon NOC Dbg node"
 	default n
 	help
-	   Support HiSilicon NOC Dbg node
+	  Support HiSilicon NOC Dbg node

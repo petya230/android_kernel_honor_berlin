@@ -136,6 +136,10 @@ static void hi6555c_misc_reg_write(struct work_struct *work)
 
 	BUG_ON(!priv);
 
+	if (NULL == priv) {
+		loge("%s:priv is NULL!", __FUNCTION__);
+		return;
+	}
 	value = priv->tool_data.value;
 	reg = priv->tool_data.reg;
 
@@ -183,7 +187,7 @@ static bool hi6555c_reg_value_valid(unsigned int reg_type, unsigned int reg_valu
 {
 	bool is_valid = true;
 	unsigned int reg_page_array_size = ARRAY_SIZE(reg_page_array);
-	int i = 0;
+	unsigned int i = 0;
 
 	for (i = 0; i < reg_page_array_size; i++) {
 		if (reg_type != reg_page_array[i].page_tag) {
@@ -594,64 +598,64 @@ static int classd_voltage_put(struct snd_kcontrol *kcontrol,
 /*****************************************************************************
   Sound Controls
  *****************************************************************************/
-/* LINEPGAL GAIN(LINEPGAL_GAIN<3:0>)£»
- * range:-14dB~16dB¡£
- * step:2dB¡£
- * 0000:-14dB£»
- * 0001:-12dB£»
- * 0010:-10dB£»
- * ¡­¡­
- * 0111:0dB£»
- * ¡­¡­
- * 1110:14dB£»
- * 1111:16dB£» */
+/* LINEPGAL GAIN(LINEPGAL_GAIN<3:0>)
+ * range:-14dB~16dB
+ * step:2dB
+ * 0000:-14dB
+ * 0001:-12dB
+ * 0010:-10dB
+ * 
+ * 0111:0dB
+ * 
+ * 1110:14dB
+ * 1111:16dB */
 static DECLARE_TLV_DB_SCALE(hi6555c_smt_linepgal_gain_tlv, -1400, 200, 0);
 
-/* LINEPGAR GAIN(LINEPGAR_GAIN<3:0>)£»
- * range:-14dB~16dB¡£
- * step:2dB¡£
- * 0000:-14dB£»
- * 0001:-12dB£»
- * 0010:-10dB£»
- * ¡­¡­
- * 0111:0dB£»
- * ¡­¡­
- * 1110:14dB£»
- * 1111:16dB£» */
+/* LINEPGAR GAIN(LINEPGAR_GAIN<3:0>)
+ * range:-14dB~16dB
+ * step:2dB
+ * 0000:-14dB
+ * 0001:-12dB
+ * 0010:-10dB
+ * 
+ * 0111:0dB
+ * 
+ * 1110:14dB
+ * 1111:16dB */
 static DECLARE_TLV_DB_SCALE(hi6555c_smt_linepgar_gain_tlv, -1400, 200, 0);
 
-/* AUXPGA GAIN(AUXPGA_GAIN<2:0>)£»
- * range:0dB~14dB¡£
- * step:2dB¡£
- * 000: 0dB£»
- * 001: 2dB£»
- * 010: 4dB£»
- * 011: 6dB£»
- * 100: 8dB£»
- * 101: 10dB£»
- * 110: 12dB£»
- * 111: 14dB£» */
+/* AUXPGA GAIN(AUXPGA_GAIN<2:0>)
+ * range:0dB~14dB
+ * step:2dB
+ * 000: 0dB
+ * 001: 2dB
+ * 010: 4dB
+ * 011: 6dB
+ * 100: 8dB
+ * 101: 10dB
+ * 110: 12dB
+ * 111: 14dB */
 static DECLARE_TLV_DB_SCALE(hi6555c_smt_auxpga_gain_tlv, 0, 200, 0);
 
-/* MAINPGA GAIN(MAINPGA_GAIN<2:0>)£»
- * range:0dB~14dB¡£
- * step:2dB¡£
- * 000: 0dB£»
- * 001: 2dB£»
- * 010: 4dB£»
- * 011: 6dB£»
- * 100: 8dB£»
- * 101: 10dB£»
- * 110: 12dB£»
- * 111: 14dB£» */
+/* MAINPGA GAIN(MAINPGA_GAIN<2:0>)
+ * range:0dB~14dB
+ * step:2dB
+ * 000: 0dB
+ * 001: 2dB
+ * 010: 4dB
+ * 011: 6dB
+ * 100: 8dB
+ * 101: 10dB
+ * 110: 12dB
+ * 111: 14dB */
 static DECLARE_TLV_DB_SCALE(hi6555c_smt_mainpga_gain_tlv, 0, 200, 0);
 
-/* HeadphoneL GAIN(HSL_GAIN<3:0>)£»
- * range:-20dB~-0dB¡£
- * step:1.5dB¡£
- * 0000:-20dB£»
- * 0001:-18dB£»
- * 0010:-16.5dB£»
+/* HeadphoneL GAIN(HSL_GAIN<3:0>)
+ * range:-20dB~-0dB
+ * step:1.5dB
+ * 0000:-20dB
+ * 0001:-18dB
+ * 0010:-16.5dB
  * 0011: -15dB;
  * 0100:-13.5dB;
  * 0101:-12dB;
@@ -667,12 +671,12 @@ static DECLARE_TLV_DB_SCALE(hi6555c_smt_mainpga_gain_tlv, 0, 200, 0);
  * 1111:0dB; */
 static DECLARE_TLV_DB_SCALE(hi6555c_smt_hsl_gain_tlv, -2000, 150, 0);
 
-/* HeadphoneR GAIN(HSR_GAIN<3:0>)£»
- * range:-20dB~-0dB¡£
- * step:1.5dB¡£
- * 0000:-20dB£»
- * 0001:-18dB£»
- * 0010:-16.5dB£»
+/* HeadphoneR GAIN(HSR_GAIN<3:0>)
+ * range:-20dB~-0dB
+ * step:1.5dB
+ * 0000:-20dB
+ * 0001:-18dB
+ * 0010:-16.5dB
  * 0011: -15dB;
  * 0100:-13.5dB;
  * 0101:-12dB;
@@ -688,12 +692,12 @@ static DECLARE_TLV_DB_SCALE(hi6555c_smt_hsl_gain_tlv, -2000, 150, 0);
  * 1111:0dB; */
 static DECLARE_TLV_DB_SCALE(hi6555c_smt_hsr_gain_tlv, -2000, 150, 0);
 
-/* EAR GAIN(EAR_GAIN<5:0>)£»
- * range:-20dB~-6dB¡£
- * step:2dB¡£
- * 0000:-20dB£»
- * 0001:-18dB£»
- * 0010:-16dB£»
+/* EAR GAIN(EAR_GAIN<5:0>)
+ * range:-20dB~-6dB
+ * step:2dB
+ * 0000:-20dB
+ * 0001:-18dB
+ * 0010:-16dB
  * 0011: -14dB;
  * 0100:-12dB;
  * 0101:-10dB;
@@ -1713,13 +1717,13 @@ static int hi6555c_smt_hsmicb_power_mode_event(struct snd_soc_dapm_widget *w,
 
 	switch (event) {
 	case SND_SOC_DAPM_PRE_PMU:
-		/* to avoid irq while MBHD_COMP power up£¬mask the irq then clean it */
+		/* to avoid irq while MBHD_COMP power up mask the irq then clean it */
 		irq_mask = hi6555c_reg_read(g_codec, HI6555C_SMT_ANA_IRQM_REG0_ADDR);
 		hi6555c_irqs_mask_set(irq_mask | IRQ_MSK_COMP);
 		hi6555c_hs_micbias_work_enable(g_codec, true);
 		msleep(25);
 
-		/* to avoid irq while MBHD_COMP power up£¬mask the irq then clean it */
+		/* to avoid irq while MBHD_COMP power up mask the irq then clean it */
 		hi6555c_irqs_clr(IRQ_MSK_COMP);
 		hi6555c_irqs_mask_clr(IRQ_MSK_BTN_NOR);
 		break;
@@ -3779,7 +3783,7 @@ static void hi6555c_hs_micbias_pd(struct snd_soc_codec *codec, bool enable)
 {
 	unsigned int irq_mask = 0;
 
-	/* to avoid irq while MBHD_COMP power up£¬mask the irq then clean it */
+	/* to avoid irq while MBHD_COMP power up mask the irq then clean it */
 	irq_mask = hi6555c_reg_read(codec, HI6555C_SMT_ANA_IRQM_REG0_ADDR);
 	hi6555c_irqs_mask_set(irq_mask | IRQ_MSK_COMP);
 
@@ -3962,22 +3966,22 @@ static void hi6555c_ibias_hsmicbias_enable(struct snd_soc_codec *codec, bool ena
  */
 static inline int hi6555c_irq_stat(unsigned int irq_stat_bit)
 {
-	unsigned int irq_stat = 0;
+	unsigned int irq_state = 0;
 	int ret = 0;
 
-	irq_stat = hi6555c_reg_read(g_codec, HI6555C_SMT_ANA_IRQ_SIG_STAT_ADDR);
-	irq_stat &= irq_stat_bit;
+	irq_state = hi6555c_reg_read(g_codec, HI6555C_SMT_ANA_IRQ_SIG_STAT_ADDR);
+	irq_state &= irq_stat_bit;
 
 	switch (irq_stat_bit) {
 	case IRQ_STAT_KEY_EVENT:
 	case IRQ_STAT_ECO_KEY_EVENT:
 		/* convert */
-		ret = !irq_stat;
+		ret = !irq_state;
 		break;
 	case IRQ_STAT_PLUG_IN:
 	default:
 		/* no need to convert */
-		ret = !!irq_stat;
+		ret = !!irq_state;
 		break;
 	}
 	logd("bit=0x%x, ret=%d\n", irq_stat_bit, ret);
@@ -4129,6 +4133,7 @@ static void hs_plug_in_detect_func(struct snd_soc_codec *codec)
 		hs_plug_out_detect_func(codec);
 		return;
 	}
+	logi(" enter\n");
 
 	mutex_lock(&priv->plug_mutex);
 	/* mask plug out */
@@ -4183,7 +4188,7 @@ static void hs_plug_in_detect_func(struct snd_soc_codec *codec)
 		loge("hs status=%d(old=%d) not changed\n", priv->hs_status, priv->old_hs_status);
 	}
 
-	/* to avoid irq while MBHD_COMP power up£¬mask the irq then clean it */
+	/* to avoid irq while MBHD_COMP power up mask the irq then clean it */
 	hi6555c_irqs_clr(IRQ_MSK_COMP);
 	hi6555c_irqs_mask_clr(IRQ_MSK_BTN_NOR);
 	mutex_unlock(&priv->plug_mutex);
@@ -4194,7 +4199,7 @@ static void hs_plug_in_detect_func(struct snd_soc_codec *codec)
 static void hs_plug_out_detect_func(struct snd_soc_codec *codec)
 {
 	struct hi6555c_priv *priv = snd_soc_codec_get_drvdata(codec);
-
+	logi("hs_plug_out_detect_func enter\n");
 	BUG_ON(!priv);
 
 	mutex_lock(&priv->plug_mutex);
@@ -4271,7 +4276,7 @@ static int hs_btn_down_detect_func(struct snd_soc_codec *codec)
 	hi6555c_hs_micbias_hkadc_enable(codec, false);
 	mutex_unlock(&priv->hkadc_mutex);
 	msleep(30);
-	/* to avoid irq while MBHD_COMP power up£¬mask the irq then clean it */
+	/* to avoid irq while MBHD_COMP power up mask the irq then clean it */
 	hi6555c_irqs_clr(IRQ_MSK_COMP);
 	hi6555c_irqs_mask_clr(IRQ_MSK_BTN_NOR);
 	logi("mask clean\n");
@@ -4373,7 +4378,7 @@ static void hi6555c_hs_comp_l_btn_down_work_func(struct work_struct *work)
 	int ret = 0;
 	struct snd_soc_codec *codec = NULL;
 	struct hi6555c_priv *priv = container_of(work, struct hi6555c_priv, hs_comp_l_btn_down_dw.work);
-
+	logi("enter\n");
 	BUG_ON(!priv);
 
 	codec = priv->codec;
@@ -4392,7 +4397,7 @@ static void hi6555c_hs_comp_l_btn_up_work_func(struct work_struct *work)
 	int ret = 0;
 	struct snd_soc_codec *codec = NULL;
 	struct hi6555c_priv *priv = container_of(work, struct hi6555c_priv, hs_comp_l_btn_up_dw.work);
-
+	logi(" enter \n");
 	BUG_ON(!priv);
 
 	codec = priv->codec;
@@ -4412,7 +4417,7 @@ static void hi6555c_hs_comp_h_btn_down_work_func(struct work_struct *work)
 	int ret = 0;
 	struct snd_soc_codec *codec = NULL;
 	struct hi6555c_priv *priv = container_of(work, struct hi6555c_priv, hs_comp_h_btn_down_dw.work);
-
+	logi("enter \n");
 	BUG_ON(!priv);
 
 	codec = priv->codec;
@@ -4432,7 +4437,7 @@ static void hi6555c_hs_comp_h_btn_up_work_func(struct work_struct *work)
 	int ret = 0;
 	struct snd_soc_codec *codec = NULL;
 	struct hi6555c_priv *priv = container_of(work, struct hi6555c_priv, hs_comp_h_btn_up_dw.work);
-
+	logi("enter \n");
 	BUG_ON(!priv);
 
 	codec = priv->codec;
@@ -4452,7 +4457,7 @@ static void hi6555c_hs_eco_btn_down_work_func(struct work_struct *work)
 	int ret = 0;
 	struct snd_soc_codec *codec = NULL;
 	struct hi6555c_priv *priv = container_of(work, struct hi6555c_priv, hs_eco_btn_down_dw.work);
-
+	logi("enter \n");
 	BUG_ON(!priv);
 
 	codec = priv->codec;
@@ -4472,7 +4477,7 @@ static void hi6555c_hs_eco_btn_up_work_func(struct work_struct *work)
 	int ret = 0;
 	struct snd_soc_codec *codec = NULL;
 	struct hi6555c_priv *priv = container_of(work, struct hi6555c_priv, hs_eco_btn_up_dw.work);
-
+	logi("enter \n");
 	BUG_ON(!priv);
 
 	codec = priv->codec;
@@ -4724,6 +4729,10 @@ static int hi6555c_soc_init(struct snd_soc_codec *codec)
 
 	priv = snd_soc_codec_get_drvdata(codec);
 	BUG_ON(!priv);
+	if (NULL == priv) {
+		loge("%s:priv is NULL!", __FUNCTION__);
+		return -EINVAL;
+	}
 
 	priv->asp_use_count = 0;
 
@@ -4922,7 +4931,7 @@ static int hi6555c_headset_init(struct snd_soc_codec *codec)
 	priv->hs_jack.report = 0;
 	priv->pressed_btn_type = 0;
 
-	/*VREF PD ú»MICBIAS PD  */
+	/*VREF PD MICBIAS PD  */
 	hi6555c_set_reg_bits(HI6555C_SMT_CODEC_ANA_RW02_ADDR, 0x1 << HI6555C_SMT_HSMICB_PD_BIT_START);
 	hi6555c_set_reg_bits(HI6555C_SMT_CODEC_ANA_RW24_ADDR, 0x1 << HI6555C_SMT_MBHD_VREF_PD_BIT_START);
 
@@ -5097,7 +5106,7 @@ static void hi6555c_headset_uninit(struct snd_soc_codec *codec)
 
 	return;
 }
-
+/*lint -e429*/
 static int hi6555c_set_priv(struct snd_soc_codec *codec)
 {
 	struct hi6555c_priv *priv = NULL;
@@ -5126,18 +5135,21 @@ static int hi6555c_set_priv(struct snd_soc_codec *codec)
 	mutex_init(&priv->plug_mutex);
 	wake_lock_init(&priv->wake_lock, WAKE_LOCK_SUSPEND, "hi6555c");
 
+#ifdef CONFIG_HISI_DEBUG_FS
 	if (0 > hi6555c_debug_init(codec)) {
 		hi6555c_debug_uninit(codec);
 	}
-
+#endif
 	return 0;
 }
-
+/*lint +e429*/
 static void hi6555c_unset_priv(struct snd_soc_codec *codec)
 {
 	struct hi6555c_priv *priv = snd_soc_codec_get_drvdata(codec);
 
+#ifdef CONFIG_HISI_DEBUG_FS
 	hi6555c_debug_uninit(codec);
+#endif
 
 	if (priv) {
 		wake_lock_destroy(&priv->wake_lock);
@@ -5162,7 +5174,7 @@ static int hi6555c_codec_probe(struct snd_soc_codec *codec)
 	int ret = 0;
 	struct snd_soc_dapm_context *dapm = &codec->dapm;
 	struct device_node *np  = codec->dev->of_node;
-	int val = 0;
+	unsigned int val = 0;
 
 	logi("Begin\n");
 
@@ -5191,7 +5203,7 @@ static int hi6555c_codec_probe(struct snd_soc_codec *codec)
 	}
 
 	if (!of_property_read_u32(np, "hisilicon,hac_gpio", &val)) {
-		hac_en_gpio = val;
+		hac_en_gpio = (int)val;
 		logi("hac gpio num is %d.\n",hac_en_gpio);
 	} else {
 		hac_en_gpio = 0;

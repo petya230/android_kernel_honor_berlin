@@ -38,8 +38,7 @@
 #define PLATFORM_ID_BIT_KIRIN970     (4U)
 
 /*hisi platform noc bus info struct.*/
-struct noc_platform_info
-{
+struct noc_platform_info {
 	const char *name;
 	unsigned int platform_id;
 	const struct noc_bus_info *p_noc_info_bus;
@@ -48,26 +47,26 @@ struct noc_platform_info
 	struct noc_dump_reg *p_noc_info_dump;
 	unsigned int noc_info_dump_len;
 	const struct noc_busid_initflow *p_noc_info_filter_initflow;
-	void (*pfun_get_size)(unsigned int *, unsigned int *);
-	unsigned int (*pfun_clock_enable)(struct hisi_noc_device *,
-						struct noc_node *);
+	void (*pfun_get_size) (unsigned int *, unsigned int *);
+	unsigned int (*pfun_clock_enable) (struct hisi_noc_device *,
+					   struct noc_node *);
 };
 
 /*hisi platform noc bus info gloabl variable.*/
 static struct noc_platform_info g_noc_platform_info[] = {
-	/*hisi platform: hi3650*/
+	/*hisi platform: hi3650 */
 	[0] = {
-		.name               = "hi3650",
-		.platform_id        = 1 << PLATFORM_ID_BIT_HI3650,/* must be same as the value defined in DTS. */
-		.p_noc_info_bus     = noc_buses_info_hi3650,
-		.p_noc_info_mid     = noc_mid_hi3650,
-		.p_noc_info_dump    = noc_dump_reg_list_hi3650,
-		.p_noc_info_filter_initflow = hisi_filter_initflow_hi3650,
-		.pfun_get_size      = hisi_noc_get_array_size_hi3650,
-		.pfun_clock_enable  = hisi_noc_clock_enable_hi3650,
-	},
+	       .name = "hi3650",
+	       .platform_id = 1 << PLATFORM_ID_BIT_HI3650,	/* must be same as the value defined in DTS. */
+	       .p_noc_info_bus = noc_buses_info_hi3650,
+	       .p_noc_info_mid  = noc_mid_hi3650,
+	       .p_noc_info_dump = noc_dump_reg_list_hi3650,
+	       .p_noc_info_filter_initflow = hisi_filter_initflow_hi3650,
+	       .pfun_get_size = hisi_noc_get_array_size_hi3650,
+	       .pfun_clock_enable = hisi_noc_clock_enable_hi3650,
+	       },
 
-	/*hisi platform: hi6250*/
+	/*hisi platform: hi6250 */
 	[1] = {
 		.name               = "hi6250",
 		.platform_id        = 1 << PLATFORM_ID_BIT_HI6250,/* must be same as the value defined in DTS. */
@@ -79,7 +78,7 @@ static struct noc_platform_info g_noc_platform_info[] = {
 		.pfun_clock_enable  = hisi_noc_clock_enable_hi6250,
 	},
 
-	/*hisi platform: hi3660*/
+	/*hisi platform: hi3660 */
 	[2] = {
 		.name               = "hi3660",
 		.platform_id        = 1 << PLATFORM_ID_BIT_HI3660,/* must be same as the value defined in DTS. */
@@ -91,29 +90,29 @@ static struct noc_platform_info g_noc_platform_info[] = {
 		.pfun_clock_enable  = hisi_noc_clock_enable_hi3660,
 	},
 
-	/*hisi platform: kirin970_es*/
+	/*hisi platform: kirin970_es */
 	[3] = {
-		.name               = "kirin970_es",
-		.platform_id        = 1 << PLATFORM_ID_BIT_KIRIN970_ES,/* must be same as the value defined in DTS. */
-		.p_noc_info_bus     = noc_buses_info_kirin970_es,
-		.p_noc_info_mid     = noc_mid_kirin970_es,
-		.p_noc_info_dump    = noc_dump_reg_list_kirin970_es,
-		.p_noc_info_filter_initflow = hisi_filter_initflow_kirin970_es,
-		.pfun_get_size      = hisi_noc_get_array_size_kirin970_es,
-		.pfun_clock_enable  = hisi_noc_clock_enable_kirin970_es,
-	},
+	       .name = "kirin970_es",
+	       .platform_id = 1 << PLATFORM_ID_BIT_KIRIN970_ES,	/* must be same as the value defined in DTS. */
+	       .p_noc_info_bus = noc_buses_info_kirin970_es,
+	       .p_noc_info_mid = noc_mid_kirin970_es,
+	       .p_noc_info_dump = noc_dump_reg_list_kirin970_es,
+	       .p_noc_info_filter_initflow = hisi_filter_initflow_kirin970_es,
+	       .pfun_get_size = hisi_noc_get_array_size_kirin970_es,
+	       .pfun_clock_enable = hisi_noc_clock_enable_kirin970_es,
+	       },
 
-	/*hisi platform: kirin970*/
+	/*hisi platform: kirin970 */
 	[4] = {
-		.name               = "kirin970",
-		.platform_id        = 1 << PLATFORM_ID_BIT_KIRIN970,/* must be same as the value defined in DTS. */
-		.p_noc_info_bus     = noc_buses_info_kirin970,
-		.p_noc_info_mid     = noc_mid_kirin970,
-		.p_noc_info_dump    = noc_dump_reg_list_kirin970,
-		.p_noc_info_filter_initflow = hisi_filter_initflow_kirin970,
-		.pfun_get_size      = hisi_noc_get_array_size_kirin970,
-		.pfun_clock_enable  = hisi_noc_clock_enable_kirin970,
-	}
+	       .name = "kirin970",
+	       .platform_id = 1 << PLATFORM_ID_BIT_KIRIN970,	/* must be same as the value defined in DTS. */
+	       .p_noc_info_bus = noc_buses_info_kirin970,
+	       .p_noc_info_mid = noc_mid_kirin970,
+	       .p_noc_info_dump = noc_dump_reg_list_kirin970,
+	       .p_noc_info_filter_initflow = hisi_filter_initflow_kirin970,
+	       .pfun_get_size = hisi_noc_get_array_size_kirin970,
+	       .pfun_clock_enable = hisi_noc_clock_enable_kirin970,
+	       }
 };
 
 static unsigned int g_info_index = 0;
@@ -124,7 +123,7 @@ struct noc_dump_reg *noc_dump_reg_list = NULL;
   firstly save log, then system reset.*/
 static const char *hisi_modemnoc_nodemame[] = {
 	"modem_bus",
-	NULL,	/*end*/
+	NULL,			/*end */
 };
 
 /*******************************************************************************
@@ -164,7 +163,8 @@ Return:         NA
 ********************************************************************************/
 void hisi_get_noc_initflow(const struct noc_busid_initflow **filter_initflow)
 {
-	*filter_initflow = g_noc_platform_info[g_info_index].p_noc_info_filter_initflow;
+	*filter_initflow =
+	    g_noc_platform_info[g_info_index].p_noc_info_filter_initflow;
 }
 
 /*
@@ -173,9 +173,10 @@ void hisi_get_noc_initflow(const struct noc_busid_initflow **filter_initflow)
  * return clock state of related node.
  */
 unsigned int hisi_noc_clock_enable(struct hisi_noc_device *noc_dev,
-				     struct noc_node *node)
+				   struct noc_node *node)
 {
-	return g_noc_platform_info[g_info_index].pfun_clock_enable(noc_dev, node);
+	return g_noc_platform_info[g_info_index].pfun_clock_enable(noc_dev,
+								   node);
 }
 
 /*
@@ -204,32 +205,33 @@ int noc_set_buses_info(unsigned int platform_id)
 {
 	int ret;
 
-	/*get platform info index by platform id value defined in DTS.*/
+	/*get platform info index by platform id value defined in DTS. */
 	ret = noc_get_platform_info_index(platform_id);
 	if (ret < 0) {
-		pr_err("[%s]: Error!! platform_id[%d], No platform id matched!!\n",
-			        __func__, platform_id);
+		pr_err
+		    ("[%s]: Error!! platform_id[%d], No platform id matched!!\n",
+		     __func__, platform_id);
 		return -1;
 	}
 
-	/*save platform info index.*/
+	/*save platform info index. */
 	g_info_index = ret;
 	pr_crit("[%s]: info index is [%d], platform is:[%s].\n", __func__,
-		            g_info_index, g_noc_platform_info[g_info_index].name);
+		g_info_index, g_noc_platform_info[g_info_index].name);
 
-	/*get platform info array size.*/
-	g_noc_platform_info[g_info_index].pfun_get_size(
-			        &g_noc_platform_info[g_info_index].noc_info_bus_len,
-			        &g_noc_platform_info[g_info_index].noc_info_dump_len);
-	if ((0 == g_noc_platform_info[g_info_index].noc_info_dump_len) ||
-		(0 == g_noc_platform_info[g_info_index].noc_info_bus_len)) {
+	/*get platform info array size. */
+	g_noc_platform_info[g_info_index].
+	    pfun_get_size(&g_noc_platform_info[g_info_index].noc_info_bus_len,
+			  &g_noc_platform_info[g_info_index].noc_info_dump_len);
+	if ((0 == g_noc_platform_info[g_info_index].noc_info_dump_len)
+	    || (0 == g_noc_platform_info[g_info_index].noc_info_bus_len)) {
 		pr_err("[%s]: Get noc info length Error!!\n", __func__);
 		return -1;
 	}
 
-	/*save platform info.*/
-	noc_buses_i.ptr   = g_noc_platform_info[g_info_index].p_noc_info_bus;
-	noc_buses_i.len   = g_noc_platform_info[g_info_index].noc_info_bus_len;
+	/*save platform info. */
+	noc_buses_i.ptr = g_noc_platform_info[g_info_index].p_noc_info_bus;
+	noc_buses_i.len = g_noc_platform_info[g_info_index].noc_info_bus_len;
 	pt_mid_info       = g_noc_platform_info[g_info_index].p_noc_info_mid;
 	noc_dump_reg_list = g_noc_platform_info[g_info_index].p_noc_info_dump;
 
@@ -300,7 +302,7 @@ u64 noc_find_addr_from_routeid(unsigned int idx, int initflow, int targetflow,
 		return 0;
 
 	pastTbl = noc_buses_i.ptr[idx].routeid_tbl;
-	count   = noc_buses_i.ptr[idx].routeid_tbl_size;
+	count = noc_buses_i.ptr[idx].routeid_tbl_size;
 
 	for (i = 0; i < count; i++) {
 		if ((pastTbl[i].targ_flow == targetflow) &&
