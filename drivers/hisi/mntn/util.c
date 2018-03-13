@@ -157,7 +157,7 @@ static inline struct proc_dir_entry *balong_create_proc_entry(const char *name,
 {
 	return proc_create_data(name, mode, parent, proc_fops, data);
 
-	return NULL;
+	return NULL; /*lint !e527*/
 }
 
 static inline void balong_remove_proc_entry(const char *name,
@@ -168,6 +168,7 @@ static inline void balong_remove_proc_entry(const char *name,
 	return;
 }
 
+/* cppcheck-suppress * */
 #define CREATE_PROC_ENTRY_DECLARE(NAME, PARENT)\
 struct proc_dir_entry *balong_create_ ## NAME ## _proc_entry(const char *name, \
 	mode_t mode, const struct file_operations *proc_fops, void *data)\

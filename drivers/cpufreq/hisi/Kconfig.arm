@@ -11,6 +11,13 @@ config HISI_ENABLE_GET_VAL
 	help
 	  Hisilicon get cpufreq param.
 
+config HISI_ENABLE_HPM_DATA_COLLECT
+	bool "Hisilicon get hpm volt param"
+	depends on HISI_ENABLE_GET_VAL
+	default n
+	help
+	  Hisilicon get avs hpm volt param.
+
 config HISI_BIG_MAXFREQ_HOTPLUG
 	tristate "Specific flow for Hisilicon Platform CPUfreq driver"
 	depends on ARM_BIG_LITTLE_CPUFREQ && HOTPLUG_CPU

@@ -35,6 +35,10 @@
 
 #define CPU_VOLT_FN_GET_VAL				(0xc800aa01)
 #define AVS_VOLT_MAX_BYTE				(192)
+#ifdef CONFIG_HISI_ENABLE_HPM_DATA_COLLECT
+#define HPM_VOLT_MAX_BYTE				(102)
+#define DIEID_MAX_BYTE					(20)
+#endif
 
 struct tag_cpu_volt_data {
 	phys_addr_t phy_addr;
@@ -68,22 +72,44 @@ static int get_volt_show(struct seq_file *m, void *v)
 
 	mutex_lock(&g_cpu_volt_data.cpu_mutex);
 
+#ifdef CONFIG_HISI_ENABLE_HPM_DATA_COLLECT
+	ret = atfd_hisi_service_get_val_smc((u64)CPU_VOLT_FN_GET_VAL,
+					    g_cpu_volt_data.phy_addr,
+					    (u64)(AVS_VOLT_MAX_BYTE + HPM_VOLT_MAX_BYTE + DIEID_MAX_BYTE +2), 0ULL);
+#else
 	ret = atfd_hisi_service_get_val_smc((u64)CPU_VOLT_FN_GET_VAL,
 					    g_cpu_volt_data.phy_addr,
 					    (u64)AVS_VOLT_MAX_BYTE, 0ULL);
+#endif
 	if (ret != 0) {
 		(void)seq_printf(m, "get val failed.\n");
 		mutex_unlock(&g_cpu_volt_data.cpu_mutex);
 		return -EAGAIN;
 	}
+#ifdef CONFIG_HISI_ENABLE_HPM_DATA_COLLECT
+	for (i = 0; i < (AVS_VOLT_MAX_BYTE + HPM_VOLT_MAX_BYTE + DIEID_MAX_BYTE + 2); i++) {
+		if (i == AVS_VOLT_MAX_BYTE) {
+			seq_printf(m, "\n hpm_volt: \n");
+		} else if (i == (AVS_VOLT_MAX_BYTE + HPM_VOLT_MAX_BYTE)) {
+			i += 2;
+			seq_printf(m, "\n die_id: \n");
+		}
+		seq_printf(m, "0x%-2x ", g_cpu_volt_data.virt_addr[i]);
+		if ((i != 0) && (i % 16 == 15))
+			seq_printf(m, "\n");
+	}
+#else
 	for (i = 0; i < AVS_VOLT_MAX_BYTE; i++) {
 		seq_printf(m, "0x%-2x ", g_cpu_volt_data.virt_addr[i]);
 		if ((i != 0) && (i % 16 == 15))
 			seq_printf(m, "\n");
 	}
+#endif
 
-	if (rdr_lpm3_buf_len < AVS_VOLT_MAX_BYTE)
+	if (rdr_lpm3_buf_len < AVS_VOLT_MAX_BYTE) {
+		mutex_unlock(&g_cpu_volt_data.cpu_mutex);
 		return -ENOSPC;
+	}
 
 	memcpy((void *)(g_lpmcu_rdr_ddr_addr+rdr_lpm3_buf_len-AVS_VOLT_MAX_BYTE), g_cpu_volt_data.virt_addr, (size_t)AVS_VOLT_MAX_BYTE);
 

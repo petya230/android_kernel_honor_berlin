@@ -838,6 +838,19 @@ static bool __table_type_request_based(unsigned table_type)
 		table_type == DM_TYPE_MQ_REQUEST_BASED);
 }
 
+static void dm_flush_async_set(struct dm_table *t)
+{
+	struct dm_dev_internal *dd;
+	struct list_head *devices;
+	dm_setup_md_queue_flush_async(t->md,1);
+	devices = dm_table_get_devices(t);
+	list_for_each_entry(dd, devices, list) {/*lint !e64 !e826*/
+		struct request_queue *q = bdev_get_queue(dd->dm_dev->bdev);
+		if(blk_queue_flush_async_support(q)==0)
+			dm_setup_md_queue_flush_async(t->md,0);
+	}
+}
+
 static int dm_table_set_type(struct dm_table *t)
 {
 	unsigned i;
@@ -847,6 +860,8 @@ static int dm_table_set_type(struct dm_table *t)
 	struct dm_dev_internal *dd;
 	struct list_head *devices;
 	unsigned live_md_type = dm_get_md_type(t->md);
+
+	dm_flush_async_set(t);
 
 	for (i = 0; i < t->num_targets; i++) {
 		tgt = t->targets + i;
