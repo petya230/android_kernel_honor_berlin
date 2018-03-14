@@ -68,10 +68,10 @@ enum MAILBOX_LOCK_TYPE
 #define MAILBOX_PROC_MASK  0x0000ffff
 enum MAILBOX_LINUX_PROC_STYLE_E
 {
-    MAILBOX_SEND   = 0,  
-    
+    MAILBOX_SEND   = 0,
+
     MAILBOX_RECEV_START,
-    
+
     /*挂接在任务上的邮件处理队列开始*/
     MAILBOX_RECV_TASK_START,
     MAILBOX_RECV_TASK_NORMAL,
@@ -162,7 +162,7 @@ MAILBOX_LOCAL struct mb_local_proc g_mailbox_local_proc_tbl[] =
 MAILBOX_LOCAL struct mb_local_cfg g_mb_local_cfg_tbl[] =
 {
     /*接收通道的配置*/
-    /*ChannelID*/                                   /*通道属性*/             
+    /*ChannelID*/                                   /*通道属性*/
     {MAILBOX_MAILCODE_RESERVED(MCU,  ACPU, MSG),    MAILBOX_RECV_TASKLET_HI,     0    },
     {MAILBOX_MAILCODE_RESERVED(HIFI, ACPU, MSG),    MAILBOX_RECV_TASKLET_HI,     0    },
     {MAILBOX_MAILCODE_RESERVED(CCPU, ACPU, MSG),    MAILBOX_RECV_TASKLET_HI,     0    },
@@ -170,7 +170,7 @@ MAILBOX_LOCAL struct mb_local_cfg g_mb_local_cfg_tbl[] =
     {MAILBOX_MAILCODE_RESERVED(MCU, ACPU, IFC),     MAILBOX_RECV_TASK_HIGH,   0    },
 
     /*发送通道配置*/
-    /*ChannelID*/                                   /*通道属性*/                
+    /*ChannelID*/                                   /*通道属性*/
     {MAILBOX_MAILCODE_RESERVED( ACPU, MCU,  MSG),   MAILBOX_SEND | MAILBOX_LOCK_SPINLOCK,   0    },
     {MAILBOX_MAILCODE_RESERVED( ACPU, HIFI, MSG),   MAILBOX_SEND | MAILBOX_LOCK_SPINLOCK,   0    },
 
@@ -178,10 +178,10 @@ MAILBOX_LOCAL struct mb_local_cfg g_mb_local_cfg_tbl[] =
      MAILBOX_LOCK_SEMAPHORE /*如果消息通道作为IFC的返回通道，且这个IFC执行方的
                                函数有睡眠动作，此消息通道就只能用信号量来保护*/
     ,   0    },
-    
+
     {MAILBOX_MAILCODE_RESERVED( ACPU, CCPU, IFC),   MAILBOX_SEND | MAILBOX_LOCK_SEMAPHORE,   0    },
     {MAILBOX_MAILCODE_RESERVED( ACPU, MCU,  IFC),   MAILBOX_SEND | MAILBOX_LOCK_SEMAPHORE,   0    },
-    
+
     /*请在此后新增通道配置，否则会影响UT用例*/
 
     /*结束标志*/
@@ -197,7 +197,7 @@ MAILBOX_LOCAL void mailbox_receive_process(unsigned long data)
     struct mb_local_proc *proc = (struct mb_local_proc *)data;
     struct mb_local_work *work = proc->work_list;
 
-    
+
     while (MAILBOX_NULL != work) {
         /*遍历标志位，如果有置位，调用对应的邮箱ID号的回调函数*/
         if (MAILBOX_TRUE == work->data_flag) {
@@ -214,7 +214,7 @@ MAILBOX_LOCAL void mailbox_receive_process(unsigned long data)
         }
         work = work->next;
     }
-    wake_unlock(&mb_lpwr_lock);
+    wake_unlock(&mb_lpwr_lock);/*lint !e455*/
 }
 /*****************************************************************************
  函 数 名  : mailbox_receive_task
@@ -248,7 +248,7 @@ MAILBOX_LOCAL int mailbox_receive_task(void * data)
         proc->incoming = MAILBOX_FALSE;
 
         mailbox_receive_process((unsigned long)data);
-        
+
     }while (!kthread_should_stop());
     return MAILBOX_OK;
 }
@@ -285,10 +285,10 @@ MAILBOX_EXTERN int mailbox_init_platform(void)
         /*为任务处理方式的邮箱通道创建任务*/
         proc_id = local_proc->proc_id;
         if((proc_id > MAILBOX_RECV_TASK_START) && (proc_id < MAILBOX_RECV_TASK_END)) {
-            
+
             /* 创建邮箱接收任务等待信号量*/
             init_waitqueue_head(&local_proc->wait);
-                
+
             /* 创建邮箱收数据处理任务*/
             task = kthread_run(mailbox_receive_task, (void*)local_proc, local_proc->proc_name);
             if (IS_ERR(task)) {
@@ -296,11 +296,11 @@ MAILBOX_EXTERN int mailbox_init_platform(void)
             }
         }
 
-        if ((MAILBOX_RECV_TASKLET == proc_id) || 
+        if ((MAILBOX_RECV_TASKLET == proc_id) ||
            (MAILBOX_RECV_TASKLET_HI == proc_id)) {
 	        tasklet_init(&local_proc->tasklet,
 		    mailbox_receive_process, (unsigned long)local_proc);
-        
+
         }
         count--;
         local_proc++;
@@ -341,13 +341,13 @@ MAILBOX_LOCAL int mailbox_ipc_process(
         if (channel_id  == local_work->channel_id) {
             /*设置任务邮箱工作队列链表中此邮箱的数据标志位*/
             local_work->data_flag = MAILBOX_TRUE;
-            
+
             mailbox_record_sche_send(local_work->mb_priv);
             wake_lock(&mb_lpwr_lock);
 
             if ((proc_id > MAILBOX_RECV_TASK_START)
                 && (proc_id < MAILBOX_RECV_TASK_END)) {
-             
+
                 /*释放信号量，通知任务*/
                 local_proc->incoming = MAILBOX_TRUE;
                 wake_up(&local_proc->wait);
@@ -355,25 +355,25 @@ MAILBOX_LOCAL int mailbox_ipc_process(
             } else if(MAILBOX_RECV_TASKLET_HI == proc_id) {
                  /*tasklet处理方式，在tasklet中处理邮箱数据*/
                 tasklet_hi_schedule(&local_proc->tasklet);
-                 
+
             } else if(MAILBOX_RECV_TASKLET == proc_id) {
                  /*tasklet处理方式，在tasklet中处理邮箱数据*/
                 tasklet_schedule(&local_proc->tasklet);
-                 
+
             } else if(MAILBOX_RECV_INT_IRQ == proc_id) {
                 /*中断处理方式，在中断中直接处理邮箱数据*/
                 mailbox_receive_process((unsigned long)local_proc);
-                
+
             } else {
                 is_find = MAILBOX_FALSE;
             }
 
 		}
 
-		local_work = local_work->next;
+		local_work = local_work->next;/*lint !e456*/
 	}
 
-	return is_find;
+	return is_find;/*lint !e454*/
 }
 
 /*****************************************************************************
@@ -409,7 +409,7 @@ MAILBOX_LOCAL int mailbox_ipc_int_handle(unsigned int int_num)
     while (MAILBOX_MAILCODE_INVALID != local_cfg->channel_id) {
         /*处理所有挂接到这个中断号的接收邮箱通道*/
         proc_id = local_cfg->property;
-        if ((int_num == local_cfg->int_src) && (MAILBOX_SEND 
+        if ((int_num == local_cfg->int_src) && (MAILBOX_SEND
               != (MAILBOX_PROC_MASK & local_cfg->property))) {
             channel_id = local_cfg->channel_id;
 
@@ -467,7 +467,7 @@ MAILBOX_LOCAL int mailbox_ipc_int_handle(unsigned int int_num)
 
 *****************************************************************************/
 MAILBOX_EXTERN int mailbox_process_register(
-                unsigned int channel_id, 
+                unsigned int channel_id,
                  int (*cb)(unsigned int channel_id),
                  void *priv)
 {
@@ -499,7 +499,7 @@ MAILBOX_EXTERN int mailbox_process_register(
 													  sizeof(struct mb_local_work), 1, GFP_KERNEL);
 					if (NULL == local_work->next)  {
 						(void)printk(KERN_ERR "%s: memory alloc error!\n",__func__);
-						return MAILBOX_ERR_LINUX_ALLOC_MEMORY;
+						return (int)MAILBOX_ERR_LINUX_ALLOC_MEMORY;
 					}
 					local_work->next->channel_id = find_cfg->channel_id;
 					local_work->next->cb  = cb;
@@ -511,7 +511,7 @@ MAILBOX_EXTERN int mailbox_process_register(
 													sizeof(struct mb_local_work), 1, GFP_KERNEL);
 					if (NULL == local_proc->work_list) {
 						(void)printk(KERN_ERR "%s: memory alloc error!\n",__func__);
-						return MAILBOX_ERR_LINUX_ALLOC_MEMORY;
+						return (int)MAILBOX_ERR_LINUX_ALLOC_MEMORY;
 					}
 					local_proc->work_list->channel_id = find_cfg->channel_id;
 					local_proc->work_list->cb  = cb;
@@ -776,8 +776,8 @@ MAILBOX_EXTERN void *mailbox_init_completion(void)
 
 MAILBOX_EXTERN int mailbox_wait_completion(void **wait, unsigned int timeout)
 {
-	long jiffies = msecs_to_jiffies(timeout);
-	long ret =	wait_for_completion_timeout(*wait, jiffies);
+	long jiffy = msecs_to_jiffies(timeout);
+	long ret =	wait_for_completion_timeout(*wait, jiffy);
 
 	return (ret > 0) ? MAILBOX_OK : MAILBOX_ERRO ;
 }

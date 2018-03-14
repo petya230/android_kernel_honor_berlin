@@ -99,14 +99,18 @@ static void dump_tasks(bool verbose)
 static void lowmem_dump(struct work_struct *work)
 {
 	bool verbose = (work == &lowmem_dbg_verbose_wk) ? true : false;
-
+	size_t sz = hisi_ion_total();
 	mutex_lock(&lowmem_dump_mutex);
 	show_mem(SHOW_MEM_FILTER_NODES);
 	dump_tasks(verbose);
 	ksm_show_stats();
-	hisi_ion_memory_info(verbose);
-	if (verbose)
+
+	if (verbose || sz > totalram_pages / 2 * PAGE_SIZE)
+		hisi_ion_memory_info(true);
+
+	if (verbose || sz > totalram_pages / 2 * PAGE_SIZE)
 		page_tracker_wake_up();
+
 	mutex_unlock(&lowmem_dump_mutex);
 }
 

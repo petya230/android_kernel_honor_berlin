@@ -89,6 +89,9 @@ enum ion_heap_type {
 
 #define ION_FLAG_GRAPHIC_GPU_BUFFER (0x1 << 5)
 
+#define ION_FLAG_ALLOC_NOWARN_BUFFER (0x1 << 6)
+
+#define ION_FLAG_NO_SHRINK_BUFFER (0x1 << 7)
 /**
  * DOC: Ion Userspace API
  *

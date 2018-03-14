@@ -209,18 +209,23 @@ static struct ion_buffer *ion_buffer_create(struct ion_heap *heap,
 	ret = heap->ops->allocate(heap, buffer, len, align, flags);
 
 	if (ret) {
-		pr_err("%s: allocate first time failed.\n", __func__);
 		if (!(heap->flags & ION_HEAP_FLAG_DEFER_FREE)) {
-			pr_err("%s: heap not DEFER_FREE, allocate failed!\n",
-					__func__);
+			if (!(flags & ION_FLAG_ALLOC_NOWARN_BUFFER))
+				pr_err("%s: heap %u not DEFER_FREE, first allocate %lu failed!\n",
+					__func__, heap->id, len);
 			goto err2;
 		}
+
+		if (heap->flags & ION_FLAG_NO_SHRINK_BUFFER)
+			goto err2;
 
 		ion_heap_freelist_drain(heap, 0);
 		ret = heap->ops->allocate(heap, buffer, len, align,
 					  flags);
 		if (ret) {
-			pr_err("%s: allocate second time failed!\n", __func__);
+			if (!(flags & ION_FLAG_ALLOC_NOWARN_BUFFER))
+				pr_err("%s: heap %u allocate second allocate %lu failed!\n",
+					__func__, heap->id, len);
 			goto err2;
 		}
 	}
@@ -281,16 +286,27 @@ static struct ion_buffer *ion_buffer_create(struct ion_heap *heap,
 		/*if has ION_FLAG_NOT_ZERO_BUFFER means *
 		 * do not want to zero buffer */
 		if ((!(flags & ION_FLAG_NOT_ZERO_BUFFER))
-				&& heap->ops->buffer_zero) {
-			heap->ops->buffer_zero(buffer);
-
+			&& heap->ops->buffer_zero) {
 			if (buffer->size >= HISI_ION_FLUSH_ALL_CPUS_CACHES) {
-				ion_flush_all_cpus_caches();
+				if (!(flags & ION_FLAG_CACHED))
+					ion_flush_all_cpus_caches();
+
+				heap->ops->buffer_zero(buffer);
+
+				if (flags & ION_FLAG_CACHED)
+					ion_flush_all_cpus_caches();
+
 			} else {
-				dma_sync_sg_for_device(NULL, table->sgl,
-					table->nents, DMA_BIDIRECTIONAL);
-				dma_sync_sg_for_cpu(NULL, table->sgl,
+				if (!(flags & ION_FLAG_CACHED))
+					dma_sync_sg_for_cpu(NULL, table->sgl,
 					table->nents, DMA_FROM_DEVICE);
+
+				heap->ops->buffer_zero(buffer);
+
+				if (flags & ION_FLAG_CACHED)
+					dma_sync_sg_for_cpu(NULL, table->sgl,
+					table->nents, DMA_BIDIRECTIONAL);
+
 			}
 		} else {
 			if (buffer->size >= HISI_ION_FLUSH_ALL_CPUS_CACHES) {
@@ -313,8 +329,8 @@ err1:
 	heap->ops->free(buffer);
 err2:
 	kfree(buffer);
-
-	pr_err("%s: failed!\n", __func__);
+	if (!(flags & ION_FLAG_ALLOC_NOWARN_BUFFER))
+		pr_err("%s: failed!\n", __func__);
 	return ERR_PTR(ret);
 }
 
@@ -635,14 +651,22 @@ static struct ion_handle *__ion_alloc(struct ion_client *client, size_t len,
 			__func__, len, current->pid, current->comm);
 	}
 
+    	if (len > SZ_512M) {
+		pr_err("%s: size more than 512M(0x%lx), pid: %d, process name: %s\n",
+			__func__, len, current->pid, current->comm);
+		return ERR_PTR(-ENOMEM);
+	}
+
 	down_read(&dev->heap_lock);
 
 	if ((heap_id_mask == 0x1 << ION_DRM_VCODEC_HEAP_ID) ||
 		(heap_id_mask == 0x1 << ION_DRM_GRALLOC_HEAP_ID))
 		heap_id_mask = 0x1 << ION_DRM_HEAP_ID;
 
-	/* if ((heap_id_mask == 0x1 << ION_IRIS_HEAP_ID)) */
-		/* flags &= (~ION_FLAG_SECURE_BUFFER); */
+	if ((heap_id_mask & 0x1 << ION_CAMERA_HEAP_ID)) {
+		heap_id_mask |= 0x1 << ION_CAMERA_DAEMON_HEAP_ID;
+		flags |= (ION_FLAG_NO_SHRINK_BUFFER | ION_FLAG_ALLOC_NOWARN_BUFFER);
+	}
 
 	plist_for_each_entry(heap, &dev->heaps, node) {
 		/* if the caller didn't specify this heap id */
@@ -682,6 +706,8 @@ static struct ion_handle *__ion_alloc(struct ion_client *client, size_t len,
 	mutex_unlock(&client->lock);
 	if (ret) {
 		pr_err("%s: ion handle add failed!\n", __func__);
+		if (grab_handle)
+			ion_handle_put(handle);
 		ion_handle_put(handle);
 		handle = ERR_PTR(ret);
 	}
@@ -774,21 +800,7 @@ EXPORT_SYMBOL(ion_phys);
 int ion_change_flags(struct ion_client *client,
 			struct ion_handle *handle, int flags)
 {
-	struct ion_buffer *buffer;
-
-	mutex_lock(&client->lock);
-	if (!ion_handle_validate(client, handle)) {
-		pr_err("%s: handel invilable!\n", __func__);
-		mutex_unlock(&client->lock);
-		return -EINVAL;
-	}
-	buffer = handle->buffer;
-	mutex_lock(&buffer->lock);
-	buffer->flags = flags;
-	mutex_unlock(&buffer->lock);
-	mutex_unlock(&client->lock);
-
-	return 0;
+	return -EINVAL;
 }
 EXPORT_SYMBOL(ion_change_flags);
 
@@ -1001,6 +1013,8 @@ out:
 	/* unlock buffer and unlock client */
 	mutex_unlock(&buffer->lock);
 	mutex_unlock(&client->lock);
+	if (ret)
+		hisi_ion_memory_info((bool)1);
 
 	return ret;
 }
@@ -1204,12 +1218,13 @@ void ion_client_destroy(struct ion_client *client)
 	struct rb_node *n;
 
 	pr_debug("%s: %d\n", __func__, __LINE__);
+	mutex_lock(&client->lock);
 	while ((n = rb_first(&client->handles))) {
 		struct ion_handle *handle = rb_entry(n, struct ion_handle,
 						     node);
 		ion_handle_destroy(&handle->ref);
 	}
-
+	mutex_unlock(&client->lock);
 	idr_destroy(&client->idr);
 
 	down_write(&dev->client_lock);
@@ -1428,6 +1443,10 @@ static int ion_mmap(struct dma_buf *dmabuf, struct vm_area_struct *vma)
 	}
 
 	if (ion_buffer_fault_user_mappings(buffer)) {
+		if ((vma->vm_flags & (VM_SHARED | VM_MAYWRITE)) == VM_MAYWRITE) {
+			pr_err("%s: vm_flags %lx error\n", __func__, vma->vm_flags);
+			return -EINVAL;
+		}
 		vma->vm_flags |= VM_IO | VM_PFNMAP | VM_DONTEXPAND |
 							VM_DONTDUMP;
 		vma->vm_private_data = buffer;

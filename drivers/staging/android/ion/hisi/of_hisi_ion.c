@@ -682,7 +682,6 @@ static struct platform_driver hisi_ion_driver = {
 };
 
 /*lint -e701 -e713*/
-extern struct cpu_topology cpu_topology[];
 static int __init hisi_ion_init(void)
 {
 	int ret;
@@ -691,8 +690,8 @@ static int __init hisi_ion_init(void)
 	ret = platform_driver_register(&hisi_ion_driver);
 
 	for_each_present_cpu(cpu){
-		int core_id = cpu_topology[cpu].core_id;
-		int cluster_id = cpu_topology[cpu].cluster_id;
+		int core_id = topology_core_id(cpu);
+		int cluster_id = topology_physical_package_id(cpu);
 		ion_cpu_map[cpu] = (cluster_id << 2) + core_id;
 	}
 

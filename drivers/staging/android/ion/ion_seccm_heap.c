@@ -34,6 +34,8 @@
 #include <linux/hisi/hisi_drmdriver.h>
 #include <linux/hisi/hisi_mm.h>
 
+#include <asm/tlbflush.h>
+
 #include "ion.h"
 #include "ion_priv.h"
 
@@ -69,7 +71,7 @@ struct ion_seccm_heap {
 	u64	protect_id;
 };
 
-static struct cma *hisi_sec_cma;
+struct cma *hisi_sec_cma;
 
 static int  hisi_sec_cma_set_up(struct reserved_mem *rmem)
 {
@@ -95,6 +97,7 @@ static int  hisi_sec_cma_set_up(struct reserved_mem *rmem)
 	}
 
 	hisi_sec_cma = cma;
+	ion_register_dma_camera_cma((void *)cma);
 
 	return 0;
 }
@@ -132,7 +135,11 @@ static int seccm_create_pool(
 
 	ion_sec_dbg("into %s\n", __func__);
 
-	seccm_heap->flag = flag;
+	if (flag & ION_FLAG_SECURE_BUFFER)
+		seccm_heap->flag = ION_FLAG_SECURE_BUFFER;
+	else
+		seccm_heap->flag = 0;
+
 	cma_base = cma_get_base(seccm_heap->cma);
 	cma_size = cma_get_size(seccm_heap->cma);
 	seccm_heap->pool = gen_pool_create(12, -1);
@@ -150,6 +157,13 @@ static int seccm_create_pool(
 		pr_err("in seccm_create_pool gen_pool_alloc failed\n");
 		return -ENOMEM;
 	}
+
+	/**
+	 * For the drm memory is also used by Camera,
+	 * So when drm create memory pool, need clean
+	 * the camera drm heap.
+	 */
+	ion_clean_dma_camera_cma();
 
 	nr = water_mark / per_alloc_sz;
 	while (nr) {
@@ -186,6 +200,7 @@ static int seccm_create_pool(
 					    per_alloc_sz,
 					    __pgprot(DEVICE_MEMORY));
 
+			flush_tlb_all();
 			sec_cfg.sub_rgn_size = 0;
 			sec_cfg.start_addr = seccm_heap->align_saddr;
 			sec_cfg.sub_rgn_size = per_bit_sz;
@@ -193,6 +208,8 @@ static int seccm_create_pool(
 			sec_cfg.sec_port = seccm_heap->attr;
 			hisi_sec_ddr_set(&sec_cfg, (int)seccm_heap->protect_id); /*lint !e64*/
 		}
+		else
+			memset(page_address(pg), 0x0, per_alloc_sz);
 		nr--;
 	}
 
@@ -254,13 +271,16 @@ static void seccm_add_pool(struct ion_seccm_heap *seccm_heap)
 					    per_alloc_sz,
 					    __pgprot(DEVICE_MEMORY));
 
+			flush_tlb_all();
 			sec_cfg.start_addr = seccm_heap->align_saddr;
 			sec_cfg.sub_rgn_size = per_bit_sz;
 			sec_cfg.bit_map = seccm_heap->bitmap;
 			sec_cfg.sec_port = seccm_heap->attr;
 			hisi_sec_ddr_set(&sec_cfg, (int)seccm_heap->protect_id); /*lint !e64*/
 		}
-		nr--;
+		else
+			memset(page_address(pg), 0x0, per_alloc_sz);
+		nr--; /*lint !e574*/
 	}
 
 	ion_sec_dbg("out %s %llu MB memory bitmap 0x%llx\n", __func__,
@@ -330,7 +350,7 @@ static ion_phys_addr_t seccm_alloc(struct ion_heap *heap,
 	struct ion_seccm_heap *seccm_heap =
 		container_of(heap, struct ion_seccm_heap, heap);
 
-	ion_sec_dbg("into %s\n", __func__);
+	ion_sec_dbg("into %s %d %lx\n", __func__, heap->id, size);
 
 	mutex_lock(&seccm_heap->mutex);
 
@@ -343,7 +363,14 @@ static ion_phys_addr_t seccm_alloc(struct ion_heap *heap,
 	if (!seccm_heap->pool &&
 	    seccm_create_pool(seccm_heap, flag)) {
 		pr_err("seccm_create_pool is failed\n");
-		return 0;
+		offset = 0;
+		goto err;
+	}
+
+	if (seccm_heap->flag != (flag & ION_FLAG_SECURE_BUFFER)) {
+		pr_err("seccm_heap->flag is not same\n");
+		offset = 0;
+		goto err;
 	}
 
 	offset = gen_pool_alloc(seccm_heap->pool, size);
@@ -358,9 +385,10 @@ static ion_phys_addr_t seccm_alloc(struct ion_heap *heap,
 		if (!seccm_heap->alloc_size)
 			seccm_destroy_pool(seccm_heap);
 
+err:
 	mutex_unlock(&seccm_heap->mutex);
 
-	ion_sec_dbg("out %s\n", __func__);
+	ion_sec_dbg("out %s %lx\n", __func__, offset);
 
 	return offset; /*lint !e574 */
 }
@@ -371,7 +399,7 @@ static void seccm_free(struct ion_heap *heap, ion_phys_addr_t addr,
 	struct ion_seccm_heap *seccm_heap =
 		container_of(heap, struct ion_seccm_heap, heap);
 
-	ion_sec_dbg("into %s\n", __func__);
+	ion_sec_dbg("into %s  %d %lx\n", __func__, heap->id, addr);
 
 	mutex_lock(&seccm_heap->mutex);
 
@@ -437,6 +465,9 @@ static void ion_seccm_heap_free(struct ion_buffer *buffer)
 	ion_sec_dbg("into %s size 0x%lx heap id %u\n", __func__,
 		    buffer->size, heap->id);
 
+	if (!(buffer->flags & ION_FLAG_SECURE_BUFFER))
+		(void)ion_heap_buffer_zero(buffer);
+
 	seccm_free(heap, paddr, buffer->size);
 	sg_free_table(table);
 	kfree(table);
@@ -470,17 +501,56 @@ static void ion_seccm_heap_unmap_dma(struct ion_heap *heap,
 {
 }
 
+static int ion_seccm_heap_map_user(struct ion_heap *heap, struct ion_buffer *buffer,
+		      struct vm_area_struct *vma)
+{
+	if (buffer->flags & ION_FLAG_SECURE_BUFFER)
+		return -EINVAL;
+	return ion_heap_map_user(heap, buffer, vma);
+}
+
+static void *ion_seccm_heap_map_kernel(struct ion_heap *heap,
+			  struct ion_buffer *buffer)
+{
+	if (buffer->flags & ION_FLAG_SECURE_BUFFER)
+		return 	NULL;
+	return ion_heap_map_kernel(heap, buffer);
+}
+
+static void ion_seccm_heap_unmap_kernel(struct ion_heap *heap,
+			   struct ion_buffer *buffer)
+{
+	if (buffer->flags & ION_FLAG_SECURE_BUFFER)
+		return;
+	ion_heap_unmap_kernel(heap, buffer);
+}
+
+static int ion_seccm_heap_map_iommu(struct ion_buffer *buffer,
+			struct ion_iommu_map *map_data)
+{
+	if (buffer->flags & ION_FLAG_SECURE_BUFFER)
+		return -EINVAL;
+	return ion_heap_map_iommu(buffer, map_data);
+}
+
+static void ion_seccm_heap_unmap_iommu(struct ion_iommu_map *map_data)
+{
+	if (map_data->buffer->flags & ION_FLAG_SECURE_BUFFER)
+		return;
+	ion_heap_unmap_iommu(map_data);
+}
+
 static struct ion_heap_ops seccm_heap_ops = {
 	.allocate = ion_seccm_heap_allocate,
 	.free = ion_seccm_heap_free,
 	.phys = ion_seccm_heap_phys,
 	.map_dma = ion_seccm_heap_map_dma,
 	.unmap_dma = ion_seccm_heap_unmap_dma,
-	.map_user = ion_heap_map_user,
-	.map_kernel = ion_heap_map_kernel,
-	.unmap_kernel = ion_heap_unmap_kernel,
-	.map_iommu = ion_heap_map_iommu,
-	.unmap_iommu = ion_heap_unmap_iommu,
+	.map_user = ion_seccm_heap_map_user,
+	.map_kernel = ion_seccm_heap_map_kernel,
+	.unmap_kernel = ion_seccm_heap_unmap_kernel,
+	.map_iommu = ion_seccm_heap_map_iommu,
+	.unmap_iommu = ion_seccm_heap_unmap_iommu,
 };
 
 struct ion_heap *ion_seccm_heap_create(struct ion_platform_heap *heap_data)

@@ -63,6 +63,8 @@ struct devalarm {
 static struct devalarm alarms[ANDROID_ALARM_TYPE_COUNT];
 
 #define ALARM_AHEAD_TIME    (60)
+//shut down cost: avg:8s, std:4s
+#define ALARM_AFTER_TIME    (15)
 
 static int is_wakeup(enum android_alarm_type type)
 {
@@ -227,12 +229,12 @@ static int alarm_set_rtc_alarm(long time_sec, bool enable_irq)
 	memset(&poweroff_rtc_alarm, 0, sizeof(poweroff_rtc_alarm));
 	alarm_value = time_sec - offset;
 	if (alarm_value < (ALARM_AHEAD_TIME + rtc_current_time)) {
-		printk(KERN_DEBUG "%s(): remove rtc alarm\n", __func__);
-		hisi_pmu_rtc_setalarmtime(0);
-		return 0;
+		//less then 60s: phone'll be start in 15s after shut down
+		alarm_value = ALARM_AFTER_TIME + rtc_current_time;
+	}else{
+		alarm_value -= ALARM_AHEAD_TIME;
 	}
 
-	alarm_value -= ALARM_AHEAD_TIME;
 	rtc_time_to_tm(alarm_value, &poweroff_rtc_alarm.time);
 	poweroff_rtc_alarm.enabled = (enable_irq == true ? 1 : 0);
 	printk(KERN_DEBUG "%s: [%d-%d-%d] [%d:%d:%d] %lu\n", __func__,
