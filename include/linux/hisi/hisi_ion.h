@@ -51,6 +51,9 @@ enum ion_heap_ids {
 	ION_IRIS_HEAP_ID=18,
 	ION_RESERV2_ID=19,
 	ION_DRM_HEAP_ID=20,
+#ifdef CONFIG_ION_HISI_FAMA_MISC
+	ION_FAMA_MISC_HEAP_ID = 30,
+#endif
 	ION_HEAP_ID_RESERVED = 31, /* Bit reserved */
 };
 
@@ -134,6 +137,14 @@ enum ION_HISI_HEAP_MODE {
     ION_CARVEROUT_MODE=0,
     ION_IOMMU_MODE=1,
 };
+
+#ifdef CONFIG_ION_HISI_SECSG
+enum ion_ta_tag{
+	ION_SEC_CMD_TABLE_CLEAN = 0x0,
+	ION_SEC_CMD_TABLE_SET = 0x1,
+	ION_SEC_CMD_SMMU_TABLE_INIT = 0x2,
+};
+#endif
 
 #define TINY_SYSTEM   0x0        /* tiny version system for chip test*/
 #define FULL_SYSTEM   0x1        /* full version system */

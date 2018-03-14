@@ -61,12 +61,24 @@ config ION_HISI_SECCM
 	help
 	 if you want to use seccm heap, you should select this.
 
+config ION_HISI_SECSG
+	bool "Hisilicon ION secsg heap support"
+	depends on ION_HISI
+	help
+	 if you want to use secsg heap, you should select this.
+
+
 config ION_HISI_DMA_POOL
 	bool "Hisilicon ION DMA pool heap support"
 	depends on ION_HISI
 	help
 	  if you want to use DMA pool heap, you should select this.
 
+config ION_HISI_FAMA_MISC
+	bool "Hisilicon ION fama misc heap support"
+	depends on ION_HISI
+	help
+	 if you want to use fama misc heap, you should select this.
 
 config ION_HISI_SUPPORT_4GPLUS
 	bool "Hisilicon ION can support allocation above 4G"

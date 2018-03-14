@@ -375,11 +375,23 @@ struct ion_heap *ion_heap_create(struct ion_platform_heap *heap_data)
 		break;
 #endif
 
+#ifdef CONFIG_ION_HISI_SECSG
+	case ION_HEAP_TYPE_SECSG:
+		heap = ion_secsg_heap_create(heap_data);
+		break;
+#endif
 #ifdef CONFIG_ION_HISI_DMA_POOL
 	case ION_HEAP_TYPE_DMA_POOL:
 		heap = ion_dma_pool_heap_create(heap_data);
 		break;
 #endif
+
+#ifdef CONFIG_ION_HISI_FAMA_MISC
+	case ION_HEAP_TYPE_FAMA_MISC:
+		heap = ion_fama_misc_heap_create(heap_data);
+		break;
+#endif
+
 	default:
 		pr_err("%s: Invalid heap type %d\n", __func__,
 		       heap_data->type);
@@ -431,6 +443,11 @@ void ion_heap_destroy(struct ion_heap *heap)
 		break;
 #endif
 
+#ifdef CONFIG_ION_HISI_SECSG
+	case ION_HEAP_TYPE_SECSG:
+		ion_secsg_heap_destroy(heap);
+		break;
+#endif
 #ifdef CONFIG_ION_HISI_DMA_POOL
 	case ION_HEAP_TYPE_DMA_POOL:
 		ion_dma_pool_heap_destroy(heap);

@@ -60,7 +60,12 @@ static const struct hisi_ion_type_table ion_type_table[] = {
 	{"ion_chunk", ION_HEAP_TYPE_CHUNK},
 	{"ion_dma", ION_HEAP_TYPE_DMA},
 	{"ion_custom", ION_HEAP_TYPE_CUSTOM},
+#ifdef CONFIG_ION_HISI_SECCM
 	{"ion_sec", ION_HEAP_TYPE_SECCM},
+#endif
+#ifdef CONFIG_ION_HISI_SECSG
+	{"ion_sec", ION_HEAP_TYPE_SECSG},
+#endif
 	{"ion_dma_pool", ION_HEAP_TYPE_DMA_POOL},
 #ifdef CONFIG_ION_HISI_FAMA_MISC
 	{"ion_fama_misc", ION_HEAP_TYPE_FAMA_MISC},
