@@ -309,7 +309,6 @@ enum PS_NV_ID_ENUM
 /* 9035 */       en_NV_Item_Lte_Cs_Service_Config    = 9035,
 /* 9036  */      en_NV_Item_DSFLOW_STATS_CTRL        = 9036,
 
-
 /* 9038 */       en_NV_Item_Linux_CPU_Moniter_Timer_Len  = 9038,
 
 /* 9039 */       en_NV_Item_ADS_Queue_Scheduler_Pri  = 9039,
@@ -390,7 +389,9 @@ enum PS_NV_ID_ENUM
 /* 9267 */      en_NV_Item_JAM_DETECT_CFG         = 9267,
 
 /* 9273 */      en_NV_Item_FREQ_LOCK_CFG         = 9273,
+/* Added by w0014666 for ERRLOG Phase II, 2014-07-04, begin */ 
                  en_NV_Item_GAS_MNTN_CONFIG        = 9277,
+/* Added by w0014666 for ERRLOG Phase II, 2014-07-04, end */
                  
 /* 2316 */      en_NV_Item_ENHANCED_OPERATOR_NAME_SRV_CFG = 2316,
 /* 2323 */      en_NV_Item_REFRESH_ALL_FILE_RESTART_CFG   = 2323,

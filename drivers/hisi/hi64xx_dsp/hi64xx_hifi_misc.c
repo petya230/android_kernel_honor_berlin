@@ -59,7 +59,7 @@
 #include "hi64xx_hifi_anc_beta.h"
 #include "soundtrigger_dma_drv.h"
 
-/*lint -e655 -e838 -e730*/
+/*lint -e655 -e838 -e730 -e747*/
 
 #define UNUSED_PARAMETER(x) (void)(x)
 
@@ -193,7 +193,7 @@ void hi64xx_hifi_reg_write_bits(unsigned int reg,
 
 void hi64xx_memset(uint32_t dest, size_t n)
 {
-	int i = 0;
+	size_t i = 0;
 
 	if (n & 0x3) {
 		HI64XX_DSP_ERROR("memset size: 0x%zu is not 4 byte aligned\n", n);
@@ -208,7 +208,7 @@ void hi64xx_memset(uint32_t dest, size_t n)
 
 void hi64xx_memcpy(uint32_t dest, uint32_t *src, size_t n)
 {
-	int i = 0;
+	size_t i = 0;
 
 	if (n & 0x3) {
 		HI64XX_DSP_ERROR("memcpy size: 0x%zu is not 4 byte aligned\n", n);
@@ -265,7 +265,7 @@ static void hi64xx_read_per_1byte(const unsigned int start_addr,
 			      unsigned char *buf,
 			      const unsigned int len)
 {
-	int i = 0;
+	unsigned int i = 0;
 
 	BUG_ON(buf == NULL);
 	BUG_ON(len == 0);
@@ -274,7 +274,6 @@ static void hi64xx_read_per_1byte(const unsigned int start_addr,
 		*buf++ = hi64xx_hifi_read_reg(start_addr + i);
 	}
 }
-
 
 void hi64xx_read(const unsigned int start_addr,
 			unsigned char *arg,
@@ -296,7 +295,7 @@ void hi64xx_read(const unsigned int start_addr,
 			return;
 		}
 
-		hi64xx_read_per_4byte(start_addr, (unsigned int *)arg, len);
+		hi64xx_read_per_4byte(start_addr, (unsigned int *)arg, len);/*lint !e826*/
 	/* start_addr in 0x20007000~0x20007xxx */
 	} else {
 		if (start_addr + len > HI64XX_1BYTE_SUB_END) {
@@ -664,10 +663,15 @@ static int hi64xx_put_output_param(unsigned int usr_para_size,
 {
 	int ret = OK;
 
-	BUG_ON(usr_para_size == 0);
-	BUG_ON(usr_para_addr == NULL);
-	BUG_ON(krn_para_size == 0);
-	BUG_ON(krn_para_addr == NULL);
+	if (0 == usr_para_size || !usr_para_addr) {
+		HI64XX_DSP_ERROR("input usr_para_size[%d] or usr_para_addr error\n", usr_para_size);
+		return -EINVAL;
+	}
+
+	if (0 == krn_para_size || !krn_para_addr) {
+		HI64XX_DSP_ERROR("input error krn_para_size:%u\n", krn_para_size);
+		return -EINVAL;
+	}
 
 	IN_FUNCTION;
 
@@ -729,7 +733,7 @@ static bool hi64xx_request_state_mutex(void)
 
 static void hi64xx_release_state_mutex(void)
 {
-	mutex_unlock(&dsp_priv->state_mutex);
+	mutex_unlock(&dsp_priv->state_mutex);/*lint !e455*/
 	HI64XX_DSP_INFO("state_mutex unlock\n");
 }
 
@@ -936,7 +940,7 @@ static void hi64xx_hifi_cfg_before_pll_switch(void)
 
 	OUT_FUNCTION;
 
-	return;
+	return;/*lint !e454*/
 }
 
 bool hi64xx_hifi_is_running(void)
@@ -980,7 +984,7 @@ static void hi64xx_hifi_cfg_after_pll_switch(enum pll_state state)
 
 		hi64xx_hifi_notify_dsp_pllswitch(HIFI_POWER_CLK_ON);
 	}
-	mutex_unlock(&dsp_priv->state_mutex);
+	mutex_unlock(&dsp_priv->state_mutex);/*lint !e455*/
 	HI64XX_DSP_INFO("state_mutex unlock\n");
 
 	OUT_FUNCTION;
@@ -1162,7 +1166,7 @@ static void hi64xx_dsp_if_sample_rate_set(const char *arg)
 
 	OUT_FUNCTION;
 }
-
+/*lint -e454 -e455 -e456*/
 void hi64xx_hifi_misc_peri_lock(void)
 {
 	if (dsp_priv != NULL)
@@ -1174,7 +1178,7 @@ void hi64xx_hifi_misc_peri_unlock(void)
 	if (dsp_priv != NULL)
 		mutex_unlock(&dsp_priv->peri_mutex);
 }
-
+/*lint +e454 +e455 +e456*/
 static void hi64xx_dsp_run(void)
 {
 	IN_FUNCTION;
@@ -1295,7 +1299,7 @@ void hi64xx_release_pll_resource(unsigned int scene_id)
 		return;
 	}
 
-	dsp_priv->high_freq_scene_status &= ~(1 << scene_id);
+	dsp_priv->high_freq_scene_status &= ~(1ul << scene_id);
 
 	if (dsp_priv->high_freq_scene_status == 0) {
 		if (dsp_priv->low_freq_scene_status == 0) {
@@ -1349,7 +1353,7 @@ static int hi64xx_release_low_pll_resource(unsigned int scene_id)
 		return REDUNDANT;
 	}
 
-	dsp_priv->low_freq_scene_status &= ~(1 << scene_id);
+	dsp_priv->low_freq_scene_status &= ~(1ul << scene_id);
 
 	if (dsp_priv->low_freq_scene_status == 0) {
 		if (dsp_priv->high_freq_scene_status == 0) {
@@ -1507,7 +1511,6 @@ static int hi64xx_func_if_open(struct krn_param_io_buf *param)
 			HI64XX_DSP_WARNING("pa & wake up exist, can not hook.\n");
 			hi64xx_stop_hook();
 		}
-
 		break;
 	case MLIB_PATH_ANC:
 		HI64XX_DSP_INFO("start anc\n");
@@ -1552,7 +1555,7 @@ static int hi64xx_func_if_open(struct krn_param_io_buf *param)
 		goto end;
 	}
 
-	hi64xx_dsp_if_sample_rate_set(param->buf_in);
+	hi64xx_dsp_if_sample_rate_set((char *)param->buf_in);
 	hi64xx_hifi_write_reg(dsp_priv->dsp_config.cmd1_addr, dsp_priv->pll_state);
 	ret = hi64xx_sync_write(param->buf_in, param->buf_size_in);
 	if (ret != OK) {
@@ -2344,7 +2347,7 @@ static cmd_process_func hi64xx_select_func(const unsigned char *arg,
 	HI64XX_DSP_ERROR("cmd_process_func for id:%d not found!\n", msg_id);
 
 	OUT_FUNCTION;
-	return (cmd_process_func)NULL;
+	return (cmd_process_func)NULL;/*lint !e611*/
 }
 
 /* not sure whether async commond would be used in future */
@@ -2469,6 +2472,7 @@ static int hi64xx_hifi_misc_release(struct inode *finode, struct file *fd)
 {
 	return 0;
 }
+
 
 static long hi64xx_hifi_misc_ioctl(struct file *fd,
                                    unsigned int cmd,
@@ -2667,7 +2671,7 @@ static const struct reg_dump s_reg_dump[] = {
 
 size_t hi64xx_get_dump_reg_size(void)
 {
-	int i = 0;
+	unsigned int i = 0;
 	size_t size = 0;
 
 	for (i = 0; i < ARRAY_SIZE(s_reg_dump); i++) {
@@ -2681,7 +2685,7 @@ size_t hi64xx_get_dump_reg_size(void)
 
 size_t hi64xx_append_comment(char *buf, const size_t size)
 {
-	int i = 0;
+	unsigned int i = 0;
 	size_t offset = 0;
 	size_t buffer_used = 0;
 
@@ -2720,6 +2724,7 @@ unsigned int hi64xx_misc_get_log_dump_size(void)
 }
 
 /* caller should guarantee input para valid */
+/*lint -e429*/
 void hi64xx_misc_dump_reg(char *buf, const size_t size)
 {
 	size_t i = 0;
@@ -2736,11 +2741,13 @@ void hi64xx_misc_dump_reg(char *buf, const size_t size)
 
 	for (i = 0; i < ARRAY_SIZE(s_reg_dump); i++) {
 		BUG_ON(buffer_used + s_reg_dump[i].len > size);
-		hi64xx_read(s_reg_dump[i].addr, buf + buffer_used, s_reg_dump[i].len);
+		hi64xx_read(s_reg_dump[i].addr, (unsigned char *)(buf + buffer_used), s_reg_dump[i].len);
 		buffer_used += s_reg_dump[i].len;
 	}
 
 	hi64xx_release_pll_resource(HI_FREQ_SCENE_DUMP);
+
+	return;
 }
 
 void hi64xx_misc_dump_bin(const unsigned int addr, char *buf, const size_t len)
@@ -2753,10 +2760,13 @@ void hi64xx_misc_dump_bin(const unsigned int addr, char *buf, const size_t len)
 		return;
 	}
 
-	hi64xx_read(addr, buf, len);
+	hi64xx_read(addr, (unsigned char *)buf, len);
 
 	hi64xx_release_pll_resource(HI_FREQ_SCENE_DUMP);
+
+	return;
 }
+/*lint +e429*/
 
 int hi64xx_hifi_misc_suspend(void)
 {
@@ -2913,6 +2923,7 @@ void hi64xx_hifi_misc_deinit(void)
 	}
 
 	mutex_destroy(&dsp_priv->peri_mutex);
+
 
 	if(dsp_priv->msg_proc_wq) {
 		cancel_delayed_work(&dsp_priv->msg_proc_work);

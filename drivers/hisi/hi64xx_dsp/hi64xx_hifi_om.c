@@ -277,7 +277,7 @@ static const char* _get_pos_name(hook_pos pos)
 
 	return "UNKNOW";
 }
-
+/*lint -e429*/
 static int _add_data_to_list(struct hook_runtime *runtime)
 {
 	int ret = 0;
@@ -315,7 +315,7 @@ err_exit:
 
 	return ret;
 }
-
+/*lint +e429*/
 static int _alloc_hook_buffer_fama(unsigned int hook_id)
 {
 	struct hook_runtime *runtime = NULL;
@@ -471,7 +471,7 @@ static int _rm_hook_dir(char *path)
 			break;
 
 		dirent = (struct linux_dirent *)(buf + bpos);
-		for (bpos = 0; bpos < bufsize; bpos += dirent->d_reclen) {
+		for (bpos = 0; bpos < (unsigned int)bufsize; bpos += dirent->d_reclen) {
 			dirent = (struct linux_dirent *)(buf + bpos);
 			d_type = *(buf + bpos + dirent->d_reclen - 1);
 
@@ -483,6 +483,7 @@ static int _rm_hook_dir(char *path)
 					|| !strncmp(dirent->d_name, "...", sizeof("...")))
 					continue;
 
+				// cppcheck-suppress *
 				(void)_rm_hook_dir(fullname);
 			} else if (d_type == DT_REG) {
 				sys_unlink(fullname);
@@ -532,7 +533,7 @@ static int _get_dir_count(char *path)
 	}
 
 	dirent = (struct linux_dirent *)(buf + bpos);
-	for (bpos = 0; bpos < bufsize; bpos += dirent->d_reclen) {
+	for (bpos = 0; bpos < (unsigned int)bufsize; bpos += dirent->d_reclen) {
 		dirent = (struct linux_dirent *)(buf + bpos);
 		count++;
 	}
@@ -581,7 +582,7 @@ static long long _get_dir_size(char *path)
 			break;
 
 		dirent = (struct linux_dirent *)(buf + bpos);
-		for (bpos = 0; bpos < bufsize; bpos += dirent->d_reclen) {
+		for (bpos = 0; bpos < (unsigned int)bufsize; bpos += dirent->d_reclen) {
 			dirent = (struct linux_dirent *)(buf + bpos);
 			d_type = *(buf + bpos + dirent->d_reclen - 1);
 
@@ -597,6 +598,7 @@ static long long _get_dir_size(char *path)
 					|| !strncmp(dirent->d_name, "...", sizeof("...")))
 					continue;
 
+				// cppcheck-suppress *
 				size += _get_dir_size(fullname);
 			} else if (d_type == DT_REG) {
 				size += stat.size;
@@ -625,7 +627,7 @@ static void _get_dir_name(char *dir_name, size_t size)
 	memset(&tv, 0, sizeof(tv));
 
 	do_gettimeofday(&tv);
-	tv.tv_sec -= sys_tz.tz_minuteswest * 60;
+	tv.tv_sec -= (long)sys_tz.tz_minuteswest * 60;
 	rtc_time_to_tm(tv.tv_sec, &tm);
 
 	snprintf(dir_name, size, "%s%04d%02d%02d%02d%02d%02d/",/* [false alarm] */
@@ -701,7 +703,7 @@ static int _create_hook_dir(void)
 	BUG_ON(NULL == priv);
 
 	old_fs = get_fs();
-	set_fs(KERNEL_DS);
+	set_fs(KERNEL_DS);/*lint !e501*/
 
 	if (_create_full_dir(priv->hook_path)) {
 		ret = -EFAULT;
@@ -784,7 +786,7 @@ int hi64xx_hifi_create_hook_dir(const char *path)
 	strncpy(tmp_path, path,  sizeof(tmp_path) -1);
 
 	old_fs = get_fs();
-	set_fs(KERNEL_DS);
+	set_fs(KERNEL_DS);/*lint !e501*/
 
 	if (_create_full_dir(tmp_path)) {
 		ret = -EFAULT;
@@ -914,7 +916,7 @@ void hi64xx_hifi_dump_to_file(char *buf, unsigned int size, char *path)
 
 	vfs_llseek(fp, 0L, SEEK_END);
 
-	if(vfs_write(fp, buf, size, &fp->f_pos) < 0) {
+	if(vfs_write(fp, buf, size, &fp->f_pos) < 0) {/*lint !e613*/
 		HI64XX_DSP_ERROR("write file fail.\n");
 	}
 
@@ -1038,7 +1040,7 @@ static void _parse_dsp_data(void *data, struct hook_runtime *runtime)
 		buffer += (runtime->size / HOOK_AP_DSP_DMA_TIMES) / sizeof(unsigned int);
 	}
 }
-
+/*lint -e429*/
 static int _parse_pos_info(void *data, struct hook_runtime *runtime)
 {
 	struct hi64xx_om_priv *priv = om_priv;
@@ -1100,7 +1102,7 @@ static int _parse_pos_info(void *data, struct hook_runtime *runtime)
 
 	return 0;
 }
-
+/*lint +e429*/
 static void _data_verify(struct data_flow *data,
 			struct hook_runtime *runtime)
 {

@@ -9,6 +9,9 @@ History         :
    1.l00353313     2016-6-16     Draft Enact
 
 ******************************************************************************/
+/* ChrCommConvert.h可能会被重复包含  l00353313 */
+#ifndef _CHRCOMMCONVERT_H
+#define _CHRCOMMCONVERT_H
 
 #ifdef __cplusplus
 #if __cplusplus
@@ -196,3 +199,4 @@ extern VOS_INT32 Modem_ErrLog_CalcAbsoluteEventSize(VOS_UINT16 usEventID);
     #endif
 #endif
 
+#endif

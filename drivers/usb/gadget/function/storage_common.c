@@ -463,7 +463,7 @@ ssize_t fsg_store_file(struct fsg_lun *curlun, struct rw_semaphore *filesem,
 			curlun->removable = 1;
 			curlun->nofua = 1;
 			incdrom = 1;
-		} else if (count = strlen("none") && buf && 0 == memcmp(buf, "none", strlen("none"))) {
+		} else if (count == strlen("none") && buf && 0 == memcmp(buf, "none", strlen("none"))) {
 			curlun->cdrom = 1;
 			curlun->ro = 1;
 			curlun->removable = 1;

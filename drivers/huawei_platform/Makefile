@@ -34,4 +34,5 @@ obj-$(CONFIG_DOME_KEY) += dome_key/
 obj-$(CONFIG_HUAWEI_IO_TRACING) += iotrace/
 obj-$(CONFIG_HW_HANDPRESS_SWITCH) += handpress_switch/
 obj-$(CONFIG_HW_LED_ALWAYSON) += led_alwayson/
+obj-$(CONFIG_HUAWEI_BOOT_TIME) += boottime/
 obj-$(CONFIG_LCD_ON_OFF_CHECK) += lcd_on_off_check/

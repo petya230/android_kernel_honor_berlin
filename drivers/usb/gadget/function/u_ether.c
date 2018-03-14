@@ -1,4 +1,15 @@
-
+/*
+ * u_ether.c -- Ethernet-over-USB link layer utilities for Gadget stack
+ *
+ * Copyright (C) 2003-2005,2008 David Brownell
+ * Copyright (C) 2003-2004 Robert Schwebel, Benedikt Spranger
+ * Copyright (C) 2008 Nokia Corporation
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ */
 
 /* #define VERBOSE_DEBUG */
 
@@ -1014,7 +1025,7 @@ static int get_ether_addr(const char *str, u8 *dev_addr)
 	return 1;
 }
 
-static int get_ether_addr_str(u8 dev_addr[ETH_ALEN], char *str, int len)
+int get_ether_addr_str(u8 dev_addr[ETH_ALEN], char *str, int len)
 {
 	if (len < 18)
 		return -EINVAL;
@@ -1022,6 +1033,7 @@ static int get_ether_addr_str(u8 dev_addr[ETH_ALEN], char *str, int len)
 	snprintf(str, len, "%pM", dev_addr);
 	return 18;
 }
+EXPORT_SYMBOL_GPL(get_ether_addr_str);
 
 static int get_host_ether_addr(u8 *str, u8 *dev_addr)
 {

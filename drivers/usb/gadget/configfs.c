@@ -172,7 +172,7 @@ CONFIGFS_ATTR_STRUCT(config_usb_cfg);
 
 #define GI_DEVICE_DESC_ITEM_ATTR(name)	\
 	static struct gadget_info_attribute gadget_cdev_desc_##name = \
-		__CONFIGFS_ATTR(name,  S_IRUGO | S_IWUSR,		\
+		__CONFIGFS_ATTR(name,  (S_IRUGO | S_IWUSR),		\
 				gadget_dev_desc_##name##_show,		\
 				gadget_dev_desc_##name##_store)
 
@@ -579,7 +579,7 @@ static ssize_t gadget_config_desc_bmAttributes_store(struct config_usb_cfg *cfg,
 
 #define CFG_CONFIG_DESC_ITEM_ATTR(name)	\
 	static struct config_usb_cfg_attribute gadget_usb_cfg_##name = \
-		__CONFIGFS_ATTR(name,  S_IRUGO | S_IWUSR,		\
+		__CONFIGFS_ATTR(name,  (S_IRUGO | S_IWUSR),		\
 				gadget_config_desc_##name##_show,	\
 				gadget_config_desc_##name##_store)
 
@@ -853,7 +853,7 @@ static ssize_t os_desc_use_store(struct os_desc *os_desc, const char *page,
 }
 
 static struct os_desc_attribute os_desc_use =
-	__CONFIGFS_ATTR(use, S_IRUGO | S_IWUSR,
+	__CONFIGFS_ATTR(use, (S_IRUGO | S_IWUSR),
 			os_desc_use_show,
 			os_desc_use_store);
 
@@ -887,7 +887,7 @@ static ssize_t os_desc_b_vendor_code_store(struct os_desc *os_desc,
 }
 
 static struct os_desc_attribute os_desc_b_vendor_code =
-	__CONFIGFS_ATTR(b_vendor_code, S_IRUGO | S_IWUSR,
+	__CONFIGFS_ATTR(b_vendor_code, (S_IRUGO | S_IWUSR),
 			os_desc_b_vendor_code_show,
 			os_desc_b_vendor_code_store);
 
@@ -925,7 +925,7 @@ static ssize_t os_desc_qw_sign_store(struct os_desc *os_desc, const char *page,
 }
 
 static struct os_desc_attribute os_desc_qw_sign =
-	__CONFIGFS_ATTR(qw_sign, S_IRUGO | S_IWUSR,
+	__CONFIGFS_ATTR(qw_sign, (S_IRUGO | S_IWUSR),
 			os_desc_qw_sign_show,
 			os_desc_qw_sign_store);
 
@@ -1114,11 +1114,11 @@ static ssize_t ext_prop_data_store(struct usb_os_desc_ext_prop *ext_prop,
 }
 
 static struct usb_os_desc_ext_prop_attribute ext_prop_type =
-	__CONFIGFS_ATTR(type, S_IRUGO | S_IWUSR,
+	__CONFIGFS_ATTR(type, (S_IRUGO | S_IWUSR),
 			ext_prop_type_show, ext_prop_type_store);
 
 static struct usb_os_desc_ext_prop_attribute ext_prop_data =
-	__CONFIGFS_ATTR(data, S_IRUGO | S_IWUSR,
+	__CONFIGFS_ATTR(data, (S_IRUGO | S_IWUSR),
 			ext_prop_data_show, ext_prop_data_store);
 
 static struct configfs_attribute *ext_prop_attrs[] = {
@@ -1237,7 +1237,7 @@ static ssize_t interf_grp_compatible_id_store(struct usb_os_desc *desc,
 }
 
 static struct usb_os_desc_attribute interf_grp_attr_compatible_id =
-	__CONFIGFS_ATTR(compatible_id, S_IRUGO | S_IWUSR,
+	__CONFIGFS_ATTR(compatible_id, (S_IRUGO | S_IWUSR),
 			interf_grp_compatible_id_show,
 			interf_grp_compatible_id_store);
 
@@ -1267,7 +1267,7 @@ static ssize_t interf_grp_sub_compatible_id_store(struct usb_os_desc *desc,
 }
 
 static struct usb_os_desc_attribute interf_grp_attr_sub_compatible_id =
-	__CONFIGFS_ATTR(sub_compatible_id, S_IRUGO | S_IWUSR,
+	__CONFIGFS_ATTR(sub_compatible_id, (S_IRUGO | S_IWUSR),
 			interf_grp_sub_compatible_id_show,
 			interf_grp_sub_compatible_id_store);
 
@@ -1703,6 +1703,12 @@ static void android_disconnect(struct usb_gadget *gadget)
 {
 	struct usb_composite_dev        *cdev = get_gadget_data(gadget);
 	struct gadget_info *gi = container_of(cdev, struct gadget_info, cdev);
+
+	if (cdev == NULL) {
+		WARN(1, "%s: Calling disconnect in USB RESET that is \
+			 not connected\n", __func__);
+		return;
+	}
 
 	/* accessory HID support can be active while the
 		accessory function is not actually enabled,

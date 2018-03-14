@@ -2822,7 +2822,7 @@ enum RF_NV_ID_ENUM
     en_NV_Item_RF_MIPI_COMM_CFG                                  = 18023,
     en_NV_Item_RF_KEY_REG_PROTECT                                = 18025,
 
-    en_NV_Item_RF_INIT_CONFIG_NEW_RAM                        = 18200,
+    en_NV_Item_RF_INIT_CONFIG_NEW_RAM                            = 18200,
     en_NV_Item_RF_VERSION                                        = 18201,
     en_NV_Item_INTERFERENCE_RULE_TABLE                           = 18204,
     en_NV_Item_INTERFERENCE_POWER_BACKOFF                        = 18205,
@@ -2879,7 +2879,7 @@ enum RF_NV_ID_ENUM
     en_NV_Item_GSM_RF_RX_AGC_GAIN_TABLE_BANK                     = 18327,
 
     /* GSM PDÐÂÔö */
-    en_NV_Item_GSM_TX_POWER_DETECT                               = 18328,	
+    en_NV_Item_GSM_TX_POWER_DETECT                               = 18328,
 
     en_NV_Item_W_TX_IQ_SELF_CAL_6362                             = 18400,
     en_NV_Item_W_RF_RX_EVM_TEST                                  = 18403,
