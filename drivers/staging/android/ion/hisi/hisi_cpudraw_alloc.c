@@ -117,7 +117,7 @@ static mem_node_t *split_node(mem_node_t *father, int  bytew, int byteh)
 			newbyteh[0] = byteh;
 			newbyteh[1] = father->cpubuf.byteh - byteh;
 			newaddr[0] = father->cpubuf.phy_addr;
-			newaddr[1] = father->cpubuf.phy_addr + father->cpubuf.stride*byteh;
+			newaddr[1] = father->cpubuf.phy_addr + father->cpubuf.stride*byteh; /*lint !e647 */
 			newbytew[0] = father->cpubuf.bytew;
 			newbytew[1] = father->cpubuf.bytew;
 		}

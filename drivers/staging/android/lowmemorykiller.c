@@ -234,7 +234,9 @@ kill_selected:
 		hisi_lowmem_dbg(selected_oom_score_adj);
 
 #ifdef CONFIG_HISI_MULTI_KILL
+		/*lint -e647 -esym(647,*)*/
 		lowmem_deathpending_timeout = jiffies + lmk_timeout_inter * HZ;
+		/*lint -e647 +esym(647,*)*/
 #else
 		lowmem_deathpending_timeout = jiffies + HZ;
 #endif
@@ -370,7 +372,7 @@ static struct kernel_param_ops lowmem_adj_array_ops = {
 
 static const struct kparam_array __param_arr_adj = {
 	.max = ARRAY_SIZE(lowmem_adj),
-	.num = &lowmem_adj_size,
+	.num = &lowmem_adj_size, /*lint   !e64*/
 	.ops = &param_ops_short,
 	.elemsize = sizeof(lowmem_adj[0]),
 	.elem = lowmem_adj,

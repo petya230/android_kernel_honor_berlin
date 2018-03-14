@@ -631,7 +631,7 @@ static struct ion_handle *__ion_alloc(struct ion_client *client, size_t len,
 	}
 
 	if (len > SZ_128M) {
-		pr_err("%s: size more than 32M(0x%lx), pid: %d, process name: %s\n",
+		pr_err("%s: size more than 128M(0x%lx), pid: %d, process name: %s\n",
 			__func__, len, current->pid, current->comm);
 	}
 
@@ -646,19 +646,18 @@ static struct ion_handle *__ion_alloc(struct ion_client *client, size_t len,
 
 	plist_for_each_entry(heap, &dev->heaps, node) {
 		/* if the caller didn't specify this heap id */
+
 		if (!((1 << heap->id) & heap_id_mask))
 			continue;
+
 		buffer = ion_buffer_create(heap, dev, len, align, flags);
 		if (!IS_ERR(buffer))
 			break;
 	}
 	up_read(&dev->heap_lock);
 
-	if (!buffer) {
-		pr_err("%s: ion buffer create failed! buff == NULL!\n",
-				__func__);
+	if (!buffer)
 		return ERR_PTR(-ENODEV);
-	}
 
 	if (IS_ERR(buffer))
 		return ERR_CAST(buffer);
@@ -1759,16 +1758,8 @@ static long ion_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 						data.allocation.align,
 						data.allocation.heap_id_mask,
 						data.allocation.flags, true);
-		if (IS_ERR(handle)) {
-			pr_err("%s: ion alloc failed!\n", __func__);
-			pr_err("len:%lx,align:%lx,heap_id_mask:%x,flags:%x\n",
-				data.allocation.len,
-				data.allocation.align,
-				data.allocation.heap_id_mask,
-				data.allocation.flags);
+		if (IS_ERR(handle))
 			return PTR_ERR(handle);
-		}
-
 		pass_to_user(handle);
 		data.allocation.handle = handle->id;
 

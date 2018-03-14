@@ -1,3 +1,8 @@
+/**
+ * This C file is included by ion.c, so it is the extension of ion.c
+ * in fact. Function hisi_ion_total is  called at lowmemory case.
+ * Function hisi_ion_memory_info is called at mapping iommu failed.
+ */
 static size_t ion_client_total(struct ion_client *client)
 {
 	size_t size = 0;

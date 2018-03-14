@@ -28,6 +28,7 @@
 #include <linux/slab.h>
 #include <linux/cma.h>
 #include <linux/sizes.h>
+
 #include <linux/hisi/hisi_cma.h>
 #include <linux/hisi/hisi_ion.h>
 #include <linux/hisi/hisi_drmdriver.h>
@@ -35,6 +36,7 @@
 
 #include "ion.h"
 #include "ion_priv.h"
+
 
 #define PER_REGION_HAVE_BITS	(16)
 #define DEVICE_MEMORY PROT_DEVICE_nGnRE
@@ -97,7 +99,9 @@ static int  hisi_sec_cma_set_up(struct reserved_mem *rmem)
 	return 0;
 }
 
+/*lint -e611*/
 RESERVEDMEM_OF_DECLARE(hisi_sec_cma, "hisi-cma-pool", hisi_sec_cma_set_up);
+/*lint +e611*/
 
 static unsigned int sz2order(size_t size)
 {
@@ -176,7 +180,7 @@ static int seccm_create_pool(
 		if (seccm_heap->flag & ION_FLAG_SECURE_BUFFER) {
 			ion_flush_all_cpus_caches();
 
-			virt = (unsigned long)__va(page_to_phys(pg));
+			virt = (unsigned long)__va(page_to_phys(pg)); /*lint !e648*/
 			create_mapping_late(page_to_phys(pg),
 					    virt,
 					    per_alloc_sz,
@@ -187,7 +191,7 @@ static int seccm_create_pool(
 			sec_cfg.sub_rgn_size = per_bit_sz;
 			sec_cfg.bit_map = seccm_heap->bitmap;
 			sec_cfg.sec_port = seccm_heap->attr;
-			hisi_sec_ddr_set(&sec_cfg, (int)seccm_heap->protect_id);
+			hisi_sec_ddr_set(&sec_cfg, (int)seccm_heap->protect_id); /*lint !e64*/
 		}
 		nr--;
 	}
@@ -244,7 +248,7 @@ static void seccm_add_pool(struct ion_seccm_heap *seccm_heap)
 		if (seccm_heap->flag & ION_FLAG_SECURE_BUFFER) {
 			ion_flush_all_cpus_caches();
 
-			virt = (unsigned long)__va(page_to_phys(pg));
+			virt = (unsigned long)__va(page_to_phys(pg)); /*lint !e648*/
 			create_mapping_late(page_to_phys(pg),
 					    virt,
 					    per_alloc_sz,
@@ -254,7 +258,7 @@ static void seccm_add_pool(struct ion_seccm_heap *seccm_heap)
 			sec_cfg.sub_rgn_size = per_bit_sz;
 			sec_cfg.bit_map = seccm_heap->bitmap;
 			sec_cfg.sec_port = seccm_heap->attr;
-			hisi_sec_ddr_set(&sec_cfg, (int)seccm_heap->protect_id);
+			hisi_sec_ddr_set(&sec_cfg, (int)seccm_heap->protect_id); /*lint !e64*/
 		}
 		nr--;
 	}
@@ -280,7 +284,7 @@ static void seccm_destroy_pool(struct ion_seccm_heap *seccm_heap)
 	cma_size = cma_get_size(seccm_heap->cma);
 
 	if (seccm_heap->flag & ION_FLAG_SECURE_BUFFER)
-		hisi_sec_ddr_clr((int)seccm_heap->protect_id);
+		hisi_sec_ddr_clr((int)seccm_heap->protect_id); /*lint !e64*/
 
 	for (shift = (cma_base - saddr) / per_bit_sz;
 	     shift < ((cma_base + cma_size - saddr) / per_bit_sz);
@@ -288,9 +292,9 @@ static void seccm_destroy_pool(struct ion_seccm_heap *seccm_heap)
 		pg = phys_to_page(seccm_heap->align_saddr +
 				  per_bit_sz * shift);
 
-		if (seccm_heap->bitmap & (1ULL << shift)) {
+		if (seccm_heap->bitmap & (1ULL << shift)) { /*lint !e574*/
 			if (seccm_heap->flag & ION_FLAG_SECURE_BUFFER) {
-				virt = (unsigned long)__va(page_to_phys(pg));
+				virt = (unsigned long)__va(page_to_phys(pg)); /*lint !e648*/
 				create_mapping_late(page_to_phys(pg),
 						    virt,
 						    per_bit_sz,
@@ -357,7 +361,8 @@ static ion_phys_addr_t seccm_alloc(struct ion_heap *heap,
 	mutex_unlock(&seccm_heap->mutex);
 
 	ion_sec_dbg("out %s\n", __func__);
-	return offset;
+
+	return offset; /*lint !e574 */
 }
 
 static void seccm_free(struct ion_heap *heap, ion_phys_addr_t addr,
@@ -370,7 +375,7 @@ static void seccm_free(struct ion_heap *heap, ion_phys_addr_t addr,
 
 	mutex_lock(&seccm_heap->mutex);
 
-	gen_pool_free(seccm_heap->pool, addr, size);
+	gen_pool_free(seccm_heap->pool, addr, size); /*lint !e574 */
 	seccm_heap->alloc_size -= size;
 	if (!seccm_heap->alloc_size)
 		seccm_destroy_pool(seccm_heap);
@@ -613,7 +618,7 @@ struct ion_heap *ion_seccm_heap_create(struct ion_platform_heap *heap_data)
 
 	ion_sec_dbg("out %s\n", __func__);
 
-	return &seccm_heap->heap;
+	return &seccm_heap->heap; /*lint !e429*/
 
 mutex_err:
 	kfree(seccm_heap);
