@@ -25,6 +25,10 @@
 #include <huawei_platform/power/msgnotify.h>
 #endif
 
+#ifdef CONFIG_HISI_BIG_MAXFREQ_HOTPLUG
+extern void set_bL_hifreq_load(unsigned int max_load);
+#endif
+
 static struct attribute_group *get_sysfs_attr(struct dbs_data *dbs_data)
 {
 	if (have_governor_per_policy())
@@ -170,6 +174,10 @@ void dbs_check_cpu(struct dbs_data *dbs_data, int cpu)
 		if (load > max_load)
 			max_load = load;
 	}
+
+#ifdef CONFIG_HISI_BIG_MAXFREQ_HOTPLUG
+	set_bL_hifreq_load(max_load);
+#endif
 
 	dbs_data->cdata->gov_check_cpu(cpu, max_load);
 }

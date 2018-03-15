@@ -711,6 +711,7 @@ void bL_hifreq_hotplug_init(void)
 	struct sched_param param = { .sched_priority = MAX_RT_PRIO - 2};
 	struct driver_data *data = &bL_cpufreq_data;
 
+#ifdef HIFREQ_HOTPLUG_OF
 	np = of_find_compatible_node(NULL, NULL, "hisi,hifreq-hotplug");
 	if (!np)
 		return;
@@ -718,6 +719,10 @@ void bL_hifreq_hotplug_init(void)
 	ret = of_property_read_u32(np, "enabled", &val);
 	if (!ret && val)
 		hifreq_hotplug_enabled = true;
+#else
+	// always enable hotplug because dt misses configuration
+	hifreq_hotplug_enabled = true;
+#endif
 
 	if (!hifreq_hotplug_enabled)
 		return;

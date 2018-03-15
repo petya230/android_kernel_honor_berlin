@@ -844,9 +844,7 @@ static int dwc_otg_driver_probe(
 	 * perform initial actions required for Internal ADP logic.
 	 */
 	if (!dwc_otg_get_param_adp_enable(dwc_otg_device->core_if)) {
-#if 0
-		dwc_otg_enable_global_interrupts(dwc_otg_device->core_if);
-#endif
+		/* dwc_otg_enable_global_interrupts(dwc_otg_device->core_if); */
 	} else
 		dwc_otg_adp_start(dwc_otg_device->core_if,
 				  dwc_otg_is_host_mode(dwc_otg_device->core_if));

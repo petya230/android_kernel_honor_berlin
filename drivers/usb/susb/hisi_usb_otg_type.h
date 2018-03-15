@@ -387,6 +387,7 @@ struct otg_dev {
 	struct clk *clk;
 	struct clk *hclk_usb2otg;
 
+	/* for bc again */
 	int bc_again_flag;
 	struct notifier_block conndone_nb;
 	struct delayed_work bc_again_work;

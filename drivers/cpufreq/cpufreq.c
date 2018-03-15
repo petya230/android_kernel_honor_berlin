@@ -1281,6 +1281,9 @@ static int __cpufreq_add_dev(struct device *dev, struct subsys_interface *sif)
 			       __func__, ret);
 			goto err_init_policy_kobj;
 		}
+	} else {
+		policy->min = policy->user_policy.min;
+		policy->max = policy->user_policy.max;
 	}
 
 	write_lock_irqsave(&cpufreq_driver_lock, flags);

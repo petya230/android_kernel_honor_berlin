@@ -653,9 +653,7 @@ static int urb_enqueue(struct usb_hcd *hcd,
 	uint8_t ep_type = 0;
 	uint32_t flags = 0;
 	void *buf;
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0))
 	dwc_irqflags_t irq_flags;
-#endif
 
 #ifdef DEBUG
 	if (CHK_DEBUG_LEVEL(DBG_HCDV | DBG_HCD_URB)) {

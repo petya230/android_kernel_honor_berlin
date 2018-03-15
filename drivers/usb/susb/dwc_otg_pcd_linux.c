@@ -157,12 +157,6 @@ static int ep_enable(struct usb_ep *usb_ep,
 	}
 
 	/* Delete after check - MAS */
-#if 0
-	nat = (uint32_t) ep_desc->wMaxPacketSize;
-	printk(KERN_ALERT "%s: nat (before) =%d\n", __func__, nat);
-	nat = (nat >> 11) & 0x03;
-	printk(KERN_ALERT "%s: nat (after) =%d\n", __func__, nat);
-#endif
 	retval = dwc_otg_pcd_ep_enable(gadget_wrapper->pcd,
 					(const uint8_t *)ep_desc,
 					(void *)usb_ep);
@@ -715,22 +709,6 @@ static int test_lpm_enabled(struct usb_gadget *gadget)
  * the device is suspended, remote wakeup signaling is started.
  *
  */
-#if 0
-static int wakeup(struct usb_gadget *gadget)
-{
-	struct gadget_wrapper *d;
-
-	DWC_DEBUGPL(DBG_PCDV, "%s(%pK)\n", __func__, gadget);
-
-	if (gadget == 0) {
-		return -ENODEV;
-	} else {
-		d = container_of(gadget, struct gadget_wrapper, gadget);
-	}
-	dwc_otg_pcd_wakeup(d->pcd);
-	return 0;
-}
-#endif
 static int pullup(struct usb_gadget *gadget, int is_on)
 {
 	struct gadget_wrapper *d;
@@ -753,9 +731,6 @@ static int pullup(struct usb_gadget *gadget, int is_on)
 
 struct usb_gadget_ops dwc_otg_pcd_ops = {
 	.get_frame = get_frame_number,
-#if 0
-	.wakeup = wakeup,
-#endif
 	.set_selfpowered = NULL,
 	.vbus_session = NULL,
 	.vbus_draw = NULL,
