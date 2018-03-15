@@ -79,10 +79,10 @@
 /*MDEV_DEBUG used only in project  developing  phase*/
 #define MDEV_DEBUG(fmt, args ...)
 /*
-	({				\
-		pr_debug("%s(%d):" fmt "\n", \
-			MODULE_NAME, __LINE__, ##args); \
-	})
+       ({                              \
+               pr_debug("%s(%d):" fmt "\n", \
+                       MODULE_NAME, __LINE__, ##args); \
+       })
 */
 enum {
 	RX_BUFFER_TYPE = 0,
@@ -272,92 +272,92 @@ static inline unsigned int __ipc_lock_status(void __iomem *base)
 
 static inline void __ipc_set_src(void __iomem *base, int source, int mdev)
 {
-	__raw_writel(IPCBITMASK(source), base + IPCMBxSOURCE(mdev));
+	__raw_writel(IPCBITMASK(source), base + IPCMBxSOURCE(mdev));/*lint !e679*/
 }
 
 static inline unsigned int __ipc_read_src(void __iomem *base, int mdev)
 {
-	return __raw_readl(base + IPCMBxSOURCE(mdev));
+	return __raw_readl(base + IPCMBxSOURCE(mdev));/*lint !e679*/
 }
 
 static inline void __ipc_set_des(void __iomem *base, int source, int mdev)
 {
-	__raw_writel(IPCBITMASK(source), base + IPCMBxDSET(mdev));
+	__raw_writel(IPCBITMASK(source), base + IPCMBxDSET(mdev));/*lint !e679*/
 }
 
 static inline void __ipc_clr_des(void __iomem *base, int source, int mdev)
 {
-	__raw_writel(IPCBITMASK(source), base + IPCMBxDCLR(mdev));
+	__raw_writel(IPCBITMASK(source), base + IPCMBxDCLR(mdev));/*lint !e679*/
 }
 
 static inline unsigned int __ipc_des_status(void __iomem *base, int mdev)
 {
-	return __raw_readl(base + IPCMBxDSTATUS(mdev));
+	return __raw_readl(base + IPCMBxDSTATUS(mdev));/*lint !e679*/
 }
 
 static inline void __ipc_send(void __iomem *base, unsigned int tosend, int mdev)
 {
-	__raw_writel(tosend, base + IPCMBxSEND(mdev));
+	__raw_writel(tosend, base + IPCMBxSEND(mdev));/*lint !e679*/
 }
 
 static inline unsigned int __ipc_read(void __iomem *base, int mdev, int index)
 {
-	return __raw_readl(base + IPCMBxDATA(mdev, index));
+	return __raw_readl(base + IPCMBxDATA(mdev, index));/*lint !e679*/
 }
 
 static inline void __ipc_write(void __iomem *base, u32 data, int mdev, int index)
 {
-	__raw_writel(data, base + IPCMBxDATA(mdev, index));
+	__raw_writel(data, base + IPCMBxDATA(mdev, index));/*lint !e679*/
 }
 
 static inline unsigned int __ipc_cpu_imask_get(void __iomem *base, int mdev)
 {
-	return __raw_readl(base + IPCMBxIMASK(mdev));
+	return __raw_readl(base + IPCMBxIMASK(mdev));/*lint !e679*/
 }
 
 static inline void __ipc_cpu_imask_clr(void __iomem *base, unsigned int toclr, int mdev)
 {
 	unsigned int reg;
 
-	reg = __raw_readl(base + IPCMBxIMASK(mdev));
+	reg = __raw_readl(base + IPCMBxIMASK(mdev));/*lint !e679*/
 	reg = reg & (~(toclr));
 
-	__raw_writel(reg, base + IPCMBxIMASK(mdev));
+	__raw_writel(reg, base + IPCMBxIMASK(mdev));/*lint !e679*/
 }
 
 static inline void __ipc_cpu_imask_all(void __iomem *base, int mdev)
 {
-	__raw_writel((~0), base + IPCMBxIMASK(mdev));
+	__raw_writel((~0), base + IPCMBxIMASK(mdev));/*lint !e679*/
 }
 
 static inline void __ipc_cpu_iclr(void __iomem *base, unsigned int toclr, int mdev)
 {
-	__raw_writel(toclr, base + IPCMBxICLR(mdev));
+	__raw_writel(toclr, base + IPCMBxICLR(mdev));/*lint !e679*/
 }
 
 static inline int __ipc_cpu_istatus(void __iomem *base, int mdev)
 {
-	return __raw_readl(base + IPCMBxICLR(mdev));
+	return __raw_readl(base + IPCMBxICLR(mdev));/*lint !e679*/
 }
 
 static inline unsigned int __ipc_mbox_istatus(void __iomem *base, int cpu)
 {
-	return __raw_readl(base + IPCCPUxIMST(cpu));
+	return __raw_readl(base + IPCCPUxIMST(cpu));/*lint !e679*/
 }
 
 static inline unsigned int __ipc_mbox_irstatus(void __iomem *base, int cpu)
 {
-	return __raw_readl(base + IPCCPUxIRST(cpu));
+	return __raw_readl(base + IPCCPUxIRST(cpu));/*lint !e679*/
 }
 
 static inline unsigned int __ipc_status(void __iomem *base, int mdev)
 {
-	return __raw_readl(base + IPCMBxMODE(mdev));
+	return __raw_readl(base + IPCMBxMODE(mdev));/*lint !e679*/
 }
 
 static inline void __ipc_mode(void __iomem *base, unsigned int mode, int mdev)
 {
-	__raw_writel(mode, base + IPCMBxMODE(mdev));
+	__raw_writel(mode, base + IPCMBxMODE(mdev));/*lint !e679*/
 }
 
 static int hisi_mdev_startup(struct hisi_mbox_device *mdev)
@@ -392,7 +392,7 @@ static void hisi_mdev_dump_status(struct hisi_mbox_device *mdev)
 	char *des_name = rproc_analysis(mdev->name, __ipc_des_status(priv->idev->base, priv->mbox_channel));
 	/*\0013 is the  KERN_SOH KERN_ERR */
 	char *direcstr = KERN_ERR "\n<INFO>: [%s]-->[%s], ";
-	char *machinestr = ipc_state_analysis(__ipc_status(priv->idev->base, priv->mbox_channel), &statem);
+	char *machinestr = ipc_state_analysis(__ipc_status(priv->idev->base, priv->mbox_channel), (unsigned char *)&statem);
 
 	memcpy(finalfortmat, direcstr, strlen(direcstr));
 
@@ -954,7 +954,7 @@ static int hisi_mdev_get(struct hisi_ipc_device *idev, struct hisi_mbox_device *
 
 	MDEV_DEBUG("ipc_base: 0x%lx\n", (unsigned long)ipc_base);
 
-	ret = of_property_read_u32(node, "capability", &capability);
+	ret = of_property_read_u32(node, "capability", (u32 *)&capability);
 	if (ret) {
 		MDEV_ERR("prop \"capability\" error %d\n", ret);
 		ret = -ENODEV;
@@ -979,7 +979,7 @@ static int hisi_mdev_get(struct hisi_ipc_device *idev, struct hisi_mbox_device *
 	}
 
 	MDEV_DEBUG("unlock_key: 0x%x\n", (unsigned int)unlock);
-	ret = of_property_read_u32(node, "mailboxes", &mdev_num);
+	ret = of_property_read_u32(node, "mailboxes", (u32 *)&mdev_num);
 	if (ret) {
 		pr_err("%s: prop \"mailboxes\" error %d\n", MODULE_NAME, ret);
 		ret = -ENODEV;
@@ -1017,7 +1017,7 @@ static int hisi_mdev_get(struct hisi_ipc_device *idev, struct hisi_mbox_device *
 	idev->mdev_res = mdevs;
 	idev->buf_pool = buf_pool;
 
-	for (i = 0; (son = of_get_next_child(node, son)); i++) {
+	for (i = 0; (son = of_get_next_child(node, son)); i++) {/*lint !e441*/
 		mdev = NULL;
 		priv = NULL;
 		mdev_name = NULL;
@@ -1053,15 +1053,15 @@ static int hisi_mdev_get(struct hisi_ipc_device *idev, struct hisi_mbox_device *
 
 		MDEV_DEBUG("mailbox node: %s\n", mdev_name);
 
-		ret = of_property_read_u32(son, "src_bit", &src_bit);
+		ret = of_property_read_u32(son, "src_bit", (u32 *)&src_bit);
 		if (ret)
 			goto free_priv;
 
-		ret = of_property_read_u32(son, "des_bit", &des_bit);
+		ret = of_property_read_u32(son, "des_bit", (u32 *)&des_bit);
 		if (ret)
 			goto free_priv;
 		/* get software code-index to mbox_channel and calculate the right mbox_channel */
-		ret = of_property_read_u32(son, "index", &mbox_channel);
+		ret = of_property_read_u32(son, "index", (u32 *)&mbox_channel);
 		if (ret)
 			goto free_priv;
 
@@ -1126,7 +1126,7 @@ static int hisi_mdev_get(struct hisi_ipc_device *idev, struct hisi_mbox_device *
 
 		rx_buffer = buf_pool + capability * RX_BUFFER_TYPE;
 		ack_buffer = buf_pool + capability * ACK_BUFFER_TYPE;
-		buf_pool = buf_pool + capability * MBOX_BUFFER_TYPE_MAX;
+		buf_pool = buf_pool + capability * MBOX_BUFFER_TYPE_MAX;/*lint !e679*/
 		MDEV_DEBUG("rx_buffer: 0x%lx\nack_buffer: 0x%lx\n", (unsigned long)rx_buffer, (unsigned long)ack_buffer);
 
 		priv->capability = capability;
@@ -1201,7 +1201,7 @@ static int hisi_mdev_probe(struct platform_device *pdev)
 		goto out;
 	}
 
-	ret = of_property_read_u32(node, "mailboxes", &mdev_num);
+	ret = of_property_read_u32(node, "mailboxes", (u32 *)&mdev_num);
 	if (ret) {
 		MDEV_ERR("no mailboxes resources\n");
 		ret = -ENODEV;

@@ -299,7 +299,7 @@ static void hifi_om_voice_bsd_work_handler(struct work_struct *work)
 
 	return;
 }
-
+/*lint -e429*/
 void hifi_om_rev_data_handle(int work_id, const unsigned char *addr, unsigned int len)
 {
 	struct hifi_om_work *work = NULL;
@@ -327,7 +327,7 @@ void hifi_om_rev_data_handle(int work_id, const unsigned char *addr, unsigned in
 
 	return;
 }
-
+/*lint +e429*/
 static void hifi_om_show_audio_detect_info(struct work_struct *work)
 {
 	int work_id = HIFI_OM_WORK_AUDIO_OM_DETECTION;
@@ -535,11 +535,11 @@ static void hifi_dump_dsp(DUMP_DSP_INDEX index)
 
 	if(index == OCRAM_BIN)
 	{
-		s_dsp_dump_info[index].data_addr = (unsigned char*)ioremap_wc(HIFI_OCRAM_BASE_ADDR, HIFI_IMAGE_OCRAMBAK_SIZE);
+		s_dsp_dump_info[index].data_addr = (char*)ioremap_wc(HIFI_OCRAM_BASE_ADDR, HIFI_IMAGE_OCRAMBAK_SIZE);
 	}
 	if(index == TCM_BIN)
 	{
-		s_dsp_dump_info[index].data_addr = (unsigned char*)ioremap_wc(HIFI_TCM_BASE_ADDR, HIFI_IMAGE_TCMBAK_SIZE);
+		s_dsp_dump_info[index].data_addr = (char*)ioremap_wc(HIFI_TCM_BASE_ADDR, HIFI_IMAGE_TCMBAK_SIZE);
 	}
 
 	if (NULL == s_dsp_dump_info[index].data_addr) {
@@ -550,7 +550,7 @@ static void hifi_dump_dsp(DUMP_DSP_INDEX index)
 	data_addr = s_dsp_dump_info[index].data_addr;
 
 	fs = get_fs();
-	set_fs(KERNEL_DS);
+	set_fs(KERNEL_DS);/*lint !e501*/
 
 	ret = hifi_om_create_log_dir(LOG_PATH_HIFI_LOG);
 	if (0 != ret) {
@@ -586,7 +586,7 @@ static void hifi_dump_dsp(DUMP_DSP_INDEX index)
 								cur_tm.tm_year+1900, cur_tm.tm_mon+1,
 								cur_tm.tm_mday, cur_tm.tm_hour,
 								cur_tm.tm_min, cur_tm.tm_sec);
-		vfs_write(fp, tmp_buf, tmp_len, &fp->f_pos);
+		vfs_write(fp, tmp_buf, tmp_len, &fp->f_pos);/*lint !e613*/
 
 		/*write exception no*/
 		memset(tmp_buf, 0, sizeof(tmp_buf));
@@ -597,20 +597,20 @@ static void hifi_dump_dsp(DUMP_DSP_INDEX index)
 			tmp_len = snprintf(tmp_buf, sizeof(tmp_buf), "%s", "hifi is fine, just dump log.\n");
 		}
 
-		vfs_write(fp, tmp_buf, tmp_len, &fp->f_pos);
+		vfs_write(fp, tmp_buf, tmp_len, &fp->f_pos);/*lint !e613*/
 
 		/*write error type*/
 		if (0xdeadbeaf == *g_om_data.dsp_panic_mark) {
-			vfs_write(fp, is_panic, strlen(is_panic), &fp->f_pos);
+			vfs_write(fp, is_panic, strlen(is_panic), &fp->f_pos);/*lint !e613*/
 		} else if(0xbeafdead == *g_om_data.dsp_panic_mark){
-			vfs_write(fp, is_exception, strlen(is_exception), &fp->f_pos);
+			vfs_write(fp, is_exception, strlen(is_exception), &fp->f_pos);/*lint !e613*/
 		} else {
-			vfs_write(fp, not_panic, strlen(not_panic), &fp->f_pos);
+			vfs_write(fp, not_panic, strlen(not_panic), &fp->f_pos);/*lint !e613*/
 		}
 	}
 
 	/*write dsp info*/
-	if((write_size = vfs_write(fp, data_addr, data_len, &fp->f_pos)) < 0) {
+	if((write_size = vfs_write(fp, data_addr, data_len, &fp->f_pos)) < 0) {/*lint !e613*/
 		loge("write file fail.\n");
 	}
 
@@ -964,7 +964,7 @@ static int hifi_dump_dsp_thread(void *p)
 	unsigned int time_diff = 0;
 	unsigned int* hifi_info_addr = NULL;
 	unsigned int hifi_stack_addr = 0;
-	int i;
+	unsigned int i;
 
 	IN_FUNCTION;
 
@@ -1061,7 +1061,7 @@ int hifi_dsp_dump_hifi(void __user *arg)
 		loge("copy_from_user fail, don't dump log\n");
 		return -1;
 	}
-	g_om_data.dsp_error_type = err_type;
+	g_om_data.dsp_error_type = err_type;/*lint !e64*/
 	g_om_data.force_dump_log = true;
 	up(&hifi_log_sema);
 
@@ -1070,7 +1070,7 @@ int hifi_dsp_dump_hifi(void __user *arg)
 
 void hifi_om_init(struct platform_device *pdev, unsigned char* hifi_priv_base_virt, unsigned char* hifi_priv_base_phy)
 {
-	int i = 0;
+	unsigned int i = 0;
 	BUG_ON(NULL == pdev);
 
 	BUG_ON(NULL == hifi_priv_base_virt);
@@ -1147,7 +1147,7 @@ void hifi_om_init(struct platform_device *pdev, unsigned char* hifi_priv_base_vi
 
 void hifi_om_deinit(struct platform_device *dev)
 {
-	int i = 0;
+	unsigned int i = 0;
 
 	IN_FUNCTION;
 

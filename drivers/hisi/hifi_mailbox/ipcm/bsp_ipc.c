@@ -149,7 +149,8 @@ struct notifier_block rx_nb;
 
 static int hisi_hifi_mbox_init(void)
 {
-	int ret = 0, rproc_id = 0;
+	int ret = 0;
+	rproc_id_t rproc_id;
 
 	rx_nb.next = NULL;
 	rx_nb.notifier_call = DRV_k3IpcIntHandler_ipc;
@@ -457,7 +458,8 @@ BSP_S32 IPC_IntSend(IPC_INT_CORE_E enDstCore, IPC_INT_LEV_E ulLvl)
 
 #ifdef USE_HISI_MAILBOX
 	BSP_U32 ipcMsg[2];
-    int ret = 0, rproc_id = 0;
+	int ret = 0;
+	rproc_id_t rproc_id;
 #else
 	BSP_U32 mailBoxNum = k3IpcConfig[myRole].mailBoxNum;
 	BSP_U32 dest = k3IpcConfig[myRole].destCore;

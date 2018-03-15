@@ -162,7 +162,7 @@ static inline struct hisi_rproc_info *find_rproc(rproc_id_t rproc_id)
 	struct hisi_rproc_info *rproc = NULL;
 	int i;
 
-	for (i = 0; i < sizeof(rproc_table) / sizeof(struct hisi_rproc_info); i++) {
+	for (i = 0; i < sizeof(rproc_table) / sizeof(struct hisi_rproc_info); i++) {/*lint !e574*/
 		if (rproc_id == rproc_table[i].rproc_id && NULL != rproc_table[i].mbox) {
 			rproc = &rproc_table[i];
 			break;
@@ -312,7 +312,7 @@ int hisi_rproc_put(rproc_id_t rproc_id)
 	struct hisi_rproc_info *rproc;
 	int i;
 
-	for (i = 0; i < sizeof(rproc_table) / sizeof(struct hisi_rproc_info); i++) {
+	for (i = 0; i < sizeof(rproc_table) / sizeof(struct hisi_rproc_info); i++) {/*lint !e574*/
 		rproc = &rproc_table[i];
 		if (rproc->mbox && rproc_id == rproc->rproc_id) {
 			hisi_mbox_put(&rproc->mbox);
@@ -339,7 +339,7 @@ int hisi_rproc_flush_tx(rproc_id_t rproc_id)
 	struct hisi_rproc_info *rproc;
 	int i;
 
-	for (i = 0; i < sizeof(rproc_table) / sizeof(struct hisi_rproc_info); i++) {
+	for (i = 0; i < sizeof(rproc_table) / sizeof(struct hisi_rproc_info); i++) {/*lint !e574*/
 		rproc = &rproc_table[i];
 		/* MBOX8/9/23/24 may be null in austin and dallas */
 		if(NULL == rproc->mbox)
@@ -364,7 +364,7 @@ int hisi_rproc_init(void)
 	struct hisi_mbox_task *ptask = NULL;
 	int i;
 
-	for (i = 0; i < sizeof(rproc_table) / sizeof(struct hisi_rproc_info); i++) {
+	for (i = 0; i < sizeof(rproc_table) / sizeof(struct hisi_rproc_info); i++) {/*lint !e574*/
 		rproc = &rproc_table[i];
 		if (NULL == rproc->mbox) {
 			ATOMIC_INIT_NOTIFIER_HEAD(&rproc->notifier);
@@ -410,7 +410,7 @@ static void __exit hisi_rproc_exit(void)
 
 	NOT_READY();
 
-	for (i = 0; i < sizeof(rproc_table) / sizeof(struct hisi_rproc_info); i++) {
+	for (i = 0; i < sizeof(rproc_table) / sizeof(struct hisi_rproc_info); i++) {/*lint !e574*/
 		rproc = &rproc_table[i];
 		if (rproc->mbox)
 			hisi_mbox_put(&rproc->mbox);

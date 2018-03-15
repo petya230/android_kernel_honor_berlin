@@ -1,3 +1,7 @@
+/*lint -e752 -esym(502,*)*/
+/*lint -e753 -esym(753,*)*/
+/*lint -e528 -esym(528,*)*/
+/*lint -save -e713 -e734 -e502 -e774 -e838 -e438 -e701 -e64 -e826 -e838 -e715 -e613 -e747 -e838 -e732 -e785 -e647 -e528 -e753 -e752 */
 /*
  * LEDs driver for hisi
  *
@@ -11,9 +15,7 @@
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/init.h>
-#include <linux/platform_device.h>
 #include <linux/leds.h>
-#include <linux/of_platform.h>
 #include <linux/of_gpio.h>
 #include <linux/slab.h>
 #include <linux/delay.h>
@@ -25,13 +27,12 @@
 #include <linux/notifier.h>
 #include <linux/mfd/hisi_pmic.h>
 
+#include <linux/hisi-spmi.h>
+#include <linux/of_hisi_spmi.h>
+
 #include <linux/of_device.h>
 
 extern struct atomic_notifier_head panic_notifier_list;
-
-#ifdef CONFIG_HISI_LEDS_BLUE_TP_COLOR_SWITCH
-extern int tp_color_provider(void);
-#endif
 
 static struct hisi_led_drv_data *hisi_led_pdata;
 
@@ -66,22 +67,6 @@ static struct hisi_led_platform_data hisi_leds = {
 
 };
 
-#ifdef CONFIG_HISI_LEDS_BLUE_TP_COLOR_SWITCH
-static struct hisi_led_flash_data hisi_leds_flash = {
-	.dr_en_mode_345_address = 0,
-	.flash_period_dr345_address = 0,
-	.flash_on_dr345_address = 0,
-	.dr_mode_sel_address = 0,
-	.dr_en_mode_345_conf = 0,
-	.flash_period_dr345_conf = 0,
-	.flash_on_dr345_conf = 0,
-	.dr_mode_sel_dr4_conf = 0,
-};
-
-int flash_mode_config = 0;
-bool  blue_tp_flash_flag = false;
-#endif
-
 /* read register  */
 static unsigned char hisi_led_reg_read(u32 led_address)
 {
@@ -102,16 +87,8 @@ static void hisi_led_set_disable(u8 id)
 	u32 hisi_led_dr_ctl;
 
 	hisi_led_dr_ctl = hisi_led_reg_read(hisi_leds.dr_led_ctrl);
-	hisi_led_dr_ctl &= ~(0x1 << id);/*lint !e502*/
+	hisi_led_dr_ctl &= ~(0x1 << id);
 	hisi_led_reg_write(hisi_led_dr_ctl, hisi_leds.dr_led_ctrl);
-
-#ifdef CONFIG_HISI_LEDS_BLUE_TP_COLOR_SWITCH
-	if((HISI_LED1 == id) && blue_tp_flash_flag)
-	{
-		hisi_led_reg_write(DR_MODE_SEL_RESET, hisi_leds_flash.dr_mode_sel_address);
-		hisi_led_reg_write(DR_EN_MODE_345_RESET, hisi_leds_flash.dr_en_mode_345_address);
-	}
-#endif
 }
 
 static int hisi_led_panic_handler(struct notifier_block *nb,
@@ -135,16 +112,7 @@ static void hisi_led_set_reg_write(struct led_set_config *brightness_config)
 	/* config current */
 	hisi_led_reg_write(brightness_config->brightness_set, brightness_config->hisi_led_iset_address);
 	/* start_delay  */
-#ifdef CONFIG_HISI_LEDS_BLUE_TP_COLOR_SWITCH
-	if( blue_tp_flash_flag)
-	{
-		hisi_led_reg_write(DR_START_DEL_512_OFF, brightness_config->hisi_led_start_address);//set dr_start_del to 0, otherwise the green light will be lighter earlier than the red light
-	}
-	else
-#endif
-	{
-		hisi_led_reg_write(DR_START_DEL_512, brightness_config->hisi_led_start_address);
-	}
+	hisi_led_reg_write(DR_START_DEL_512, brightness_config->hisi_led_start_address);
 	/* set_on  */
 	hisi_led_reg_write(DR_DELAY_ON, brightness_config->hisi_led_tim_address);
 	/* enable */
@@ -153,74 +121,8 @@ static void hisi_led_set_reg_write(struct led_set_config *brightness_config)
 	hisi_led_reg_write(brightness_config->hisi_led_dr_out_ctl, hisi_leds.dr_out_ctrl);
 }
 
-#ifdef CONFIG_HISI_LEDS_BLUE_TP_COLOR_SWITCH
-static void hisi_led_set_reg_write_flash(u8 id)
-{
-	hisi_led_reg_write(DR4_ISET_1MA, hisi_leds.leds[id].dr_iset);
-	hisi_led_reg_write(hisi_leds_flash.flash_period_dr345_conf, hisi_leds_flash.flash_period_dr345_address);
-	hisi_led_reg_write(hisi_leds_flash.flash_on_dr345_conf, hisi_leds_flash.flash_on_dr345_address);
-	hisi_led_reg_write(hisi_leds_flash.dr_mode_sel_dr4_conf, hisi_leds_flash.dr_mode_sel_address);
-	hisi_led_reg_write(hisi_leds_flash.dr_en_mode_345_conf, hisi_leds_flash.dr_en_mode_345_address);
-}
-#endif
-
 /* set led half brightness or full brightness  */
 static void hisi_led_set_enable(u8 brightness_set, u8 id)
-{
-    unsigned char hisi_led_dr_ctl;
-    unsigned char hisi_led_dr_out_ctl;
-    struct led_set_config brightness_config;
-#ifdef CONFIG_HISI_LEDS_BLUE_TP_COLOR_SWITCH
-    int tp_color = 0;
-#endif
-
-    hisi_led_dr_ctl = hisi_led_reg_read(hisi_leds.dr_led_ctrl);
-    hisi_led_dr_out_ctl = hisi_led_reg_read(hisi_leds.dr_out_ctrl);
-
-    brightness_config.brightness_set = brightness_set;
-    brightness_config.hisi_led_iset_address = hisi_leds.leds[id].dr_iset;
-    brightness_config.hisi_led_start_address = hisi_leds.leds[id].dr_start_del;
-    brightness_config.hisi_led_tim_address = hisi_leds.leds[id].dr_time_config0;
-    brightness_config.hisi_led_tim1_address = hisi_leds.leds[id].dr_time_config1;
-    brightness_config.hisi_led_dr_ctl = hisi_led_dr_ctl | (0x1 << id);/*lint !e647*/
-    brightness_config.hisi_led_dr_out_ctl = hisi_led_dr_out_ctl & LED_OUT_CTRL_VAL(id);/*lint !e502*/
-
-    printk(KERN_INFO "hisi_led_set_select_led, Led_id=[%d], brightness_set=%d,\n", id, brightness_set);
-
-#ifdef CONFIG_HISI_LEDS_BLUE_TP_COLOR_SWITCH
-    printk(KERN_INFO "hisi_led_set_enable, flash_mode_config=%d,blue_tp_flash_flag=%d\n", flash_mode_config,blue_tp_flash_flag);
-    /* if need flash,then read tp color  */
-    if((HISI_LED1 == id)&&(FLASH_MODE_HAVE_CONFIGERED == flash_mode_config))
-    {
-        tp_color = tp_color_provider();
-        printk(KERN_INFO "read tp color is tp_color:0x%x\n", tp_color);
-
-        /* blue tp */
-        if(BLUE == tp_color)
-        {
-            blue_tp_flash_flag = true;
-        }
-    }
-
-    if ((HISI_LED1 == id) && blue_tp_flash_flag)
-    {
-        hisi_led_reg_write(DR_TIME_CONFIG1_OFF, hisi_leds.leds[HISI_LED0].dr_time_config1);//set DR345_TIM_CONF1 to 0, otherwise the green light will be lighter earlier than the red light
-        hisi_led_set_reg_write_flash(id);
-    }
-    else
-    {
-        hisi_led_reg_write(DR_TIME_CONFIG1_ON, hisi_leds.leds[HISI_LED0].dr_time_config1);//restore DR345_TIM_CONF1
-        hisi_led_set_reg_write(&brightness_config);
-    }
-#else
-    hisi_led_set_reg_write(&brightness_config);
-#endif
-
-}
-
-#ifdef CONFIG_HISI_LEDS_BLUE_TP_COLOR_SWITCH
-/* set led half brightness or full brightness  */
-static void hisi_led_set_enable_blink(u8 brightness_set, u8 id)
 {
     unsigned char hisi_led_dr_ctl;
     unsigned char hisi_led_dr_out_ctl;
@@ -237,11 +139,9 @@ static void hisi_led_set_enable_blink(u8 brightness_set, u8 id)
     brightness_config.hisi_led_dr_ctl = hisi_led_dr_ctl | (0x1 << id);
     brightness_config.hisi_led_dr_out_ctl = hisi_led_dr_out_ctl & LED_OUT_CTRL_VAL(id);
 
-    printk(KERN_INFO "hisi_led_set_enable_blink, Led_id=[%d], brightness_set=%d\n", id, brightness_set);
-
+    printk(KERN_INFO "hisi_led_set_select_led, Led_id=[%d], brightness_set=%d,\n", id, brightness_set);
     hisi_led_set_reg_write(&brightness_config);
 }
-#endif
 
 /* set enable or disable led of dr3,4,5 */
 static int hisi_led_set(struct hisi_led_data *led, u8 brightness)
@@ -337,9 +237,6 @@ static int hisi_led_set_blink(struct led_classdev *led_ldev,
 	int ret = 0;
 	u8 set_time_on = 0;
 	u8 set_time_off = 0;
-#ifdef CONFIG_HISI_LEDS_BLUE_TP_COLOR_SWITCH
-	u8 iset = 0;
-#endif
 
 	if (!led_dat) {
 		pr_err("led set blink error\n");
@@ -352,16 +249,6 @@ static int hisi_led_set_blink(struct led_classdev *led_ldev,
 	mutex_lock(&data->lock);
 
 	if ((id == HISI_LED0) || (id == HISI_LED1) || (id == HISI_LED2)) {
-#ifdef CONFIG_HISI_LEDS_BLUE_TP_COLOR_SWITCH
-		if((HISI_LED1 == id) && blue_tp_flash_flag && (led_dat->status.brightness != 0))
-		{
-			 /* first turn off flash mode */
-			 hisi_led_set_disable(HISI_LED1);
-			 /* set led brightness */
-			 iset = DR4_ISET_1MA;
-			 hisi_led_set_enable_blink(iset, HISI_LED1);
-		}
-#endif
 		led_ldev->blink_delay_on =  *delay_on;
 		led_ldev->blink_delay_off = *delay_off;
 
@@ -387,14 +274,13 @@ static void hisi_led_set_brightness(struct led_classdev *led_ldev,
 		container_of(led_ldev, struct hisi_led_data, ldev);
 	if (!led) {
 		pr_err("led set btrightnss error!\n");
-		return;
 	}
-	led->status.brightness = brightness;/*lint !e613*/
-	hisi_led_set(led, led->status.brightness);/*lint !e613*/
+	led->status.brightness = brightness;
+	hisi_led_set(led, led->status.brightness);
 }
 
 /* config lights */
-static int hisi_led_configure(struct platform_device *pdev,
+static int hisi_led_configure(struct spmi_device *pdev,
 				struct hisi_led_drv_data *data,
 				struct hisi_led_platform_data *pdata)
 {
@@ -436,20 +322,20 @@ exit:
 
 #ifdef CONFIG_OF
 static const struct of_device_id hisi_led_match[] = {
-	{ .compatible = "hisilicon,hisi-pmic-led",
+	{ .compatible = "hisilicon-hisi-led-pmic-spmi",
 		.data = &hisi_leds,},
 	{},
 };
 MODULE_DEVICE_TABLE(of, hisi_led_match);
 #endif
-static int hisi_led_probe(struct platform_device *pdev)
+static int hisi_led_probe(struct spmi_device *pdev)
 {
 	struct hisi_led_platform_data *pdata;
 	struct hisi_led_drv_data *data;
 	const struct of_device_id *match;
-    struct device_node *root = NULL;
-    char compatible_string[LED_DTS_ATTR_LEN] = {0};
-    int index;
+	struct device_node *root = NULL;
+	char compatible_string[LED_DTS_ATTR_LEN] = {0};
+	int index;
 	int ret = 0 ;
 
 	if ((match = of_match_node(hisi_led_match, pdev->dev.of_node)) == NULL) {
@@ -471,7 +357,7 @@ static int hisi_led_probe(struct platform_device *pdev)
 
 	mutex_init(&data->lock);
 
-	platform_set_drvdata(pdev, data);
+	dev_set_drvdata(&pdev->dev, data);
 	hisi_led_pdata = data;
 
     ret = of_property_read_u32(pdev->dev.of_node, "hisilicon,dr_led_ctrl", &hisi_leds.dr_led_ctrl);
@@ -492,82 +378,6 @@ static int hisi_led_probe(struct platform_device *pdev)
         hisi_leds.max_iset = DR_BRIGHTNESS_FULL;
         //goto err;
     }
-
-#ifdef CONFIG_HISI_LEDS_BLUE_TP_COLOR_SWITCH
-    ret = of_property_read_u32(pdev->dev.of_node, "hisilicon,hisi_blue_tp_color_switch", &flash_mode_config);
-    dev_err(&pdev->dev, "flash_mode_config is %d\n",flash_mode_config);
-    if (ret < 0) {
-        dev_info(&pdev->dev, "flash_mode_config is not configed!\n");
-        flash_mode_config = 0;
-    }
-
-    if(FLASH_MODE_HAVE_CONFIGERED == flash_mode_config)
-    {
-	    ret = of_property_read_u32(pdev->dev.of_node, "hisilicon,dr_en_mode_345", &hisi_leds_flash.dr_en_mode_345_address);
-	    dev_err(&pdev->dev, "dr_en_mode_345 is %x\n",hisi_leds_flash.dr_en_mode_345_address);
-	    if (ret < 0) {
-	        dev_info(&pdev->dev, "dr_en_mode_345 is not configed!\n");
-	        hisi_leds_flash.dr_en_mode_345_address = 0;
-		    flash_mode_config = 0;
-	    }
-
-	    ret = of_property_read_u32(pdev->dev.of_node, "hisilicon,flash_period_dr345", &hisi_leds_flash.flash_period_dr345_address);
-	    dev_err(&pdev->dev, "flash_period_dr345 is %x\n",hisi_leds_flash.flash_period_dr345_address);
-	    if (ret < 0) {
-		    dev_info(&pdev->dev, "flash_period_dr345 is not configed!\n");
-		    hisi_leds_flash.flash_period_dr345_address = 0;
-		    flash_mode_config = 0;
-	    }
-
-	    ret = of_property_read_u32(pdev->dev.of_node, "hisilicon,flash_on_dr345", &hisi_leds_flash.flash_on_dr345_address);
-	    dev_err(&pdev->dev, "flash_on_dr345 is %x\n",hisi_leds_flash.flash_on_dr345_address);
-	    if (ret < 0) {
-		    dev_info(&pdev->dev, "flash_on_dr345 is not configed!\n");
-		    hisi_leds_flash.flash_on_dr345_address = 0;
-		    flash_mode_config = 0;
-	    }
-
-	    ret = of_property_read_u32(pdev->dev.of_node, "hisilicon,dr_mode_sel", &hisi_leds_flash.dr_mode_sel_address);
-	    dev_err(&pdev->dev, "dr_mode_sel is %x\n",hisi_leds_flash.dr_mode_sel_address);
-	    if (ret < 0) {
-		    dev_info(&pdev->dev, "dr_mode_sel is not configed!\n");
-		    hisi_leds_flash.dr_mode_sel_address = 0;
-		    flash_mode_config = 0;
-	    }
-
-	    ret = of_property_read_u32(pdev->dev.of_node, "hisilicon,flash_period_dr345_conf", &hisi_leds_flash.flash_period_dr345_conf);
-	    dev_err(&pdev->dev, "flash_period_dr345_conf is %x\n",hisi_leds_flash.flash_period_dr345_conf);
-	    if (ret < 0) {
-		    dev_info(&pdev->dev, "flash_period_dr345_conf is not configed!\n");
-		    hisi_leds_flash.flash_period_dr345_conf = 0;
-		    flash_mode_config = 0;
-	    }
-
-	    ret = of_property_read_u32(pdev->dev.of_node, "hisilicon,flash_on_dr345_conf", &hisi_leds_flash.flash_on_dr345_conf);
-	    dev_err(&pdev->dev, "flash_on_dr345_conf is %x\n",hisi_leds_flash.flash_on_dr345_conf);
-	    if (ret < 0) {
-		    dev_info(&pdev->dev, "flash_on_dr345_conf is not configed!\n");
-		    hisi_leds_flash.flash_on_dr345_conf = 0;
-		    flash_mode_config = 0;
-	    }
-
-	    ret = of_property_read_u32(pdev->dev.of_node, "hisilicon,dr_mode_sel_dr4_conf", &hisi_leds_flash.dr_mode_sel_dr4_conf);
-	    dev_err(&pdev->dev, "dr_mode_sel_dr4_conf is %x\n",hisi_leds_flash.dr_mode_sel_dr4_conf);
-	    if (ret < 0) {
-		    dev_info(&pdev->dev, "dr_mode_sel_dr4_conf is not configed!\n");
-		    hisi_leds_flash.dr_mode_sel_dr4_conf = 0;
-		    flash_mode_config = 0;
-	    }
-
-	    ret = of_property_read_u32(pdev->dev.of_node, "hisilicon,dr_en_mode_345_conf", &hisi_leds_flash.dr_en_mode_345_conf);
-	    dev_err(&pdev->dev, "dr_en_mode_345_conf is %x\n",hisi_leds_flash.dr_en_mode_345_conf);
-	    if (ret < 0) {
-		    dev_info(&pdev->dev, "dr_en_mode_345_conf is not configed!\n");
-		    hisi_leds_flash.dr_en_mode_345_conf = 0;
-		    flash_mode_config = 0;
-	    }
-    }
-#endif
 
     for (index = 0; index < HISI_LEDS_MAX; index++) {
         snprintf(compatible_string, LED_DTS_ATTR_LEN, "hisilicon,hisi-led%d", index);
@@ -630,12 +440,12 @@ err:
 	return ret;
 }
 
-static int hisi_led_remove(struct platform_device *pdev)
+static int hisi_led_remove(struct spmi_device *pdev)
 {
 	int i;
 	struct hisi_led_platform_data *pdata;
 	const struct of_device_id *match = NULL;
-	struct hisi_led_drv_data *data = platform_get_drvdata(pdev);
+	struct hisi_led_drv_data *data = dev_get_drvdata(&pdev->dev);
 
 	if (data == NULL) {
 		dev_err(&pdev->dev, "%s:data is NULL\n", __func__);
@@ -654,15 +464,15 @@ static int hisi_led_remove(struct platform_device *pdev)
 
 	kfree(data);
 	data = NULL;
-	platform_set_drvdata(pdev, NULL);
+	dev_set_drvdata(&pdev->dev, NULL);
 	return 0;
 }
 
-static void hisi_led_shutdown(struct platform_device *pdev)
+static void hisi_led_shutdown(struct spmi_device *pdev)
 {
     int index;
 
-	struct hisi_led_drv_data *data = platform_get_drvdata(pdev);
+	struct hisi_led_drv_data *data = dev_get_drvdata(&pdev->dev);
 	if (data == NULL) {
 		dev_err(&pdev->dev, "%s:data is NULL\n", __func__);
 		return;
@@ -676,9 +486,9 @@ static void hisi_led_shutdown(struct platform_device *pdev)
 }
 
 #ifdef CONFIG_PM
-static int hisi_led_suspend(struct platform_device *pdev, pm_message_t state)
+static int hisi_led_suspend(struct spmi_device *pdev, pm_message_t state)
 {
-	struct hisi_led_drv_data *data = platform_get_drvdata(pdev);
+	struct hisi_led_drv_data *data = dev_get_drvdata(&pdev->dev);
 
 	dev_info(&pdev->dev, "%s: suspend +\n", __func__);
 	if (data == NULL) {
@@ -694,9 +504,9 @@ static int hisi_led_suspend(struct platform_device *pdev, pm_message_t state)
 	dev_info(&pdev->dev, "%s: suspend -\n", __func__);
 	return 0;
 }
-static int hisi_led_resume(struct platform_device *pdev)
+static int hisi_led_resume(struct spmi_device *pdev)
 {
-	struct hisi_led_drv_data *data = platform_get_drvdata(pdev);
+	struct hisi_led_drv_data *data = dev_get_drvdata(&pdev->dev);
 
 	dev_info(&pdev->dev, "%s: resume +\n", __func__);
 	if (data == NULL) {
@@ -704,31 +514,52 @@ static int hisi_led_resume(struct platform_device *pdev)
 		return -ENODEV;
 	}
 
-	mutex_unlock(&data->lock);/*lint !e455*/
+	mutex_unlock(&data->lock);
 
 	dev_info(&pdev->dev, "%s: resume -\n", __func__);
 	return 0;
 }
 #endif
 
-static struct platform_driver hisi_led_driver = {
+static const struct spmi_device_id hisi_led_spmi_id[] = {
+		{"hisilicon-hisi-led-pmic-spmi", 0},
+		{},
+};
+
+static struct spmi_driver hisi_led_driver = {
 	.probe		= hisi_led_probe,
 	.remove		= hisi_led_remove,
 	.shutdown	= hisi_led_shutdown,
-#ifdef CONFIG_PM
-	.suspend	= hisi_led_suspend,
-	.resume		= hisi_led_resume,
-#endif
+	.id_table		= hisi_led_spmi_id,
 	.driver		= {
 		.name	= HISI_LEDS,
 		.owner	= THIS_MODULE,
 		.of_match_table = of_match_ptr(hisi_led_match),
 	},
+#ifdef CONFIG_PM
+		.suspend	= hisi_led_suspend,
+		.resume		= hisi_led_resume,
+#endif
 };
 
-module_platform_driver(hisi_led_driver);
 
-MODULE_ALIAS("platform:hisi-leds");
+static int __init hisi_leds_init(void)
+{
+	return spmi_driver_register(&hisi_led_driver);
+}
+
+static void __exit hisi_leds_exit(void)
+{
+	spmi_driver_unregister(&hisi_led_driver);
+}
+
+module_init(hisi_leds_init);
+module_exit(hisi_leds_exit);
+
+MODULE_ALIAS("hisi-leds");
 MODULE_DESCRIPTION("hisi LED driver");
 MODULE_LICENSE("GPL");
-
+/*lint -restore */
+/*lint -e528 +esym(528,*)*/
+/*lint -e753 +esym(753,*)*/
+/*lint -e752 +esym(502,*)*/
