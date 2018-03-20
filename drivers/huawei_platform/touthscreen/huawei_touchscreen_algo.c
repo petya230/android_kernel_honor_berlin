@@ -53,6 +53,7 @@ static int finger_stop_y[TS_MAX_FINGER] = {0};
 
 static int left_res_point[4] = {0};		//0 point addr /1 error times /2 error flag /3 correct flag
 static int right_res_point[4] = {0};
+
 static int ts_algo_filter_anti_false_touch_edge(int x, int finger_id, struct anti_false_touch_param *param){
 	int drv_limit_x_left = 0, drv_limit_x_right = 0;
 	if (!param || !param->feature_all){

@@ -3856,21 +3856,21 @@ static int cyttsp5_put_device_into_deep_sleep_(struct cyttsp5_core_data *cd)
 			rc = cyttsp5_reset_and_wait(cd);
 			if (rc < 0) {
 				 TS_LOG_ERR("%s: Error on h/w reset r=%d\n",
-									__func__, rc);
+						__func__, rc);
 				 return rc;
 			}
 
 			rc = _fast_startup(cd);
 			if (rc) {
 				TS_LOG_ERR("%s: Error on fast startup r=%d\n",
-									__func__, rc);
+						__func__, rc);
 				}
 
 			rc = cyttsp5_hid_cmd_set_power_(cd, HID_POWER_SLEEP);
 			if (rc) {
 				rc = -EBUSY;
 				TS_LOG_ERR("%s: Error on the second sleep time r=%d\n",
-									__func__, rc);
+						__func__, rc);
 				} else {
 					TS_LOG_INFO("%s: put device into sleep in the second time successfully\n", __func__);
 				}
@@ -6491,7 +6491,6 @@ static ssize_t tthe_debugfs_read(struct file *filp, char __user *buf,
 		mutex_unlock(&cd->tthe_lock);
 		return 0;
 	}
-
 	ret = copy_to_user(buf, cd->tthe_buf, size);
 	if (ret == size){
 		mutex_unlock(&cd->tthe_lock);

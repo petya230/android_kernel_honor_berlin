@@ -30,6 +30,7 @@
 
 #include <bcmpcie.h>
 #include <hnd_cons.h>
+#ifndef BCM_PCIE_UPDATE
 #ifdef MSM_PCIE_LINKDOWN_RECOVERY
 #if defined (CONFIG_ARCH_MSM)
 #if defined (CONFIG_64BIT)
@@ -39,6 +40,17 @@
 #endif
 #endif
 #endif /* MSM_PCIE_LINKDOWN_RECOVERY */
+#else  /* BCM_PCIE_UPDATE */
+#ifdef SUPPORT_LINKDOWN_RECOVERY
+#ifdef CONFIG_ARCH_MSM
+#ifdef CONFIG_PCI_MSM
+#include <linux/msm_pcie.h>
+#else
+#include <mach/msm_pcie.h>
+#endif
+#endif
+#endif /* MSM_PCIE_LINKDOWN_RECOVERY */
+#endif /* BCM_PCIE_UPDATE */
 #ifdef CONFIG_ARCH_HISI
 #include <linux/hisi/pcie-kirin-api.h>
 #endif
@@ -55,19 +67,44 @@
 #define	REMAP_ENAB(bus)			((bus)->remap)
 #define	REMAP_ISADDR(bus, a)		(((a) >= ((bus)->orig_ramsize)) && ((a) < ((bus)->ramsize)))
 
-#define MAX_DHD_TX_FLOWS	256
+#ifdef BCM_PCIE_UPDATE
+#ifdef SUPPORT_LINKDOWN_RECOVERY
+#ifdef CONFIG_ARCH_MSM
+#define struct_pcie_notify		struct msm_pcie_notify
+#define struct_pcie_register_event	struct msm_pcie_register_event
+#endif /* CONFIG_ARCH_MSM */
+#ifdef CONFIG_ARCH_HISI
+#define struct_pcie_notify	struct kirin_pcie_notify
+#endif
+#endif /* SUPPORT_LINKDOWN_RECOVERY */
+
+/*
+ * Router with 4366 can have 128 stations and 16 BSS,
+ * hence (128 stations x 4 access categories for ucast) + 16 bc/mc flowrings
+ */
+#define MAX_DHD_TX_FLOWS	320
+
 #define PCIE_LINK_DOWN		0xFFFFFFFF
 #define DHD_INVALID 		-1
 /* user defined data structures */
-#ifdef DHD_DEBUG
+/* Device console log buffer state */
+#define CONSOLE_LINE_MAX	192
+#define CONSOLE_BUFFER_MAX	(8 * 1024)
+#else
+#define MAX_DHD_TX_FLOWS	256
+#define PCIE_LINK_DOWN		0xFFFFFFFF
+#define DHD_INVALID 		-1
 /* Device console log buffer state */
 #define CONSOLE_LINE_MAX	192
 #define CONSOLE_BUFFER_MAX	2024
+#endif /* BCM_PCIE_UPDATE */
 
 #ifndef MAX_CNTL_D3ACK_TIMEOUT
 #define MAX_CNTL_D3ACK_TIMEOUT 2
 #endif /* MAX_CNTL_D3ACK_TIMEOUT */
 
+/* user defined data structures */
+#ifdef DHD_DEBUG
 typedef struct dhd_console {
 	 uint		count;	/* Poll interval msec counter */
 	 uint		log_addr;		 /* Log struct address (fixed) */
@@ -175,18 +212,42 @@ typedef struct dhd_bus {
 	uint32 def_intmask;
 	bool	ltrsleep_on_unload;
 	uint	wait_for_d3_ack;
+#ifndef BCM_PCIE_UPDATE
 	uint8	txmode_push;
+#endif
 	uint32 max_sub_queues;
+#ifdef BCM_PCIE_UPDATE
+	uint32	rw_index_sz;
+#endif
 	bool	db1_for_mb;
 	bool	suspended;
+#ifndef BCM_PCIE_UPDATE
 #ifdef MSM_PCIE_LINKDOWN_RECOVERY
 	struct msm_pcie_register_event pcie_event;
 	bool islinkdown;
 #endif /* MSM_PCIE_LINKDOWN_RECOVERY */
+#else
+	bool	device_wake_state;
+	bool	irq_registered;
+
+#ifdef SUPPORT_LINKDOWN_RECOVERY
+#ifdef CONFIG_ARCH_MSM
+	uint8 no_cfg_restore;
+	struct_pcie_register_event pcie_event;
+#endif /* CONFIG_ARCH_MSM */
 #ifdef CONFIG_ARCH_HISI
 	struct kirin_pcie_register_event pcie_event;
-	bool islinkdown;
-#endif
+#endif	
+#endif /* SUPPORT_LINKDOWN_RECOVERY */
+	uint32 d3_inform_cnt;
+	uint32 d0_inform_cnt;
+	uint32 d0_inform_in_use_cnt;
+	uint8 force_suspend;
+	uint32 d3_ack_war_cnt;
+	uint8 is_linkdown;
+	uint32 pci_d3hot_done;
+#endif /*BCM_PCIE_UPDATE*/
+
 } dhd_bus_t;
 
 /* function declarations */
@@ -195,8 +256,12 @@ extern uint32* dhdpcie_bus_reg_map(osl_t *osh, ulong addr, int size);
 extern int dhdpcie_bus_register(void);
 extern void dhdpcie_bus_unregister(void);
 extern bool dhdpcie_chipmatch(uint16 vendor, uint16 device);
-
+#ifndef BCM_PCIE_UPDATE
 extern struct dhd_bus* dhdpcie_bus_attach(osl_t *osh, volatile char* regs, volatile char* tcm);
+#else
+extern struct dhd_bus* dhdpcie_bus_attach(osl_t *osh,
+	volatile char *regs, volatile char *tcm, void *pci_dev);
+#endif
 extern uint32 dhdpcie_bus_cfg_read_dword(struct dhd_bus *bus, uint32 addr, uint32 size);
 extern void dhdpcie_bus_cfg_write_dword(struct dhd_bus *bus, uint32 addr, uint32 size, uint32 data);
 extern void dhdpcie_bus_intr_disable(struct dhd_bus *bus);
@@ -204,7 +269,15 @@ extern void dhdpcie_bus_release(struct dhd_bus *bus);
 extern int32 dhdpcie_bus_isr(struct dhd_bus *bus);
 extern void dhdpcie_free_irq(dhd_bus_t *bus);
 extern int dhdpcie_bus_suspend(struct  dhd_bus *bus, bool state);
+#ifndef BCM_PCIE_UPDATE
 extern int dhdpcie_pci_suspend_resume(struct pci_dev *dev, bool state);
+#else
+extern int dhdpcie_pci_suspend_resume(struct  dhd_bus *bus, bool state);
+#ifndef BCMPCIE_OOB_HOST_WAKE
+extern void dhdpcie_pme_active(osl_t *osh, bool enable);
+extern bool dhdpcie_pme_cap(osl_t *osh);
+#endif /* !BCMPCIE_OOB_HOST_WAKE */
+#endif
 extern int dhdpcie_start_host_pcieclock(dhd_bus_t *bus);
 extern int dhdpcie_stop_host_pcieclock(dhd_bus_t *bus);
 extern int dhdpcie_disable_device(dhd_bus_t *bus);

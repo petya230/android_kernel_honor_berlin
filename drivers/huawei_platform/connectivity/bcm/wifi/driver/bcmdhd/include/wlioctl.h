@@ -1,4 +1,31 @@
-
+/*
+ * Custom OID/ioctl definitions for
+ * Broadcom 802.11abg Networking Device Driver
+ *
+ * Definitions subject to change without notice.
+ *
+ * Copyright (C) 1999-2014, Broadcom Corporation
+ *
+ *      Unless you and Broadcom execute a separate written software license
+ * agreement governing use of this software, this software is licensed to you
+ * under the terms of the GNU General Public License version 2 (the "GPL"),
+ * available at http://www.broadcom.com/licenses/GPLv2.php, with the
+ * following added to such license:
+ *
+ *      As a special exception, the copyright holders of this software give you
+ * permission to link this software with independent modules, and to copy and
+ * distribute the resulting executable under terms of your choice, provided that
+ * you also meet, for each linked independent module, the terms and conditions of
+ * the license of that module.  An independent module is a module which is not
+ * derived from this software.  The special exception does not apply to any
+ * modifications of the software.
+ *
+ *      Notwithstanding the above, under no circumstances may you combine this
+ * software in any way with any other Broadcom software provided under a license
+ * other than the GPL, without Broadcom's express prior written consent.
+ *
+ * $Id: wlioctl.h 490639 2014-07-11 08:31:53Z $
+ */
 
 #ifndef _wlioctl_h_
 #define	_wlioctl_h_
@@ -1748,7 +1775,11 @@ typedef struct wl_bsstrans_roamthrottle {
 #define NREINITREASONCOUNT	8
 #define REINITREASONIDX(_x)	(((_x) < NREINITREASONCOUNT) ? (_x) : 0)
 
+#ifdef CONFIG_BCMDHD_PCIE
+#define	WL_CNT_T_VERSION	11	/* current version of wl_cnt_t struct */
+#else
 #define	WL_CNT_T_VERSION	10	/* current version of wl_cnt_t struct */
+#endif
 
 typedef struct {
 	uint16	version;	/* see definition of WL_CNT_T_VERSION */
@@ -1771,7 +1802,7 @@ typedef struct {
 	/* transmit chip error counters */
 	uint32	txuflo;		/* tx fifo underflows */
 	uint32	txphyerr;	/* tx phy errors (indicated in tx status) */
-	uint32	txphycrs;
+	uint32	txphycrs;   /* PR8861/8963 counter */
 
 	/* receive stat counters */
 	uint32	rxframe;	/* rx data frames */
@@ -1805,7 +1836,7 @@ typedef struct {
 	uint32	dmape;		/* tx/rx dma descriptor protocol errors */
 	uint32	reset;		/* reset count */
 	uint32	tbtt;		/* cnts the TBTT int's */
-	uint32	txdmawar;
+	uint32	txdmawar;   /* # occurrences of PR15420 workaround */
 	uint32	pkt_callback_reg_fail;	/* callbacks register failure */
 
 	/* MAC counters: 32-bit version of d11.h's macstat_t */
@@ -2002,6 +2033,20 @@ typedef struct {
 	uint32	pciereset;	/* Secondary Bus Reset issued by driver */
 	uint32	cfgrestore;	/* configspace restore by driver */
 	uint32	reinitreason[NREINITREASONCOUNT]; /* reinitreason counters; 0: Unknown reason */
+#ifdef CONFIG_BCMDHD_PCIE
+	uint32  rxrtry;		/* num of received packets with retry bit on */
+	uint32	txmpdu;		/* macstat cnt only valid in ver 11. number of MPDUs txed.  */
+	uint32	rxnodelim;	/* macstat cnt only valid in ver 11.
+				 * number of occasions that no valid delimiter is detected
+				 * by ampdu parser.
+				 */
+	uint32  rxmpdu_mu;  /* Number of MU MPDUs received */
+	/* This structure is deprecated in trunk and used only for ver <= 11.
+	 * Please refer to the following twiki before editing.
+	 * http://hwnbu-twiki.sj.broadcom.com/bin/view/
+	 * Mwgroup/WlCounters#wlc_layer_counters_non_xTLV
+	 */
+#endif
 } wl_cnt_t;
 
 typedef struct {
@@ -3595,7 +3640,10 @@ typedef struct log_idstr {
 
 #define FMTSTRF_USER		1
 
-
+/* flat ID definitions
+ * New definitions HAVE TO BE ADDED at the end of the table. Otherwise, it will
+ * affect backward compatibility with pre-existing apps
+ */
 typedef enum {
 	FMTSTR_DRIVER_UP_ID = 0,
 	FMTSTR_DRIVER_DOWN_ID = 1,

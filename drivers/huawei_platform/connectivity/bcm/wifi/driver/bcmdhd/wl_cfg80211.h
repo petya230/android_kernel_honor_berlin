@@ -1594,7 +1594,9 @@ extern s32 wl_cfg80211_set_ulb_bw(struct net_device *dev,
 extern s32 wl_cfg80211_set_p2p_resp_ap_chn(struct net_device *net, s32 enable);
 #endif /* P2PLISTEN_AP_SAMECHN */
 #endif
-
+#ifdef WL_TEM_CTRL
+extern void wl_hw_tem_ctrl_event_report(void);
+#endif
 /* btcoex functions */
 void* wl_cfg80211_btcoex_init(struct net_device *ndev);
 void wl_cfg80211_btcoex_deinit(void);

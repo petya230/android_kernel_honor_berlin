@@ -26,6 +26,9 @@ HUAWEI-2014.007:       0728             set bcn_timeout for beacon loss and roam
 #include <linux/perf_event.h>
 #include <linux/hw_breakpoint.h>
 #endif
+#ifdef HW_AP_POWERSAVE
+#include <linux/fb.h>
+#endif
 
 #define        HUAWEI_VERSION_STR ", HUAWEI-2014.007"
 
@@ -469,5 +472,34 @@ extern int hw_unregister_breakpoint(int ifidx, char *ifname);
 extern int hw_iovar_int_get(dhd_pub_t *dhd_pub, char *name, int *retval);
 extern int hw_iovar_int_set(dhd_pub_t *dhd_pub, char *name, int value);
 extern uint is_beta_user(void);
+
+#ifdef HW_REG_RECOVERY
+extern void hw_record_reg_recovery(void);
+extern int hw_need_reg_recovery(unsigned long request_stamp);
+extern int hw_need_reg_panic(void);
+#endif
+
+#if (defined(CONFIG_BCMDHD_PCIE) && defined(HW_WIFI_DMD_LOG) && defined(CONFIG_ARCH_HISI))
+#define DHD_PCIE_BUF_SIZE (384)
+extern void dsm_pcie_dump_reginfo(char* buf, u32 buflen);
+#endif
+
+#if defined(HW_WIFI_DMD_LOG)
+#define DMD_SDIO_CMD52_MAX_CNT (3)
+#define DMD_DHD_STATE_STOP (0)
+#define DMD_DHD_STATE_OPEN (1)
+
+extern int   hw_dmd_trigger_sdio_cmd(int dsm_id);
+extern void  hw_dmd_increase_count(int dsm_id);
+extern void  hw_dmd_set_dhd_state(int state);
+extern void  hw_dmd_trace_log(const char *fmt, ...);
+extern char* hw_dmd_get_trace_log(void);
+
+#endif
+
+#ifdef HW_AP_POWERSAVE
+extern void hw_suspend_work_handler(struct work_struct *work);
+extern int hw_dhd_fb_notify(int blank, unsigned long action, dhd_pub_t *pub);
+#endif
 
 #endif /* end of __HW_WIFI_H__ */

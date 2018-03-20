@@ -61,7 +61,6 @@
 #include <huawei_platform/power/direct_charger.h>
 #endif
 
-
 struct mutex accp_detect_lock;
 struct mutex accp_adaptor_reg_lock;
 
@@ -264,7 +263,7 @@ static int fsa9685_dcd_timeout(bool enable_flag)
 		return -1;
 	}
 	ret = fsa9685_write_reg_mask(FSA9685_REG_CONTROL2,enable_flag,FSA9685_DCD_TIME_OUT_MASK);
-	if(ret < 0){
+	if(ret < 0) {
 		hwlog_err("%s:write fsa9688c DCD enable_flag error!!!\n",__func__);
 		return -1;
 	}
@@ -579,9 +578,11 @@ static ssize_t dump_regs_show(struct device *dev, struct device_attribute *attr,
         else
             buf[i] = 'x';
     }
+
     buf[0x5d] = '\n';
     buf[0x5e] = 0;
     buf[0x5f] = 0;
+
     if ( reg_locked != 0 ) {
         for (i=0; i<ARRAY_SIZE(regaddrs); i++) {
             if (regaddrs[i] != 0x03) {
@@ -603,7 +604,6 @@ static ssize_t dump_regs_show(struct device *dev, struct device_attribute *attr,
 }
 static DEVICE_ATTR(dump_regs, S_IRUGO, dump_regs_show, NULL);
 #endif
-
 static ssize_t jigpin_ctrl_store(struct device *dev,
                           struct device_attribute *attr, const char *buf, size_t size)
 {
@@ -850,7 +850,7 @@ int fcp_cmd_transfer_check(void)
         reg_val1 = fsa9685_read_reg(FSA9685_REG_ACCP_INTERRUPT1);
         reg_val2 = fsa9685_read_reg(FSA9685_REG_ACCP_INTERRUPT2);
         i++;
-    }while(i<5 && reg_val1== 0 && reg_val2 == 0);
+    } while(i<5 && reg_val1== 0 && reg_val2 == 0);
 
     if(reg_val1== 0 && reg_val2 == 0)
     {
@@ -918,7 +918,7 @@ void fcp_protocol_restart(void)
     {
         hwlog_err("accp interrupt mask write failed \n");
     }
-    hwlog_info("%s :disable and enable accp protocol accp status  is 0x%x \n",__func__,reg_val);
+    hwlog_info("%s-%d :disable and enable accp protocol accp status  is 0x%x \n",__func__, __LINE__,reg_val);
 }
 /****************************************************************************
   Function:     accp_adapter_reg_read
@@ -1000,6 +1000,7 @@ int accp_adapter_reg_write(int val, int reg)
         ret |=fsa9685_write_reg(FSA9685_REG_ACCP_ADDR, reg);
         ret |=fsa9685_write_reg(FSA9685_REG_ACCP_DATA, val);
         ret |=fsa9685_write_reg_mask(FSA9685_REG_ACCP_CNTL, FSA9685_ACCP_IS_ENABLE | FAS9685_ACCP_SENDCMD,FAS9685_ACCP_CNTL_MASK);
+        hwlog_info("accp_adapter_reg_write: 0x%x=0x%x\r\n", reg, val);
         if(ret < 0)
         {
             hwlog_err("%s: write error ret is %d \n",__func__,ret);
@@ -2234,6 +2235,7 @@ static int fsa9685_probe(
     hwlog_info("%s: intb=%d after clear MASK.\n", __func__, gpio_value);
 
     if (gpio_value == 0) {
+        hwlog_info("%s: GPIO == 0\n", __func__);
         schedule_work(&g_intb_work);
     }
 

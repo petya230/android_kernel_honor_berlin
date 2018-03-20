@@ -88,7 +88,7 @@ int charge_check_charger_plugged(void)
 	}
 	return g_ops->check_charger_plugged();
 }
-	
+
 bool charge_check_charger_ts(void)
 {
     	if (NULL == g_extra_ops || NULL == g_extra_ops->check_ts) {

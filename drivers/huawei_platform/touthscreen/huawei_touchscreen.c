@@ -545,7 +545,7 @@ int put_one_cmd(struct ts_cmd_node *cmd, int timeout)
 	if (q->cmd_count == q->queue_size) {
 		spin_unlock_irqrestore(&q->spin_lock, flags);
 		TS_LOG_ERR("queue is full\n");
-		BUG_ON(1);
+		WARN_ON(1);
 		error = -EIO;
 		goto free_sync;
 	}

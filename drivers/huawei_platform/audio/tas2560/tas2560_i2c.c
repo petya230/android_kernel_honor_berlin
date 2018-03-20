@@ -42,7 +42,7 @@
 #include "tas2560.h"
 #include "tas2560_core.h"
 #include "tas2560_misc.h"
-/*lint -e845 -e747 -e64 -e30 -e785 -e438 -e712 -e550 -e50 -e529*/
+/*lint -e845 -e747 -e64 -e30 -e785 -e438 -e712 -e550 -e50 -e529 -e732*/
 /*lint -e774 -e778 -e838 -e753 -e750 -e530 -e1564 -e142 -e528*/
 static void tas2560_change_page(struct tas2560_priv *pTAS2560, unsigned int page)
 {

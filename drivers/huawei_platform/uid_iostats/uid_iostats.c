@@ -29,6 +29,12 @@
 #include <linux/uaccess.h>
 #include <linux/task_io_accounting_ops.h>
 
+#ifdef CONFIG_HUAWEI_IO_MONITOR
+#include <iotrace/io_monitor.h>
+#endif
+
+/*lint -save -e651 -e570 -e64 -e563 -e530 -e666 -e514 -e30 -e84 */
+/*lint -save -e516 -e62 -e438 -e50 -e1058 -e529 -e40 -e528 -e574*/
 #define UID_HASH_BITS	10
 DECLARE_HASHTABLE(ioflowmeter_hash_table, UID_HASH_BITS);
 
@@ -67,8 +73,19 @@ struct uid_entry {
 	uid_t uid;
 	u64 read_bytes;
 	u64 write_bytes;
+#ifdef CONFIG_HUAWEI_IO_MONITOR
+	u64 fg_read_bytes;
+	u64 fg_write_bytes;
+#endif
 	struct list_head pid_list;
 	struct hlist_node hash;
+
+#ifdef CONFIG_HUAWEI_IO_MONITOR
+	u64 last_read_bytes;
+	u64 last_write_bytes;
+	u64 last_fg_read_bytes;
+	u64 last_fg_write_bytes;
+#endif
 };
 
 static int ioflowmeter_io_accounting(
@@ -88,7 +105,6 @@ static int ioflowmeter_io_accounting(
 
 		unlock_task_sighand(task, &flags);
 	}
-out_unlock:
 	return result;
 }
 
@@ -150,10 +166,8 @@ static void ioflowmeter_add_pid(struct uid_entry *uid_entry, pid_t the_pid)
 	}
 
 	the_node = kzalloc(sizeof(struct pid_node), GFP_KERNEL);
-	if (NULL == the_node) {
-		pr_err("%s: cannot alloc the node\n", __func__);
+	if (NULL == the_node)
 		return;
-	}
 
 	the_node->pid = the_pid;
 
@@ -164,6 +178,7 @@ static void ioflowmeter_add_pid(struct uid_entry *uid_entry, pid_t the_pid)
 static struct uid_entry *ioflowmeter_find_uid(uid_t uid)
 {
 	struct uid_entry *uid_entry;
+
 	hash_for_each_possible(ioflowmeter_hash_table, uid_entry, hash, uid) {
 		if (uid_entry && uid_entry->uid == uid) {
 			pr_debug("%s: find the uid_entry for %u\n",
@@ -186,10 +201,8 @@ static struct uid_entry *ioflowmeter_register_uid(uid_t uid)
 	}
 
 	uid_entry = kzalloc(sizeof(struct uid_entry), GFP_ATOMIC);
-	if (!uid_entry) {
-		pr_err("%s: cannot alloc the uid_entry\n", __func__);
+	if (!uid_entry)
 		return NULL;
-	}
 
 	uid_entry->uid = uid;
 	INIT_LIST_HEAD(&uid_entry->pid_list);
@@ -337,13 +350,12 @@ static ssize_t ioflowmeter_rm_uid_write(struct file *file,
 	char *uids = NULL;
 	size_t uid_len = 0;
 
-	if (count >= ((size_t) - 1)) {
+	if (count >= ((size_t) -1)) {
 		pr_err("%s: the buffer from user is too big\n", __func__);
 		return -EFAULT;
 	}
-	else {
-		uid_len = count + 1;
-	}
+
+	uid_len = count + 1;
 
 	uids = kzalloc(uid_len, GFP_KERNEL);
 	if (!uids)
@@ -379,19 +391,15 @@ static ssize_t ioflowmeter_add_uid_write(struct file *file,
 	char *uids = NULL;
 	size_t uid_len = 0;
 
-	if (count >= ((size_t) - 1)) {
+	if (count >= ((size_t) -1)) {
 		pr_err("%s: the buffer from user is too big\n", __func__);
 		return -EFAULT;
 	}
-	else {
-		uid_len = count + 1;
-	}
+	uid_len = count + 1;
 
 	uids = kzalloc(uid_len, GFP_KERNEL);
-	if (!uids) {
-		pr_err("%s: cannot alloc the uids\n", __func__);
+	if (!uids)
 		return -EFAULT;
-	}
 
 	if (copy_from_user(uids, buffer, count)) {
 		pr_err("%s: cannot copy from user\n", __func__);
@@ -445,6 +453,10 @@ static int process_exit_notifier(struct notifier_block *self,
 
 	uid_entry->read_bytes += acct.read_bytes;
 	uid_entry->write_bytes += acct.write_bytes;
+#ifdef CONFIG_HUAWEI_IO_MONITOR
+	uid_entry->fg_read_bytes += acct.fg_read_bytes;
+	uid_entry->fg_write_bytes += acct.fg_write_bytes;
+#endif
 
 	ioflowmeter_del_pid(uid_entry, task->pid);
 
@@ -489,6 +501,225 @@ exit:
 static struct notifier_block process_entry_notifier_block = {
 	.notifier_call	= process_entry_notifier,
 };
+#ifdef CONFIG_HUAWEI_IO_MONITOR
+struct io_flow_file_stat {
+	u64 all_read;
+	u64 all_write;
+	u64 all_fg_read;
+	u64 all_fg_write;
+	u64 all_bg_read;
+	u64 all_bg_write;
+};
+
+static int io_monitor_show_vfs(unsigned char *m, int len)
+{
+	struct uid_entry *uid_entry;
+	unsigned long bkt;
+	struct pid_node *cur, *saved_cur;
+	struct task_struct *t = NULL;
+	struct task_io_accounting acct;
+	int ret = 0;
+
+	struct io_flow_file_stat *ret_flow = NULL;
+
+	if (len < sizeof(struct io_flow_file_stat))
+		return 0;
+	ret_flow = (struct io_flow_file_stat *)m;
+
+	mutex_lock(&uid_lock);
+	hash_for_each(ioflowmeter_hash_table, bkt, uid_entry, hash) {
+		u64 uid_read_bytes = 0;
+		u64 uid_write_bytes = 0;
+		u64 uid_fg_read_bytes = 0;
+		u64 uid_fg_write_bytes = 0;
+
+		list_for_each_entry_safe(cur, saved_cur,
+				&uid_entry->pid_list, list) {
+			t = find_task_by_pid_ns(cur->pid, &init_pid_ns);
+			if (t) {
+				memset((void *)&acct, 0, sizeof(acct));
+				acct = t->ioac;
+				ioflowmeter_io_accounting(t, &acct, 1);
+				uid_read_bytes += acct.read_bytes;
+				uid_write_bytes += acct.write_bytes;
+				uid_fg_read_bytes += acct.fg_read_bytes;
+				uid_fg_write_bytes += acct.fg_write_bytes;
+			}
+		}
+
+		uid_read_bytes += uid_entry->read_bytes;
+		uid_write_bytes += uid_entry->write_bytes;
+		uid_fg_read_bytes += uid_entry->fg_read_bytes;
+		uid_fg_write_bytes += uid_entry->fg_write_bytes;
+
+		ret_flow->all_read += (uid_read_bytes -
+			uid_entry->last_read_bytes);
+		ret_flow->all_write += (uid_write_bytes -
+			uid_entry->last_write_bytes);
+		ret_flow->all_fg_read += (uid_fg_read_bytes -
+			uid_entry->last_fg_read_bytes);
+		ret_flow->all_fg_write += (uid_fg_write_bytes -
+			uid_entry->last_fg_write_bytes);
+
+		uid_entry->last_read_bytes = uid_read_bytes;
+		uid_entry->last_write_bytes = uid_write_bytes;
+		uid_entry->last_fg_read_bytes = uid_fg_read_bytes;
+		uid_entry->last_fg_write_bytes = uid_fg_write_bytes;
+
+		ret = sizeof(struct io_flow_file_stat);
+	}
+
+	ret_flow->all_bg_read = (ret_flow->all_read - ret_flow->all_fg_read);
+	ret_flow->all_bg_write = (ret_flow->all_write - ret_flow->all_fg_write);
+	mutex_unlock(&uid_lock);
+
+	return ret;
+}
+
+#define KB  (1024)
+#define MB  (KB * KB)
+#define GB  (KB * MB)
+
+static int io_monitor_output(unsigned char *m, int len)
+{
+	struct io_flow_file_stat *ret_flow = (struct io_flow_file_stat *)m;
+
+	pr_debug("IO_MON:all_read: %llu, all_write: %llu\n",
+			ret_flow->all_read / MB,
+			ret_flow->all_write / MB);
+	pr_debug("IO_MON:all_fg_read: %llu, all_fg_write: %llu\n",
+			ret_flow->all_fg_read / MB,
+			ret_flow->all_fg_write / MB);
+	pr_debug("IO_MON:all_bg_read: %llu, all_bg_write: %llu\n",
+			ret_flow->all_bg_read / MB,
+			ret_flow->all_bg_write / MB);
+
+	return 0;
+}
+static int io_monitor_set_vfs_param(struct imonitor_eventobj *obj,
+		unsigned char *buff)
+{
+	int ret = 0;
+	struct io_flow_file_stat *ret_flow = NULL;
+
+	ret_flow = (struct io_flow_file_stat *)buff;
+	ret = ret | imonitor_set_param(obj,
+		E914008000_APP_TOTAL_READ_INT, ret_flow->all_read / MB);
+	ret = ret | imonitor_set_param(obj,
+		E914008000_APP_TOTAL_WRITE_INT, ret_flow->all_write / MB);
+	ret = ret | imonitor_set_param(obj,
+		E914008000_APP_TOTAL_READ_FG_INT, ret_flow->all_fg_read / MB);
+	ret = ret | imonitor_set_param(obj,
+		E914008000_APP_TOTAL_WRITE_FG_INT, ret_flow->all_fg_write / MB);
+	ret = ret | imonitor_set_param(obj,
+		E914008000_APP_TOTAL_READ_BG_INT, ret_flow->all_bg_read / MB);
+	ret = ret | imonitor_set_param(obj,
+		E914008000_APP_TOTAL_WRITE_BG_INT, ret_flow->all_bg_write / MB);
+
+	return ret;
+}
+
+#ifdef CONFIG_HUAWEI_IO_TRACING
+struct vfs_io_iotrace {
+	u32 uid;
+	u64 uid_read_bytes;
+	u64 uid_write_bytes;
+	u64 uid_fg_read_bytes;
+	u64 uid_fg_write_bytes;
+	u64 uid_bg_read_bytes;
+	u64 uid_bg_write_bytes;
+};
+
+int vfs_report_to_iotrace(unsigned char *buff, int len)
+{
+	struct uid_entry *uid_entry;
+	unsigned long bkt;
+	struct pid_node *cur, *saved_cur;
+	struct task_struct *t = NULL;
+	struct task_io_accounting acct;
+	int i, min_index = 0, cnt = 0;
+	struct vfs_io_iotrace vfs_iotrace;
+	struct vfs_io_iotrace *begin = (struct vfs_io_iotrace *)buff;
+	int ret = sizeof(struct vfs_io_iotrace) * 10;
+
+	if (ret > len)
+		return 0;
+
+	memset(buff, 0, ret);
+	mutex_lock(&uid_lock);
+	hash_for_each(ioflowmeter_hash_table, bkt, uid_entry, hash) {
+		struct vfs_io_iotrace *v, *min;
+
+		memset(&vfs_iotrace, 0, sizeof(struct vfs_io_iotrace));
+		vfs_iotrace.uid = uid_entry->uid;
+		list_for_each_entry_safe(cur, saved_cur,
+			&uid_entry->pid_list, list) {
+			t = find_task_by_pid_ns(cur->pid, &init_pid_ns);
+			if (t) {
+				memset((void *)&acct, 0, sizeof(acct));
+				acct = t->ioac;
+				ioflowmeter_io_accounting(t, &acct, 1);
+				vfs_iotrace.uid_read_bytes +=
+					acct.read_bytes;
+				vfs_iotrace.uid_write_bytes +=
+					acct.write_bytes;
+				vfs_iotrace.uid_fg_read_bytes +=
+					acct.fg_read_bytes;
+				vfs_iotrace.uid_fg_write_bytes +=
+					acct.fg_write_bytes;
+			}
+		}
+		vfs_iotrace.uid_write_bytes += uid_entry->write_bytes;
+		if (vfs_iotrace.uid_write_bytes == 0)
+			continue;
+		vfs_iotrace.uid_read_bytes += uid_entry->read_bytes;
+		vfs_iotrace.uid_fg_read_bytes  += uid_entry->fg_read_bytes;
+		vfs_iotrace.uid_fg_write_bytes += uid_entry->fg_write_bytes;
+		vfs_iotrace.uid_bg_read_bytes  = vfs_iotrace.uid_read_bytes -
+			vfs_iotrace.uid_fg_read_bytes;
+		vfs_iotrace.uid_bg_write_bytes = vfs_iotrace.uid_write_bytes -
+			vfs_iotrace.uid_fg_write_bytes;
+		/*write bytes continue*/
+		min = begin + min_index;
+		if (cnt < 10) {
+			v = begin + cnt;
+			*v = vfs_iotrace;
+			if (v->uid_write_bytes <= min->uid_write_bytes)
+				min_index = cnt;
+			cnt++;
+			continue;
+		}
+		/*large than 10*/
+		if (min->uid_write_bytes >= vfs_iotrace.uid_write_bytes)
+			continue;
+
+		*min = vfs_iotrace;
+		for (i = 0; i < cnt; i++) {
+			v = begin + i;
+			if (v->uid_write_bytes < min->uid_write_bytes)
+				min_index = i;
+		}
+	}
+	mutex_unlock(&uid_lock);
+
+	return ret;
+}
+EXPORT_SYMBOL(vfs_report_to_iotrace);
+#endif
+
+static struct io_module_template ioflow = {
+	.mod_id = IO_MONITOR_VFS,
+	.event_id = 914008000,
+	.base_interval = 3600000, /*ms*/
+	.ops = {
+		.log_record = io_monitor_show_vfs,
+		.log_output = io_monitor_output,
+		.log_set_param = io_monitor_set_vfs_param,
+		.log_upload = NULL,
+	},
+};
+
+#endif
 
 static int __init proc_ioflowmeter_init(void)
 {
@@ -520,8 +751,13 @@ static int __init proc_ioflowmeter_init(void)
 			&process_entry_notifier_block);
 	profile_event_register(PROFILE_END_SETRESUID,
 			&process_entry_notifier_block);
-
+#ifdef CONFIG_HUAWEI_IO_MONITOR
+	io_monitor_mod_register(IO_MONITOR_VFS, &ioflow);
+#endif
 	return 0;
 }
-
+/*lint -restore*/
+/*lint -restore*/
+/*lint -e528 -esym(528,*)*/
 early_initcall(proc_ioflowmeter_init);
+/*lint -e528 +esym(528,*)*/

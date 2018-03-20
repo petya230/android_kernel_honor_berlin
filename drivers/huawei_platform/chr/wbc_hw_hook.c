@@ -117,6 +117,10 @@ static void web_stat_timer(unsigned long data)
 					spin_unlock_bh(&g_web_stat_lock);
 					chr_notify_event(CHR_WEB_STAT_EVENT,
 						g_user_space_pid, 0, &rtn_abn);
+					pr_info("chr: no ack report s:%d-d:%d>:%d\n",
+						stream_list[hashcnt].src_addr,
+						stream_list[hashcnt].dst_addr,
+						stream_list[hashcnt].tcp_port);
 					spin_lock_bh(&g_web_stat_lock);
 
 					abn_stamp_no_ack =
@@ -299,7 +303,10 @@ void in_proc(void)
 				spin_unlock_bh(&g_web_stat_lock);
 				chr_notify_event(CHR_WEB_STAT_EVENT,
 					g_user_space_pid, 0, &rtn_abn);
-				pr_info("chr: web delay report\n");
+				pr_info("chr: web delay report s:%d-d:%d>:%d\n",
+					stream_list[hash_cnt].src_addr,
+					stream_list[hash_cnt].dst_addr,
+					stream_list[hash_cnt].tcp_port);
 				spin_lock_bh(&g_web_stat_lock);
 				spin_lock_bh(&g_web_para_in_lock);
 				abn_stamp_web_delay = jiffies_tmp + FORBID_TIME;
@@ -316,7 +323,10 @@ void in_proc(void)
 				spin_unlock_bh(&g_web_stat_lock);
 				chr_notify_event(CHR_WEB_STAT_EVENT,
 					g_user_space_pid, 0, &rtn_abn);
-				pr_info("chr: web fail report\n");
+				pr_info("chr: web fail report s:%d-d:%d>:%d\n",
+					stream_list[hash_cnt].src_addr,
+					stream_list[hash_cnt].dst_addr,
+					stream_list[hash_cnt].tcp_port);
 				spin_lock_bh(&g_web_stat_lock);
 				spin_lock_bh(&g_web_para_in_lock);
 				abn_stamp_web_fail = jiffies_tmp + FORBID_TIME;
@@ -343,7 +353,10 @@ void in_proc(void)
 			spin_unlock_bh(&g_web_stat_lock);
 			chr_notify_event(CHR_WEB_STAT_EVENT,
 				g_user_space_pid, 0, &rtn_abn);
-			pr_info("chr: no ack report\n");
+			pr_info("chr: no ack report s:%d-d:%d>:%d\n",
+				stream_list[hash_cnt].src_addr,
+				stream_list[hash_cnt].dst_addr,
+				stream_list[hash_cnt].tcp_port);
 			spin_lock_bh(&g_web_stat_lock);
 			spin_lock_bh(&g_web_para_in_lock);
 			abn_stamp_no_ack = jiffies_tmp + FORBID_TIME;

@@ -44,12 +44,12 @@
 #include <sound/tlv.h>
 
 #include "tas2560.h"
-/*lint -e845 -e747 -e64 -e30 -e785 -e438 -e712 -e550 -e50 -e529*/
-/*lint -e774 -e778 -e838 -e753 -e750 -e530 -e1564 -e142*/
+/*lint -e845 -e747 -e64 -e30 -e785 -e438 -e712 -e550 -e50 -e529 -e820*/
+/*lint -e774 -e778 -e838 -e753 -e750 -e530 -e1564 -e142 -e679 -e826*/
 #define TAS2560_MDELAY 0xFFFFFFFE
 #define MAX_SUPPORTED_FADETYPE  9
 
-#define MAX_CLIENTS 8
+#define MAX_CLIENTS 	8
 
 #if 1
 static unsigned int p_tas2560_startup_data[] =

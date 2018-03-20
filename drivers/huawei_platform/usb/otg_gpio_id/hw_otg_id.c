@@ -22,6 +22,9 @@
 
 static struct otg_gpio_id_dev *otg_gpio_id_dev_p = NULL;
 
+#define VBUS_IS_CONNECTED           0
+#define DISABLE_USB_IRQ             0
+#define FAIL                        (-1)
 #define VBATT_AVR_MAX_COUNT    10
 #define ADC_VOLTAGE_LIMIT      150    //mV
 #define ADC_VOLTAGE_MAX        1250   //mV
@@ -37,7 +40,6 @@ static struct otg_gpio_id_dev *otg_gpio_id_dev_p = NULL;
 *  return value:  zero:     Vbus isn't exist.
 *                      no zero:  Vbus is exist.
 **************************************************************************************************/
-
 static int hw_is_usb_cable_connected(void)
 {
     struct otg_gpio_id_dev *dev = otg_gpio_id_dev_p;
@@ -61,7 +63,7 @@ static int hw_is_usb_cable_connected(void)
 static int hw_otg_id_notifier_call(struct notifier_block *usb_nb,
 				    unsigned long event, void *data)
 {
-    if (0 == event) {
+    if (DISABLE_USB_IRQ == event) {
 		hw_usb_err("%s disable the otg irq!\n", __func__);
         disable_irq_nosync(otg_gpio_id_dev_p->irq);
     }
@@ -90,10 +92,10 @@ static int hw_otg_id_adc_sampling(struct otg_gpio_id_dev *otg_gpio_id_dev_p)
 	/*get adc channel*/
 	if (0 == otg_gpio_id_dev_p->otg_adc_channel){
 		hw_usb_err("%s Get otg_adc_channel is fail!\n", __func__);
-		return -1;
+		return FAIL;
 	}
-	
-	for(i = 0;i < VBATT_AVR_MAX_COUNT; i++){
+
+	for(i = 0; i < VBATT_AVR_MAX_COUNT; i++){
 		vol_value = hisi_adc_get_value(otg_gpio_id_dev_p->otg_adc_channel);
 		if(vol_value < 0){
 			hw_usb_err("%s The value from ADC is error", __func__);
@@ -105,17 +107,15 @@ static int hw_otg_id_adc_sampling(struct otg_gpio_id_dev *otg_gpio_id_dev_p)
 		sample_cnt++;
 	}
 
-    if (0 == sample_cnt) {
+	if (0 == sample_cnt) {
 		/* ESD cause the sample is always negative */
 		avgvalue = ADC_VOLTAGE_NEGATIVE;
-    }
-	else {
+	}else {
 	    avgvalue = sum/sample_cnt;
 	}
 	hw_usb_err("%s The average voltage of ADC is %d\n", __func__, avgvalue);
 
 	return avgvalue;
-    
 }
 
 
@@ -133,7 +133,7 @@ static void hw_otg_id_intb_work(struct work_struct *work)
 
     /* Fix the different of schager V200 and V300 */
     if (!is_otg_has_inserted) {
-    	if (0 == !hw_is_usb_cable_connected()) {
+    	if (VBUS_IS_CONNECTED == !hw_is_usb_cable_connected()) {
             hw_usb_err("%s Vbus is inerted!\n", __func__);
 			return;
 		}

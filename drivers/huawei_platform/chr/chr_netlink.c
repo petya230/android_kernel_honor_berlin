@@ -75,21 +75,34 @@ void notify_chr_thread_to_send_msg(unsigned int dst_addr, unsigned int src_addr)
 				STATIC  FUNCTION  DEFINES
 *************************************************************/
 
-/* netlink socket's callback function,it will be called by system when
-user space send a message to kernel.
-this function will save user space progress pid.*/
+/*
+ * Netlink socket's callback function,it will be called by system when
+ * user space send a message to kernel.
+ * this function will save user space progress pid.
+ */
 static void kernel_chr_receive(struct sk_buff *__skb)
 {
 	struct nlmsghdr *nlh;
 	struct sk_buff *skb;
-
+	if (NULL == __skb) {
+		hwlog_err("Invalid parameter: zero pointer reference(__skb)\n");
+		return;
+	}
 	skb = skb_get(__skb);
-
+	if (NULL == skb) {
+		hwlog_err("kernel_chr_receive: skb = NULL\n");
+		return;
+	}
 	mutex_lock(&chr_receive_sem);
 
 	if (skb->len >= NLMSG_HDRLEN) {
 		nlh = nlmsg_hdr(skb);
-
+		if (NULL == nlh) {
+			hwlog_err("kernel_chr_receive:  nlh = NULL\n");
+			kfree_skb(skb);
+			mutex_unlock(&chr_receive_sem);
+			return;
+		}
 		if ((nlh->nlmsg_len >= sizeof(struct nlmsghdr)) &&
 			(skb->len >= nlh->nlmsg_len)) {
 			if (NETLINK_CHR_REG == nlh->nlmsg_type) {
@@ -100,6 +113,7 @@ static void kernel_chr_receive(struct sk_buff *__skb)
 			}
 		}
 	}
+	kfree_skb(skb);
 	mutex_unlock(&chr_receive_sem);
 }
 
