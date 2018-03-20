@@ -4663,6 +4663,7 @@ decoder_StreamDestroy(
     }
 
     // Remove the device resources used for decoding and the two
+    // added to hold the last on front and back-end for stream.
     for (i = 0; i < psDecStrCtx->ui32NumDecRes + 2; i++)
     {
         ui32Result = RESOURCE_ListEmpty(&psDecStrCtx->sDecResList,

@@ -209,7 +209,7 @@ typedef struct
         unsigned pps_loop_filter_across_slices_enabled_flag : 1;
         unsigned loop_filter_across_tiles_enabled_flag : 1;
 
-        /* rewritten from SPS, maybe at some point we could get rid of this */
+    /* rewritten from SPS, maybe at some point we could get rid of this */
         unsigned scaling_list_enabled_flag : 1;
         unsigned chroma_qp_offset_list_enabled_flag : 1;
         unsigned diff_cu_chroma_qp_offset_depth : 2;

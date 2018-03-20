@@ -1370,7 +1370,7 @@ _comm_CloseSocket(
 {
 	IMG_UINT32 nIndex;
 	IMG_COMM_SOCKET *psSocket = (IMG_COMM_SOCKET *)param;
-	comm_Lock(psSocket->devContext, COMM_LOCK_BOTH);
+        comm_Lock(psSocket->devContext, COMM_LOCK_BOTH);
 	for (nIndex = 0; nIndex < TOPAZHP_MAX_POSSIBLE_STREAMS; nIndex++)
 	{
 		if(psSocket->devContext->deviceSockets[nIndex] == psSocket)
@@ -1419,7 +1419,7 @@ _comm_CloseSocket(
 
 	/* Free all the resources attached to this socket */
 	RMAN_DestroyBucket(psSocket->hResBHandle);
-	comm_Unlock(psSocket->devContext, COMM_LOCK_BOTH);
+        comm_Unlock(psSocket->devContext, COMM_LOCK_BOTH);
 	IMG_FREE(psSocket);
 }
 

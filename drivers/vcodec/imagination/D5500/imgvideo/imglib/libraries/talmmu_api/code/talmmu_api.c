@@ -2549,6 +2549,11 @@ IMG_RESULT TALMMU_GetHeapHandle(
 
     for (i=0; i<psDevMemContext->ui32NoHeaps; i++)
     {
+        if (NULL == psDevMemContext->pasDevMemHeap[i])
+        {
+            return IMG_ERROR_INVALID_PARAMETERS;
+        }
+
         if (psDevMemContext->pasDevMemHeap[i]->sHeapInfo.ui32HeapId == ui32HeapId)
         {
             *phDevMemHeap = psDevMemContext->pasDevMemHeap[i];

@@ -666,6 +666,14 @@ IMG_BOOL TOPAZKM_MapExternal(
 		return IMG_FALSE;
 	IMG_MEMSET(pMemoryInfo, 0, sizeof(*pMemoryInfo));
 
+	IMG_ASSERT(ui32Heap < HEAP_ID_NO_OF_HEAPS);
+	if (ui32Heap >= HEAP_ID_NO_OF_HEAPS)
+		goto map_failed;
+
+	IMG_ASSERT(hTopaz_CoreMMUContext.Topaz_Core_mmu_context != NULL);
+	if (hTopaz_CoreMMUContext.Topaz_Core_mmu_context == NULL)
+		goto map_failed;
+
 	result = TALMMU_GetHeapHandle(asMMU_HeapInfo[ui32Heap].ui32HeapId, hTopaz_CoreMMUContext.Topaz_Core_mmu_context, &hDevMemHeap);
 	IMG_ASSERT(result == IMG_SUCCESS);
 	if(result != IMG_SUCCESS)
