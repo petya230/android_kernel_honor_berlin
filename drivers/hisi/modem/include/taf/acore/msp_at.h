@@ -330,16 +330,6 @@ typedef struct
 }AT_FW_DATA_MSG_STRU;
 
 
-#if 0
-/* AT命令消息通用錯誤定义*/
-typedef struct
-{
-    VOS_UINT8 ucClientId;
-    VOS_UINT8 ucReserved[3];
-    VOS_UINT32 ulMsgId;
-    VOS_UINT32 ulRc;
-} AT_CMD_ERROR_IND_STRU;
-#endif
 
 
 #ifdef __cplusplus

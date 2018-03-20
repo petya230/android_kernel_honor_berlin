@@ -47,7 +47,6 @@
  */
 #ifndef __BSP_S_MEMORY_H__
 #define __BSP_S_MEMORY_H__
-
 #ifdef __cplusplus
 extern "C" {
 #endif

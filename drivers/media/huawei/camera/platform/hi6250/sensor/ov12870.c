@@ -183,6 +183,7 @@ struct sensor_power_setting hw_ov12870_power_down_setting[] = {
 };
 
 atomic_t volatile ov12870_powered = ATOMIC_INIT(0);
+struct mutex ov12870_power_lock;
 static sensor_t s_ov12870 =
 {
     .intf = { .vtbl = &s_ov12870_vtbl, },
@@ -351,49 +352,7 @@ ov12870_match_id(
     }
 
     return rc;
-
 }
-#if 0
-static ssize_t ov12870_powerctrl_show(struct device *dev,
-	struct device_attribute *attr,char *buf)
-{
-        cam_info("enter %s", __func__);
-        return 1;
-}
-static ssize_t ov12870_powerctrl_store(struct device *dev,
-	struct device_attribute *attr, const char *buf, size_t count)
-{
-	int state = simple_strtol(buf, NULL, 10);
-	cam_info("enter %s, state %d", __func__, state);
-
-	if (state == POWER_ON)
-		ov12870_power_up(&s_ov12870.intf);
-	else
-		ov12870_power_down(&s_ov12870.intf);
-
-	return count;
-}
-
-
-static struct device_attribute ov12870_powerctrl =
-    __ATTR(power_ctrl, 0664, ov12870_powerctrl_show, ov12870_powerctrl_store);
-
-int ov12870_register_attribute(hwsensor_intf_t* intf, struct device* dev)
-{
-	int ret = 0;
-	cam_info("enter %s", __func__);
-
-	ret = device_create_file(dev, &ov12870_powerctrl);
-	if (ret < 0) {
-		cam_err("%s failed to creat power ctrl attribute.", __func__);
-		goto err_create_power_ctrl;
-	}
-	return 0;
-err_create_power_ctrl:
-	device_remove_file(dev, &ov12870_powerctrl);
-	return ret;
-}
-#endif
 
 static hwsensor_vtbl_t
 s_ov12870_vtbl =
@@ -425,18 +384,32 @@ ov12870_config(
 	cam_debug("ov12870 cfgtype = %d",data->cfgtype);
 	switch(data->cfgtype){
 		case SEN_CONFIG_POWER_ON:
-		if (!s_ov12870_power_on)
-		{
-			ret = si->vtbl->power_up(si);
-			s_ov12870_power_on = true;
-		}
+			mutex_lock(&ov12870_power_lock);
+			if (!s_ov12870_power_on)
+			{
+				ret = si->vtbl->power_up(si);
+				if (0 == ret)
+				{
+					s_ov12870_power_on = true;
+				}
+			}
+			/*lint -e455 -esym(455,*)*/
+			mutex_unlock(&ov12870_power_lock);
+			/*lint -e455 +esym(455,*)*/
 			break;
 		case SEN_CONFIG_POWER_OFF:
-		if (s_ov12870_power_on)
-		{
-			ret = si->vtbl->power_down(si);
-			s_ov12870_power_on = false;
-		}
+			mutex_lock(&ov12870_power_lock);
+			if (s_ov12870_power_on)
+			{
+				ret = si->vtbl->power_down(si);
+				if (0 == ret)
+				{
+					s_ov12870_power_on = false;
+				}
+			}
+			/*lint -e455 -esym(455,*)*/
+			mutex_unlock(&ov12870_power_lock);
+			/*lint -e455 +esym(455,*)*/
 			break;
 		case SEN_CONFIG_WRITE_REG:
 			break;
@@ -478,7 +451,7 @@ ov12870_platform_probe(
 	}
 
     s_ov12870.dev = &pdev->dev;
-
+	mutex_init(&ov12870_power_lock);
 	rc = hwsensor_register(pdev, &s_ov12870.intf);
 	rc = rpmsg_sensor_register(pdev, (void*)&s_ov12870);
 

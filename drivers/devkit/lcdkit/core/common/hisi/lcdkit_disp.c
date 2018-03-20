@@ -154,41 +154,19 @@ static int lcdkit_is_enter_sleep_mode(void)
    return (ts_kit_gesture_func || g_tskit_pt_station_flag);
 }
 
-#if 0
-static int lcdkit_is_ctl_tp_power(void)
-{
-    return g_lcd_control_tp_power;
-}
-
-static int lcdkit_is_gpio_ctrl_power(void)
-{
-    return (lcdkit_info.panel_infos.power_ctrl_mode & POWER_CTRL_BY_GPIO) ? 1 : 0;
-}
-
-static int lcdkit_is_regulator_ctrl_power(void)
-{
-    return (lcdkit_info.panel_infos.power_ctrl_mode & POWER_CTRL_BY_REGULATOR) ? 1 : 0;
-}
-
-static int lcdkit_is_lcd_panel(void)
-{
-    return (lcdkit_info.panel_infos.panel_type & PANEL_TYPE_LCD) ? 1 : 0;
-}
-
-static int lcdkit_is_oled_panel(void)
-{
-    return (lcdkit_info.panel_infos.panel_type & PANEL_TYPE_OLED) ? 1 : 0;
-}
-#endif
-
 static void lcdkit_bias_init(struct platform_device* pdev)
 {
+    ssize_t ret = 0;
     if (lcdkit_is_lcd_panel())
     {
         if (lcdkit_bias_is_regulator_ctrl_power())
         {
             /* lcd scharger vcc get*/
-            vcc_cmds_tx(pdev, lcdkit_scharger_bias_get_cmds, ARRAY_SIZE(lcdkit_scharger_bias_get_cmds));
+            ret = vcc_cmds_tx(pdev, lcdkit_scharger_bias_get_cmds, ARRAY_SIZE(lcdkit_scharger_bias_get_cmds));
+            if (ret != 0)
+            {
+                LCDKIT_ERR("LCD scharger vcc get failed!\n");
+            }
             /*init bias/vsp/vsn*/
             lcdkit_power_init(lcdkit_scharger_bias_set_cmds, ARRAY_SIZE(lcdkit_scharger_bias_set_cmds));
         }
@@ -495,6 +473,7 @@ static int lcdkit_on(struct platform_device* pdev)
 
         if ( g_tskit_ic_type )
         {
+            LCDKIT_INFO("call ts resume default\n");
             if(lcdkit_info.panel_infos.tp_resume_no_sync)
             {
                 ret = ts_kit_power_control_notify(TS_RESUME_DEVICE, NO_SYNC_TIMEOUT);
@@ -538,7 +517,7 @@ static int lcdkit_on(struct platform_device* pdev)
         lcdkit_info.panel_infos.ce_mode = CE_SRGB_MODE;
 
         pinfo->lcd_init_step = LCD_INIT_MIPI_HS_SEND_SEQUENCE;
-
+        LCDKIT_INFO("lcd name = %s.\n", lcdkit_info.panel_infos.panel_name);
     }
     else if (pinfo->lcd_init_step == LCD_INIT_MIPI_HS_SEND_SEQUENCE)
     {
@@ -647,9 +626,9 @@ static int lcdkit_off(struct platform_device* pdev)
 
     if(!lcdkit_is_enter_sleep_mode())
     {
- //       if(g_ts_kit_platform_data.chip_data->is_parade_solution)
+        if(g_ts_kit_platform_data.chip_data->is_parade_solution)
         {
- //           ts_kit_check_bootup_upgrade();
+            //ts_kit_check_bootup_upgrade();
         }
 
         // lcd reset gpio low
@@ -740,7 +719,6 @@ static int lcdkit_off(struct platform_device* pdev)
 
     //if(lcdkit_is_oled_panel())
     //  amoled_irq_disable();
-
     LCDKIT_INFO("fb%d, -!\n", hisifd->index);
     return 0;
 }
@@ -776,9 +754,14 @@ static int lcdkit_remove(struct platform_device* pdev)
 
     if (lcdkit_is_lcd_panel())
     {
+        ssize_t ret = 0;
         // scharger vcc finit
-        vcc_cmds_tx(pdev, lcdkit_scharger_bias_put_cmds,
+        ret = vcc_cmds_tx(pdev, lcdkit_scharger_bias_put_cmds,
                     ARRAY_SIZE(lcdkit_scharger_bias_put_cmds));
+        if (ret != 0)
+        {
+            LCDKIT_ERR("LCD scharger vcc failed!\n");
+        }
     }
 
     // lcd pinctrl finit
@@ -1030,6 +1013,12 @@ static int lcdkit_ce_mode_store(void* pdata, const char* buf, size_t count)
 
     pdev = (struct platform_device *)pdata;
     hisifd = platform_get_drvdata(pdev);
+
+    if (NULL == hisifd)
+    {
+        LCDKIT_ERR("NULL Pointer!\n");
+        return -1;
+    }
 
     if (lcdkit_info.panel_infos.ce_support)
     {

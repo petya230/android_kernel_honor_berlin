@@ -183,11 +183,14 @@ static ssize_t rmidev_sysfs_open_store(struct device *dev,
 				       struct device_attribute *attr,
 				       const char *buf, size_t count)
 {
-	unsigned int input;
+	unsigned long input =0;
 	struct synaptics_rmi4_data *rmi4_data = rmidev->rmi4_data;
 
-	if (sscanf(buf, "%u", &input) != 1)
-		return -EINVAL;
+    if (strict_strtoul(buf, 0, &input))
+    {
+        TS_LOG_ERR("strict_strtoul return invaild\n");
+        return -EINVAL;
+    }
 
 	if (input != 1)
 		return -EINVAL;
@@ -202,11 +205,14 @@ static ssize_t rmidev_sysfs_release_store(struct device *dev,
 					  struct device_attribute *attr,
 					  const char *buf, size_t count)
 {
-	unsigned int input;
+	unsigned long input =0;
 	struct synaptics_rmi4_data *rmi4_data = rmidev->rmi4_data;
 
-	if (sscanf(buf, "%u", &input) != 1)
-		return -EINVAL;
+    if (strict_strtoul(buf, 0, &input))
+    {
+        TS_LOG_ERR("strict_strtoul return invaild \n");
+        return -EINVAL;
+    }
 
 	if (input != 1)
 		return -EINVAL;
@@ -393,7 +399,6 @@ static ssize_t rmidev_read(struct file *filp, char __user *buf,
 	in_cmd->command = TS_INPUT_ALGO;
 	in_cmd->cmd_param.pub_params.algo_param.algo_order =
 	    rmidev->rmi4_data->synaptics_chip_data->algo_id;
-
 	if (!list_empty(&rmidev->rmi4_data->rmi4_mod_info.support_fn_list)) {
 		list_for_each_entry(fhandler,
 				    &rmidev->rmi4_data->rmi4_mod_info.
@@ -499,7 +504,6 @@ static int rmidev_open(struct inode *inp, struct file *filp)
 
 	rmi4_data->fw_debug = true;
 	TS_LOG_INFO("Attention interrupt disabled\n");
-
 	disable_irq(rmi4_data->synaptics_chip_data->ts_platform_data->irq_id);
 
 	if (dev_data->ref_count < 1)

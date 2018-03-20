@@ -11,6 +11,7 @@
 #include "hwsensor.h"
 #include "sensor_commom.h"
 #include "hw_csi.h"
+//lint -save -e650 -e31
 
 #define I2S(i) container_of(i, sensor_t, intf)
 
@@ -185,6 +186,7 @@ struct sensor_power_setting hw_ov13850_power_down_setting[] = {
     },
 };
 
+struct mutex ov13850_power_lock;
 static sensor_t s_ov13850 =
 {
     .intf = { .vtbl = &s_ov13850_vtbl, },
@@ -355,48 +357,6 @@ ov13850_match_id(
 
 }
 
-#if 0
-static ssize_t ov13850_powerctrl_show(struct device *dev,
-	struct device_attribute *attr,char *buf)
-{
-        cam_info("enter %s", __func__);
-        return 1;
-}
-static ssize_t ov13850_powerctrl_store(struct device *dev,
-	struct device_attribute *attr, const char *buf, size_t count)
-{
-	int state = simple_strtol(buf, NULL, 10);
-	cam_info("enter %s, state %d", __func__, state);
-
-	if (state == POWER_ON)
-		ov13850_power_up(&s_ov13850.intf);
-	else
-		ov13850_power_down(&s_ov13850.intf);
-
-	return count;
-}
-
-
-static struct device_attribute ov13850_powerctrl =
-    __ATTR(power_ctrl, 0664, ov13850_powerctrl_show, ov13850_powerctrl_store);
-
-int ov13850_register_attribute(hwsensor_intf_t* intf, struct device* dev)
-{
-	int ret = 0;
-	cam_info("enter %s", __func__);
-
-	ret = device_create_file(dev, &ov13850_powerctrl);
-	if (ret < 0) {
-		cam_err("%s failed to creat power ctrl attribute.", __func__);
-		goto err_create_power_ctrl;
-	}
-	return 0;
-err_create_power_ctrl:
-	device_remove_file(dev, &ov13850_powerctrl);
-	return ret;
-}
-#endif
-
 static hwsensor_vtbl_t
 s_ov13850_vtbl =
 {
@@ -427,16 +387,30 @@ ov13850_config(
 	cam_debug("ov13850 cfgtype = %d",data->cfgtype);
 	switch(data->cfgtype){
 		case SEN_CONFIG_POWER_ON:
+			mutex_lock(&ov13850_power_lock);
 			if (false == power_on_status) {
 				ret = si->vtbl->power_up(si);
-				power_on_status = true;
+				if (0 == ret)
+				{
+				    power_on_status = true;
+				}
 			}
+			/*lint -e455 -esym(455,*)*/
+			mutex_unlock(&ov13850_power_lock);
+			/*lint -e455 +esym(455,*)*/
 			break;
 		case SEN_CONFIG_POWER_OFF:
+			mutex_lock(&ov13850_power_lock);
 			if (true == power_on_status) {
 				ret = si->vtbl->power_down(si);
-				power_on_status = false;
+				if (0 == ret)
+				{
+				    power_on_status = false;
+				}
 			}
+			/*lint -e455 -esym(455,*)*/
+			mutex_unlock(&ov13850_power_lock);
+			/*lint -e455 +esym(455,*)*/
 			break;
 		case SEN_CONFIG_WRITE_REG:
 			break;
@@ -478,7 +452,7 @@ ov13850_platform_probe(
 	}
 
     s_ov13850.dev = &pdev->dev;
-
+	mutex_init(&ov13850_power_lock);
 	rc = hwsensor_register(pdev, &s_ov13850.intf);
 	rc = rpmsg_sensor_register(pdev, (void*)&s_ov13850);
 
@@ -506,3 +480,4 @@ module_init(ov13850_init_module);
 module_exit(ov13850_exit_module);
 MODULE_DESCRIPTION("ov13850");
 MODULE_LICENSE("GPL v2");
+//lint -restore

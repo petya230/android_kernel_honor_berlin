@@ -44,7 +44,9 @@ HWLOG_REGIST();
  * This will let fp hal do not read from rst gpio,just return 1
  */
 static int tui_flg = 0;
+/*lint -save -e* */
 static DEFINE_MUTEX(tui_flg_lock);
+/*lint -restore*/
 extern unsigned int runmode_is_factory(void);
 /* fp_ready_flg will be set to 1 when fp hal has init fp sensor succeed
  * This will tell tui_fp_notify when to send msg to fp hal
@@ -375,7 +377,7 @@ void fingerprint_get_navigation_adjustvalue(struct device* dev, struct fp_data* 
 
     np = dev->of_node;
 
-    (void)of_property_read_u32(np, "fingerprint,navigation_adjust1", &adjust1);
+    (void)of_property_read_u32(np, "fingerprint,navigation_adjust1", (unsigned int *)(&adjust1));
 
     if(adjust1 != NAVIGATION_ADJUST_NOREVERSE && adjust1 != NAVIGATION_ADJUST_REVERSE)
     {
@@ -383,7 +385,7 @@ void fingerprint_get_navigation_adjustvalue(struct device* dev, struct fp_data* 
         hwlog_err("%s navigation_adjust1 set err only support 0 and 1.\n", __func__);
     }
 
-    (void)of_property_read_u32(np, "fingerprint,navigation_adjust2", &adjust2);
+    (void)of_property_read_u32(np, "fingerprint,navigation_adjust2", (unsigned int *)(&adjust2));
 
     if(adjust2 != NAVIGATION_ADJUST_NOTURN && adjust2 != NAVIGATION_ADJUST_TURN90 &&
             adjust2 != NAVIGATION_ADJUST_TURN180 && adjust2 != NAVIGATION_ADJUST_TURN270)
@@ -416,7 +418,7 @@ int fingerprint_get_dts_data(struct device* dev, struct fp_data* fp_data)
 
 
     ret = of_property_read_u32(np, "fingerprint,reset_gpio",
-                               &fp_data->rst_gpio);
+                               (unsigned int *)(&fp_data->rst_gpio));
 
     if (ret)
     {
@@ -426,7 +428,7 @@ int fingerprint_get_dts_data(struct device* dev, struct fp_data* fp_data)
     }
 
     ret = of_property_read_u32(np, "fingerprint,irq_gpio",
-                               &fp_data->irq_gpio);
+                               (unsigned int *)(&fp_data->irq_gpio));
 
     if (ret)
     {
@@ -435,7 +437,7 @@ int fingerprint_get_dts_data(struct device* dev, struct fp_data* fp_data)
         goto exit;
     }
 
-    ret = of_property_read_u32(np, "fingerprint,power_en_gpio", &fp_data->power_en_gpio);
+    ret = of_property_read_u32(np, "fingerprint,power_en_gpio", (unsigned int *)(&fp_data->power_en_gpio));
     if (ret)
     {
         fp_data->power_en_gpio = -EINVAL;
@@ -452,9 +454,10 @@ int fingerprint_get_dts_data(struct device* dev, struct fp_data* fp_data)
     }
    else
    {
-       strncpy(fp_data->extern_ldo_name, extern_ldo_info, 8);
+       strncpy(fp_data->extern_ldo_name, extern_ldo_info, sizeof(fp_data->extern_ldo_name));
+       fp_data->extern_ldo_name[(sizeof(fp_data->extern_ldo_name)-1)] = '\0';
 
-       ret = of_property_read_u32(np, "fingerprint,extern_ldo_num", &fp_data->extern_ldo_num);
+       ret = of_property_read_u32(np, "fingerprint,extern_ldo_num", (unsigned int *)(&fp_data->extern_ldo_num));
        if (ret)
        {
           fp_data->extern_ldo_num = -EINVAL;
@@ -462,7 +465,7 @@ int fingerprint_get_dts_data(struct device* dev, struct fp_data* fp_data)
           hwlog_info("%s failed to get extern_ldo_num gpio from device tree, just go on\n", __func__);
        }
 
-        ret = of_property_read_u32(np, "fingerprint,extern_vol", &fp_data->extern_vol);
+        ret = of_property_read_u32(np, "fingerprint,extern_vol", (unsigned int *)(&fp_data->extern_vol));
        if (ret)
        {
           fp_data->extern_vol = -EINVAL;
@@ -476,7 +479,7 @@ int fingerprint_get_dts_data(struct device* dev, struct fp_data* fp_data)
     if ((int)(fp_data->moduleID_gpio) < 0)
     {
         ret = of_property_read_u32(np, "fingerprint,moduleid_gpio",
-                                   &fp_data->moduleID_gpio);
+                                   (unsigned int *)(&fp_data->moduleID_gpio));
 
         if (ret)
         {
@@ -665,7 +668,13 @@ static long fingerprint_ioctl(struct file* file, unsigned int cmd, unsigned long
     int key;
     int status;
     unsigned int sensor_id;
+
     fingerprint = (struct fp_data*)file->private_data;
+    if (NULL == fingerprint)
+    {
+        hwlog_err("%s fingerprint is NULL\n", __func__);
+        return -EFAULT;
+    }
 
     if (_IOC_TYPE(cmd) != FP_IOC_MAGIC)
     { return -ENOTTY; }
@@ -957,9 +966,9 @@ static int finerprint_get_module_info(struct fp_data* fingerprint)
         error = -EINVAL;
         goto error_pinctrl_put;
     }
-
+/*lint -save -e* */
     mdelay(10);
-
+/*lint -restore*/
     pu_value = gpio_get_value_cansleep(fingerprint->moduleID_gpio);
     hwlog_info("%s PU module id gpio = %d.\n", __func__, pu_value);
 
@@ -980,9 +989,9 @@ static int finerprint_get_module_info(struct fp_data* fingerprint)
         error = -EINVAL;
         return error;
     }
-
+/*lint -save -e* */
     mdelay(10);
-
+/*lint -restore*/
     pd_value = gpio_get_value_cansleep(fingerprint->moduleID_gpio);
     hwlog_info("%s PD module id gpio=%d.\n", __func__, pd_value);
 
@@ -1308,9 +1317,10 @@ struct LLT_fingprint_ops LLT_fingerprint = {
     .fingerprint_remove = fingerprint_remove,
 };
 #endif
-
+/*lint -save -e* */
 module_init(fingerprint_init);
 module_exit(fingerprint_exit);
+/*lint -restore*/
 EXPORT_SYMBOL(tui_fp_notify);
 
 MODULE_LICENSE("GPL v2");

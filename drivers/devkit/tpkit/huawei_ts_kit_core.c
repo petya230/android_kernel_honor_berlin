@@ -24,6 +24,7 @@
 #include <linux/sched/rt.h>
 #include <linux/fb.h>
 #include <linux/workqueue.h>
+#include <linux/vmalloc.h>
 #if defined(CONFIG_FB)
 #include <linux/notifier.h>
 #include <linux/fb.h>
@@ -42,6 +43,7 @@
 #if defined (CONFIG_TEE_TUI)
 #include "tui.h"
 #endif
+#define SCHEDULE_DELAY_MILLiSECOND      200
 #if defined (CONFIG_HUAWEI_DSM)
 #include <dsm/dsm_pub.h>
 
@@ -136,13 +138,13 @@ static void rawdata_timeout_proc_fn(struct work_struct *work)
 {
 	if (g_rawdata_timeout_info.info) {
 		if ((g_rawdata_timeout_info.info)->status != TS_ACTION_UNDEF) {
-			kfree(g_rawdata_timeout_info.info);
+			vfree(g_rawdata_timeout_info.info);
 			g_rawdata_timeout_info.info = NULL;
 			atomic_set(&(g_rawdata_timeout_info.idle_flag), TS_RAWDATA_IDLE);
 			TS_LOG_INFO("Rawdata reading is ready\n");
 		} else {
 			TS_LOG_INFO("Rawdata reading is not ready\n");
-			schedule_delayed_work(&g_rawdata_proc_work, msecs_to_jiffies(200));
+			schedule_delayed_work(&g_rawdata_proc_work, msecs_to_jiffies(SCHEDULE_DELAY_MILLiSECOND));
 		}
 	}
 }
@@ -196,7 +198,7 @@ static int seq_print_freq(struct seq_file *m, char *buf, int tx_num, int rx_num)
 	}
 
 	seq_printf(m, "\nCalibration Noise - Detail\n");
-	report_data_8 = buf;
+	report_data_8 = (unsigned char*)buf;
 	report_data_8 += (tx_num * rx_num *2);
 	for (ii = 0; ii < rx_num * 2; ii++)
 	{
@@ -382,7 +384,7 @@ static int rawdata_proc_show(struct seq_file *m, void *v)
 		goto out;
 	}
 
-	info = (struct ts_rawdata_info *)kzalloc(sizeof(struct ts_rawdata_info), GFP_KERNEL);
+	info = (struct ts_rawdata_info *)vmalloc(sizeof(struct ts_rawdata_info));
 	if (!info) {
 		TS_LOG_ERR("malloc failed\n");
 		error = -ENOMEM;
@@ -410,7 +412,7 @@ static int rawdata_proc_show(struct seq_file *m, void *v)
 		if (error == -EBUSY) {
 			g_rawdata_timeout_info.info = info;
 			atomic_set(&(g_rawdata_timeout_info.idle_flag), TS_RAWDATA_WORK);
-			schedule_delayed_work(&g_rawdata_proc_work, msecs_to_jiffies(200));
+			schedule_delayed_work(&g_rawdata_proc_work, msecs_to_jiffies(SCHEDULE_DELAY_MILLiSECOND));
 		}
 		error = -EBUSY;
 		goto out;
@@ -623,9 +625,8 @@ OUT:
 out:
 
 	if (!(atomic_read(&(g_rawdata_timeout_info.idle_flag)) == TS_RAWDATA_WORK)) {
-		TS_LOG_INFO("rawdata_proc_show done:status=%d, result: %s\n", error, info->result);
 		if (info) {
-			kfree(info);
+			vfree(info);
 			info = NULL;
 			g_rawdata_timeout_info.info = NULL;
 		}
@@ -639,6 +640,7 @@ out:
 
 	return error;
 }
+/*lint -restore*/
 static int calibration_proc_open(struct inode *inode, struct file *file)
 {
 	return single_open(file, calibration_proc_show, NULL);
@@ -704,7 +706,7 @@ int ts_i2c_write(u8* buf, u16 length)
 #endif
     do
     {
-        ret = i2c_master_send(g_ts_kit_platform_data.client, buf, length);
+        ret = i2c_master_send(g_ts_kit_platform_data.client, (const char *)buf, length);
         if (ret == length)
         {
             return NO_ERR;
@@ -1441,7 +1443,7 @@ static int ts_charger_detect_cmd(enum ts_charger_state charger_state)
 	struct ts_cmd_node *cmd = NULL;
 	struct ts_charger_info *info = NULL;
 
-	TS_LOG_INFO("%s called, charger type: %d, [0 in, other out], supported: %d\n",
+	TS_LOG_INFO("%s called, charger type: %d, [0 out, 1 in], supported: %d\n",
 	     __func__, charger_state,
 	     g_ts_kit_platform_data.feature_info.charger_info.charger_supported);
 
@@ -1498,7 +1500,7 @@ static int charger_detect_notifier_callback(struct notifier_block *self,
 					    unsigned long event, void *data)
 {
 	enum  ts_charger_state charger_state  = USB_PIUG_IN;
-	TS_LOG_INFO("%s, charger type:%ld, [0 in, other out]. charger switch supported: %d\n",
+	TS_LOG_INFO("%s, charger type:%ld, [4 out, other in]. charger switch supported: %d\n",
 	     __func__, event, g_ts_kit_platform_data.feature_info.charger_info.charger_supported);
 
 	if (g_ts_kit_platform_data.feature_info.charger_info.charger_supported != 0) {
@@ -1533,16 +1535,30 @@ static int fb_notifier_callback(struct notifier_block* self, unsigned long event
     int error = NO_ERR;
     int i;
     struct fb_event* fb_event = data;
-    int* blank = fb_event->data;
+    int* blank;
     unsigned char ts_state = 0;
     int times = 0;
-	
+
     TS_LOG_INFO("tpkit fb_callback called,ic_type is %d,pt_flag is %ld,event is %d\n",g_tskit_ic_type,g_tskit_pt_station_flag,event);
     if (g_tskit_ic_type || g_tskit_pt_station_flag)
     { 
     	 TS_LOG_INFO("fb_notifier_callback do not need to do, return\n");
         return NO_ERR; 
     }
+
+    /* only need process event  FB_EARLY_EVENT_BLANK\FB_EVENT_BLANK  */
+    if(!(event == FB_EARLY_EVENT_BLANK || event == FB_EVENT_BLANK))
+    {
+        TS_LOG_DEBUG("event(%d) do not need process\n", event);
+        return NO_ERR;
+    }
+
+    if (fb_event->data == NULL)
+    {
+        TS_LOG_DEBUG("event = %d, blank is NULL, not do fb_notifier_callback\n", event);
+        return NO_ERR;
+    }
+    blank = fb_event->data;
 
     for (i = 0 ; i < FB_MAX; i++)
     {
@@ -1797,7 +1813,7 @@ static int ts_gpio_request(void)
         TS_LOG_ERR("Fail request gpio:%d, ret=%d\n", g_ts_kit_platform_data.irq_gpio, error);
         return error;
     }
-    TS_LOG_INFO("reset_gpio :%d ,irq_gpio\n", g_ts_kit_platform_data.reset_gpio,g_ts_kit_platform_data.irq_gpio);
+    TS_LOG_INFO("reset_gpio :%d ,irq_gpio :%d\n", g_ts_kit_platform_data.reset_gpio,g_ts_kit_platform_data.irq_gpio);
     return error;
 }
 static int ts_creat_i2c_client(void)
@@ -1807,7 +1823,7 @@ static int ts_creat_i2c_client(void)
     struct i2c_board_info board_info;
 
     memset(&board_info, 0, sizeof(struct i2c_board_info));
-    strncpy(board_info.type, TS_DEV_NAME, I2C_NAME_SIZE);
+    strncpy(board_info.type, TS_DEV_NAME, I2C_NAME_SIZE - 1);
     board_info.addr = I2C_DEFAULT_ADDR;
     board_info.flags = true;
 
@@ -1886,8 +1902,8 @@ static int ts_destory_client(void)
 static int ts_kit_parse_config(void)
 {
     int error = NO_ERR;
-    int rc;
-    int index;
+    int rc = 0;
+    int index = 0;
     char* tmp_buff = NULL;
 
     if (g_ts_kit_platform_data.node)
@@ -1954,7 +1970,6 @@ err_free_sysfs:
     sysfs_remove_group(&g_ts_kit_platform_data.ts_dev->dev.kobj, &ts_attr_group);
 err_del_platform_dev:
     platform_device_del(g_ts_kit_platform_data.ts_dev);
-err_put_platform_dev:
     platform_device_put(g_ts_kit_platform_data.ts_dev);
 err_out:
     return error;
@@ -1976,7 +1991,20 @@ static int ts_kit_chip_init(void)
 	if (error) {
 		TS_LOG_ERR("chip init failed\n");
 	}
-
+#ifdef CONFIG_HUAWEI_DSM
+	else {
+		if (dev->chip_name && DSM_MAX_IC_NAME_LEN > strlen(dev->chip_name) &&
+				dev->module_name && DSM_MAX_MODULE_NAME_LEN > strlen(dev->module_name)) {
+			dsm_tp.ic_name = dev->chip_name;
+			dsm_tp.module_name = dev->module_name;
+			if (dsm_update_client_vendor_info(&dsm_tp)) {
+				TS_LOG_ERR("dsm update client_vendor_info is failed\n");
+			}
+		} else {
+				TS_LOG_ERR("ic_name, module_name is invalid\n");
+		}
+	}
+#endif
 	return error;
 }
 
@@ -2213,8 +2241,9 @@ static int ts_send_init_cmd(void)
 	return error;
 }
 
-static int proc_init_cmd(void){
+static void proc_init_cmd(void){
 	schedule_work(&tp_init_work);
+	return;
 }
 
 static void tp_init_work_fn(struct work_struct *work){
@@ -2277,7 +2306,7 @@ int ts_kit_put_one_cmd_direct_sync(struct ts_cmd_node *cmd, int timeout)
 		 error = -EIO;
 	     return error;
 	}
-out:
+
 	return error;
 }
 int ts_kit_put_one_cmd(struct ts_cmd_node* cmd, int timeout)
@@ -2588,7 +2617,7 @@ out:
 int ts_kit_proc_command_directly(struct ts_cmd_node *cmd)
 {
 	int error = NO_ERR;
-	TS_LOG_INFO("%s Enter\n",__func__);
+	TS_LOG_DEBUG("%s Enter\n",__func__);
 	/*Do not use cmd->sync in this func, setting it as null*/
 	cmd->sync = NULL;
 	if (!ts_cmd_need_process(cmd)) {
@@ -2598,6 +2627,7 @@ int ts_kit_proc_command_directly(struct ts_cmd_node *cmd)
 	}
 	struct ts_cmd_node outcmd;
 	mutex_lock(&g_ts_kit_platform_data.chip_data->device_call_lock);
+
 	switch (cmd->command) {
 		case TS_INT_PROCESS:
 			TS_LOG_ERR("%s, command %d does not support direct call!",__func__, cmd->command);
@@ -2944,7 +2974,7 @@ static int ts_thread(void* p)
 
     TS_LOG_ERR("ts thread stop\n");
     ts_kit_exit();
-	
+
 err_out:
      platform_device_unregister(g_ts_kit_platform_data.ts_dev);
      ts_destory_client();
@@ -2954,7 +2984,8 @@ err_out:
     return NO_ERR;
 }
 
-int  huawei_ts_chip_register(struct ts_kit_device_data* chipdata)
+static u8 ts_init_flag = 0;
+int huawei_ts_chip_register(struct ts_kit_device_data* chipdata)
 {
     int error = NO_ERR;
     TS_LOG_INFO("huawei_ts_chip_register called here\n");
@@ -2963,7 +2994,8 @@ int  huawei_ts_chip_register(struct ts_kit_device_data* chipdata)
         TS_LOG_ERR("%s chipdata is null\n", __func__);
         return  -EINVAL;
     }
-    if (TS_UNREGISTER == atomic_read(&g_ts_kit_platform_data.register_flag))
+    if ((ts_init_flag == 1)&&(TS_UNREGISTER ==
+    atomic_read(&g_ts_kit_platform_data.register_flag)))
     {
         if (chipdata->ops->chip_detect)
         {
@@ -3008,6 +3040,9 @@ out:
 static int __init huawei_ts_module_init(void)
 {
     int error = NO_ERR;
+
+    ts_init_flag = 0;
+
     TS_LOG_INFO("huawei_ts, huawei_ts_module_init called here\n");
     memset(&g_ts_kit_platform_data, 0, sizeof(struct ts_kit_platform_data));
     atomic_set(&g_ts_kit_platform_data.register_flag, TS_UNREGISTER);
@@ -3043,6 +3078,9 @@ static int __init huawei_ts_module_init(void)
         TS_LOG_ERR("platform device add failed :%d\n", error);
 	    goto  err_put_platform_dev;
     }
+
+    ts_init_flag = 1;
+
      TS_LOG_INFO("ts_init called out\n");
      goto out;
 

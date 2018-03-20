@@ -11,6 +11,7 @@
 #include "hwsensor.h"
 #include "sensor_commom.h"
 #include "hw_csi.h"
+//lint -save -e31
 
 #define I2S(i) container_of(i, sensor_t, intf)
 
@@ -181,6 +182,7 @@ struct sensor_power_setting hw_ar1335_power_down_setting[] = {
 
 };
 
+struct mutex ar1335_power_lock;
 static sensor_t s_ar1335 =
 {
     .intf = { .vtbl = &s_ar1335_vtbl, },
@@ -303,48 +305,6 @@ ar1335_match_id(
 		return 0;
 }
 
-#if 0
-static ssize_t ar1335_powerctrl_show(struct device *dev,
-	struct device_attribute *attr,char *buf)
-{
-        cam_info("enter %s", __func__);
-        return 1;
-}
-static ssize_t ar1335_powerctrl_store(struct device *dev,
-	struct device_attribute *attr, const char *buf, size_t count)
-{
-	int state = simple_strtol(buf, NULL, 10);
-	cam_info("enter %s, state %d", __func__, state);
-
-	if (state == POWER_ON)
-		ar1335_power_up(&s_ar1335.intf);
-	else
-		ar1335_power_down(&s_ar1335.intf);
-
-	return count;
-}
-
-
-static struct device_attribute ar1335_powerctrl =
-    __ATTR(power_ctrl, 0664, ar1335_powerctrl_show, ar1335_powerctrl_store);
-
-int ar1335_register_attribute(hwsensor_intf_t* intf, struct device* dev)
-{
-	int ret = 0;
-	cam_info("enter %s", __func__);
-
-	ret = device_create_file(dev, &ar1335_powerctrl);
-	if (ret < 0) {
-		cam_err("%s failed to creat power ctrl attribute.", __func__);
-		goto err_create_power_ctrl;
-	}
-	return 0;
-err_create_power_ctrl:
-	device_remove_file(dev, &ar1335_powerctrl);
-	return ret;
-}
-#endif
-
 static hwsensor_vtbl_t
 s_ar1335_vtbl =
 {
@@ -376,16 +336,30 @@ ar1335_config(
 	cam_debug("ar1335 cfgtype = %d",data->cfgtype);
 	switch(data->cfgtype){
 		case SEN_CONFIG_POWER_ON:
+			mutex_lock(&ar1335_power_lock);
 			if(false == power_on_status){
-			ret = si->vtbl->power_up(si);
-				power_on_status = true;
+				ret = si->vtbl->power_up(si);
+				if (0 == ret)
+				{
+					power_on_status = true;
+				}
 			}
+			/*lint -e455 -esym(455,*)*/
+			mutex_unlock(&ar1335_power_lock);
+			/*lint -e455 +esym(455,*)*/
 			break;
 		case SEN_CONFIG_POWER_OFF:
+			mutex_lock(&ar1335_power_lock);
 			if(true == power_on_status){
-			ret = si->vtbl->power_down(si);
-				power_on_status = false;
+				ret = si->vtbl->power_down(si);
+				if (0 == ret)
+				{
+					power_on_status = false;
+				}
 			}
+			/*lint -e455 -esym(455,*)*/
+			mutex_unlock(&ar1335_power_lock);
+			/*lint -e455 +esym(455,*)*/
 			break;
 		case SEN_CONFIG_WRITE_REG:
 			break;
@@ -427,7 +401,7 @@ ar1335_platform_probe(
 	}
 
     s_ar1335.dev = &pdev->dev;
-
+	mutex_init(&ar1335_power_lock);
 	rc = hwsensor_register(pdev, &s_ar1335.intf);
 	rc = rpmsg_sensor_register(pdev, (void*)&s_ar1335);
 
@@ -455,3 +429,4 @@ module_init(ar1335_init_module);
 module_exit(ar1335_exit_module);
 MODULE_DESCRIPTION("ar1335");
 MODULE_LICENSE("GPL v2");
+//lint -restore

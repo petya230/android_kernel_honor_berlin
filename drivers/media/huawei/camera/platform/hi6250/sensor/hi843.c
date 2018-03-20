@@ -10,6 +10,7 @@
 #include "hwsensor.h"
 #include "sensor_commom.h"
 #include "hw_csi.h"
+//lint -save -e31
 
 #define I2S(i) container_of(i, sensor_t, intf)
 
@@ -300,6 +301,7 @@ struct sensor_power_setting hi843_power_down_setting_dvdd120[] = {
     },
 };
 
+struct mutex hi843_power_lock;
 static sensor_t s_hi843 =
 {
     .intf = { .vtbl = &s_hi843_vtbl, },
@@ -445,16 +447,28 @@ int hi843_config(hwsensor_intf_t* si, void  *argp)
     cam_debug("hi843 cfgtype = %d",data->cfgtype);
     switch(data->cfgtype){
         case SEN_CONFIG_POWER_ON:
+            mutex_lock(&hi843_power_lock);
             if(false == power_on_status){
             ret = si->vtbl->power_up(si);
-                power_on_status = true;
+                if(0 == ret){
+                    power_on_status = true;
+                }
             }
+            /*lint -e455 -esym(455,*)*/
+            mutex_unlock(&hi843_power_lock);
+            /*lint -e455 +esym(455,*)*/
             break;
         case SEN_CONFIG_POWER_OFF:
+            mutex_lock(&hi843_power_lock);
             if(true == power_on_status){
-            ret = si->vtbl->power_down(si);
-                power_on_status = false;
+                ret = si->vtbl->power_down(si);
+                if(0 == ret){
+                    power_on_status = false;
+                }
             }
+            /*lint -e455 -esym(455,*)*/
+            mutex_unlock(&hi843_power_lock);
+            /*lint -e455 +esym(455,*)*/
             break;
         case SEN_CONFIG_WRITE_REG:
             break;
@@ -506,6 +520,7 @@ static int32_t hi843_platform_probe(struct platform_device* pdev)
         goto hi843_sensor_probe_fail;
     }
     s_hi843.dev = &pdev->dev;
+    mutex_init(&hi843_power_lock);
     rc = hwsensor_register(pdev, &s_hi843.intf);
     rc = rpmsg_sensor_register(pdev, (void*)&s_hi843);
 hi843_sensor_probe_fail:
@@ -529,4 +544,5 @@ module_init(hi843_init_module);
 module_exit(hi843_exit_module);
 MODULE_DESCRIPTION("hi843");
 MODULE_LICENSE("GPL v2");
+//lint -restore
 

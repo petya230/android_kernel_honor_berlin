@@ -48,13 +48,13 @@
 #include "hifi_om.h"
 #include <dsm/dsm_pub.h>
 
-
+/*lint -e1058*/
 #define DTS_COMP_HIFIDSP_NAME "hisilicon,k3hifidsp"
 #define FILE_PROC_DIRECTORY "hifidsp"
 #define SEND_MSG_TO_HIFI mailbox_send_msg
 #define RETRY_COUNT	3
 
-static DEFINE_SEMAPHORE(s_misc_sem);
+static DEFINE_SEMAPHORE(s_misc_sem);/*lint !e64 !e570 !e651*/
 
 LIST_HEAD(recv_sync_work_queue_head);
 LIST_HEAD(recv_proc_work_queue_head);
@@ -328,7 +328,7 @@ static bool hifi_misc_local_process(unsigned short _msg_id)
 
 	return ret;
 }
-
+/*lint -e429*/
 static void hifi_misc_mesg_process(void *cmd)
 {
 	unsigned int cmd_id = 0;
@@ -384,6 +384,7 @@ static void hifi_misc_mesg_process(void *cmd)
 
 	return;
 }
+/*lint +e429*/
 /*****************************************************************************
  函 数 名  : hifi_misc_handle_mail
  功能描述  : Hifi MISC 设备双核通信接收中断处理函数
@@ -504,7 +505,7 @@ ERR:
 END:
 	OUT_FUNCTION;
 
-	return;
+	return;/*lint !e593*/
 }
 
 /*****************************************************************************
@@ -730,7 +731,7 @@ static int hifi_dsp_async_cmd(unsigned long arg)
 	}
 
 	if (ID_AP_AUDIO_PLAY_UPDATE_BUF_CMD == *(unsigned short *)para_krn_in) {
-		wake_unlock(&s_misc_data.update_buff_wakelock);
+		wake_unlock(&s_misc_data.update_buff_wakelock);/*lint !e455*/
 	}
 
 END:
@@ -919,6 +920,7 @@ static int hifi_dsp_senddata_sync_cmd(unsigned long arg)
 	修改内容   : 新生成函数
 
 *****************************************************************************/
+/*lint -e429*/
 static int hifi_dsp_wakeup_read_thread(unsigned long arg)
 {
 	struct recv_request *recv = NULL;
@@ -972,7 +974,7 @@ static int hifi_dsp_wakeup_read_thread(unsigned long arg)
 
 	return OK;
 }
-
+/*lint +e429*/
 static int hifi_dsp_wakeup_pcm_read_thread(unsigned long arg)
 {
 	(void)arg;
@@ -1860,5 +1862,4 @@ module_platform_driver(hifi_misc_driver);
 
 MODULE_DESCRIPTION("hifi driver");
 MODULE_LICENSE("GPL");
-
 

@@ -11,6 +11,7 @@
 #include "sensor_commom.h"
 #include "hw_csi.h"
 #include <linux/pinctrl/consumer.h>
+//lint -save -e650 -e31
 
 #define I2S(i) container_of(i, sensor_t, intf)
 static char *sensor_dts_name = "IMX219BLN_VENDOR";
@@ -302,6 +303,7 @@ struct sensor_power_setting imx219BLN_power_down_setting_dvdd120[] = {
     },
 };
 
+struct mutex imx219BLN_power_lock;
 static sensor_t s_imx219BLN =
 {
     .intf = { .vtbl = &s_imx219BLN_vtbl, },
@@ -551,17 +553,29 @@ int imx219BLN_config(hwsensor_intf_t* si, void  *argp)
     cam_debug("imx219BLN cfgtype = %d",data->cfgtype);
     switch(data->cfgtype){
         case SEN_CONFIG_POWER_ON:
-            if(false == power_on_status){
-            ret = si->vtbl->power_up(si);
-                power_on_status = true;
-            }
-            break;
+			mutex_lock(&imx219BLN_power_lock);
+			if(false == power_on_status){
+				ret = si->vtbl->power_up(si);
+				if (ret == 0) {
+					power_on_status = true;
+				}
+			}
+			/*lint -e455 -esym(455,*)*/
+			mutex_unlock(&imx219BLN_power_lock);
+			/*lint -e455 +esym(455,*)*/
+			break;
         case SEN_CONFIG_POWER_OFF:
-            if(true == power_on_status){
-            ret = si->vtbl->power_down(si);
-                power_on_status = false;
-            }
-            break;
+			mutex_lock(&imx219BLN_power_lock);
+			if(true == power_on_status){
+				ret = si->vtbl->power_down(si);
+				if (ret == 0) {
+					power_on_status = false;
+				}
+			}
+			/*lint -e455 -esym(455,*)*/
+			mutex_unlock(&imx219BLN_power_lock);
+			/*lint -e455 +esym(455,*)*/
+			break;
         case SEN_CONFIG_WRITE_REG:
             break;
         case SEN_CONFIG_READ_REG:
@@ -612,6 +626,7 @@ static int32_t imx219BLN_platform_probe(struct platform_device* pdev)
         goto imx219BLN_sensor_probe_fail;
     }
     s_imx219BLN.dev = &pdev->dev;
+    mutex_init(&imx219BLN_power_lock);
     rc = hwsensor_register(pdev, &s_imx219BLN.intf);
     rc = rpmsg_sensor_register(pdev, (void*)&s_imx219BLN);
     imx219BLN_sensor_probe_fail:
@@ -635,4 +650,5 @@ module_init(imx219BLN_init_module);
 module_exit(imx219BLN_exit_module);
 MODULE_DESCRIPTION("imx219BLN");
 MODULE_LICENSE("GPL v2");
+//lint -restore
 

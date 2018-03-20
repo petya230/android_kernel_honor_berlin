@@ -1354,8 +1354,8 @@ static ssize_t lcdkit_mipi_reg_write(struct file *file,
    int param_num = 0;
    int reg = 0;
    int delay_ms = 0;
-    char lcd_debug_buf[256];
-    char lcd_param_buf[256];
+   char lcd_debug_buf[256];
+   char lcd_param_buf[256];
 
    char *cur = lcd_debug_buf;
 

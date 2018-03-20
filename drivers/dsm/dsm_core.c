@@ -5,6 +5,7 @@
 #include <linux/ctype.h>
 #include <linux/poll.h>
 #include <linux/slab.h>
+#include <linux/vmalloc.h>
 #include <linux/delay.h>
 #include <linux/device.h>
 #include <linux/interrupt.h>
@@ -25,7 +26,10 @@
 HWLOG_REGIST();
 
 #define DSM_LOG_INFO(x...)		_hwlog_info(HWLOG_TAG, ##x)
-#define DSM_LOG_ERR(x...)		_hwlog_err(HWLOG_TAG, ##x)
+#define DSM_LOG_ERR(x...)		({\
+						if(printk_ratelimit()) \
+							_hwlog_err(HWLOG_TAG, ##x);\
+					})
 #define DSM_LOG_DEBUG(x...)	_hwlog_debug(HWLOG_TAG, ##x)
 #ifndef DSM_MINOR
 #define DSM_MINOR		254    /* DSM */
@@ -35,6 +39,51 @@ static struct dsm_server g_dsm_server;
 static struct work_struct dsm_work;
 static struct dsm_client *ext_dsm_client[EXTERN_DSM_CLIENT_MAX];
 static struct dsm_dev ext_dev[EXTERN_DSM_CLIENT_MAX];
+static DEFINE_MUTEX(ext_client_lock);
+
+/*
+*FUNCTION: dsm_update_client_vendor_info
+*
+*DESCRIPTION:
+*	This API is used to update the variables 'ic_name' & 'module_name' of the struct dsm_client
+*
+*RETRUN:
+*	SUCCESS:	0
+*	FAILED:		-1
+*/
+int dsm_update_client_vendor_info(struct dsm_dev *dev)
+{
+	int client_num = 0;
+	int is_found = -1;
+	int retval = -1;
+
+	if (dev == NULL || dev->name == NULL) {
+		DSM_LOG_ERR("dev or dev->name is NULL\n");
+		goto out;
+	}
+
+	mutex_lock(&g_dsm_server.mtx_lock);
+	for(client_num = 0; client_num < g_dsm_server.client_count; client_num++) {
+		is_found = strncmp(g_dsm_server.client_list[client_num]->client_name, dev->name, CLIENT_NAME_LEN);
+		if(!is_found) {
+			if(dev->ic_name && strncmp(g_dsm_server.client_list[client_num]->ic_name,
+					dev->ic_name, DSM_MAX_IC_NAME_LEN)) {
+				strncpy(g_dsm_server.client_list[client_num]->ic_name, dev->ic_name, DSM_MAX_IC_NAME_LEN-1);
+				g_dsm_server.client_list[client_num]->ic_name[DSM_MAX_IC_NAME_LEN-1] = '\0';
+			}
+			if(dev->module_name && strncmp(g_dsm_server.client_list[client_num]->module_name,
+					dev->module_name, DSM_MAX_MODULE_NAME_LEN)) {
+				strncpy(g_dsm_server.client_list[client_num]->module_name, dev->module_name, DSM_MAX_MODULE_NAME_LEN-1);
+				g_dsm_server.client_list[client_num]->module_name[DSM_MAX_MODULE_NAME_LEN-1] = '\0';
+			}
+			retval = 0;
+			break;
+		}
+	}
+	mutex_unlock(&g_dsm_server.mtx_lock);
+out:
+	return retval;
+}
 
 struct dsm_client *dsm_register_client(struct dsm_dev *dev)
 {
@@ -47,20 +96,21 @@ struct dsm_client *dsm_register_client(struct dsm_dev *dev)
 		goto out;
 	}
 
-	if (dev == NULL) {
-		DSM_LOG_ERR("dsm_dev is NULL\n");
+	if (dev == NULL || dev->buff_size > DSM_EXTERN_CLIENT_MAX_BUF_SIZE) {
+		DSM_LOG_ERR("dsm_dev is NULL or buffer size is too big\n");
 		goto out;
 	}
 
 	smp_rmb();
+	mutex_lock(&g_dsm_server.mtx_lock);
 	if (g_dsm_server.client_count < CLIENT_SIZE) {
-		ptr = (struct dsm_client *)kzalloc((sizeof(struct dsm_client)+dev->buff_size), GFP_KERNEL);
+		ptr = (struct dsm_client *)vzalloc((sizeof(struct dsm_client)+dev->buff_size));
 		if (!ptr) {
+			mutex_unlock(&g_dsm_server.mtx_lock);
 			DSM_LOG_ERR("clients malloc failed\n");
 			goto out;
 		}
 
-		mutex_lock(&g_dsm_server.mtx_lock);
 		for (i = 0; i < CLIENT_SIZE; i++) {
 			if (!test_bit(DSM_CLIENT_VAILD_BIT, &g_dsm_server.client_flag[i]))
 				break;
@@ -73,23 +123,28 @@ struct dsm_client *dsm_register_client(struct dsm_dev *dev)
 					break;
 				}
 			} else {
+				mutex_unlock(&g_dsm_server.mtx_lock);
 				DSM_LOG_ERR("Please specify the dsm device name!\n");
-				kfree(ptr);
+				vfree(ptr);
 				ptr = NULL;
 				goto out;
 			}
 		}
 
 		if (i < CLIENT_SIZE && conflict) {
-			ptr->client_name = (char *)dev->name;
+			strncpy(ptr->client_name, dev->name, CLIENT_NAME_LEN-1);
+			ptr->client_name[CLIENT_NAME_LEN-1] = '\0';
 			if (dev->device_name) {
-				ptr->device_name = (char *)dev->device_name;
+				strncpy(ptr->device_name, dev->device_name, DSM_MAX_DEVICE_NAME_LEN-1);
+				ptr->device_name[DSM_MAX_DEVICE_NAME_LEN-1] = '\0';
 			}
 			if (dev->ic_name) {
-				ptr->ic_name = (char *)dev->ic_name;
+				strncpy(ptr->ic_name, dev->ic_name, DSM_MAX_IC_NAME_LEN-1);
+				ptr->ic_name[DSM_MAX_IC_NAME_LEN-1] = '\0';
 			}
 			if (dev->module_name) {
-				ptr->module_name = (char *)dev->module_name;
+				strncpy(ptr->module_name, dev->module_name, DSM_MAX_MODULE_NAME_LEN-1);
+				ptr->module_name[DSM_MAX_MODULE_NAME_LEN-1] = '\0';
 			}
 
 			ptr->client_id = i;
@@ -103,13 +158,13 @@ struct dsm_client *dsm_register_client(struct dsm_dev *dev)
 			smp_wmb();
 		} else {
 			DSM_LOG_ERR("clients register failed, index %d, conflict %d\n", i, conflict);
-			kfree(ptr);
+			vfree(ptr);
 			ptr = NULL;
 		}
-		mutex_unlock(&g_dsm_server.mtx_lock);
-	} else
+	} else {
 		DSM_LOG_INFO("clients has full\n");
-
+	}
+	mutex_unlock(&g_dsm_server.mtx_lock);
 out:
 	return ptr;
 }
@@ -127,8 +182,8 @@ void dsm_unregister_client (struct dsm_client *dsm_client,struct dsm_dev *dev)
 	int i;
 	int conflict;
 
-	if(!dsm_client){
-		pr_info("dsm_client is NULL, no need to unregister");
+	if(NULL == dsm_client || NULL == dev || NULL == dev->name){
+		pr_info("pointer is NULL, please check the parameters!\n");
 		return;
 	}
 
@@ -139,7 +194,7 @@ void dsm_unregister_client (struct dsm_client *dsm_client,struct dsm_dev *dev)
 			__clear_bit(DSM_CLIENT_VAILD_BIT, &g_dsm_server.client_flag[i]);
 			g_dsm_server.client_list[i] = NULL;
 			g_dsm_server.client_count--;
-			kfree(dsm_client);
+			vfree(dsm_client);
 			dsm_client = NULL;
 			break;
 		}
@@ -314,7 +369,11 @@ struct dsm_client *dsm_find_client(char *cname)
 {
 	int i;
 	struct dsm_client *client = NULL;
-
+	if(NULL == cname || !strlen(cname))
+	{
+		DSM_LOG_ERR("cname is NULL\n");
+		goto out;
+	}
 	if (g_dsm_server.server_state != DSM_SERVER_INITED) {
 		goto out;
 	}
@@ -338,19 +397,32 @@ out:
 
 static int dsm_register_extern_client(struct dsm_extern_client *ext_client)
 {
-	static int ext_client_cnt;
+	static int ext_client_cnt = 0;
+
+	if (NULL == ext_client || NULL == ext_client->client_name) {
+		DSM_LOG_ERR("%s:the ext_client or ext_client->client_name is null, invalid.\n", __func__);
+		return -ENOENT;
+	}
+
+	if(ext_client->buf_size < 0 ) {
+		DSM_LOG_ERR("%s:the ext_client buffer size is negative,invalid.\n", __func__);
+		return -ENOENT;
+	}
+
+	mutex_lock(&ext_client_lock);
+	if(ext_client_cnt >= EXTERN_DSM_CLIENT_MAX) {
+		DSM_LOG_ERR("%s:the count of external client registed exceeds the upper limit.\n", __func__);
+		mutex_unlock(&ext_client_lock);
+		return -ENOENT;
+	}
 
 	ext_dev[ext_client_cnt].buff_size = ext_client->buf_size;
 	ext_dev[ext_client_cnt].name = ext_client->client_name;
 
-	if (0 >= ext_dev[ext_client_cnt].buff_size || NULL == ext_dev[ext_client_cnt].name
-			|| ext_client_cnt >= EXTERN_DSM_CLIENT_MAX) {
-		DSM_LOG_ERR("[dsm_register_extern_client]client name or buf_size is fault."
-				"don't register!\n");
-		return -ENOENT;
-	} else if (NULL != dsm_find_client((char *)ext_dev[ext_client_cnt].name)) {
+	if (NULL != dsm_find_client((char *)ext_dev[ext_client_cnt].name)) {
 		DSM_LOG_ERR("[dsm_register_extern_client]register %s has exist, dont register again!\n",
 				ext_dev[ext_client_cnt].name);
+		mutex_unlock(&ext_client_lock);
 		return -EEXIST;
 	}
 
@@ -358,10 +430,12 @@ static int dsm_register_extern_client(struct dsm_extern_client *ext_client)
 	if (!ext_dsm_client[ext_client_cnt]) {
 		DSM_LOG_ERR("[dsm_register_extern_client]register %s failed!\n",
 				ext_dev[ext_client_cnt].name);
+		mutex_unlock(&ext_client_lock);
 		return -ENOMEM;
 	}
 
 	ext_client_cnt++;
+	mutex_unlock(&ext_client_lock);
 	return 0;
 }
 
@@ -414,63 +488,15 @@ static void dsm_work_func(struct work_struct *work)
 	return;
 }
 
-static ssize_t dsm_read(struct file *file, char __user *buf, size_t count, loff_t *ppos)
-{
-	struct dsm_client *client = file->private_data;
-	size_t copy_size = 0;
-
-	DSM_LOG_DEBUG("%s enter\n", __func__);
-
-	if (!client) {
-		DSM_LOG_ERR("client not bind\n");
-		goto out;
-	}
-
-	if (dsm_client_readable(client)) {
-		copy_size = min(count, (client->used_size - client->read_size));
-		if (copy_to_user(buf, &client->dump_buff[client->read_size], copy_size))
-			DSM_LOG_ERR("copy to user failed\n");
-		client->read_size += copy_size;
-		if (client->read_size >= client->used_size)
-			dsm_client_set_idle(client);
-		DSM_LOG_DEBUG("%lu bytes read to user\n", copy_size);
-	}
-
-out:
-	DSM_LOG_DEBUG("%s exit\n", __func__);
-	return copy_size;
-}
-
-static ssize_t dsm_write(struct file *file, const char __user *buf, size_t count, loff_t *ppos)
+static void dsm_get_report_info(char* string_buff)
 {
 	char client_name[CLIENT_NAME_LEN] = {'\0'};
 	int size, error_no = 0;
 	struct dsm_client *client = NULL;
 	char *buff = NULL;
 	char *ptr = NULL;
-#ifdef CONFIG_HUAWEI_SDCARD_VOLD
-	char  err_string[20] = {0};
-	int   err;
-#endif
-	DSM_LOG_DEBUG("%s enter\n", __func__);
-	if (NULL == buf) {
-		DSM_LOG_ERR("buf is null\n");
-		goto out;
-	}
-	if ((count > DSM_MAX_LOG_SIZE) || (count < DSM_MIN_LOG_SIZE)) {
-		DSM_LOG_ERR("count is %lu,out of range\n",count);
-		goto out;
-	}
-	buff = (char *)kzalloc(count, GFP_KERNEL);
-	if (!buff) {
-		DSM_LOG_ERR("dsm write malloc failed\n");
-		goto out;
-	}
 
-	if (copy_from_user(buff, buf, (count - 1))) {
-		DSM_LOG_ERR("dsm write copy failed\n");
-		goto out;
-	}
+	buff = string_buff;
 
 	/*get client name*/
 	ptr = dsm_strtok(buff, ",");
@@ -502,6 +528,61 @@ static ssize_t dsm_write(struct file *file, const char __user *buf, size_t count
 	} else {
 		DSM_LOG_INFO("dsm notify can't find client - %s\n", client_name);
 	}
+
+}
+
+static ssize_t dsm_read(struct file *file, char __user *buf, size_t count, loff_t *ppos)
+{
+	struct dsm_client *client = file->private_data;
+	size_t copy_size = 0;
+
+	DSM_LOG_DEBUG("%s enter\n", __func__);
+
+	if (!client) {
+		DSM_LOG_ERR("client not bind\n");
+		goto out;
+	}
+
+	if (dsm_client_readable(client)) {
+		copy_size = min(count, (client->used_size - client->read_size));
+		if (copy_to_user(buf, &client->dump_buff[client->read_size], copy_size))
+			DSM_LOG_ERR("copy to user failed\n");
+		client->read_size += copy_size;
+		if (client->read_size >= client->used_size)
+			dsm_client_set_idle(client);
+		DSM_LOG_DEBUG("%lu bytes read to user\n", copy_size);
+	}
+
+out:
+	DSM_LOG_DEBUG("%s exit\n", __func__);
+	return copy_size;
+}
+
+static ssize_t dsm_write(struct file *file, const char __user *buf, size_t count, loff_t *ppos)
+{
+	char *buff = NULL;
+
+	DSM_LOG_DEBUG("%s enter\n", __func__);
+	if (NULL == buf) {
+		DSM_LOG_ERR("buf is null\n");
+		goto out;
+	}
+	if ((count > DSM_MAX_LOG_SIZE) || (count < DSM_MIN_LOG_SIZE)) {
+		DSM_LOG_ERR("count is %lu,out of range\n",count);
+		goto out;
+	}
+	buff = (char *)kzalloc(count, GFP_KERNEL);
+	if (!buff) {
+		DSM_LOG_ERR("dsm write malloc failed\n");
+		goto out;
+	}
+
+	if (copy_from_user(buff, buf, (count - 1))) {
+		DSM_LOG_ERR("dsm write copy failed\n");
+		goto out;
+	}
+	*(buff+count-1) = '\0';
+	dsm_get_report_info(buff);
 
 out:
 	if (buff)
@@ -624,21 +705,21 @@ static long dsm_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			}
 			break;
 	case DSM_IOCTL_GET_DEVICE_NAME:
-			if (client && client->device_name) {
+			if (client && (strlen(client->device_name) > 0)) {
 				ret = copy_to_user(argp, client->device_name, DSM_MAX_DEVICE_NAME_LEN);
 			} else {
 				ret = -ENXIO;
 			}
 			break;
 	case DSM_IOCTL_GET_IC_NAME:
-			if (client && client->ic_name) {
+			if (client && (strlen(client->ic_name) > 0)) {
 				ret = copy_to_user(argp, client->ic_name, DSM_MAX_IC_NAME_LEN);
 			} else {
 				ret = -ENXIO;
 			}
 			break;
 	case DSM_IOCTL_GET_MODULE_NAME:
-			if (client && client->module_name) {
+			if (client && (strlen(client->module_name) > 0)) {
 				ret = copy_to_user(argp, client->module_name, DSM_MAX_MODULE_NAME_LEN);
 			} else {
 				ret = -ENXIO;
@@ -680,47 +761,27 @@ static const struct file_operations dsm_fops = {
 static ssize_t dsm_cnotify_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t count)
 {
-	char client_name[CLIENT_NAME_LEN] = {0};
-	int size;
-	int error_no = 0;
-	struct dsm_client *client = NULL;
 	char *strings = NULL;
-	char *ptr;
 
 	DSM_LOG_DEBUG("%s enter\n", __func__);
+	if (NULL == buf) {
+		DSM_LOG_ERR("buf is null\n");
+		goto out;
+	}
+	if ((count > DSM_MAX_LOG_SIZE) || (count < DSM_MIN_LOG_SIZE)) {
+		DSM_LOG_ERR("count is %lu,out of range\n",count);
+		goto out;
+	}
+
 	strings = (char *)kzalloc(count, GFP_KERNEL);
 	if (!strings) {
 		DSM_LOG_ERR("dsm write malloc failed\n");
 		goto out;
 	}
 
-	memcpy(strings, buf, count);
-	/*get client name*/
-	ptr = dsm_strtok(strings, ",");
-	if (ptr) {
-		size = strlen(ptr);
-		size = (size < CLIENT_NAME_LEN) ? size : (CLIENT_NAME_LEN - 1);
-		memcpy(client_name, ptr, size);
-	}
-	/*get error no*/
-	ptr = dsm_strtok(NULL, ",");
-	if (ptr)
-		error_no = dsm_atoi(ptr);
-	/*get notify content*/
-	ptr = dsm_strtok(NULL, NULL);
-
-	DSM_LOG_INFO("client name - %s, error no - %d\n", client_name, error_no);
-	if (ptr)
-		DSM_LOG_INFO("content - %s\n", ptr);
-
-	client = dsm_find_client(client_name);
-	if (client && (!dsm_client_ocuppy(client))) {
-		DSM_LOG_DEBUG("dsm write find client - %s\n", client_name);
-		if (ptr)
-			dsm_client_copy(client, ptr, strlen(ptr));
-		dsm_client_notify(client, error_no);
-	} else
-		DSM_LOG_INFO("dsm notify can't find client - %s\n", client_name);
+	memcpy(strings, buf, count-1);
+	*(strings+count-1) = '\0';
+	dsm_get_report_info(strings);
 
 out:
 	if (strings)
@@ -784,6 +845,7 @@ EXPORT_SYMBOL(dsm_client_notify);
 EXPORT_SYMBOL(dsm_find_client);
 EXPORT_SYMBOL(dsm_client_unocuppy);
 EXPORT_SYMBOL(dsm_client_copy);
+EXPORT_SYMBOL(dsm_update_client_vendor_info);
 
 subsys_initcall(dsm_init);
 MODULE_LICENSE("GPL");

@@ -9,8 +9,8 @@
 
 #define CLIENT_NAME_LEN						(32) /* max client name length */
 #define DSM_MAX_DEVICE_NAME_LEN				(32) /* max device name length */
-#define DSM_MAX_MODULE_NAME_LEN				(4)  /* max module name length */
-#define DSM_MAX_IC_NAME_LEN					(4)  /* max ic name length */
+#define DSM_MAX_MODULE_NAME_LEN				(16)  /* max module name length */
+#define DSM_MAX_IC_NAME_LEN					(16)  /* max ic name length */
 
 /*dsm error no define*/
 #define DSM_ERR_NO_ERROR					(0)
@@ -632,10 +632,10 @@ struct dsm_dev{
 };
 
 struct dsm_client{
-	char *client_name;
-	char *device_name;
-	char *ic_name;
-	char *module_name;
+	char client_name[CLIENT_NAME_LEN];
+	char device_name[DSM_MAX_DEVICE_NAME_LEN];
+	char ic_name[DSM_MAX_IC_NAME_LEN];
+	char module_name[DSM_MAX_MODULE_NAME_LEN];
 	int client_id;
 	int error_no;
 	unsigned long buff_flag;
@@ -665,6 +665,7 @@ int dsm_client_record(struct dsm_client *client, const char *fmt, ...);
 int dsm_client_copy(struct dsm_client *client, void *src, int sz);
 void dsm_client_notify(struct dsm_client *client, int error_no);
 extern void dsm_key_pressed(int type);
+int dsm_update_client_vendor_info(struct dsm_dev *dev);
 #else
 static inline struct dsm_client *dsm_register_client (struct dsm_dev *dev)
 {
@@ -694,6 +695,10 @@ static inline int dsm_client_copy(struct dsm_client *client, void *src, int sz)
 static inline void dsm_client_notify(struct dsm_client *client, int error_no)
 {
 	return;
+}
+static inline int dsm_update_client_vendor_info(struct dsm_dev *dev)
+{
+	return 0;
 }
 #endif
 

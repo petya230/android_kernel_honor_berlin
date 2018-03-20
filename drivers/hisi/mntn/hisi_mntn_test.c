@@ -108,21 +108,21 @@ static int hisi_wdt_tst_lock_a(void)
 	unsigned long flagsa = 0, flagsb = 0;
 
 	mlog_e("lock A to in\n");
-	WDT_TST_LOCK_A();
+	WDT_TST_LOCK_A(); /*lint !e456*/
 
 	mlog_e("lock A in, flags=0x%x\n", (unsigned int)flagsa);
 	mdelay(2000);
 	mlog_e("lock B to in\n");
-	WDT_TST_LOCK_B();
+	WDT_TST_LOCK_B(); /*lint !e456*/
 
 	mlog_e("during lock AB\n");
 
-	WDT_TST_UNLOCK_A();
+	WDT_TST_UNLOCK_A(); /*lint !e456*/
 	mlog_e("lock A to out\n");
-	WDT_TST_UNLOCK_B();
+	WDT_TST_UNLOCK_B(); /*lint !e456*/
 	mlog_e("lock A out\n");
 
-	return 0;
+	return 0; /*lint !e454*/
 }
 
 static int hisi_wdt_tst_lock_b(void)
@@ -130,20 +130,20 @@ static int hisi_wdt_tst_lock_b(void)
 	unsigned long flagsa = 0, flagsb = 0;
 
 	mlog_e("lock B to in\n");
-	WDT_TST_LOCK_B();
+	WDT_TST_LOCK_B(); /*lint !e456*/
 	mlog_e("lock B in, flags=0x%x\n", (unsigned int)flagsb);
 	mdelay(2000);
 	mlog_e("lock A to in\n");
-	WDT_TST_LOCK_A();
+	WDT_TST_LOCK_A(); /*lint !e456*/
 
 	mlog_e("during lock BA\n");
 
-	WDT_TST_UNLOCK_A();
+	WDT_TST_UNLOCK_A(); /*lint !e456*/
 	mlog_e("lock B to out\n");
-	WDT_TST_UNLOCK_B();
+	WDT_TST_UNLOCK_B(); /*lint !e456*/
 	mlog_e("lock B out\n");
 
-	return 0;
+	return 0; /*lint !e454*/
 }
 
 static void hisi_wdt_tst_lock_a_work_func(struct work_struct *work)
@@ -173,7 +173,7 @@ static void hisi_wdt_tst_irq_hrtimer(void *data)
 	wdt_irq_tst_hrtimer.function = hisi_wdt_tst_irq_body;
 	hrtimer_start(&wdt_irq_tst_hrtimer,
 		      ktime_set(1 /*second */ , 0 /*msecond */),
-		      HRTIMER_MODE_REL | HRTIMER_MODE_PINNED);
+		      HRTIMER_MODE_REL | HRTIMER_MODE_PINNED); /*lint !e655*/
 
 }
 

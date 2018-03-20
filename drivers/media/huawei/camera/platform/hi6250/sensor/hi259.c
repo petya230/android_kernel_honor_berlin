@@ -11,6 +11,7 @@
 #include "hwsensor.h"
 #include "sensor_commom.h"
 #include "hw_csi.h"
+//lint -save -e650 -e31
 
 #define I2S(i) container_of(i, sensor_t, intf)
 
@@ -128,6 +129,7 @@ struct sensor_power_setting hi259_power_down_setting[] = {
 };
 
 atomic_t volatile hi259_powered = ATOMIC_INIT(0);
+struct mutex hi259_power_lock;
 static sensor_t s_hi259 =
 {
     .intf = { .vtbl = &s_hi259_vtbl, },
@@ -379,17 +381,31 @@ int hi259_config(hwsensor_intf_t* si, void  *argp)
     cam_debug("hi259 cfgtype = %d",data->cfgtype);
     switch(data->cfgtype){
         case SEN_CONFIG_POWER_ON:
-            if(false == power_on_status){
-                ret = si->vtbl->power_up(si);
-                power_on_status = true;
-            }
-            break;
+			mutex_lock(&hi259_power_lock);
+			if(false == power_on_status){
+				ret = si->vtbl->power_up(si);
+				if (0 == ret)
+				{
+					power_on_status = true;
+				}
+			}
+			/*lint -e455 -esym(455,*)*/
+			mutex_unlock(&hi259_power_lock);
+			/*lint -e455 +esym(455,*)*/
+			break;
         case SEN_CONFIG_POWER_OFF:
-            if(true == power_on_status){
-                ret = si->vtbl->power_down(si);
-                power_on_status = false;
-            }
-            break;
+			mutex_lock(&hi259_power_lock);
+			if(true == power_on_status){
+				ret = si->vtbl->power_down(si);
+				if (0 == ret)
+				{
+					power_on_status = false;
+				}
+			}
+			/*lint -e455 -esym(455,*)*/
+			mutex_unlock(&hi259_power_lock);
+			/*lint -e455 +esym(455,*)*/
+			break;
         case SEN_CONFIG_WRITE_REG:
             break;
         case SEN_CONFIG_READ_REG:
@@ -437,6 +453,7 @@ static int32_t hi259_platform_probe(struct platform_device* pdev)
         goto hi259_sensor_probe_fail;
     }
     s_hi259.dev = &pdev->dev;
+    mutex_init(&hi259_power_lock);
     rc = hwsensor_register(pdev, &s_hi259.intf);
     rc = rpmsg_sensor_register(pdev, (void*)&s_hi259);
 hi259_sensor_probe_fail:
@@ -460,4 +477,5 @@ module_init(hi259_init_module);
 module_exit(hi259_exit_module);
 MODULE_DESCRIPTION("hi259");
 MODULE_LICENSE("GPL v2");
+//lint -restore
 

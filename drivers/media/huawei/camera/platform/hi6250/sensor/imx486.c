@@ -184,6 +184,7 @@ struct sensor_power_setting hw_imx486_power_down_setting[] = {
 };
 
 atomic_t volatile imx486_powered = ATOMIC_INIT(0);
+struct mutex imx486_power_lock;
 sensor_t s_imx486 =
 {
     .intf = { .vtbl = &s_imx486_vtbl, },
@@ -329,7 +330,7 @@ int imx486_match_id(hwsensor_intf_t* si, void * data)
 		    strncpy(cdata->cfg.name, sensor_name[1], strlen(sensor_name[1])+1);
 		    cdata->data = sensor->board_info->sensor_index;
 		}else{
-            cam_err("%s module unknown", __func__,module_id);
+            cam_err("%s module =%d unknown", __func__,module_id);
 		}
 	} else {
 	    strncpy(cdata->cfg.name, sensor->board_info->name, strlen(sensor->board_info->name)+1);
@@ -342,48 +343,6 @@ int imx486_match_id(hwsensor_intf_t* si, void * data)
 
     return rc;
 }
-
-#if 0
-ssize_t imx486_powerctrl_show(struct device *dev,
-	struct device_attribute *attr,char *buf)
-{
-        cam_info("enter %s", __func__);
-        return 1;
-}
-ssize_t imx486_powerctrl_store(struct device *dev,
-	struct device_attribute *attr, const char *buf, size_t count)
-{
-	int state = simple_strtol(buf, NULL, 10);
-	cam_info("enter %s, state %d", __func__, state);
-
-	if (state == POWER_ON)
-		imx486_power_up(&s_imx486.intf);
-	else
-		imx486_power_down(&s_imx486.intf);
-
-	return count;
-}
-
-
-struct device_attribute imx486_powerctrl =
-    __ATTR(power_ctrl, 0664, imx486_powerctrl_show, imx486_powerctrl_store);
-
-int imx486_register_attribute(hwsensor_intf_t* intf, struct device* dev)
-{
-	int ret = 0;
-	cam_info("enter %s", __func__);
-
-	ret = device_create_file(dev, &imx486_powerctrl);
-	if (ret < 0) {
-		cam_err("%s failed to creat power ctrl attribute.", __func__);
-		goto err_create_power_ctrl;
-	}
-	return 0;
-err_create_power_ctrl:
-	device_remove_file(dev, &imx486_powerctrl);
-	return ret;
-}
-#endif
 
 hwsensor_vtbl_t
 s_imx486_vtbl =
@@ -416,16 +375,30 @@ imx486_config(
 	cam_debug("imx486 cfgtype = %d",data->cfgtype);
 	switch(data->cfgtype){
 		case SEN_CONFIG_POWER_ON:
+			mutex_lock(&imx486_power_lock);
 			if(false == power_on_status){
-			ret = si->vtbl->power_up(si);
-				power_on_status = true;
+				ret = si->vtbl->power_up(si);
+				if (0 == ret)
+				{
+					power_on_status = true;
+				}
 			}
+			/*lint -e455 -esym(455,*)*/
+			mutex_unlock(&imx486_power_lock);
+			/*lint -e455 +esym(455,*)*/
 			break;
 		case SEN_CONFIG_POWER_OFF:
+			mutex_lock(&imx486_power_lock);
 			if(true == power_on_status){
-			ret = si->vtbl->power_down(si);
-				power_on_status = false;
+				ret = si->vtbl->power_down(si);
+				if (0 == ret)
+				{
+					power_on_status = false;
+				}
 			}
+			/*lint -e455 -esym(455,*)*/
+			mutex_unlock(&imx486_power_lock);
+			/*lint -e455 +esym(455,*)*/
 			break;
 		case SEN_CONFIG_WRITE_REG:
 			break;
@@ -467,7 +440,7 @@ imx486_platform_probe(
 	}
 
     s_imx486.dev = &pdev->dev;
-
+	mutex_init(&imx486_power_lock);
 	rc = hwsensor_register(pdev, &s_imx486.intf);
 	rc = rpmsg_sensor_register(pdev, (void*)&s_imx486);
 

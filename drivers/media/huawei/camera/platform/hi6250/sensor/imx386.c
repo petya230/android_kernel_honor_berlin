@@ -12,6 +12,7 @@
 #include "hwsensor.h"
 #include "sensor_commom.h"
 #include "hw_csi.h"
+//lint -save -e650 -e31
 
 #define I2S(i) container_of(i, sensor_t, intf)
 
@@ -84,15 +85,6 @@ struct sensor_power_setting hw_imx386_power_up_setting[] = {
         .sensor_index = SENSOR_INDEX_INVALID,
         .delay = 1,
     },
-    #if 0
-    //MCAM1 VCM Enable
-    {
-        .seq_type = SENSOR_VCM_PWDN,
-        .config_val = SENSOR_GPIO_HIGH,
-        .sensor_index = SENSOR_INDEX_INVALID,
-        .delay = 1,
-    },
-    #endif
     {
         .seq_type = SENSOR_MCLK,
         .sensor_index = SENSOR_INDEX_INVALID,
@@ -118,15 +110,6 @@ struct sensor_power_setting hw_imx386_power_down_setting[] = {
         .sensor_index = SENSOR_INDEX_INVALID,
         .delay = 1,
     },
-    #if 0
-    //MCAM1 VCM Enable
-    {
-        .seq_type = SENSOR_VCM_PWDN,
-        .config_val = SENSOR_GPIO_LOW,
-        .sensor_index = SENSOR_INDEX_INVALID,
-        .delay = 1,
-    },
-    #endif
     //MCAM1 AFVDD 2.85V
     {
         .seq_type = SENSOR_VCM_AVDD,
@@ -183,6 +166,7 @@ struct sensor_power_setting hw_imx386_power_down_setting[] = {
 };
 
 atomic_t volatile imx386_powered = ATOMIC_INIT(0);
+struct mutex imx386_power_lock;
 static sensor_t s_imx386 =
 {
     .intf = { .vtbl = &s_imx386_vtbl, },
@@ -409,48 +393,6 @@ matchID_exit:
     return rc;
 }
 
-#if 0
-static ssize_t imx386_powerctrl_show(struct device *dev,
-	struct device_attribute *attr,char *buf)
-{
-        cam_info("enter %s", __func__);
-        return 1;
-}
-static ssize_t imx386_powerctrl_store(struct device *dev,
-	struct device_attribute *attr, const char *buf, size_t count)
-{
-	int state = simple_strtol(buf, NULL, 10);
-	cam_info("enter %s, state %d", __func__, state);
-
-	if (state == POWER_ON)
-		imx386_power_up(&s_imx386.intf);
-	else
-		imx386_power_down(&s_imx386.intf);
-
-	return count;
-}
-
-
-static struct device_attribute imx386_powerctrl =
-    __ATTR(power_ctrl, 0664, imx386_powerctrl_show, imx386_powerctrl_store);
-
-int imx386_register_attribute(hwsensor_intf_t* intf, struct device* dev)
-{
-	int ret = 0;
-	cam_info("enter %s", __func__);
-
-	ret = device_create_file(dev, &imx386_powerctrl);
-	if (ret < 0) {
-		cam_err("%s failed to creat power ctrl attribute.", __func__);
-		goto err_create_power_ctrl;
-	}
-	return 0;
-err_create_power_ctrl:
-	device_remove_file(dev, &imx386_powerctrl);
-	return ret;
-}
-#endif
-
 static hwsensor_vtbl_t
 s_imx386_vtbl =
 {
@@ -482,16 +424,30 @@ imx386_config(
 	cam_debug("imx386 cfgtype = %d",data->cfgtype);
 	switch(data->cfgtype){
 		case SEN_CONFIG_POWER_ON:
+			mutex_lock(&imx386_power_lock);
 			if(false == power_on_status){
-			ret = si->vtbl->power_up(si);
-				power_on_status = true;
+				ret = si->vtbl->power_up(si);
+				if (0 == ret)
+				{
+					power_on_status = true;
+				}
 			}
+			/*lint -e455 -esym(455,*)*/
+			mutex_unlock(&imx386_power_lock);
+			/*lint -e455 +esym(455,*)*/
 			break;
 		case SEN_CONFIG_POWER_OFF:
+			mutex_lock(&imx386_power_lock);
 			if(true == power_on_status){
-			ret = si->vtbl->power_down(si);
-				power_on_status = false;
+				ret = si->vtbl->power_down(si);
+				if (0 == ret)
+				{
+					power_on_status = false;
+				}
 			}
+			/*lint -e455 -esym(455,*)*/
+			mutex_unlock(&imx386_power_lock);
+			/*lint -e455 +esym(455,*)*/
 			break;
 		case SEN_CONFIG_WRITE_REG:
 			break;
@@ -533,7 +489,7 @@ imx386_platform_probe(
 	}
 
     s_imx386.dev = &pdev->dev;
-
+	mutex_init(&imx386_power_lock);
 	rc = hwsensor_register(pdev, &s_imx386.intf);
 	rc = rpmsg_sensor_register(pdev, (void*)&s_imx386);
 
@@ -561,3 +517,4 @@ module_init(imx386_init_module);
 module_exit(imx386_exit_module);
 MODULE_DESCRIPTION("imx386");
 MODULE_LICENSE("GPL v2");
+//lint -restore

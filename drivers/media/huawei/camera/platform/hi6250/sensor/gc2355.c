@@ -10,6 +10,7 @@
 #include "hwsensor.h"
 #include "sensor_commom.h"
 #include "hw_csi.h"
+//lint -save -e31
 
 #define I2S(i) container_of(i, sensor_t, intf)
 
@@ -126,6 +127,7 @@ struct sensor_power_setting gc2355_power_down_setting[] = {
 };
 
 atomic_t volatile gc2355_powered = ATOMIC_INIT(0);
+struct mutex gc2355_power_lock;
 static sensor_t s_gc2355 =
 {
     .intf = { .vtbl = &s_gc2355_vtbl, },
@@ -273,17 +275,31 @@ int gc2355_config(hwsensor_intf_t* si, void  *argp)
     cam_debug("gc2355 cfgtype = %d",data->cfgtype);
     switch(data->cfgtype){
         case SEN_CONFIG_POWER_ON:
-            if(false == power_on_status){
-                ret = si->vtbl->power_up(si);
-                power_on_status = true;
-            }
-            break;
+			mutex_lock(&gc2355_power_lock);
+			if(false == power_on_status){
+				ret = si->vtbl->power_up(si);
+				if (0 == ret)
+				{
+					power_on_status = true;
+				}
+			}
+			/*lint -e455 -esym(455,*)*/
+			mutex_unlock(&gc2355_power_lock);
+			/*lint -e455 +esym(455,*)*/
+			break;
         case SEN_CONFIG_POWER_OFF:
-            if(true == power_on_status){
-                ret = si->vtbl->power_down(si);
-                power_on_status = false;
-            }
-            break;
+			mutex_lock(&gc2355_power_lock);
+			if(true == power_on_status){
+				ret = si->vtbl->power_down(si);
+				if (0 == ret)
+				{
+					power_on_status = false;
+				}
+			}
+			/*lint -e455 -esym(455,*)*/
+			mutex_unlock(&gc2355_power_lock);
+			/*lint -e455 +esym(455,*)*/
+			break;
         case SEN_CONFIG_WRITE_REG:
             break;
         case SEN_CONFIG_READ_REG:
@@ -331,6 +347,7 @@ static int32_t gc2355_platform_probe(struct platform_device* pdev)
         goto gc2355_sensor_probe_fail;
     }
     s_gc2355.dev = &pdev->dev;
+    mutex_init(&gc2355_power_lock);
     rc = hwsensor_register(pdev, &s_gc2355.intf);
     rc = rpmsg_sensor_register(pdev, (void*)&s_gc2355);
 gc2355_sensor_probe_fail:
@@ -354,4 +371,5 @@ module_init(gc2355_init_module);
 module_exit(gc2355_exit_module);
 MODULE_DESCRIPTION("gc2355");
 MODULE_LICENSE("GPL v2");
+//lint -restore
 
