@@ -366,9 +366,7 @@ static int mipi_fake_probe(struct platform_device *pdev)
 		goto err_probe_defer;
 	}
 
-	HISI_FB_DEBUG("+.\n");
-
-	HISI_FB_INFO("%s\n", DTS_COMP_MIPI_FAKE_PANEL);
+	HISI_FB_INFO("%s +.\n", DTS_COMP_MIPI_FAKE_PANEL);
 
 	np = of_find_compatible_node(NULL, NULL, DTS_COMP_MIPI_FAKE_PANEL);
 	if (!np) {

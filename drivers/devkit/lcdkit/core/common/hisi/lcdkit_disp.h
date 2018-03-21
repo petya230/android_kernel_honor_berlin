@@ -54,6 +54,8 @@ extern bool gesture_func;
 
 /*extern fun*/
 extern int mipi_dsi_ulps_cfg(struct hisi_fb_data_type* hisifd, int enable);
+extern void lcdkit_get_pdev(struct platform_device **pdev);
+extern void lcdkit_set_pdev(struct platform_device *pdev);
 
 struct lcdkit_vsp_vsn_voltage{
     u32 voltage;

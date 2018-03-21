@@ -60,7 +60,7 @@ sub error_print { print "\n" . $error_info . shift; }
 sub warning_print { print "\n" . $warning_info . shift; }
 sub debug_print { if ($debug_print_switch eq 1) { print "\n" . $debug_info . shift; } }
 
-sub get_file_name { return lc(shift) . '_' . lc(shift); }
+sub get_file_name { return lc(shift) . '-' . lc(shift); }
 
 sub get_out_dtsi_path  {  return shift . '/' . shift . '.dtsi'; }
 sub get_out_head_path  {  return shift . '/' . shift . '.h'; }
@@ -322,8 +322,8 @@ sub parser_panel_cmd_type { return shift eq "0" ? "dsi_video_mode" : "dsi_cmd_mo
 sub parser_pmic_ctrl
 {
     my $tmp = shift;
-    my @bltmp = ("bl_ctrl_pwm", "bl_ctrl_wled", "bl_ctrl_dcs");
-    return $tmp < 3 ? $bltmp[$tmp] : "error_bl_type";
+    my @bltmp = ("bl_ctrl_pwm", "bl_ctrl_wled", "bl_ctrl_dcs", "bl_ctrl_ic_ti");
+    return $tmp < 4 ? $bltmp[$tmp] : "error_bl_type";
 }
 
 sub apply_patten
@@ -483,8 +483,8 @@ sub qcom_cmd_struct_grp
 
     my $tmp_string = parse_multi_xml($struct_attr[0]);
     if ($tmp_string eq $parse_error_string)    {
-        error_print("qcom_cmd_struct_grp fail to parse $struct_attr[0] !\n\n");
-        return $parse_error_string;
+        debug_print("qcom_cmd_struct_grp fail to parse $struct_attr[0] !\n\n");
+        return "static struct mipi_dsi_cmd " . $struct_attr[2] . "[] = { };\n\n";
     }
 
     (my $element) = $tmp_string =~ /"$patten"/;
@@ -630,8 +630,8 @@ sub hisi_cmd_struct_grp
 
     my $tmp_string = parse_multi_xml($struct_attr[0]);
     if ($tmp_string eq $parse_error_string)    {
-        error_print("hisi_cmd_struct_grp fail to parse $struct_attr[0] !\n\n");
-        return $parse_error_string;
+        debug_print("hisi_cmd_struct_grp fail to parse $struct_attr[0] !\n\n");
+        return "static struct dsi_cmd_desc " . $struct_attr[1] . "[] = { };\n\n";
     }
     
     (my $element) = $tmp_string =~ /"$patten"/;
@@ -735,6 +735,10 @@ sub hisi_cmd_struct_grp
             elsif($cmdtype eq "0x06")
             {
                 $dtype = "DTYPE_DCS_READ, ";
+            }
+            elsif($cmdtype eq "0x14")
+            {
+                $dtype = "DTYPE_GEN_READ1, ";
             }
             else
             {
@@ -1129,6 +1133,30 @@ sub create_lcd_map_struct
     return $lcd_struct;
 }
 
+sub create_lcd_effect_map_struct
+{
+    my $lcd_struct;
+    my $name_list = shift;
+    $lcd_struct  = "\n/*---------------------------------------------------------------------------*/\n";
+    $lcd_struct .= "/* static panel board mapping variable                                           */\n";
+    $lcd_struct .= "/*---------------------------------------------------------------------------*/\n";
+    $lcd_struct .= "struct lcdkit_board_map {\n";
+    $lcd_struct .= "    uint8_t lcd_id;\n";
+    $lcd_struct .= "    char *panel_compatible;\n";
+	$lcd_struct .= "    uint32_t product_id;\n";
+    $lcd_struct .= "};\n\n";
+
+    $lcd_struct .= "static struct lcdkit_board_map lcdkit_map[] = {\n";
+
+    foreach my $lcd_name (@$name_list) {
+        $lcd_struct .= "    {" . $lcd_name . "},\n";
+    }
+
+    $lcd_struct .= "};\n\n";
+
+    return $lcd_struct;
+}
+
 #struc on hisi and qcom platform is different, so two function here!
 
 sub create_qcom_lcd_config_data
@@ -1160,6 +1188,9 @@ sub create_qcom_lcd_config_data
     $lcd_config .= "        lcdkit_config.lcd_delay     = &".lc($lcd_name)."_panel_delay_ctrl;\n";
     $lcd_config .= "        pinfo->mipi.tx_eot_append = lcdkit_config.lcd_misc->tx_eot_append;\n";
     $lcd_config .= "        pinfo->mipi.rx_eot_ignore = lcdkit_config.lcd_misc->rx_eot_ignore;\n";
+    $lcd_config .= "        phy_db->regulator_mode = lcdkit_config.lcd_misc->mipi_regulator_mode;\n";
+    $lcd_config .= "        lcdkit_config.backlight_cmds   = ".lc($lcd_name)."_backlight_command;\n";
+    $lcd_config .= "        lcdkit_config.num_of_backlight_cmds   = ARRAY_SIZE(".lc($lcd_name)."_backlight_command);\n";
     $lcd_config .= "        break;\n\n";
 
     return $lcd_config;
@@ -1178,6 +1209,16 @@ sub create_hisi_lcd_config_data
     $lcd_config .= "        pinfo->display_off_cmds.cmd_cnt = ARRAY_SIZE(".lc($lcd_name)."_off_cmds);\n";
     $lcd_config .= "        pinfo->tp_color_cmds.cmds_set = ".lc($lcd_name)."_tp_color_cmds;\n";
     $lcd_config .= "        pinfo->tp_color_cmds.cmd_cnt = ARRAY_SIZE(".lc($lcd_name)."_tp_color_cmds);\n";
+    $lcd_config .= "        pinfo->lcd_oemprotectoffpagea.cmds_set = ".lc($lcd_name)."_lcd_oemprotectoffpagea_cmds;\n";
+    $lcd_config .= "        pinfo->lcd_oemprotectoffpagea.cmd_cnt = ARRAY_SIZE(".lc($lcd_name)."_lcd_oemprotectoffpagea_cmds);\n";
+    $lcd_config .= "        pinfo->lcd_oemreadfirstpart.cmds_set = ".lc($lcd_name)."_lcd_oemreadfirstpart_cmds;\n";
+    $lcd_config .= "        pinfo->lcd_oemreadfirstpart.cmd_cnt = ARRAY_SIZE(".lc($lcd_name)."_lcd_oemreadfirstpart_cmds);\n";
+    $lcd_config .= "        pinfo->lcd_oemprotectoffpageb.cmds_set = ".lc($lcd_name)."_lcd_oemprotectoffpageb_cmds;\n";
+    $lcd_config .= "        pinfo->lcd_oemprotectoffpageb.cmd_cnt = ARRAY_SIZE(".lc($lcd_name)."_lcd_oemprotectoffpageb_cmds);\n";
+    $lcd_config .= "        pinfo->lcd_oemreadsecondpart.cmds_set = ".lc($lcd_name)."_lcd_oemreadsecondpart_cmds;\n";
+    $lcd_config .= "        pinfo->lcd_oemreadsecondpart.cmd_cnt = ARRAY_SIZE(".lc($lcd_name)."_lcd_oemreadsecondpart_cmds);\n";
+    $lcd_config .= "        pinfo->lcd_oembacktouser.cmds_set = ".lc($lcd_name)."_lcd_oembacktouser_cmds;\n";
+    $lcd_config .= "        pinfo->lcd_oembacktouser.cmd_cnt = ARRAY_SIZE(".lc($lcd_name)."_lcd_oembacktouser_cmds);\n";
     $lcd_config .= "        pinfo->id_pin_read_cmds.cmds_set = ".lc($lcd_name)."_id_pin_check_cmds;\n";
     $lcd_config .= "        pinfo->id_pin_read_cmds.cmd_cnt = ARRAY_SIZE(".lc($lcd_name)."_id_pin_check_cmds);\n";
     $lcd_config .= "        pinfo->display_on_in_backlight_cmds.cmds_set = ".lc($lcd_name)."_display_on_in_backlight_cmds;\n";
@@ -1185,6 +1226,8 @@ sub create_hisi_lcd_config_data
     $lcd_config .= "        pinfo->display_on_effect_cmds.cmds_set = ".lc($lcd_name)."_display_on_effect_cmds;\n";
     $lcd_config .= "        pinfo->display_on_effect_cmds.cmd_cnt = ARRAY_SIZE(".lc($lcd_name)."_display_on_effect_cmds);\n";
     $lcd_config .= "        pinfo->lcd_platform   = &".lc($lcd_name)."_panel_platform_config;\n";
+    $lcd_config .= "        pinfo->backlight_cmds.cmds_set = ".lc($lcd_name)."_backlight_cmds;\n";
+    $lcd_config .= "        pinfo->backlight_cmds.cmd_cnt  = ARRAY_SIZE(".lc($lcd_name)."_backlight_cmds);\n";
     $lcd_config .= "        pinfo->lcd_misc   = &".lc($lcd_name)."_panel_misc_info;\n";
 	$lcd_config .= "        pinfo->lcd_delay     = &".lc($lcd_name)."_panel_delay_ctrl;\n";
     $lcd_config .= "        break;\n\n";
@@ -1274,6 +1317,32 @@ sub create_lcd_effect_config
     $lcd_effect_cfg .= "            pinfo->acm_lut_sata_table_len = ARRAY_SIZE(" . lc($lcd_name) . "_acm_lut_sata_table);\n";
     $lcd_effect_cfg .= "            pinfo->acm_lut_satr_table = " . lc($lcd_name) . "_acm_lut_satr_table;\n";
     $lcd_effect_cfg .= "            pinfo->acm_lut_satr_table_len = ARRAY_SIZE(" . lc($lcd_name) . "_acm_lut_satr_table);\n";
+    $lcd_effect_cfg .= "            pinfo->acm_lut_satr0_table = " . lc($lcd_name) . "_acm_lut_satr0_table;\n";
+    $lcd_effect_cfg .= "            pinfo->acm_lut_satr0_table_len = ARRAY_SIZE(" . lc($lcd_name) . "_acm_lut_satr0_table);\n";
+    $lcd_effect_cfg .= "            pinfo->acm_lut_satr1_table = " . lc($lcd_name) . "_acm_lut_satr1_table;\n";
+    $lcd_effect_cfg .= "            pinfo->acm_lut_satr1_table_len = ARRAY_SIZE(" . lc($lcd_name) . "_acm_lut_satr1_table);\n";
+    $lcd_effect_cfg .= "            pinfo->acm_lut_satr2_table = " . lc($lcd_name) . "_acm_lut_satr2_table;\n";
+    $lcd_effect_cfg .= "            pinfo->acm_lut_satr2_table_len = ARRAY_SIZE(" . lc($lcd_name) . "_acm_lut_satr2_table);\n";
+    $lcd_effect_cfg .= "            pinfo->acm_lut_satr3_table = " . lc($lcd_name) . "_acm_lut_satr3_table;\n";
+    $lcd_effect_cfg .= "            pinfo->acm_lut_satr3_table_len = ARRAY_SIZE(" . lc($lcd_name) . "_acm_lut_satr3_table);\n";
+    $lcd_effect_cfg .= "            pinfo->acm_lut_satr4_table = " . lc($lcd_name) . "_acm_lut_satr4_table;\n";
+    $lcd_effect_cfg .= "            pinfo->acm_lut_satr4_table_len = ARRAY_SIZE(" . lc($lcd_name) . "_acm_lut_satr4_table);\n";
+    $lcd_effect_cfg .= "            pinfo->acm_lut_satr5_table = " . lc($lcd_name) . "_acm_lut_satr5_table;\n";
+    $lcd_effect_cfg .= "            pinfo->acm_lut_satr5_table_len = ARRAY_SIZE(" . lc($lcd_name) . "_acm_lut_satr5_table);\n";
+    $lcd_effect_cfg .= "            pinfo->acm_lut_satr6_table = " . lc($lcd_name) . "_acm_lut_satr6_table;\n";
+    $lcd_effect_cfg .= "            pinfo->acm_lut_satr6_table_len = ARRAY_SIZE(" . lc($lcd_name) . "_acm_lut_satr6_table);\n";
+    $lcd_effect_cfg .= "            pinfo->acm_lut_satr7_table = " . lc($lcd_name) . "_acm_lut_satr7_table;\n";
+    $lcd_effect_cfg .= "            pinfo->acm_lut_satr7_table_len = ARRAY_SIZE(" . lc($lcd_name) . "_acm_lut_satr7_table);\n";
+    $lcd_effect_cfg .= "            pinfo->video_acm_lut_hue_table = " . lc($lcd_name) . "_video_acm_lut_hue_table;\n";
+    $lcd_effect_cfg .= "            pinfo->video_acm_lut_sata_table = " . lc($lcd_name) . "_video_acm_lut_sata_table;\n";
+    $lcd_effect_cfg .= "            pinfo->video_acm_lut_satr0_table = " . lc($lcd_name) . "_video_acm_lut_satr0_table;\n";
+    $lcd_effect_cfg .= "            pinfo->video_acm_lut_satr1_table = " . lc($lcd_name) . "_video_acm_lut_satr1_table;\n";
+    $lcd_effect_cfg .= "            pinfo->video_acm_lut_satr2_table = " . lc($lcd_name) . "_video_acm_lut_satr2_table;\n";
+    $lcd_effect_cfg .= "            pinfo->video_acm_lut_satr3_table = " . lc($lcd_name) . "_video_acm_lut_satr3_table;\n";
+    $lcd_effect_cfg .= "            pinfo->video_acm_lut_satr4_table = " . lc($lcd_name) . "_video_acm_lut_satr4_table;\n";
+    $lcd_effect_cfg .= "            pinfo->video_acm_lut_satr5_table = " . lc($lcd_name) . "_video_acm_lut_satr5_table;\n";
+    $lcd_effect_cfg .= "            pinfo->video_acm_lut_satr6_table = " . lc($lcd_name) . "_video_acm_lut_satr6_table;\n";
+    $lcd_effect_cfg .= "            pinfo->video_acm_lut_satr7_table = " . lc($lcd_name) . "_video_acm_lut_satr7_table;\n";
     $lcd_effect_cfg .= "        }\n";
   
     $lcd_effect_cfg .= "        if (pinfo->gamma_support == 1)\n";
@@ -1356,19 +1425,22 @@ sub create_hisi_panel_init
 sub create_hisi_panel_effect_init
 {
     my $panel_init;
-    $panel_init  = "static uint8_t lcdkit_panel_init(uint32_t lcdkit_id, uint32_t product_id)\n";
+    $panel_init  = "static uint8_t lcdkit_panel_init(uint32_t product_id, char* compatible)\n";
     $panel_init .= "{\n";
     #$panel_init .= "    uint8_t lcd_panel_id = " . $invalid_panel . ";\n";
 	$panel_init .= "    uint8_t lcd_panel_id = " . $default_panel . ";\n";
     $panel_init .= "    int i = 0;\n";
+	$panel_init .= "    int len = strlen(compatible);\n";
+	$panel_init .= "    int length = 0;\n";
 
     $panel_init .= "    for (i = 0; i < ARRAY_SIZE(lcdkit_map); ++i) {\n";
-    $panel_init .= "      if ((lcdkit_map[i].board_id == product_id) && (lcdkit_map[i].gpio_id == lcdkit_id)){\n";
+	$panel_init .= "        length = strlen(lcdkit_map[i].panel_compatible);\n";
+    $panel_init .= "        if ((lcdkit_map[i].product_id == product_id) && !strncmp(lcdkit_map[i].panel_compatible, compatible, (length > len?length:len))){\n";
     $panel_init .= "            lcd_panel_id = lcdkit_map[i].lcd_id;\n";
     $panel_init .= "            break;\n";
     $panel_init .= "        }\n";
     $panel_init .= "    }\n\n";
-
+	$panel_init .= "    " . 'HISI_FB_INFO("lcd_panel_id = %d\n", lcd_panel_id);' . "\n";
     $panel_init .= "    return lcd_panel_id;\n";
     $panel_init .= "}\n\n";
 

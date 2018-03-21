@@ -19,8 +19,10 @@ my @platform_chip_map = (
             [ "msm8952_64",             "qcom",          "msm8952"    ],
             [ "msm8953_64",             "qcom",          "msm8953"    ],
             [ "msm8937_64",             "qcom",          "msm8937"    ],
+            [ "msm8937_32",             "qcom",          "msm8937"    ],
             [ "hi6250",                 "hisi",          "hi6250"     ],
-            [ "hi3660",                 "hisi",          "hi3660"     ]);
+            [ "hi3660",                 "hisi",          "hi3660"     ],
+            [ "kirin970",               "hisi",          "kirin970"   ]);
 
 #get plat name by parse chip name, so the chip name must be 'hixxxx' or 'msmxxxx'
 my $chip_plat = '';
@@ -106,6 +108,7 @@ if (!-e "$plat_path"){
     error_print("chip platform default xml file path not exist!\n");
     exit 1;
 }
+
 
 #collect plat xmls
 my $plat_file;
@@ -203,15 +206,18 @@ else
 
 #get lcd list
 my @lcd_map_group;
+my @lcd_effect_map_group;
+
 my @lcd_map_list = get_module_map_list("lcd", \@plat_xmls, '/hwlcd/lcdlist/lcd');
 if (@lcd_map_list eq 0){
     error_print("cann't get lcd map list!\n");
     exit 1;
 }
 
-
 my @product_names;
 my @lcd_file_names;
+#hisi effect add
+my $lcd_xml_parser = new XML::LibXML;
 foreach my $list_entry (@lcd_map_list) {
     debug_print("get lcd map entry: $list_entry\n");
 
@@ -323,8 +329,9 @@ foreach my $list_entry (@lcd_map_list) {
         exit 1;
     }
 
+    $product =~ s/-/_/g;
+    $lcd_name =~ s/-/_/g;
     my $file_name = get_file_name($product, $lcd_name);
-    $file_name =~ s/-/_/g;
 
     if (($target_file_type eq "dtsi") || ($target_file_type eq "all"))
     {
@@ -344,6 +351,8 @@ foreach my $list_entry (@lcd_map_list) {
             system("perl $devkit_tool_path/lcdkit-dtsi-parser.pl " . $parser_para_string);
         }
     }
+
+	$file_name =~ s/-/_/g;
 
     if (($target_file_type eq "head") || ($target_file_type eq "all"))
     {
@@ -384,9 +393,14 @@ foreach my $list_entry (@lcd_map_list) {
     }
     #$file_name =~ s/-/_/g;
     push(@lcd_file_names, $file_name);
-    push(@lcd_map_group, uc($file_name)."_PANEL, ".$lcd_gpio.", ".$lcd_bdid);    
-}
+    push(@lcd_map_group, uc($file_name)."_PANEL, ".$lcd_gpio.", ".$lcd_bdid);
 
+    #hisi effect add
+    my $lcd_xml_files = $lcd_xml_parser->parse_file($panel_xml);
+    my $xml_node = '/hwlcd/PanelEntry/PanelCompatible';
+    my $parse_str = parse_single_xml($lcd_xml_files, $xml_node);
+    push(@lcd_effect_map_group, uc($file_name)."_PANEL, ".$parse_str.", ".$lcd_bdid);
+}
 
 if (($target_file_type eq "head") || ($target_file_type eq "all"))
 {
@@ -449,7 +463,7 @@ if ((($target_file_type eq "effect") || ($target_file_type eq "all")) && ($chip_
     }
     
     print $lcd_effect_file create_lcd_enum(\@lcd_file_names);
-    print $lcd_effect_file create_lcd_map_struct(\@lcd_map_group);
+    print $lcd_effect_file create_lcd_effect_map_struct(\@lcd_effect_map_group);
     print $lcd_effect_file create_lcd_effect_data_func(\@lcd_file_names);
     print $lcd_effect_file create_hisi_panel_effect_init();    
     print $lcd_effect_file "\n#endif /*_LCDKIT_EFFECT__H_*/\n";
@@ -477,21 +491,28 @@ if (($target_file_type eq "dtsi") || ($target_file_type eq "all"))
     
         print $lcd_dtsi_file create_file_header();
         
-        my $match_patten = lc($product_name) . '\w+';
-        
-        foreach my $file_name (@lcd_file_names) {
-    
-            if ($file_name =~ m/$match_patten/) {
+        my @dtsi_files = glob("$out_dtsi_file_path/*.dtsi");
+
+        foreach my $dtsi_file (@dtsi_files) {
+            my $dtsi_name = $dtsi_file;
+            $dtsi_name =~ s/$out_dtsi_file_path//g;
+            $dtsi_name =~ s/\///g;
+            my @file_element = split /-/, $dtsi_name;
+            my $match_patten = $file_element[0];
+            my $new_file_name = $dtsi_name;
+            $new_file_name =~ s/-/_/g;
+
+            if ($product_name eq $match_patten) {
                 if ($chip_plat eq 'hisi')
                 {
-                    print $lcd_dtsi_file "\n/include/ \"$file_name.dtsi\"";
+                    print $lcd_dtsi_file "\n/include/ \"$new_file_name\"";
                 }
                 else
                 {
-                    print $lcd_dtsi_file "\n#include \"$file_name.dtsi\"";
+                    print $lcd_dtsi_file "\n#include \"$new_file_name\"";
                 }
                 
-                system("cp -f " . "$out_dtsi_file_path/$file_name.dtsi $target_out_dtsi_folder/");
+                system("cp -f " . "$out_dtsi_file_path/$dtsi_name $target_out_dtsi_folder/$new_file_name");
             }
         }
         close($lcd_dtsi_file);

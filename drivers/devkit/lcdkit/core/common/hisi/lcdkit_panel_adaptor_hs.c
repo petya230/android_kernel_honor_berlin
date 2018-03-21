@@ -651,6 +651,7 @@ int lcdkit_fake_update_bl(void *pdata, uint32_t bl_level)
 //            gpio_direction_output(gpio_lcd_bl_enable, 0);
 //        }
     }
+	return ret;
 }
 
 int buf_trans(const char* inbuf, int inlen, char** outbuf, int* outlen)

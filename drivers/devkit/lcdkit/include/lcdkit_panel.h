@@ -123,6 +123,16 @@
         } \
     } while (0)
 
+#define OF_PROPERTY_READ_U64_RETURN(np, propname, ptr_out_value) \
+    do { \
+        u32 temp = 0; \
+        if( of_property_read_u32(np, propname, &temp) ) { \
+            LCDKIT_ERR("of_property_read: %s, fail\n", propname); \
+            temp = 0; \
+        } \
+        *ptr_out_value = (u64)temp; \
+    } while (0)
+
 /*parse dts node*/
 #define OF_PROPERTY_READ_U32_RETURN(np, propname, ptr_out_value) \
     do { \
@@ -746,7 +756,7 @@ struct lcdkit_panel_data
     ssize_t (*lcdkit_support_checkmode_show)(char* buf);
     ssize_t (*lcdkit_test_config_show)(void* pdata, char* buf);
     ssize_t (*lcdkit_test_config_store)(const char* buf);
-    ssize_t (*lcdkit_ce_mode_show)(struct platform_device *pdev, char* buf);
+    ssize_t (*lcdkit_ce_mode_show)(void* pdata, char* buf);
     ssize_t (*lcdkit_ce_mode_store)(void* pdata, const char* buf, size_t count);
 
     ssize_t (*lcdkit_check_esd)(void* pdata);
@@ -758,13 +768,13 @@ struct lcdkit_panel_data
 
 };
 
-ssize_t lcdkit_jdi_nt35696_5p5_gram_check_show(void* pdata, char* buf);
-void lcdkit_diff_func_init(struct device_node* np, void* pdata);
-struct lcdkit_diff_func
+struct lcdkit_adapt_func
 {
     int enable;
-    ssize_t (*lcdkit_show)(void* pdata, char* buf);
+    ssize_t (*lcdkit_gram_check_show)(void* pdata, char* buf);
 };
+
+ssize_t lcdkit_jdi_nt35696_5p5_gram_check_show(void* pdata, char* buf);
 
 extern struct lcdkit_panel_data lcdkit_info;
 

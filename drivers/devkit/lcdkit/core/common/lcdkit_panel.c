@@ -3,14 +3,14 @@
 #include "lcdkit_parse.h"
 #include <huawei_ts_kit.h>
 
-struct lcdkit_diff_func lcdkit_diff_func_array[] = {
+struct lcdkit_adapt_func lcdkit_adapt_func_array[] = {
     {0, lcdkit_jdi_nt35696_5p5_gram_check_show},//checksum show
 };
 
 void lcdkit_diff_func_init(struct device_node* np, void* pdata)
 {
     if (!strncmp(lcdkit_info.panel_infos.panel_name, "JDI_NT35696 5.5' CMD TFT 1920 x 1080", strlen(lcdkit_info.panel_infos.panel_name))) {
-        lcdkit_diff_func_array[0].enable = 1;//checksum enable
+        lcdkit_adapt_func_array[0].enable = 1;//checksum enable
     }
 }
 
@@ -376,8 +376,8 @@ static ssize_t lcdkit_gram_check_show(void* pdata, char* buf)
     return 0;
     LCDKIT_INFO("enter \n");
 
-    if (lcdkit_diff_func_array[0].enable) {
-        ret = lcdkit_diff_func_array[0].lcdkit_show(pdata, buf);
+    if (lcdkit_adapt_func_array[0].enable) {
+        ret = lcdkit_adapt_func_array[0].lcdkit_gram_check_show(pdata, buf);
         LCDKIT_INFO("%s\n", buf);
         return ret;
     }

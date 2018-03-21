@@ -234,7 +234,15 @@ my @qcom_platcfg_attrs = (
     ["/hwlcd/PanelEntry/LcdBias",                  "-n",    "",                   '-w', 0  ],
     ["/hwlcd/PanelEntry/LcdVsp",                   "-n",    "",                   '-w', 0  ],
     ["/hwlcd/PanelEntry/LcdVsn",                   "-n",    "",                   '-w', 0  ],
-    ["/hwlcd/PanelEntry/BLDefaultLevel",           "-n",    "",                   '-w', 0  ]);
+    ["/hwlcd/PanelEntry/BLDefaultLevel",           "-n",    "",                   '-w', 0  ],
+    ["/hwlcd/PanelEntry/BLLowPowerDefaultLevel",   "-n",    "",                   '-w', 0  ],
+    ["/hwlcd/PanelEntry/BlChipInit",               "-n",    "",                   '-w', 0  ],
+    ["/hwlcd/PanelEntry/BlChipUseI2c",             "-n",    "",                   '-w', 0  ],
+    ["/hwlcd/PanelEntry/LcdReadTpColor",           "-n",    "",                   '-w', 0  ],
+    ["/hwlcd/PanelEntry/PanelSscEnable",           "-n",    "",                   '-w', 0  ],
+    ["/hwlcd/PanelEntry/PanelLkPowerOnTimingControl",      "-n",    "",                   '-w', 0  ],
+    ["/hwlcd/PanelEntry/Lp8556BlChannelConfig",    "-n",    "",                   '-w', 0  ],
+    ["/hwlcd/PanelEntry/Lp8556BlMaxVboostSelect",  "-n",    "",                   '-w', 0  ]);
 
 my @qcom_misc_attrs = (
     ["/hwlcd/PanelEntry/IovccOnIsNeedReset",       "-n",    "",                   '-w', 0  ],
@@ -246,7 +254,8 @@ my @qcom_misc_attrs = (
     ["/hwlcd/PanelEntry/IovccPowerCtrlMode",       "-n",    "",                   '-w', 0  ],
     ["/hwlcd/PanelEntry/VciPowerCtrlMode",         "-n",    "",                   '-w', 0  ],
     ["/hwlcd/PanelEntry/TxEotAppend",              "-n",    "",                   '-w', 0  ],
-    ["/hwlcd/PanelEntry/RxEotIgnore",              "-n",    "",                   '-w', 0  ]); 
+    ["/hwlcd/PanelEntry/RxEotIgnore",              "-n",    "",                   '-w', 0  ],
+    ["/hwlcd/PanelEntry/MipiRegulatorMode",        "-n",    "",                   '+w', 0  ]);
 
 my @qcom_delayctl_attrs = (
     ["/hwlcd/PanelEntry/DelayAfVciOn",             "-n",    "",                   '-w', 0  ],
@@ -260,13 +269,20 @@ my @qcom_delayctl_attrs = (
     ["/hwlcd/PanelEntry/DelayAfBiasOff",           "-n",    "",                   '-w', 0  ],
     ["/hwlcd/PanelEntry/DelayAfIovccOff",          "-n",    "",                   '-w', 0  ],
     ["/hwlcd/PanelEntry/DelayAfVciOff",            "-n",    "",                   '-w', 0  ],
-    ["/hwlcd/PanelEntry/DelayBeBL",                "-n",    "",                   '-w', 0  ]);
+    ["/hwlcd/PanelEntry/DelayBeBL",                "-n",    "",                   '-w', 0  ],
+    ["/hwlcd/PanelEntry/DelayAfRstOff",            "-n",    "",                   '-w', 0  ],
+    ["/hwlcd/PanelEntry/DelayAfBLICInit",          "-n",    "",                   '-w', 0  ],
+    ["/hwlcd/PanelEntry/DelayAfPanelLkPowerOn",    "-n",    "",                   '-w', 0  ]);
 
 my @qcom_on_cmd_paras = ("hwlcd/PanelEntry/PanelOnCommand",
                          $panel_file_name."_on_cmd", $panel_file_name."_on_command");
 
 my @qcom_off_cmd_paras = ("hwlcd/PanelEntry/PanelOffCommand",
                          $panel_file_name."_off_cmd", $panel_file_name."_off_command");
+
+
+my @qcom_backlight_cmd_paras = ("hwlcd/PanelEntry/PanelBacklightCommand",
+                         $panel_file_name."_backlight_cmd", $panel_file_name."_backlight_command");
                          
 #my @panel_reset_seq_paras = ("hwlcd/PanelEntry/ResetSequence",
 #            'static struct panel_reset_sequence ' . $panel_file_name . '_reset_seq');
@@ -289,6 +305,8 @@ my @panel_info_attrs = (
     ["/hwlcd/PanelEntry/PanelBlType",              "-n",    "",                   '-w', 0  ],
     ["/hwlcd/PanelEntry/PanelBlmin",               "-n",    "",                   '-w', 0  ],
     ["/hwlcd/PanelEntry/PanelBlmax",               "-n",    "",                   '-w', 0  ],
+	["/hwlcd/PanelEntry/PanelBlSteps",             "-n",    "",                   '-w', 0  ],
+	["/hwlcd/PanelEntry/PanelBlDef",               "-n",    "",                   '-w', 0  ],
     ["/hwlcd/PanelEntry/PanelBlpwmIntrValue",      "-n",    "",                   '-w', 0  ],
     ["/hwlcd/PanelEntry/PanelBlpwmMaxValue",       "-n",    "",                   '-w', 0  ],
     ["/hwlcd/PanelEntry/PanelCmdType",             "-n",    "",                   '-w', 0  ],
@@ -346,16 +364,24 @@ my @panel_mipi_attrs = (
     ["/hwlcd/PanelEntry/MipiClkTLpxAdjust",        "-n",    "",                   '-w', 0  ],
     ["/hwlcd/PanelEntry/MipiClkTHsTrailAdjust",    "-n",    "",                   '-w', 0  ],
     ["/hwlcd/PanelEntry/MipiClkTHsExitAdjust",     "-n",    "",                   '-w', 0  ],
-    ["/hwlcd/PanelEntry/MipiClkTHsZeroAdjust",     "-n",    "",                   '-w', 0  ]);
+    ["/hwlcd/PanelEntry/MipiClkTHsZeroAdjust",     "-n",    "",                   '-w', 0  ],
+    ["/hwlcd/PanelEntry/MipiDataTHsTrailAdjust",   "-n",    "",                   '-w', 0  ],
+    ["/hwlcd/PanelEntry/MipiRgVcmAdjust",          "-n",    "",                   '-w', 0  ],
+    ["/hwlcd/PanelEntry/MipiPhyMode",              "-n",    "",                   '-w', 0  ],
+    ["/hwlcd/PanelEntry/MipiLp11Flag",             "-n",    "",                   '-w', 0  ],
+    ["/hwlcd/PanelEntry/MipiHsWrToTime",           "-n",    "",                   '-w', 0  ],
+    ["/hwlcd/PanelEntry/MipiPhyUpdate",            "-n",    "",                   '-w', 0  ]);
 
 my @panel_platcfg_attrs = (
     ["/hwlcd/PanelEntry/GpioReset",                "-n",    "",                   '-w', 0  ],
     ["/hwlcd/PanelEntry/GpioTe",                   "-n",    "",                   '-w', 0  ],
     ["/hwlcd/PanelEntry/GpioIovcc",                "-n",    "",                   '-w', 0  ],
     ["/hwlcd/PanelEntry/GpioVci",                  "-n",    "",                   '-w', 0  ],
+    ["/hwlcd/PanelEntry/GpioTpReset",              "-n",    "",                   '-w', 0  ],
     ["/hwlcd/PanelEntry/GpioVsp",                  "-n",    "",                   '-w', 0  ],
     ["/hwlcd/PanelEntry/GpioVsn",                  "-n",    "",                   '-w', 0  ],
     ["/hwlcd/PanelEntry/GpioBl",                   "-n",    "",                   '-w', 0  ],
+    ["/hwlcd/PanelEntry/GpioVbat",                 "-n",    "",                   '-w', 0  ],
     ["/hwlcd/PanelEntry/LcdanalogVcc",             "-n",    "",                   '-w', 0  ],
     ["/hwlcd/PanelEntry/LcdioVcc",                 "-n",    "",                   '-w', 0  ],
     ["/hwlcd/PanelEntry/LcdBias",                  "-n",    "",                   '-w', 0  ],
@@ -372,13 +398,24 @@ my @panel_misc_attrs = (
     ["/hwlcd/PanelEntry/BiasPowerCtrlMode",        "-n",    "",                   '-w', 0  ],
     ["/hwlcd/PanelEntry/IovccPowerCtrlMode",        "-n",    "",                  '-w', 0  ],
     ["/hwlcd/PanelEntry/VciPowerCtrlMode",         "-n",    "",                   '-w', 0  ],
+    ["/hwlcd/PanelEntry/VbatPowerCtrlMode",         "-n",    "",                   '-w', 0  ],
     ["/hwlcd/PanelEntry/BlPowerCtrlMode",           "-n",    "",                   '-w', 0  ],
     ["/hwlcd/PanelEntry/PanelDisplayOnInBaklight",  "-n",    "",                   '-w', 0  ],
-    ["/hwlcd/PanelEntry/PanelDisplayOnEffectSupport",  "-n",    "",                '-w', 0  ]);
+    ["/hwlcd/PanelEntry/PanelDisplayOnNewSeq",  "-n",    "",                   '-w', 0  ],
+    ["/hwlcd/PanelEntry/PanelDisplayOnEffectSupport",  "-n",    "",                '-w', 0  ],
+    ["/hwlcd/PanelEntry/HostTpSupport",                "-n",    "",                '-w', 0  ],
+    ["/hwlcd/PanelEntry/HostOemPageACmdSupport",       "-n",    "",                '-w', 0  ],
+    ["/hwlcd/PanelEntry/HostOemPageBCmdSupport",       "-n",    "",                '-w', 0  ],
+    ["/hwlcd/PanelEntry/HostOemBackToUserCmdSupport",  "-n",    "",                '-w', 0  ],
+    ["/hwlcd/PanelEntry/HostOemReadPart1Support",      "-n",    "",                '-w', 0  ],
+    ["/hwlcd/PanelEntry/HostOemReadPart2Support",      "-n",    "",                '-w', 0  ],
+    ["/hwlcd/PanelEntry/HostOemReadPart1Len",          "-n",    "",                '-w', 0  ],
+    ["/hwlcd/PanelEntry/HostOemReadPart2Len",          "-n",    "",                '-w', 0  ]);
 
 my @panel_delayctl_attrs = (
     ["/hwlcd/PanelEntry/DelayAfVciOn",             "-n",    "",                   '-w', 0  ],
     ["/hwlcd/PanelEntry/DelayAfIovccOn",           "-n",    "",                   '-w', 0  ],
+    ["/hwlcd/PanelEntry/DelayAfVbatOn",            "-n",    "",                   '-w', 0  ],
     ["/hwlcd/PanelEntry/DelayAfBiasOn",            "-n",    "",                   '-w', 0  ],
     ["/hwlcd/PanelEntry/DelayAfVspOn",             "-n",    "",                   '-w', 0  ],
     ["/hwlcd/PanelEntry/DelayAfVsnOn",             "-n",    "",                   '-w', 0  ],
@@ -389,15 +426,23 @@ my @panel_delayctl_attrs = (
     ["/hwlcd/PanelEntry/DelayAfVsnOff",            "-n",    "",                   '-w', 0  ],
     ["/hwlcd/PanelEntry/DelayAfVspOff",            "-n",    "",                   '-w', 0  ],
     ["/hwlcd/PanelEntry/DelayAfBiasOff",           "-n",    "",                   '-w', 0  ],
+    ["/hwlcd/PanelEntry/DelayAfVbatOff",           "-n",    "",                   '-w', 0  ],
     ["/hwlcd/PanelEntry/DelayAfIovccOff",          "-n",    "",                   '-w', 0  ],
-    ["/hwlcd/PanelEntry/DelayAfVciOff",            "-n",    "",                   '-w', 0  ]);
-	
+    ["/hwlcd/PanelEntry/DelayAfVciOff",            "-n",    "",                   '-w', 0  ],
+    ["/hwlcd/PanelEntry/DelayAfFirstIoVccOff",     "-n",    "",                   '-w', 0  ]);
+
 my @hisi_on_cmd_paras = ("hwlcd/PanelEntry/PanelOnCommand", $panel_file_name."_on_cmds");
 my @hisi_display_on_in_backlight_cmd_paras = ("hwlcd/PanelEntry/PanelDisplayOnCommand", $panel_file_name."_display_on_in_backlight_cmds");
 my @hisi_off_cmd_paras = ("hwlcd/PanelEntry/PanelOffCommand", $panel_file_name."_off_cmds");
 my @hisi_tp_color_cmd_paras = ("hwlcd/PanelEntry/PanelTpColorCommand", $panel_file_name."_tp_color_cmds");
+my @hisi_lcd_protectoffpagea_cmd_paras = ("hwlcd/PanelEntry/PanelOemProtectOffPageACommand", $panel_file_name."_lcd_oemprotectoffpagea_cmds");
+my @hisi_lcd_oemreadfirstpart_paras = ("hwlcd/PanelEntry/PanelOemReadFirstPartCommand", $panel_file_name."_lcd_oemreadfirstpart_cmds");
+my @hisi_lcd_protectoffpageb_cmd_paras = ("hwlcd/PanelEntry/PanelOemProtectOffPageBCommand", $panel_file_name."_lcd_oemprotectoffpageb_cmds");
+my @hisi_lcd_oemreadsecondpart_paras = ("hwlcd/PanelEntry/PanelOemReadSecondPartCommand", $panel_file_name."_lcd_oemreadsecondpart_cmds");
+my @hisi_lcd_backtousercmd_paras = ("hwlcd/PanelEntry/PanelOemBackToUserCommand", $panel_file_name."_lcd_oembacktouser_cmds");
 my @hisi_id_pin_check_cmd_paras = ("hwlcd/PanelEntry/PanelIdPinCheckCommand", $panel_file_name."_id_pin_check_cmds");
 my @hisi_display_on_effect_cmd_paras = ("hwlcd/PanelEntry/PanelDisplayOnEffectCommand", $panel_file_name."_display_on_effect_cmds");
+my @hisi_backlight_cmd_paras = ("hwlcd/PanelEntry/PanelBacklightCommand", $panel_file_name."_backlight_cmds");
 
 my @head_property_strings = (
         ['qcom',      "Panel configuration",                \&hfile_section_header,
@@ -474,6 +519,8 @@ my @head_property_strings = (
          ''                                                                                ],
         ['qcom',      \@qcom_delayctl_attrs,                \&create_data_struct,
          'static struct lcdkit_delay_ctrl ' . $panel_file_name. '_panel_delay_ctrl '       ],
+        ['qcom',      \@qcom_backlight_cmd_paras,           \&qcom_cmd_struct_grp,
+         ''                                                                                ],
 
         ['hisi',      "Panel Information",                  \&hfile_section_header,
          ''                                                                                ],
@@ -512,7 +559,19 @@ my @head_property_strings = (
          ''                                                                                ],
         ['hisi',      \@hisi_tp_color_cmd_paras,            \&hisi_cmd_struct_grp,
          ''                                                                                ],
+        ['hisi',      \@hisi_lcd_protectoffpagea_cmd_paras, \&hisi_cmd_struct_grp,
+         ''                                                                                ],
+        ['hisi',      \@hisi_lcd_oemreadfirstpart_paras,    \&hisi_cmd_struct_grp,
+         ''                                                                                ],
+        ['hisi',      \@hisi_lcd_protectoffpageb_cmd_paras, \&hisi_cmd_struct_grp,
+         ''                                                                                ],
+        ['hisi',      \@hisi_lcd_oemreadsecondpart_paras,    \&hisi_cmd_struct_grp,
+         ''                                                                                ],
+        ['hisi',      \@hisi_lcd_backtousercmd_paras,         \&hisi_cmd_struct_grp,
+         ''                                                                                ],
         ['hisi',      \@hisi_id_pin_check_cmd_paras,        \&hisi_cmd_struct_grp,
+         ''                                                                                ],
+        ['hisi',      \@hisi_backlight_cmd_paras,           \&hisi_cmd_struct_grp,
          ''                                                                                ]);
 
 for ($count = 0; $count < @head_property_strings; $count++)  {	

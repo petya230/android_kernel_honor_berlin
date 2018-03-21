@@ -60,6 +60,32 @@ static void lcdkit_effect_get_data(uint8_t panel_id, struct hisi_panel_info* pin
             pinfo->acm_lut_sata_table_len = ARRAY_SIZE(warsaw_va_tm_ft8716_5p2_1080p_video_acm_lut_sata_table);
             pinfo->acm_lut_satr_table = warsaw_va_tm_ft8716_5p2_1080p_video_acm_lut_satr_table;
             pinfo->acm_lut_satr_table_len = ARRAY_SIZE(warsaw_va_tm_ft8716_5p2_1080p_video_acm_lut_satr_table);
+            pinfo->acm_lut_satr0_table = warsaw_va_tm_ft8716_5p2_1080p_video_acm_lut_satr0_table;
+            pinfo->acm_lut_satr0_table_len = ARRAY_SIZE(warsaw_va_tm_ft8716_5p2_1080p_video_acm_lut_satr0_table);
+            pinfo->acm_lut_satr1_table = warsaw_va_tm_ft8716_5p2_1080p_video_acm_lut_satr1_table;
+            pinfo->acm_lut_satr1_table_len = ARRAY_SIZE(warsaw_va_tm_ft8716_5p2_1080p_video_acm_lut_satr1_table);
+            pinfo->acm_lut_satr2_table = warsaw_va_tm_ft8716_5p2_1080p_video_acm_lut_satr2_table;
+            pinfo->acm_lut_satr2_table_len = ARRAY_SIZE(warsaw_va_tm_ft8716_5p2_1080p_video_acm_lut_satr2_table);
+            pinfo->acm_lut_satr3_table = warsaw_va_tm_ft8716_5p2_1080p_video_acm_lut_satr3_table;
+            pinfo->acm_lut_satr3_table_len = ARRAY_SIZE(warsaw_va_tm_ft8716_5p2_1080p_video_acm_lut_satr3_table);
+            pinfo->acm_lut_satr4_table = warsaw_va_tm_ft8716_5p2_1080p_video_acm_lut_satr4_table;
+            pinfo->acm_lut_satr4_table_len = ARRAY_SIZE(warsaw_va_tm_ft8716_5p2_1080p_video_acm_lut_satr4_table);
+            pinfo->acm_lut_satr5_table = warsaw_va_tm_ft8716_5p2_1080p_video_acm_lut_satr5_table;
+            pinfo->acm_lut_satr5_table_len = ARRAY_SIZE(warsaw_va_tm_ft8716_5p2_1080p_video_acm_lut_satr5_table);
+            pinfo->acm_lut_satr6_table = warsaw_va_tm_ft8716_5p2_1080p_video_acm_lut_satr6_table;
+            pinfo->acm_lut_satr6_table_len = ARRAY_SIZE(warsaw_va_tm_ft8716_5p2_1080p_video_acm_lut_satr6_table);
+            pinfo->acm_lut_satr7_table = warsaw_va_tm_ft8716_5p2_1080p_video_acm_lut_satr7_table;
+            pinfo->acm_lut_satr7_table_len = ARRAY_SIZE(warsaw_va_tm_ft8716_5p2_1080p_video_acm_lut_satr7_table);
+            pinfo->video_acm_lut_hue_table = warsaw_va_tm_ft8716_5p2_1080p_video_video_acm_lut_hue_table;
+            pinfo->video_acm_lut_sata_table = warsaw_va_tm_ft8716_5p2_1080p_video_video_acm_lut_sata_table;
+            pinfo->video_acm_lut_satr0_table = warsaw_va_tm_ft8716_5p2_1080p_video_video_acm_lut_satr0_table;
+            pinfo->video_acm_lut_satr1_table = warsaw_va_tm_ft8716_5p2_1080p_video_video_acm_lut_satr1_table;
+            pinfo->video_acm_lut_satr2_table = warsaw_va_tm_ft8716_5p2_1080p_video_video_acm_lut_satr2_table;
+            pinfo->video_acm_lut_satr3_table = warsaw_va_tm_ft8716_5p2_1080p_video_video_acm_lut_satr3_table;
+            pinfo->video_acm_lut_satr4_table = warsaw_va_tm_ft8716_5p2_1080p_video_video_acm_lut_satr4_table;
+            pinfo->video_acm_lut_satr5_table = warsaw_va_tm_ft8716_5p2_1080p_video_video_acm_lut_satr5_table;
+            pinfo->video_acm_lut_satr6_table = warsaw_va_tm_ft8716_5p2_1080p_video_video_acm_lut_satr6_table;
+            pinfo->video_acm_lut_satr7_table = warsaw_va_tm_ft8716_5p2_1080p_video_video_acm_lut_satr7_table;
         }
         if (pinfo->gamma_support == 1)
         {
@@ -87,6 +113,32 @@ static void lcdkit_effect_get_data(uint8_t panel_id, struct hisi_panel_info* pin
             pinfo->acm_lut_sata_table_len = ARRAY_SIZE(warsaw_va_ebbg_nt35596s_5p2_1080p_video_acm_lut_sata_table);
             pinfo->acm_lut_satr_table = warsaw_va_ebbg_nt35596s_5p2_1080p_video_acm_lut_satr_table;
             pinfo->acm_lut_satr_table_len = ARRAY_SIZE(warsaw_va_ebbg_nt35596s_5p2_1080p_video_acm_lut_satr_table);
+            pinfo->acm_lut_satr0_table = warsaw_va_ebbg_nt35596s_5p2_1080p_video_acm_lut_satr0_table;
+            pinfo->acm_lut_satr0_table_len = ARRAY_SIZE(warsaw_va_ebbg_nt35596s_5p2_1080p_video_acm_lut_satr0_table);
+            pinfo->acm_lut_satr1_table = warsaw_va_ebbg_nt35596s_5p2_1080p_video_acm_lut_satr1_table;
+            pinfo->acm_lut_satr1_table_len = ARRAY_SIZE(warsaw_va_ebbg_nt35596s_5p2_1080p_video_acm_lut_satr1_table);
+            pinfo->acm_lut_satr2_table = warsaw_va_ebbg_nt35596s_5p2_1080p_video_acm_lut_satr2_table;
+            pinfo->acm_lut_satr2_table_len = ARRAY_SIZE(warsaw_va_ebbg_nt35596s_5p2_1080p_video_acm_lut_satr2_table);
+            pinfo->acm_lut_satr3_table = warsaw_va_ebbg_nt35596s_5p2_1080p_video_acm_lut_satr3_table;
+            pinfo->acm_lut_satr3_table_len = ARRAY_SIZE(warsaw_va_ebbg_nt35596s_5p2_1080p_video_acm_lut_satr3_table);
+            pinfo->acm_lut_satr4_table = warsaw_va_ebbg_nt35596s_5p2_1080p_video_acm_lut_satr4_table;
+            pinfo->acm_lut_satr4_table_len = ARRAY_SIZE(warsaw_va_ebbg_nt35596s_5p2_1080p_video_acm_lut_satr4_table);
+            pinfo->acm_lut_satr5_table = warsaw_va_ebbg_nt35596s_5p2_1080p_video_acm_lut_satr5_table;
+            pinfo->acm_lut_satr5_table_len = ARRAY_SIZE(warsaw_va_ebbg_nt35596s_5p2_1080p_video_acm_lut_satr5_table);
+            pinfo->acm_lut_satr6_table = warsaw_va_ebbg_nt35596s_5p2_1080p_video_acm_lut_satr6_table;
+            pinfo->acm_lut_satr6_table_len = ARRAY_SIZE(warsaw_va_ebbg_nt35596s_5p2_1080p_video_acm_lut_satr6_table);
+            pinfo->acm_lut_satr7_table = warsaw_va_ebbg_nt35596s_5p2_1080p_video_acm_lut_satr7_table;
+            pinfo->acm_lut_satr7_table_len = ARRAY_SIZE(warsaw_va_ebbg_nt35596s_5p2_1080p_video_acm_lut_satr7_table);
+            pinfo->video_acm_lut_hue_table = warsaw_va_ebbg_nt35596s_5p2_1080p_video_video_acm_lut_hue_table;
+            pinfo->video_acm_lut_sata_table = warsaw_va_ebbg_nt35596s_5p2_1080p_video_video_acm_lut_sata_table;
+            pinfo->video_acm_lut_satr0_table = warsaw_va_ebbg_nt35596s_5p2_1080p_video_video_acm_lut_satr0_table;
+            pinfo->video_acm_lut_satr1_table = warsaw_va_ebbg_nt35596s_5p2_1080p_video_video_acm_lut_satr1_table;
+            pinfo->video_acm_lut_satr2_table = warsaw_va_ebbg_nt35596s_5p2_1080p_video_video_acm_lut_satr2_table;
+            pinfo->video_acm_lut_satr3_table = warsaw_va_ebbg_nt35596s_5p2_1080p_video_video_acm_lut_satr3_table;
+            pinfo->video_acm_lut_satr4_table = warsaw_va_ebbg_nt35596s_5p2_1080p_video_video_acm_lut_satr4_table;
+            pinfo->video_acm_lut_satr5_table = warsaw_va_ebbg_nt35596s_5p2_1080p_video_video_acm_lut_satr5_table;
+            pinfo->video_acm_lut_satr6_table = warsaw_va_ebbg_nt35596s_5p2_1080p_video_video_acm_lut_satr6_table;
+            pinfo->video_acm_lut_satr7_table = warsaw_va_ebbg_nt35596s_5p2_1080p_video_video_acm_lut_satr7_table;
         }
         if (pinfo->gamma_support == 1)
         {
@@ -114,6 +166,32 @@ static void lcdkit_effect_get_data(uint8_t panel_id, struct hisi_panel_info* pin
             pinfo->acm_lut_sata_table_len = ARRAY_SIZE(warsaw_va_auo_td4310_5p2_1080p_video_acm_lut_sata_table);
             pinfo->acm_lut_satr_table = warsaw_va_auo_td4310_5p2_1080p_video_acm_lut_satr_table;
             pinfo->acm_lut_satr_table_len = ARRAY_SIZE(warsaw_va_auo_td4310_5p2_1080p_video_acm_lut_satr_table);
+            pinfo->acm_lut_satr0_table = warsaw_va_auo_td4310_5p2_1080p_video_acm_lut_satr0_table;
+            pinfo->acm_lut_satr0_table_len = ARRAY_SIZE(warsaw_va_auo_td4310_5p2_1080p_video_acm_lut_satr0_table);
+            pinfo->acm_lut_satr1_table = warsaw_va_auo_td4310_5p2_1080p_video_acm_lut_satr1_table;
+            pinfo->acm_lut_satr1_table_len = ARRAY_SIZE(warsaw_va_auo_td4310_5p2_1080p_video_acm_lut_satr1_table);
+            pinfo->acm_lut_satr2_table = warsaw_va_auo_td4310_5p2_1080p_video_acm_lut_satr2_table;
+            pinfo->acm_lut_satr2_table_len = ARRAY_SIZE(warsaw_va_auo_td4310_5p2_1080p_video_acm_lut_satr2_table);
+            pinfo->acm_lut_satr3_table = warsaw_va_auo_td4310_5p2_1080p_video_acm_lut_satr3_table;
+            pinfo->acm_lut_satr3_table_len = ARRAY_SIZE(warsaw_va_auo_td4310_5p2_1080p_video_acm_lut_satr3_table);
+            pinfo->acm_lut_satr4_table = warsaw_va_auo_td4310_5p2_1080p_video_acm_lut_satr4_table;
+            pinfo->acm_lut_satr4_table_len = ARRAY_SIZE(warsaw_va_auo_td4310_5p2_1080p_video_acm_lut_satr4_table);
+            pinfo->acm_lut_satr5_table = warsaw_va_auo_td4310_5p2_1080p_video_acm_lut_satr5_table;
+            pinfo->acm_lut_satr5_table_len = ARRAY_SIZE(warsaw_va_auo_td4310_5p2_1080p_video_acm_lut_satr5_table);
+            pinfo->acm_lut_satr6_table = warsaw_va_auo_td4310_5p2_1080p_video_acm_lut_satr6_table;
+            pinfo->acm_lut_satr6_table_len = ARRAY_SIZE(warsaw_va_auo_td4310_5p2_1080p_video_acm_lut_satr6_table);
+            pinfo->acm_lut_satr7_table = warsaw_va_auo_td4310_5p2_1080p_video_acm_lut_satr7_table;
+            pinfo->acm_lut_satr7_table_len = ARRAY_SIZE(warsaw_va_auo_td4310_5p2_1080p_video_acm_lut_satr7_table);
+            pinfo->video_acm_lut_hue_table = warsaw_va_auo_td4310_5p2_1080p_video_video_acm_lut_hue_table;
+            pinfo->video_acm_lut_sata_table = warsaw_va_auo_td4310_5p2_1080p_video_video_acm_lut_sata_table;
+            pinfo->video_acm_lut_satr0_table = warsaw_va_auo_td4310_5p2_1080p_video_video_acm_lut_satr0_table;
+            pinfo->video_acm_lut_satr1_table = warsaw_va_auo_td4310_5p2_1080p_video_video_acm_lut_satr1_table;
+            pinfo->video_acm_lut_satr2_table = warsaw_va_auo_td4310_5p2_1080p_video_video_acm_lut_satr2_table;
+            pinfo->video_acm_lut_satr3_table = warsaw_va_auo_td4310_5p2_1080p_video_video_acm_lut_satr3_table;
+            pinfo->video_acm_lut_satr4_table = warsaw_va_auo_td4310_5p2_1080p_video_video_acm_lut_satr4_table;
+            pinfo->video_acm_lut_satr5_table = warsaw_va_auo_td4310_5p2_1080p_video_video_acm_lut_satr5_table;
+            pinfo->video_acm_lut_satr6_table = warsaw_va_auo_td4310_5p2_1080p_video_video_acm_lut_satr6_table;
+            pinfo->video_acm_lut_satr7_table = warsaw_va_auo_td4310_5p2_1080p_video_video_acm_lut_satr7_table;
         }
         if (pinfo->gamma_support == 1)
         {
@@ -141,6 +219,32 @@ static void lcdkit_effect_get_data(uint8_t panel_id, struct hisi_panel_info* pin
             pinfo->acm_lut_sata_table_len = ARRAY_SIZE(warsaw_va_boe_td4300_5p2_1080p_video_acm_lut_sata_table);
             pinfo->acm_lut_satr_table = warsaw_va_boe_td4300_5p2_1080p_video_acm_lut_satr_table;
             pinfo->acm_lut_satr_table_len = ARRAY_SIZE(warsaw_va_boe_td4300_5p2_1080p_video_acm_lut_satr_table);
+            pinfo->acm_lut_satr0_table = warsaw_va_boe_td4300_5p2_1080p_video_acm_lut_satr0_table;
+            pinfo->acm_lut_satr0_table_len = ARRAY_SIZE(warsaw_va_boe_td4300_5p2_1080p_video_acm_lut_satr0_table);
+            pinfo->acm_lut_satr1_table = warsaw_va_boe_td4300_5p2_1080p_video_acm_lut_satr1_table;
+            pinfo->acm_lut_satr1_table_len = ARRAY_SIZE(warsaw_va_boe_td4300_5p2_1080p_video_acm_lut_satr1_table);
+            pinfo->acm_lut_satr2_table = warsaw_va_boe_td4300_5p2_1080p_video_acm_lut_satr2_table;
+            pinfo->acm_lut_satr2_table_len = ARRAY_SIZE(warsaw_va_boe_td4300_5p2_1080p_video_acm_lut_satr2_table);
+            pinfo->acm_lut_satr3_table = warsaw_va_boe_td4300_5p2_1080p_video_acm_lut_satr3_table;
+            pinfo->acm_lut_satr3_table_len = ARRAY_SIZE(warsaw_va_boe_td4300_5p2_1080p_video_acm_lut_satr3_table);
+            pinfo->acm_lut_satr4_table = warsaw_va_boe_td4300_5p2_1080p_video_acm_lut_satr4_table;
+            pinfo->acm_lut_satr4_table_len = ARRAY_SIZE(warsaw_va_boe_td4300_5p2_1080p_video_acm_lut_satr4_table);
+            pinfo->acm_lut_satr5_table = warsaw_va_boe_td4300_5p2_1080p_video_acm_lut_satr5_table;
+            pinfo->acm_lut_satr5_table_len = ARRAY_SIZE(warsaw_va_boe_td4300_5p2_1080p_video_acm_lut_satr5_table);
+            pinfo->acm_lut_satr6_table = warsaw_va_boe_td4300_5p2_1080p_video_acm_lut_satr6_table;
+            pinfo->acm_lut_satr6_table_len = ARRAY_SIZE(warsaw_va_boe_td4300_5p2_1080p_video_acm_lut_satr6_table);
+            pinfo->acm_lut_satr7_table = warsaw_va_boe_td4300_5p2_1080p_video_acm_lut_satr7_table;
+            pinfo->acm_lut_satr7_table_len = ARRAY_SIZE(warsaw_va_boe_td4300_5p2_1080p_video_acm_lut_satr7_table);
+            pinfo->video_acm_lut_hue_table = warsaw_va_boe_td4300_5p2_1080p_video_video_acm_lut_hue_table;
+            pinfo->video_acm_lut_sata_table = warsaw_va_boe_td4300_5p2_1080p_video_video_acm_lut_sata_table;
+            pinfo->video_acm_lut_satr0_table = warsaw_va_boe_td4300_5p2_1080p_video_video_acm_lut_satr0_table;
+            pinfo->video_acm_lut_satr1_table = warsaw_va_boe_td4300_5p2_1080p_video_video_acm_lut_satr1_table;
+            pinfo->video_acm_lut_satr2_table = warsaw_va_boe_td4300_5p2_1080p_video_video_acm_lut_satr2_table;
+            pinfo->video_acm_lut_satr3_table = warsaw_va_boe_td4300_5p2_1080p_video_video_acm_lut_satr3_table;
+            pinfo->video_acm_lut_satr4_table = warsaw_va_boe_td4300_5p2_1080p_video_video_acm_lut_satr4_table;
+            pinfo->video_acm_lut_satr5_table = warsaw_va_boe_td4300_5p2_1080p_video_video_acm_lut_satr5_table;
+            pinfo->video_acm_lut_satr6_table = warsaw_va_boe_td4300_5p2_1080p_video_video_acm_lut_satr6_table;
+            pinfo->video_acm_lut_satr7_table = warsaw_va_boe_td4300_5p2_1080p_video_video_acm_lut_satr7_table;
         }
         if (pinfo->gamma_support == 1)
         {
