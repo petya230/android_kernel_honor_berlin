@@ -114,7 +114,10 @@
 /*parse dirtyregion info node*/
 #define OF_PROPERTY_READ_DIRTYREGION_INFO_RETURN(np, propname, ptr_out_value) \
     do { \
-        of_property_read_u32(np, propname, ptr_out_value); \
+        if (of_property_read_u32(np, propname, ptr_out_value)) { \
+			LCDKIT_ERR("of_property_read_u32: %s, fail\n", propname); \
+			*ptr_out_value = -1; \
+        } \
         if( 0xffff == *ptr_out_value ) { \
             *ptr_out_value = -1; \
         } \
@@ -125,15 +128,17 @@
     do { \
         if( of_property_read_u32(np, propname, ptr_out_value) ) { \
             LCDKIT_ERR("of_property_read_u32: %s, fail\n", propname); \
+            *ptr_out_value = 0; \
         } \
     } while (0)
 
 /*parse dts node*/
 #define OF_PROPERTY_READ_U8_RETURN(np, propname, ptr_out_value) \
     do { \
-        int temp; \
+        int temp = 0; \
         if( of_property_read_u32(np, propname, &temp) ) { \
             LCDKIT_ERR("of_property_read: %s, fail\n", propname); \
+            temp = 0; \
         } \
         *ptr_out_value = (char)temp; \
     } while (0)
@@ -150,7 +155,7 @@
 /*parse dts node*/
 #define OF_PROPERTY_READ_U8_DEFAULT(np, propname, ptr_out_value, default) \
     do { \
-        int temp; \
+        int temp = 0; \
         if( of_property_read_u32(np, propname, &temp) ) { \
             LCDKIT_ERR("of_property_read: %s, fail, use default: %d\n", propname, default); \
             temp = default;  \
@@ -768,7 +773,7 @@ void lcdkit_init(struct device_node* np, void* pdata);
 void lcdkit_on_cmd(void* pdata, struct lcdkit_dsi_panel_cmds* cmds);
 void lcdkit_off_cmd(void* pdata, struct lcdkit_dsi_panel_cmds* cmds);
 void lcdkit_dsi_tx(void* pdata, struct lcdkit_dsi_panel_cmds* cmds);
-void lcdkit_dsi_rx(void* pdata, uint32_t* out, int len, struct lcdkit_dsi_panel_cmds*  cmds);
+int lcdkit_dsi_rx(void* pdata, uint32_t* out, int len, struct lcdkit_dsi_panel_cmds*  cmds);
 void lcdkit_switch_hs_lp(void* pdata, bool enable);
 void lcdkit_gpio_init(struct device_node* np);
 void lcdkit_info_init(void* pdata);

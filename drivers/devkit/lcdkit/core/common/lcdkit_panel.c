@@ -271,28 +271,41 @@ static ssize_t lcdkit_scan_mode_store(void* pdata,  const char* buf)
   *output:
    *@buf: output the check result, "OK" means SUCCESS, "FAIL" means FAIL
 */
+#define LCDKIT_REG_CHECK_NUM    5
 static ssize_t lcdkit_check_reg_show(void* pdata, char* buf)
 {
     int ret = 0;
-    uint32_t read_value[MAX_REG_READ_COUNT];
-    uint32_t i = 0;
+    uint32_t read_value[MAX_REG_READ_COUNT] = {0};
+    int i = 0;
     char* expect_ptr = NULL;
+    unsigned int count;
 
-    expect_ptr = lcdkit_info.panel_infos.check_reg_value.buf;
-    lcdkit_dsi_rx(pdata, read_value, 1, &lcdkit_info.panel_infos.check_reg_cmds);
-
-    for (i = 0; i < lcdkit_info.panel_infos.check_reg_cmds.cmd_cnt; i++)
+    for (count = 0; count < LCDKIT_REG_CHECK_NUM; count++)
     {
-        if (read_value[i] != expect_ptr[i])
+        ret = 0;
+        expect_ptr = lcdkit_info.panel_infos.check_reg_value.buf;
+        lcdkit_dsi_rx(pdata, read_value, 1, &lcdkit_info.panel_infos.check_reg_cmds);
+
+        for (i = 0; i < lcdkit_info.panel_infos.check_reg_cmds.cmd_cnt; i++)
         {
-            ret = 1;
-            LCDKIT_INFO("read_value[%u] = %d, but expect_ptr[%u] = %d!\n", i, read_value[i], i, expect_ptr[i]);
+            if ((char)read_value[i] != expect_ptr[i])
+            {
+                ret = 1;
+                LCDKIT_INFO("read_value[%u] = 0x%x, but expect_ptr[%u] = 0x%x!\n",
+                    i, read_value[i], i, expect_ptr[i]);
+                break;
+            }
+            LCDKIT_INFO("read_value[%u] = 0x%x same with expect value!\n",
+                    i, read_value[i]);
+        }
+
+        if (0 == ret)
+        {
             break;
         }
-        LCDKIT_INFO("read_value[%u] = %d same with expect value!\n", i, read_value[i]);
     }
 
-    if (!ret)
+    if (0 == ret)
     {
         ret = snprintf(buf, PAGE_SIZE, "OK\n");
     }
@@ -314,8 +327,8 @@ static ssize_t lcdkit_check_reg_show(void* pdata, char* buf)
 static ssize_t lcdkit_check_esd(void* pdata)
 {
     ssize_t ret = 0;
-    uint32_t read_value[MAX_REG_READ_COUNT];
-    uint32_t i = 0;
+    uint32_t read_value[MAX_REG_READ_COUNT] = {0};
+    int i = 0;
     char* expect_ptr = NULL;
 
     if (lcdkit_dbg.g_esd_debug.esd_enable == 1)
@@ -331,15 +344,17 @@ static ssize_t lcdkit_check_esd(void* pdata)
 
     expect_ptr = lcdkit_info.panel_infos.esd_value.buf;
 
-    lcdkit_dsi_rx(pdata, read_value, 1, &lcdkit_info.panel_infos.esd_cmds);
-
-    for (i = 0; i < lcdkit_info.panel_infos.esd_cmds.cmd_cnt; i++)
+    ret = lcdkit_dsi_rx(pdata, read_value, 1, &lcdkit_info.panel_infos.esd_cmds);
+    if (!ret)
     {
-        if (read_value[i] != expect_ptr[i])
+        for (i = 0; i < lcdkit_info.panel_infos.esd_cmds.cmd_cnt; i++)
         {
-            LCDKIT_INFO("read_value[%u] = %d, but expect_ptr[%u] = %d!\n", i, read_value[i], i, expect_ptr[i]);
-            ret = 1;
-            break;
+            if (read_value[i] != expect_ptr[i])
+            {
+                LCDKIT_INFO("read_value[%u] = %d, but expect_ptr[%u] = %d!\n", i, read_value[i], i, expect_ptr[i]);
+                ret = 1;
+                break;
+            }
         }
     }
 
@@ -511,14 +526,6 @@ static ssize_t lcdkit_dynamic_sram_check_store(void* pdata, const char* buf)
     return ret;
 }
 
-#if 0
-static ssize_t lcd_ic_color_enhancement_mode_show()
-{}
-
-static ssize_t lcd_ic_color_enhancement_mode_store()
-{}
-#endif
-
 static ssize_t lcdkit_ce_mode_show(void* pdata, char* buf)
 {
     return snprintf(buf, PAGE_SIZE, "%d\n", lcdkit_info.panel_infos.ce_mode);
@@ -651,13 +658,6 @@ static ssize_t lcdkit_lp2hs_mipi_check_store(void* pdata, const char* buf)
 static ssize_t lcdkit_bist_check_show(void* pdata, char* buf)
 {
     ssize_t ret = 0;
-#if 0
-    if (lcdkit_diff_func_array[0].enable) {
-        ret = lcdkit_diff_func_array[0].lcdkit_show(pdata, buf);
-        LCDKIT_INFO("%s\n", buf);
-        return ret;
-    }
-#endif
     return ret;
 }
 
@@ -920,7 +920,7 @@ static ssize_t lcdkit_current_detect(void* pdata)
     uint32_t rd[LCDKIT_CHECKSUM_SIZE] = {0};
     struct lcdkit_dsi_cmd_desc packet_size_set_cmd = {LCDKIT_DTYPE_MAX_PKTSIZE, 1, 0, 0, 10, LCDKIT_WAIT_TYPE_US, 1, NULL};
     LCDKIT_INFO("current detect enter!\n");
-   
+
     if(!lcdkit_info.panel_infos.lv_detect_support)
     {
         LCDKIT_INFO("current detect is not support! return!\n");
@@ -1156,6 +1156,11 @@ static ssize_t  lcdkit_voltage_enable_store(void *pdata, const char* buf)
     uint32_t bl_value = 0;
     int ret = 0;
     char bl_value_buf[10] = {0};
+
+    if (strlen(buf) > (sizeof(command)-1)){
+        LCDKIT_ERR("buf underflow\n");
+        return -EINVAL;
+    }
 
     if (!sscanf(buf, "%s", command)) {
         LCDKIT_INFO("bad command(%s)\n", command);

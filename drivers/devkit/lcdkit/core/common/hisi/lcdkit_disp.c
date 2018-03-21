@@ -6,12 +6,27 @@
 #include "lcdkit_disp.h"
 #include "lcdkit_dbg.h"
 #include <huawei_platform/log/log_jank.h>
+#include "lcdkit_btb_check.h"
 
 #if defined(CONFIG_LCDKIT_DRIVER)
 #include "lcdkit_fb_util.h"
 #endif
 
 extern struct ts_kit_platform_data g_ts_kit_platform_data;
+struct platform_device *g_hisi_pdev=NULL;
+void lcdkit_set_pdev(struct platform_device *pdev)
+{
+    g_hisi_pdev = pdev;
+    return ;
+}
+
+void lcdkit_get_pdev(struct platform_device **pdev)
+{
+    *pdev = g_hisi_pdev;
+    return ;
+}
+
+
 /*
 *name:lcdkit_get_id
 *function:power on panel
@@ -913,6 +928,10 @@ static int lcdkit_set_fastboot(struct platform_device* pdev)
         return -EINVAL;
     }
 
+    if(CHECKED_ERROR == mipi_lcdkit_btb_check()) {
+        LCDKIT_ERR("btb checked failed!");
+    }
+
     if (lcdkit_is_lcd_panel())
     {
         if ( lcdkit_bias_is_regulator_ctrl_power())
@@ -948,13 +967,28 @@ static int lcdkit_set_fastboot(struct platform_device* pdev)
 
 static int lcdkit_set_display_region(struct platform_device* pdev, struct dss_rect* dirty)
 {
+    struct hisi_fb_data_type *hisifd = NULL;
+
+    if (NULL == pdev)
+    {
+        LCDKIT_ERR("pdev NULL Pointer!\n");
+        return -1;
+    }
+
+    hisifd = platform_get_drvdata(pdev);
+    if (NULL == hisifd)
+    {
+        LCDKIT_ERR("NULL Pointer!\n");
+        return -1;
+    }
+
     if (!lcdkit_info.panel_infos.display_region_support)
     {
       LCDKIT_DEBUG("fps updt is not support!\n");
-      return 0;
+      return -1;
     }
 
-    return lcdkit_info.lcdkit_set_display_region(pdev, dirty);
+    return lcdkit_info.lcdkit_set_display_region(hisifd, dirty);
 
 }
 
@@ -1063,6 +1097,7 @@ static int __init lcdkit_probe(struct platform_device* pdev)
     struct hisi_panel_info* pinfo = NULL;
     struct device_node* np = NULL;
     int ret = 0;
+    struct platform_device* hisi_pdev=NULL;
 
     np = of_find_compatible_node(NULL, NULL, lcdkit_info.panel_infos.lcd_compatible);
     if (!np)
@@ -1162,8 +1197,9 @@ static int __init lcdkit_probe(struct platform_device* pdev)
         goto err_device_put;
     }
 
-    hisi_fb_add_device(pdev);
+    hisi_pdev = hisi_fb_add_device(pdev);
     lcdkit_debugfs_init();
+    lcdkit_set_pdev(hisi_pdev);
     LCDKIT_INFO("exit succ!!!!\n");
 
     return 0;
@@ -1256,8 +1292,9 @@ static int __init lcdkit_disp_init(void)
         }
 
         len = strlen(lcdkit_info.panel_infos.lcd_compatible);
-        memset(lcdkit_driver.driver.of_match_table->compatible, 0, LCDKIT_PANEL_COMP_LENGTH);
-        strncpy(lcdkit_driver.driver.of_match_table->compatible, lcdkit_info.panel_infos.lcd_compatible, (len > LCDKIT_PANEL_COMP_LENGTH ? LCDKIT_PANEL_COMP_LENGTH : len));
+        memset( (char *)lcdkit_driver.driver.of_match_table->compatible, 0, LCDKIT_PANEL_COMP_LENGTH);
+        strncpy( (char *)lcdkit_driver.driver.of_match_table->compatible, lcdkit_info.panel_infos.lcd_compatible,
+			len > (LCDKIT_PANEL_COMP_LENGTH - 1) ? (LCDKIT_PANEL_COMP_LENGTH - 1) : len);
         LCDKIT_INFO("g_lcd_type=%s, len = %u!\n", lcdkit_info.panel_infos.lcd_compatible, strlen(lcdkit_info.panel_infos.lcd_compatible));
     }
 

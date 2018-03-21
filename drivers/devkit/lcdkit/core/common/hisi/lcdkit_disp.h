@@ -41,6 +41,9 @@
 #define ESD_DEBUG   0
 #define LCDKIT_TYPE_BUF 30
 
+#ifdef CONFIG_HISI_FB_6250
+#endif
+
 /***********************************************************
 *variable declaration
 ***********************************************************/
@@ -80,6 +83,21 @@ static struct lcdkit_vsp_vsn_voltage voltage_table[] = {
         {5900000,TPS65132_VOL_59},
         {6000000,TPS65132_VOL_60},
 };
+
+/*lcd btb check*/
+#define GPIO_LCD_BTB_NAME           "gpio_lcd_btb"
+static uint32_t lcd_btb_gpio = 0;
+static struct gpio_desc lcd_gpio_request_btb =
+	{DTYPE_GPIO_REQUEST, WAIT_TYPE_MS, 0,
+		GPIO_LCD_BTB_NAME, &lcd_btb_gpio, 0};
+
+static struct gpio_desc lcd_gpio_free_btb =
+	{DTYPE_GPIO_FREE, WAIT_TYPE_US, 100,
+		GPIO_LCD_BTB_NAME, &lcd_btb_gpio, 0};
+
+static struct gpio_desc lcd_gpio_read_btb =
+	{DTYPE_GPIO_INPUT, WAIT_TYPE_MS, 0,
+		GPIO_LCD_BTB_NAME, &lcd_btb_gpio, 0};
 
 /************************************************************
  *

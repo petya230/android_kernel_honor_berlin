@@ -9,6 +9,7 @@
 *function:lcd_panel_info init
 *@pinfo:lcd panel info
 */
+//lint -save -e144 -e578 -e647
 void lcdkit_info_init(void* pdata)
 {
     struct hisi_panel_info* pinfo;
@@ -252,7 +253,7 @@ void lcdkit_dsi_tx(void* pdata, struct lcdkit_dsi_panel_cmds* cmds)
 
 }
 
-void lcdkit_dsi_rx(void* pdata, uint32_t* out, int len, struct lcdkit_dsi_panel_cmds* cmds)
+int lcdkit_dsi_rx(void* pdata, uint32_t* out, int len, struct lcdkit_dsi_panel_cmds* cmds)
 {
     struct hisi_fb_data_type* hisifd = NULL;
     char __iomem* mipi_dsi0_base = NULL;
@@ -264,18 +265,22 @@ void lcdkit_dsi_rx(void* pdata, uint32_t* out, int len, struct lcdkit_dsi_panel_
 
     if (ret)
     {
-        LCDKIT_ERR("lcdkit_cmds convert fail!\n");
-        return ;
+       LCDKIT_ERR("lcdkit_cmds convert fail!\n");
+	kfree(cmd);
+       return ret;
     }
 
     hisifd = (struct hisi_fb_data_type*) pdata;
     mipi_dsi0_base = hisifd->mipi_dsi0_base;
 
     ret = mipi_dsi_cmds_rx(out, cmd, cmds->cmd_cnt, mipi_dsi0_base);
-
+    if(ret)
+    {
+        LCDKIT_INFO("lcdkit_dsi_rx failed!\n");
+    }
     kfree(cmd);
 
-    return;
+    return ret;
 
 }
 
@@ -475,7 +480,71 @@ void lcdkit_lp2hs_mipi_test(void* pdata)
         }
     }
 }
+#if defined (CONFIG_HISI_FB_970)
+void lcdkit_effect_switch_ctrl(void* pdata, bool ctrl)
+{
+    struct hisi_fb_data_type* hisifd = NULL;
+    struct hisi_panel_info* pinfo = NULL;
+    char __iomem* mipi_dsi0_base = NULL;
+    char __iomem* dpp_base = NULL;
+    char __iomem* lcp_base = NULL;
+    char __iomem* gamma_base = NULL;
 
+    hisifd = (struct hisi_fb_data_type*) pdata;
+
+    if ( NULL == hisifd )
+    {
+        LCDKIT_ERR("NULL point!\n");
+        return;
+    }
+
+    mipi_dsi0_base = hisifd->mipi_dsi0_base;
+    dpp_base = hisifd->dss_base + DSS_DPP_OFFSET;
+    lcp_base = hisifd->dss_base + DSS_DPP_LCP_OFFSET_ES;
+    gamma_base = hisifd->dss_base + DSS_DPP_GAMA_OFFSET;
+
+    pinfo = &(hisifd->panel_info);
+
+    if (ctrl)
+    {
+        if (pinfo->gamma_support == 1){
+            HISI_FB_INFO("disable gamma\n");
+            /* disable de-gamma */
+            set_reg(lcp_base + LCP_DEGAMA_EN_ES, 0x0, 1, 0);
+            /* disable gamma */
+            set_reg(gamma_base + GAMA_EN, 0x0, 1, 0);
+        }
+        if (pinfo->gmp_support == 1) {
+            HISI_FB_INFO("disable gmp\n");
+            /* disable gmp */
+            set_reg(dpp_base + LCP_GMP_BYPASS_EN_ES, 0x1, 1, 0);
+        }
+        if (pinfo->xcc_support == 1) {
+            HISI_FB_INFO("disable xcc\n");
+            /* disable xcc */
+            set_reg(lcp_base + LCP_XCC_BYPASS_EN_ES, 0x1, 1, 0);
+        }
+    } else {
+        if (pinfo->gamma_support == 1) {
+            HISI_FB_INFO("enable gamma\n");
+            /* enable de-gamma */
+            set_reg(lcp_base + LCP_DEGAMA_EN_ES, 0x1, 1, 0);
+            /* enable gamma */
+            set_reg(gamma_base + GAMA_EN, 0x1, 1, 0);
+        }
+        if (pinfo->gmp_support == 1) {
+            HISI_FB_INFO("enable gmp\n");
+            /* enable gmp */
+            set_reg(dpp_base + LCP_GMP_BYPASS_EN_ES, 0x0, 1, 0);
+        }
+        if (pinfo->xcc_support == 1) {
+            HISI_FB_INFO("enable xcc\n");
+            /* enable xcc */
+            set_reg(lcp_base + LCP_XCC_BYPASS_EN_ES, 0x0, 1, 0);
+        }
+    }
+}
+#else
 void lcdkit_effect_switch_ctrl(void* pdata, bool ctrl)
 {
 #if 0
@@ -546,7 +615,7 @@ void lcdkit_effect_switch_ctrl(void* pdata, bool ctrl)
     }
 #endif
 }
-
+#endif
 int adc_get_value(int channel)
 {
     // hisi_adc_get_value(channel);
@@ -875,3 +944,107 @@ void lcdkit_fps_updt_adaptor_handle(void* pdata)
     }
     return;
 }
+
+/*for lcd btb check*/
+#include "lcdkit_btb_check.h"
+#define BIT1_0	(0x3)
+#define BIT31_2	(0xFFFFFFFC)
+#define DELAY_TIME	(1000)
+#define DELAY_1MS (1)
+#define ERROR (-1)
+#define RET (0)
+#define NORMAL (1)
+
+int lcdkit_get_gpio_val(struct gpio_desc *cmds)
+{
+	int val = -1;
+	struct gpio_desc *cm = NULL;
+
+	cm = cmds;
+	if ((cm == NULL) || (cm->label == NULL)) {
+		LCDKIT_ERR("cm or cm->label is null!\n");
+		return ERROR;
+	}
+
+	if (!gpio_is_valid(*(cm->gpio))) {
+		LCDKIT_ERR("gpio invalid, dtype=%d, lable=%s, gpio=%d!\n",
+			cm->dtype, cm->label, *(cm->gpio));
+		return ERROR;
+	}
+
+	if (cm->dtype == DTYPE_GPIO_INPUT) {
+		if (gpio_direction_input(*(cm->gpio)) != 0) {
+			LCDKIT_ERR("failed to gpio_direction_input, lable=%s, gpio=%d!\n",
+				cm->label, *(cm->gpio));
+			return ERROR;
+		}
+		val = gpiod_get_value(gpio_to_desc(*(cm->gpio)));
+	} else {
+		LCDKIT_ERR("dtype=%x NOT supported\n", cm->dtype);
+		return ERROR;
+	}
+
+	if (cm->wait) {
+		if (cm->waittype == WAIT_TYPE_US) {
+			udelay(cm->wait);
+		} else if (cm->waittype == WAIT_TYPE_MS) {
+			mdelay(cm->wait);
+		} else {
+			mdelay(DELAY_TIME);	/*delay 1000ms for default*/
+		}
+	}
+
+	return val;
+}
+
+int lcdkit_gpio_cmds_tx(unsigned int btb_gpio, int gpio_optype)
+{
+	if (btb_gpio == 0) {
+		return ERROR;
+	}
+
+	lcd_btb_gpio = btb_gpio;
+	if (gpio_optype == BTB_GPIO_REQUEST) {
+		return gpio_cmds_tx(&lcd_gpio_request_btb, 1);
+	} else if (gpio_optype == BTB_GPIO_READ) {
+		return lcdkit_get_gpio_val(&lcd_gpio_read_btb);
+	} else if (gpio_optype == BTB_GPIO_FREE) {
+		return gpio_cmds_tx(&lcd_gpio_free_btb, 1);
+	} else {
+		return ERROR;
+	}
+}
+
+int lcdkit_gpio_pulldown(void * btb_vir_addr)
+{
+	uint32_t btb_pull_data = 0;
+
+	if (btb_vir_addr == NULL) {
+		return RET;
+	}
+	btb_pull_data = readl(btb_vir_addr);		/* config pull down and read */
+	if((btb_pull_data & BIT1_0) != PULLDOWN) {	/* (btb_pull_data & 0x3) != PULLDOWN */
+		btb_pull_data = (btb_pull_data & BIT31_2) | (PULLDOWN & BIT1_0);	/* (btb_pull_data & 0xFFFFFFFC) | (PULLDOWN & 0x3) */
+		writel(btb_pull_data, btb_vir_addr);
+		mdelay(DELAY_1MS);
+	}
+	return NORMAL;
+}
+
+int lcdkit_gpio_pullup(void * btb_vir_addr)
+{
+	uint32_t btb_pull_data = 0;
+
+	if (btb_vir_addr == NULL) {
+		return RET;
+	}
+	btb_pull_data = readl(btb_vir_addr);		/* config pull up and read */
+	if((btb_pull_data & BIT1_0) != PULLUP) {
+		btb_pull_data = (btb_pull_data & BIT31_2) | (PULLUP & BIT1_0);
+		writel(btb_pull_data, btb_vir_addr);
+		mdelay(DELAY_1MS);
+	}
+	return NORMAL;
+}
+//lint -restore
+
