@@ -1,6 +1,7 @@
 #include "hisi_fb.h"
 #include "lcdkit_panel.h"
 #include "lcdkit_dbg.h"
+#include "lcdkit_disp.h"
 /***********************************************************
 *function definition
 ***********************************************************/
@@ -25,6 +26,7 @@ void lcdkit_parse_platform_dts(struct device_node* np,  void* pdata)
     OF_PROPERTY_READ_U8_RETURN(np, "hw,lcdkit-panel-bl-ic-ctrl-type", &pinfo->bl_ic_ctrl_mode);
     OF_PROPERTY_READ_U8_DEFAULT(np, "hw,lcdkit-panel-fps-updt-only", &pinfo->fps_updt_panel_only, 0);
     OF_PROPERTY_READ_U8_DEFAULT(np, "hw,lcdkit-panel-fps-updt-support", &pinfo->fps_updt_support, 0);
+    OF_PROPERTY_READ_U32_DEFAULT(np, "hw,lcdkit-panel-bl-steps", &pinfo->bl_steps,0);
 
     OF_PROPERTY_READ_U32_RETURN(np, "hw,lcdkit-panel-pxl-clk", &pinfo->pxl_clk_rate);
     OF_PROPERTY_READ_U32_RETURN(np, "hw,lcdkit-panel-pxl-clk-div", &pinfo->pxl_clk_rate_div);
@@ -40,6 +42,7 @@ void lcdkit_parse_platform_dts(struct device_node* np,  void* pdata)
     OF_PROPERTY_READ_U8_RETURN(np, "hw,lcdkit-gmp-support", &pinfo->gmp_support);
 
     OF_PROPERTY_READ_U8_DEFAULT(np,"hw,lcdkit-color-temp-support",&pinfo->color_temperature_support,0);
+    OF_PROPERTY_READ_U8_DEFAULT(np,"hw,lcdkit-color-temp-rectify-support",&pinfo->color_temp_rectify_support,0);
     OF_PROPERTY_READ_U8_DEFAULT(np,"hw,lcdkit-comform-mode-support",&pinfo->comform_mode_support,0);
     OF_PROPERTY_READ_U8_DEFAULT(np,"hw,lcdkit-cinema-mode-support",&pinfo->cinema_mode_support,0);
     OF_PROPERTY_READ_U8_DEFAULT(np,"hw,lcdkit-xcc-support",&pinfo->xcc_support,0);
@@ -136,6 +139,14 @@ void lcdkit_parse_platform_dts(struct device_node* np,  void* pdata)
     OF_PROPERTY_READ_U32_RETURN(np, "hw,lcdkit-mipi-clk-t-hs-trail-adjust", &pinfo->mipi.clk_t_hs_trial_adjust);
     OF_PROPERTY_READ_U32_RETURN(np, "hw,lcdkit-mipi-clk-t-hs-exit-adjust", &pinfo->mipi.clk_t_hs_exit_adjust);
     OF_PROPERTY_READ_U32_RETURN(np, "hw,lcdkit-mipi-clk-t-hs-zero-adjust", &pinfo->mipi.clk_t_hs_zero_adjust);
+    OF_PROPERTY_READ_U32_DEFAULT(np, "hw,lcdkit-platform-esd-support", &g_lcdkit_pri_info.platform_esd_support, 0);
+    OF_PROPERTY_READ_U32_DEFAULT(np, "hw,hw,lcdkit-platform-esd-reg", &g_lcdkit_pri_info.platform_esd_reg, 0xc0);
+    OF_PROPERTY_READ_U32_DEFAULT(np, "hw,hw,lcdkit-platform-esd-value", &g_lcdkit_pri_info.platform_esd_value, 0x80);
+    OF_PROPERTY_READ_U32_DEFAULT(np, "hw,lcdkit-mipi-rg-vcm-adjust", &pinfo->mipi.rg_vrefsel_vcm_adjust, 0);
+    OF_PROPERTY_READ_U32_DEFAULT(np, "hw,lcdkit-mipi-phy-mode", &pinfo->mipi.phy_mode, 0);
+    OF_PROPERTY_READ_U32_DEFAULT(np, "hw,lcdkit-mipi-lp11_flag", &pinfo->mipi.lp11_flag, 0);
+    OF_PROPERTY_READ_U32_DEFAULT(np, "hw,lcdkit-mipi-hs-wr-to-time", &pinfo->mipi.hs_wr_to_time, 0);
+    OF_PROPERTY_READ_U32_DEFAULT(np, "hw,lcdkit-mipi-phy_update", &pinfo->mipi.phy_m_n_count_update, 0);
 
     OF_PROPERTY_READ_DIRTYREGION_INFO_RETURN(np, "hw,lcdkit-dirt-left-align", &pinfo->dirty_region_info.left_align);
     OF_PROPERTY_READ_DIRTYREGION_INFO_RETURN(np, "hw,lcdkit-dirt-right-align", &pinfo->dirty_region_info.right_align);

@@ -4,6 +4,7 @@ obj-$(CONFIG_LCDKIT_DRIVER)	+= lcdkit_parse_hs.o
 obj-$(CONFIG_LCDKIT_DRIVER)	+= lcdkit_panel_adaptor_hs.o
 obj-$(CONFIG_LCDKIT_DRIVER)	+= lcdkit_disp.o
 obj-$(CONFIG_LCDKIT_DRIVER)	+= lcdkit_fake_panel.o
+obj-$(CONFIG_LCDKIT_DRIVER)	+= lcdkit_display_test.o
 
 EXTRA_CFLAGS += -Idrivers/video/fbdev/hisi/dss \
 		-Idrivers/video/hisi/dss \

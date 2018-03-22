@@ -14,6 +14,8 @@
 
 extern struct ts_kit_platform_data g_ts_kit_platform_data;
 struct platform_device *g_hisi_pdev=NULL;
+struct lcdkit_private_info g_lcdkit_pri_info;
+
 void lcdkit_set_pdev(struct platform_device *pdev)
 {
     g_hisi_pdev = pdev;
@@ -844,11 +846,29 @@ static int lcdkit_set_backlight(struct platform_device* pdev, uint32_t bl_level)
     {
         ret = hisi_sh_blpwm_set_backlight(hisifd, bl_level);
     }
-    else if (hisifd->panel_info.bl_set_type & BL_SET_BY_MIPI)
+    else if ((hisifd->panel_info.bl_set_type & BL_SET_BY_MIPI) && (hisifd->panel_info.bl_max > 0))
     {
         bl_level = (bl_level < hisifd->panel_info.bl_max) ? bl_level : hisifd->panel_info.bl_max;
-        lcdkit_info.panel_infos.backlight_cmds.cmds[0].payload[1] = bl_level  * 255 / hisifd->panel_info.bl_max;
-
+        LCDKIT_DEBUG("bl_steps =:  %d!\n",hisifd->panel_info.bl_steps);
+        switch(hisifd->panel_info.bl_steps){
+            case LCD_PANEL_BACKLIGHT_STEP_255:
+                lcdkit_info.panel_infos.backlight_cmds.cmds[0].payload[1] = bl_level;
+                break;
+            case LCD_PANEL_BACKLIGHT_STEP_1024:
+                /*follow spec send high 8 bit data to lcd ic DBV[11:4]*/
+                lcdkit_info.panel_infos.backlight_cmds.cmds[0].payload[1] = (bl_level & 0x3fc) >> 2;
+                /*follow spec low 2 bit data send to DBV[3:2], 0x00 send to DBV[1:0]*/
+                lcdkit_info.panel_infos.backlight_cmds.cmds[0].payload[2] = (bl_level & 0x003) << 2;
+                break;
+            case LCD_PANEL_BACKLIGHT_STEP_4096:
+                /*follow spec send high 4 bit data to DBV[11:8]*/
+                lcdkit_info.panel_infos.backlight_cmds.cmds[0].payload[1] = (bl_level & 0xf00) >>8;
+                /*follow spec send low 8 bit data to lcd ic DBV[7:0]*/
+                lcdkit_info.panel_infos.backlight_cmds.cmds[0].payload[2] = bl_level & 0x0ff;
+                break;
+            default:
+                break;
+        }
         lcdkit_dsi_tx(hisifd, &lcdkit_info.panel_infos.backlight_cmds);
 
         if (lcdkit_info.panel_infos.panel_type & PANEL_TYPE_LCD)
@@ -886,6 +906,7 @@ static int lcdkit_esd_check(struct platform_device* pdev)
 {
     struct hisi_fb_data_type* hisifd = NULL;
     int ret = 0;
+    uint32_t temp = 0;
 
     if (NULL == pdev)
     {
@@ -899,6 +920,19 @@ static int lcdkit_esd_check(struct platform_device* pdev)
     {
         LCDKIT_ERR("NULL Pointer\n");
         return -EINVAL;
+    }
+
+    /*check platform esd*/
+    if (g_lcdkit_pri_info.platform_esd_support)
+    {
+        temp = inp32(hisifd->mipi_dsi0_base + g_lcdkit_pri_info.platform_esd_reg);
+        if (temp & g_lcdkit_pri_info.platform_esd_value)
+        {
+            LCDKIT_ERR("Platform open esd err, reg:0x%x, value:0x%x\n", g_lcdkit_pri_info.platform_esd_reg, temp);
+            hisifd->esd_recover_state = ESD_RECOVER_STATE_START;
+            return 1;
+        }
+        LCDKIT_INFO("Platform esd check, reg:0x%x, value:0x%x\n", g_lcdkit_pri_info.platform_esd_reg, temp);
     }
 
     ret = lcdkit_info.lcdkit_check_esd(hisifd);
@@ -1134,6 +1168,17 @@ static int __init lcdkit_probe(struct platform_device* pdev)
         pinfo->comform_mode_support = 0;
         pinfo->color_temp_rectify_support = 0;
         lcdkit_info.panel_infos.fps_func_switch = 0;
+        if(lcdkit_info.panel_infos.dynamic_gamma_support)
+        {
+#if defined (CONFIG_HISI_FB_3660)
+             hisifb_update_gm_from_reserved_mem(pinfo->gamma_lut_table_R,
+                            pinfo->gamma_lut_table_G,
+                            pinfo->gamma_lut_table_B,
+                            pinfo->igm_lut_table_R,
+                            pinfo->igm_lut_table_G,
+                            pinfo->igm_lut_table_B);
+#endif
+        }
     }
 
     lcdkit_info.panel_infos.lcd_id = lcdkit_get_id(pdev);

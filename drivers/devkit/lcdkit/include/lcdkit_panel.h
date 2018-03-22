@@ -110,6 +110,14 @@
 #define LCDKIT_FPS_60 (60)
 
 #define MAX_BUF 60
+#define LCD_REG_LENGTH_MAX 200
+#define LCD_REG_NUM 50
+
+enum
+{
+    LCDKIT_CHECKSUM_START = 0,
+    LCDKIT_CHECKSUM_END = 1,
+};
 
 /*parse dirtyregion info node*/
 #define OF_PROPERTY_READ_DIRTYREGION_INFO_RETURN(np, propname, ptr_out_value) \
@@ -637,9 +645,17 @@ struct lcdkit_panel_infos
     /*display effect on cmds */
     struct lcdkit_dsi_panel_cmds display_effect_on_cmds;
     u8 display_effect_on_support;
-    /***************
-    ** for debug
-    */
+    /***************/
+    /*for dynamic gamma*/
+    u8 dynamic_gamma_support;
+    u32 gama_cmd_page;
+    u32 gama_reg_addr;
+    u32 gama_reg_length;
+    struct lcdkit_dsi_panel_cmds lcd_reg_check_enter_cmds;
+    struct lcdkit_dsi_panel_cmds lcd_reg_check_exit_cmds;
+    struct lcdkit_array_data gama_correct_reg;
+    struct lcdkit_array_data gama_reg_len;
+
     /*LcdanalogVcc*/
     u32 lcdanalog_vcc;
     /*LcdioVcc*/

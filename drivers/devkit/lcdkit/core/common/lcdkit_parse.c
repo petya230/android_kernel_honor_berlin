@@ -505,6 +505,14 @@ void lcdkit_parse_panel_dts(struct device_node* np)
         LCDKIT_INFO("display effect on is not support!\n");
     }
 
+    if(lcdkit_info.panel_infos.dynamic_gamma_support)
+    {
+        ret = lcdkit_parse_dcs_cmds(np, "hw,lcdkit-panel-gamma-enter-command", "hw,lcdkit-panel-gamma-enter-command-state",  &lcdkit_info.panel_infos.lcd_reg_check_enter_cmds);
+        ret = lcdkit_parse_dcs_cmds(np, "hw,lcdkit-panel-gamma-exit-command", "hw,lcdkit-panel-gamma-exit-command-state",  &lcdkit_info.panel_infos.lcd_reg_check_exit_cmds);
+        ret = lcdkit_parse_array_data(np, "hw,lcdkit-panel-gamma-correct-reg", &lcdkit_info.panel_infos.gama_correct_reg);
+        ret = lcdkit_parse_array_data(np, "hw,lcdkit-panel-gamma-reg-len", &lcdkit_info.panel_infos.gama_reg_len);
+        LCDKIT_INFO("support!\n");
+    }
     /*for TP power ctrl*/
     OF_PROPERTY_READ_U8_DEFAULT(np, "hw,lcdkit-lcd-type", &g_tskit_ic_type, 1);
     /*for power mode ctrl*/

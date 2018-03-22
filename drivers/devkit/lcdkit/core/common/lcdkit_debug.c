@@ -124,10 +124,10 @@ static bool lcdkit_resolve_dtsi_config_file(int fd, void** para_table, uint32_t*
 
 debug_init_read_fail:
     kfree(lcd_config_table);
-    lcd_config_table = NULL;
+    //lcd_config_table = NULL;
 
 kalloc_err:
-    para_table = NULL;
+    *para_table = NULL;
     *para_num = 0;
     return FALSE;
 }
@@ -663,7 +663,7 @@ static ssize_t lcdkit_dbg_write(
     unsigned long temp = 0;
 
     char lcd_debug_buf[256];
-    int length = sizeof(lcdkit_cmd_list) / sizeof(lcdkit_dbg_cmds);
+    int length = sizeof(lcdkit_cmd_list) / sizeof(lcdkit_cmd_list[0]);
 
     cur = lcd_debug_buf;
 
@@ -1116,13 +1116,12 @@ static int lcdkit_is_mipi_input_legal(int op_type,int ic_reg,
 *delay_ms:   delay time
 *return: 0 - success, negative - fail
 **********************************************************************************/
-extern void *lcdkit_get_dsi_ctrl_pdata(void);
 int lcdkit_mipi_prcess_ic_reg(int op_type,int reg, int cmd_type,
             int param_num, char *param_buf,int *read_value, int delay_ms)
 {
-    uint32_t regvalue = 0;
-    struct mdss_dsi_ctrl_pdata *ctrl;
-    struct lcdkit_dsi_cmd_desc cmds_desc;
+   uint32_t regvalue = 0;
+   void *ctrl;
+   struct lcdkit_dsi_cmd_desc cmds_desc;
    static struct lcdkit_dsi_panel_cmds reg_cmds; // dsi cmd struct
 
    /* check if input legal */
@@ -1302,9 +1301,10 @@ int lcdkit_mipi_prcess_ic_reg(int op_type,int reg, int cmd_type,
 static ssize_t lcdkit_mipi_reg_read(struct file *file,
                             char __user *buff, size_t count,loff_t *ppos)
 {
-
+   void *ctrl = NULL;
+   int ret = 0;
    int ret_len = 0;
-    char lcd_debug_buf[256];
+   char lcd_debug_buf[256];
 
    if (*ppos)
       return 0;
@@ -1318,18 +1318,29 @@ static ssize_t lcdkit_mipi_reg_read(struct file *file,
    /* show last read result */
    else
    {
-      if(!atomic_read(&mipi_path_status))
-      {
-         LCDKIT_ERR("the panel has been closed, please open it firstly.\n");
-         ret_len = snprintf(lcd_debug_buf, sizeof(lcd_debug_buf),
+        ctrl = lcdkit_get_dsi_ctrl_pdata();
+        if (NULL == ctrl)
+        {
+            LCDKIT_ERR("get ctrl padata failed.\n");
+            return -EFAULT;
+        }
+
+        ret = lcdkit_lock(ctrl);
+        if(ret)
+        {
+            LCDKIT_ERR("the panel has been closed, please open it firstly.\n");
+            ret_len = snprintf(lcd_debug_buf, sizeof(lcd_debug_buf),
                             "0x%02x = -1\n", lcdkit_dbg.lcdkit_ic_mipi_reg);
-      }
-      else
-      {
-         ret_len = snprintf(lcd_debug_buf, sizeof(lcd_debug_buf),
+        }
+        else
+        {
+            ret_len = snprintf(lcd_debug_buf, sizeof(lcd_debug_buf),
                             "0x%02x = 0x%02x\n", lcdkit_dbg.lcdkit_ic_mipi_reg,
                             lcdkit_dbg.lcdkit_ic_mipi_value);
-      }
+
+            lcdkit_release(ctrl);
+        }
+
    }
 
    /* copy to user */
@@ -1356,24 +1367,32 @@ static ssize_t lcdkit_mipi_reg_write(struct file *file,
    int delay_ms = 0;
    char lcd_debug_buf[256];
    char lcd_param_buf[256];
+   void *ctrl;
 
    char *cur = lcd_debug_buf;
 
-   if(!atomic_read(&mipi_path_status))
+   ctrl = lcdkit_get_dsi_ctrl_pdata();
+   if (NULL == ctrl)
    {
-      LCDKIT_ERR("the panel is closed, please open it firstly.\n");
+      LCDKIT_ERR("get ctrl padata failed.\n");
+      return -EFAULT;
+   }
+
+   ret = lcdkit_lock(ctrl);
+   if(ret)
+   {
+      LCDKIT_ERR("lock failed or panel off.\n");
       return -EFAULT;
    }
 
    if (count >= sizeof(lcd_debug_buf))
    {
       LCDKIT_ERR("input overflow \n");
-
-      return -EFAULT;
+      goto err_handle;
    }
 
    if (copy_from_user(lcd_debug_buf, buff, count))
-      return -EFAULT;
+      goto err_handle;
 
    lcd_debug_buf[count] = 0;   /* end of string */
 
@@ -1506,10 +1525,12 @@ static ssize_t lcdkit_mipi_reg_write(struct file *file,
    }
    else
    {
+      lcdkit_release(ctrl);
       return count;
    }
 
 err_handle:
+   lcdkit_release(ctrl);
    return -EFAULT;
 }
 
@@ -1540,6 +1561,7 @@ int lcdkit_debugfs_init(void)
 {
     static char already_init = 0;  // internal flag
     struct dentry* dent = NULL;
+    struct dentry* file = NULL;
 
     /* judge if already init */
     if (already_init)
@@ -1559,19 +1581,21 @@ int lcdkit_debugfs_init(void)
     }
 
     /* create reg_dbg_mipi node */
-    if (NULL == debugfs_create_file("lcdkit_dbg", 0644, dent, 0, &lcdkit_debug_fops))
+	file = debugfs_create_file("lcdkit_dbg", 0644, dent, 0, &lcdkit_debug_fops);
+    if (IS_ERR_OR_NULL(file))
     {
         LCDKIT_ERR("(%d): debugfs_create_file: lcdkit_dbg fail\n", __LINE__);
         goto err_create_mipi;
     }
 
 #if 0
-   /* create reg_dbg_mipi node */
-   if (NULL == debugfs_create_file("reg_dbg_mipi", 0644, dent, 0, &lcdkit_dbg_reg_mipi_fops))
+    /* create reg_dbg_mipi node */
+	file = debugfs_create_file("reg_dbg_mipi", 0644, dent, 0, &lcdkit_dbg_reg_mipi_fops);
+    if (IS_ERR_OR_NULL(file))
     {
-      LCDKIT_ERR("(%d): debugfs_create_file: reg_dbg fail\n", __LINE__);
-      goto err_create_mipi;
-   }
+        LCDKIT_ERR("(%d): debugfs_create_file: reg_dbg fail\n", __LINE__);
+        goto err_create_mipi;
+    }
 #endif
 
     already_init = 1;  // set flag

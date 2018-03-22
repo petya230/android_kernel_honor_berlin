@@ -44,6 +44,12 @@
 #ifdef CONFIG_HISI_FB_6250
 #endif
 
+struct lcdkit_private_info {
+    u32 platform_esd_support;
+    u32 platform_esd_reg;
+    u32 platform_esd_value;
+};
+extern struct lcdkit_private_info g_lcdkit_pri_info;
 /***********************************************************
 *variable declaration
 ***********************************************************/

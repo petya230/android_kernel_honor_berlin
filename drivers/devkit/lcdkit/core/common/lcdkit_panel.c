@@ -6,7 +6,7 @@
 struct lcdkit_adapt_func lcdkit_adapt_func_array[] = {
     {0, lcdkit_jdi_nt35696_5p5_gram_check_show},//checksum show
 };
-
+uint32_t checksum_start = LCDKIT_CHECKSUM_END;
 void lcdkit_diff_func_init(struct device_node* np, void* pdata)
 {
     if (!strncmp(lcdkit_info.panel_infos.panel_name, "JDI_NT35696 5.5' CMD TFT 1920 x 1080", strlen(lcdkit_info.panel_infos.panel_name))) {

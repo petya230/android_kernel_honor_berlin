@@ -233,6 +233,13 @@ enum PERI_VOLTAGE_VALUE {
 	PERI_VOLTAGE_08V = 0x2,
 };
 
+/* LCD PANEL BACKLIGHT STEP */
+enum LCD_PANEL_BACKLIGHT_STEP {
+	LCD_PANEL_BACKLIGHT_STEP_255 = 0,
+	LCD_PANEL_BACKLIGHT_STEP_1024,
+	LCD_PANEL_BACKLIGHT_STEP_4096,
+};
+
 #define MIPI_DSI_BIT_CLK_STR1	"00001"
 #define MIPI_DSI_BIT_CLK_STR2	"00010"
 #define MIPI_DSI_BIT_CLK_STR3	"00100"
@@ -480,6 +487,9 @@ struct mipi_panel_info {
 	uint32_t rg_vrefsel_vcm_data_adjust;
 
 	uint32_t phy_mode;  //0: DPHY, 1:CPHY
+	uint32_t lp11_flag;
+	uint32_t phy_m_n_count_update;  /* 0:old ,1:new can get 988.8M */
+
 };
 
 struct sbl_panel_info {
@@ -672,6 +682,7 @@ struct hisi_panel_info {
 	uint32_t bl_set_type;
 	uint32_t bl_min;
 	uint32_t bl_max;
+	uint32_t bl_steps;
 	uint32_t bl_default;
 	uint32_t blpwm_precision_type;
 	uint32_t blpwm_out_div_value;
@@ -683,7 +694,7 @@ struct hisi_panel_info {
 	uint64_t pxl_clk_rate_adjust;
 	uint32_t pxl_clk_rate_div;
 	uint32_t vsync_ctrl_type;
-	uint8_t  fake_hdmi;
+	uint8_t fake_hdmi;
 	uint8_t  reserved[3];
 
 	//ifbc
