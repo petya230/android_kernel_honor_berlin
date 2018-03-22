@@ -28,6 +28,12 @@
 #ifdef CONFIG_HISI_CORESIGHT_TRACE
 #include <linux/coresight.h>
 #endif
+#include <linux/io.h>
+#include <linux/hisi/hisi_idle_sleep.h>
+#include <linux/spinlock.h>
+#include <soc_acpu_baseaddr_interface.h>
+#include <soc_sctrl_interface.h>
+#include <linux/of_platform.h>
 
 enum {
 	LITTLE_CLUSTER_ID = 0,
@@ -35,6 +41,42 @@ enum {
 	MAX_CLUSTER_ID,
 };
 static unsigned long cpu_on_hotplug = 0;
+
+static DEFINE_SPINLOCK(s_idle_sleep_lock);//lint !e64 !e570 !e708 !e785
+/*sync with lpm3*/
+u32 *idle_sleep_vote_addr;
+
+/*
+ * hisi_idle_sleep_vote - vote for idle sleep in lpm3
+ *
+ * modid: modid
+ * val:  0, can enter idle sleep;1 for not
+ *
+ * Called from the device that need access peripheral zone.
+ */
+s32 hisi_idle_sleep_vote(u32 modid, u32 val)
+{
+	unsigned long flags;
+
+	if (modid >= ID_MUX)
+		return -1;
+	if (!idle_sleep_vote_addr)
+		return -1;
+
+	spin_lock_irqsave(&s_idle_sleep_lock, flags);//lint !e550
+	if (val)
+		*idle_sleep_vote_addr |= (u32)BIT(modid);
+	else
+		*idle_sleep_vote_addr &=  ~ (u32)BIT(modid);
+	spin_unlock_irqrestore(&s_idle_sleep_lock, flags);//lint !e550
+
+	return 0;
+}
+u32 hisi_idle_sleep_getval(void)
+{
+	return *idle_sleep_vote_addr;
+}
+
 /*
  * hisi_enter_idle_state - Programs CPU to enter the specified state
  *
@@ -235,6 +277,26 @@ static int __init hisi_multidrv_idle_init(struct cpuidle_driver *drv, int cluste
 	return 0;
 }
 
+static int __init hisi_idle_sleep_init(void)
+{
+	struct device_node *np = NULL;
+	uint32_t vote_addr;
+	int ret;
+
+	idle_sleep_vote_addr = 0;
+
+	np = of_find_compatible_node(NULL, NULL, "hisi,idle-sleep");//lint !e838
+	if (!np)
+		return -ENODEV;
+
+	ret = of_property_read_u32_array(np, "vote-addr", &vote_addr, 1UL);
+	if (ret)
+		return -EFAULT;
+
+	idle_sleep_vote_addr = (u32 *)ioremap((u64)vote_addr, 8UL);
+
+	return 0;
+}
 
 static int cpuidle_decoup_hotplug_notify(struct notifier_block *nb,
 		unsigned long action, void *hcpu)
@@ -296,6 +358,12 @@ static int __init hisi_idle_init(void)
 		return ret;
 	}
 #endif
+
+	ret = hisi_idle_sleep_init();
+	if (ret) {
+		pr_err("maybe idle sleep vote not supported.\n");
+		return ret;
+	}
 	return 0;
 }
 /*lint -e528 -esym(528,*)*/

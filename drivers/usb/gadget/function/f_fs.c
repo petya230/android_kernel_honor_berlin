@@ -494,6 +494,12 @@ static ssize_t ffs_ep0_read(struct file *file, char __user *buf,
 
 		spin_unlock_irq(&ffs->ev.waitq.lock);
 
+		if (len > PAGE_SIZE) {
+			pr_err("[%s] read len exceeds PAGE_SIZE\n", __func__);
+			ret = -EINVAL;
+			goto done_mutex;
+		}
+
 		if (likely(len)) {
 			data = kmalloc(len, GFP_KERNEL);
 			if (unlikely(!data)) {
@@ -833,7 +839,12 @@ static ssize_t ffs_epfile_io(struct file *file, struct ffs_io_data *io_data)
 			} else if (unlikely(
 				   wait_for_completion_interruptible(&done))) {
 				ret = -EINTR;
-				usb_ep_dequeue(ep->ep, req);
+				spin_lock_irq(&epfile->ffs->eps_lock);
+				if (epfile->ep != ep)
+					ret = -ESHUTDOWN;
+				else
+					usb_ep_dequeue(ep->ep, req);
+				spin_unlock_irq(&epfile->ffs->eps_lock);
 			} else {
 				/*
 				 * XXX We may end up silently droping data
@@ -3011,7 +3022,7 @@ static int ffs_func_setup(struct usb_function *f,
 	 * as well (as it's straightforward) but what to do with any
 	 * other request?
 	 */
-	if (ffs->state != FFS_ACTIVE)
+	if (!ffs || ffs->state != FFS_ACTIVE)
 		return -ENODEV;
 
 	switch (creq->bRequestType & USB_RECIP_MASK) {
