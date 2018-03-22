@@ -46,7 +46,7 @@
  *
  */
 
-/*lint --e{537} */
+/*lint --e{537,826} */
 #include <linux/kernel.h>
 #include "bsp_sram.h"
 #include "mdrv_sysboot.h"
@@ -55,7 +55,7 @@
 #include "bsp_blk.h"
 #include "bsp_onoff.h"
 
-#define SRAM_REBOOT_ADDR  (((SRAM_SMALL_SECTIONS*)(SRAM_BASE_ADDR + SRAM_OFFSET_SMALL_SECTIONS))->SRAM_REBOOT_INFO)
+#define SRAM_REBOOT_ADDR  (((SRAM_SMALL_SECTIONS*)((char*)SRAM_BASE_ADDR + SRAM_OFFSET_SMALL_SECTIONS))->SRAM_REBOOT_INFO)
 
 
 /*****************************************************************************

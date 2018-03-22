@@ -1,5 +1,16 @@
-
-/*lint -e778 -e732 -e845 -e774*/
+/* Copyright (c) 2013-2014, Hisilicon Tech. Co., Ltd. All rights reserved.
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License version 2 and
+* only version 2 as published by the Free Software Foundation.
+*
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.	See the
+* GNU General Public License for more details.
+*
+*/
+/*lint -e778 -e732 -e845 -e774 -e838*/
 
 #include "hisi_overlay_utils.h"
 #include "hisi_display_effect.h"
@@ -7,8 +18,6 @@
 // 128 bytes
 #define SMMU_RW_ERR_ADDR_SIZE	(128)
 
-/* mmbuf gen pool */
-static struct gen_pool *g_mmbuf_gen_pool = NULL;
 static dss_mmbuf_t g_pre_online_mmbuf[DSS_CHN_MAX_DEFINE] = {{0,0}};
 static uint32_t vactive_timeout_count = 0;
 
@@ -5196,7 +5205,7 @@ int hisi_dss_mctl_ov_config(struct hisi_fb_data_type *hisifd, dss_overlay_t *pov
 	if (ovl_idx == DSS_OVL0) {
 		mctl->ctl_mutex_itf = set_bits32(mctl->ctl_mutex_itf, 0x1, 2, 0);
 		mctl->ctl_mutex_dbuf = set_bits32(mctl->ctl_mutex_dbuf, 0x1, 2, 0);
-	#if defined(CONFIG_HISI_FB_3650) || defined(CONFIG_HISI_FB_6250)
+	#if defined(CONFIG_HISI_FB_3650) || defined(CONFIG_HISI_FB_6250) || defined(CONFIG_HISI_FB_660)
 		mctl->ctl_mutex_scf = set_bits32(mctl->ctl_mutex_scf, 0x1, 1, 0);
 	#endif
 	} else if (ovl_idx == DSS_OVL1) {
@@ -5222,7 +5231,7 @@ int hisi_dss_mctl_ov_config(struct hisi_fb_data_type *hisifd, dss_overlay_t *pov
 
 	if ((ovl_idx == DSS_OVL0) || (ovl_idx == DSS_OVL1)) {
 		if (is_first_ov_block) {
-		#if defined(CONFIG_HISI_FB_3650) || defined(CONFIG_HISI_FB_6250)
+		#if defined(CONFIG_HISI_FB_3650) || defined(CONFIG_HISI_FB_6250) || defined(CONFIG_HISI_FB_660)
 			mctl_sys->ov_flush_en[ovl_idx] = set_bits32(mctl_sys->ov_flush_en[ovl_idx], 0xf, 4, 0);
 		#else
 			mctl_sys->ov_flush_en[ovl_idx] = set_bits32(mctl_sys->ov_flush_en[ovl_idx], 0xd, 4, 0);
@@ -5373,11 +5382,11 @@ int hisi_dss_ovl_base_config(struct hisi_fb_data_type *hisifd, dss_overlay_t *po
 	if (pov_h_block && pov_req && (pov_req->ov_block_nums != 0)) {
 		if (pov_req->ov_block_nums > 1) {
 			pov_h_block_infos_tmp = (dss_overlay_block_t *)(pov_req->ov_block_infos_ptr);
-			for (m = ov_h_block_idx; m < pov_req->ov_block_nums; m++) {
+			for (m = ov_h_block_idx; m < (pov_req->ov_block_nums); m++) {
 				pov_h_block_tmp = &(pov_h_block_infos_tmp[m]);
 				has_base = false;
 
-				for (i = 0; i < pov_h_block_tmp->layer_nums; i++) {
+				for (i = 0; i < (pov_h_block_tmp->layer_nums); i++) {
 					layer = &(pov_h_block_tmp->layer_infos[i]);
 					//layer_idx = layer->layer_idx;
 
@@ -5406,16 +5415,16 @@ int hisi_dss_ovl_base_config(struct hisi_fb_data_type *hisifd, dss_overlay_t *po
 							ovl->ovl_layer[layer_idx].layer_pattern =
 								set_bits32(ovl->ovl_layer[layer_idx].layer_pattern, layer->color, 32, 0);
 							ovl->ovl_layer[layer_idx].layer_cfg =
-								set_bits32(ovl->ovl_layer[layer_idx].layer_cfg, 0x1, 1, 0);
+								set_bits32(ovl->ovl_layer[layer_idx].layer_cfg, 1, 1, 0);
 							ovl->ovl_layer[layer_idx].layer_cfg =
-								set_bits32(ovl->ovl_layer[layer_idx].layer_cfg, 0x1, 1, 8);
+								set_bits32(ovl->ovl_layer[layer_idx].layer_cfg, 1, 1, 8);
 						} else {
 								ovl->ovl_layer[layer_idx].layer_pattern =
-							set_bits32(ovl->ovl_layer[layer_idx].layer_pattern, 0x0, 32, 0);
+							set_bits32(ovl->ovl_layer[layer_idx].layer_pattern, 0, 32, 0);
 								ovl->ovl_layer[layer_idx].layer_cfg =
-							set_bits32(ovl->ovl_layer[layer_idx].layer_cfg, 0x1, 1, 0);
+							set_bits32(ovl->ovl_layer[layer_idx].layer_cfg, 1, 1, 0);
 								ovl->ovl_layer[layer_idx].layer_cfg =
-							set_bits32(ovl->ovl_layer[layer_idx].layer_cfg, 0x0, 1, 8);
+							set_bits32(ovl->ovl_layer[layer_idx].layer_cfg, 0, 1, 8);
 						}
 
 						ovl->ovl_layer_used[layer_idx] = 1;
@@ -5467,7 +5476,7 @@ int hisi_dss_ovl_base_config(struct hisi_fb_data_type *hisifd, dss_overlay_t *po
 	return 0;
 }
 
-/*lint -e676*/
+/*lint -e676 -e644*/
 int hisi_dss_ovl_layer_config(struct hisi_fb_data_type *hisifd, dss_overlay_t *pov_req,
 	dss_layer_t *layer, dss_rect_t *wb_ov_block_rect, bool has_base)
 {
@@ -5478,8 +5487,15 @@ int hisi_dss_ovl_layer_config(struct hisi_fb_data_type *hisifd, dss_overlay_t *p
 	dss_rect_t wb_ov_rect;
 	dss_rect_t dst_rect;
 
-	BUG_ON(hisifd == NULL);
-	BUG_ON(layer == NULL);
+	if (hisifd == NULL) {
+		HISI_FB_ERR("hisifd is NULL Point.\n");
+		return -EINVAL;
+	}
+
+	if (layer == NULL) {
+		HISI_FB_ERR("layer is NULL Point.\n");
+		return -EINVAL;
+	}
 
 	ovl_idx = hisifd->ov_req.ovl_idx;
 	layer_idx = layer->layer_idx;
@@ -5609,7 +5625,7 @@ int hisi_dss_ovl_layer_config(struct hisi_fb_data_type *hisifd, dss_overlay_t *p
 
 	return 0;
 }
-/*lint +e676*/
+/*lint +e676 +e644*/
 
 /*******************************************************************************
 ** dirty_region_updt
@@ -5617,9 +5633,20 @@ int hisi_dss_ovl_layer_config(struct hisi_fb_data_type *hisifd, dss_overlay_t *p
 static void hisi_dss_dirty_region_dbuf_set_reg(struct hisi_fb_data_type *hisifd,
 	char __iomem *dss_base, dirty_region_updt_t *s_dirty_region_updt)
 {
-	BUG_ON(hisifd == NULL);
-	BUG_ON(dss_base == NULL);
-	BUG_ON(s_dirty_region_updt == NULL);
+	if (hisifd == NULL) {
+		HISI_FB_DEBUG("hisifd is NULL!\n");
+		return;
+	}
+
+	if (dss_base == NULL) {
+		HISI_FB_DEBUG("dss_base is NULL!\n");
+		return;
+	}
+
+	if (s_dirty_region_updt == NULL) {
+		HISI_FB_DEBUG("s_dirty_region_updt is NULL!\n");
+		return;
+	}
 
 	hisifd->set_reg(hisifd, dss_base + DSS_DBUF0_OFFSET + DBUF_FRM_SIZE,
 		s_dirty_region_updt->dbuf_frm_size, 32, 0);
@@ -5631,7 +5658,7 @@ static void hisi_dss_dirty_region_dbuf_set_reg(struct hisi_fb_data_type *hisifd,
 		s_dirty_region_updt->dpp_img_hrz, 13, 0);
 	hisifd->set_reg(hisifd, dss_base + DSS_DPP_OFFSET + DPP_IMG_VRT,
 		s_dirty_region_updt->dpp_img_vrt, 13, 0);
-#elif defined(CONFIG_HISI_FB_3660) || defined(CONFIG_HISI_FB_970)
+#elif defined(CONFIG_HISI_FB_3660) || defined(CONFIG_HISI_FB_970) || defined (CONFIG_HISI_FB_660)
 	hisifd->set_reg(hisifd, dss_base + DSS_DPP_OFFSET + DPP_IMG_SIZE_BEF_SR,
 		((s_dirty_region_updt->dpp_img_vrt_bef_sr << 16) | s_dirty_region_updt->dpp_img_hrz_bef_sr), 32, 0);
 	hisifd->set_reg(hisifd, dss_base + DSS_DPP_OFFSET + DPP_IMG_SIZE_AFT_SR,
@@ -5778,7 +5805,7 @@ void hisi_dss_dirty_region_updt_config(struct hisi_fb_data_type *hisifd,
 		dirty = pov_req->dirty_rect;
 	}
 
-	if (hisifd->panel_info.xres >= dirty.w) {
+	if ((hisifd->panel_info.xres) >= dirty.w) {
 		h_porch_pading = hisifd->panel_info.xres - dirty.w;
 	}
 
@@ -5936,7 +5963,6 @@ static uint32_t hisi_calculate_display_addr_wb(bool mmu_enable, dss_wb_layer_t *
 		top /= 2;
 	} else {
 		HISI_FB_ERR("NOT SUPPORT this add_type(%d).\n", add_type);
-		BUG_ON(1);
 	}
 
 	bpp = wb_layer->dst.bpp;
@@ -6012,7 +6038,7 @@ int hisi_dss_wdfc_config(struct hisi_fb_data_type *hisifd, dss_wb_layer_t *layer
 	}
 
 	dfc_pix_in_num = (layer->dst.bpp <= 2) ? 0x1 : 0x0;
-
+	/*lint -e834 -e737*/
 	if (layer->need_cap & CAP_AFBCE) {
 		aligned_rect->x = ALIGN_DOWN(in_rect.x, aligned_pixel);
 		aligned_rect->w = ALIGN_UP(in_rect.x - aligned_rect->x + in_rect.w + dfc_w, aligned_pixel);
@@ -6060,7 +6086,7 @@ int hisi_dss_wdfc_config(struct hisi_fb_data_type *hisifd, dss_wb_layer_t *layer
 		top_pad = 0;
 		bottom_pad = aligned_rect->h - in_rect.h;
 	}
-
+	/*lint +e834 +e737*/
 	dfc->disp_size = set_bits32(dfc->disp_size, (size_vrt | (size_hrz << 16)), 32, 0);
 	dfc->pix_in_num = set_bits32(dfc->pix_in_num, dfc_pix_in_num, 1, 0);
 	dfc->disp_fmt = set_bits32(dfc->disp_fmt, dfc_fmt, 5, 1);
@@ -6138,9 +6164,20 @@ static void hisi_dss_wdma_init(char __iomem *wdma_base, dss_wdma_t *s_wdma)
 static void hisi_dss_wdma_set_reg(struct hisi_fb_data_type *hisifd,
 	char __iomem *wdma_base, dss_wdma_t *s_wdma)
 {
-	BUG_ON(hisifd == NULL);
-	BUG_ON(wdma_base == NULL);
-	BUG_ON(s_wdma == NULL);
+	if (hisifd == NULL) {
+		HISI_FB_DEBUG("hisifd is NULL!\n");
+		return;
+	}
+
+	if (wdma_base == NULL) {
+		HISI_FB_DEBUG("wdma_base is NULL!\n");
+		return;
+	}
+
+	if (s_wdma == NULL) {
+		HISI_FB_DEBUG("s_wdma is NULL!\n");
+		return;
+	}
 
 	hisifd->set_reg(hisifd, wdma_base + CH_REG_DEFAULT, 0x1, 32, 0);
 	hisifd->set_reg(hisifd, wdma_base + CH_REG_DEFAULT, 0x0, 32, 0);
@@ -6223,9 +6260,10 @@ int hisi_dss_wdma_config(struct hisi_fb_data_type *hisifd, dss_overlay_t *pov_re
 	uint32_t stride_align = 0;
 	uint32_t addr_align = 0;
 
-	BUG_ON(hisifd == NULL);
-	BUG_ON(pov_req == NULL);
-	BUG_ON(layer == NULL);
+	if (NULL == hisifd || NULL == pov_req || NULL == layer) {
+		HISI_FB_ERR("NULL ptr.\n");
+		return -EINVAL;
+	}
 
 	chn_idx = layer->chn_idx;
 
@@ -6496,6 +6534,7 @@ int hisi_dss_module_init(struct hisi_fb_data_type *hisifd)
 	return 0;
 }
 
+/*lint -e661 -e662*/
 int hisi_dss_module_default(struct hisi_fb_data_type *hisifd)
 {
 	dss_module_reg_t *dss_module = NULL;
@@ -6622,7 +6661,7 @@ int hisi_dss_module_default(struct hisi_fb_data_type *hisifd)
 				dss_module->sharp_base[i] = dss_base + module_base;
 				hisi_dss_sharpness_init(dss_module->sharp_base[i], &(dss_module->sharp[i]));
 			}
-		#elif defined(CONFIG_HISI_FB_3660) || defined(CONFIG_HISI_FB_970)
+		#elif defined(CONFIG_HISI_FB_3660) || defined(CONFIG_HISI_FB_970) || defined(CONFIG_HISI_FB_660)
 			module_base = g_dss_module_base[i][MODULE_PCSC];
 			if (module_base != 0) {
 				dss_module->pcsc_base[i] = dss_base + module_base;
@@ -6664,7 +6703,7 @@ int hisi_dss_module_default(struct hisi_fb_data_type *hisifd)
 
 	return 0;
 }
-
+/*lint +e661 +e662*/
 int hisi_dss_ch_module_set_regs(struct hisi_fb_data_type *hisifd, int32_t mctl_idx, int chn_idx, uint32_t wb_type, bool enable_cmdlist)
 {
 	dss_module_reg_t *dss_module = NULL;
@@ -6672,8 +6711,15 @@ int hisi_dss_ch_module_set_regs(struct hisi_fb_data_type *hisifd, int32_t mctl_i
 	int ret = 0;
 	uint32_t tmp = 0;
 
-	BUG_ON(hisifd == NULL);
-	BUG_ON((chn_idx < 0) || (chn_idx >= DSS_CHN_MAX_DEFINE));
+	if (hisifd == NULL) {
+		HISI_FB_DEBUG("hisifd is NULL!\n");
+		return -1;
+	}
+
+	if ((chn_idx < 0) || (chn_idx >= DSS_CHN_MAX_DEFINE)) {
+		HISI_FB_DEBUG("chn_idx is out of the range!\n");
+		return -1;
+	}
 
 	dss_module = &(hisifd->dss_module);
 	i = chn_idx;
@@ -6682,7 +6728,7 @@ int hisi_dss_ch_module_set_regs(struct hisi_fb_data_type *hisifd, int32_t mctl_i
 		if (chn_idx == DSS_RCHN_V2) {  //chicago copybit
 			tmp = (0x1 << DSS_CMDLIST_V2);
 			hisifd->cmdlist_idx = DSS_CMDLIST_V2;
-		} else if (chn_idx == DSS_WCHN_W2){
+		} else if (chn_idx == DSS_WCHN_W2) {
 			tmp = (0x1 << DSS_CMDLIST_W2);
 			hisifd->cmdlist_idx = DSS_CMDLIST_W2;
 		} else {
@@ -6756,7 +6802,7 @@ int hisi_dss_ch_module_set_regs(struct hisi_fb_data_type *hisifd, int32_t mctl_i
 	if (hisifd->dss_module.ce_used[i] == 1) {
 		hisi_dss_ce_set_reg( hisifd, dss_module->ce_base[i], &(dss_module->ce[i]));
 	}
-#elif defined(CONFIG_HISI_FB_3660) || defined(CONFIG_HISI_FB_970)
+#elif defined(CONFIG_HISI_FB_3660) || defined(CONFIG_HISI_FB_970) || defined(CONFIG_HISI_FB_660)
 	if (dss_module->pcsc_used[i] == 1) {
 		hisi_dss_csc_set_reg(hisifd, dss_module->pcsc_base[i], &(dss_module->pcsc[i]));
 	}
@@ -6789,7 +6835,11 @@ int hisi_dss_ov_module_set_regs(struct hisi_fb_data_type *hisifd, dss_overlay_t 
 	int ret = 0;
 	uint32_t tmp = 0;
 
-	BUG_ON(hisifd == NULL);
+	if (hisifd == NULL) {
+		HISI_FB_DEBUG("hisifd is NULL!\n");
+		return -1;
+	}
+
 
 	if (pov_req && pov_req->wb_layer_infos[0].chn_idx == DSS_WCHN_W2) { //chicago copybit no ovl
 		return 0;
@@ -6831,8 +6881,10 @@ int hisi_dss_ov_module_set_regs(struct hisi_fb_data_type *hisifd, dss_overlay_t 
 		hisi_dss_dpp_acm_gm_set_reg(hisifd);
 		hisi_dss_dpp_ace_set_reg(hisifd);
 	#ifdef CONFIG_HISI_FB_3660
-		hisi_dss_dpp_hiace_set_reg(hisifd);
 		hisi_dss_dpp_acm_gmp_set_reg(hisifd);
+	#endif
+	#if defined(CONFIG_HISI_FB_3660) || defined(CONFIG_HISI_FB_970)
+		hisi_dss_dpp_hiace_set_reg(hisifd);
 	#endif
 		hisi_dss_effect_set_reg(hisifd);
 	}
@@ -6846,7 +6898,7 @@ int hisi_dss_ov_module_set_regs(struct hisi_fb_data_type *hisifd, dss_overlay_t 
 err_return:
 	return ret;
 }
-
+/*lint -e438 -e550*/
 int hisi_dss_prev_module_set_regs(struct hisi_fb_data_type *hisifd,
 	dss_overlay_t *pov_req, uint32_t cmdlist_pre_idxs, bool enable_cmdlist, bool *use_comm_mmbuf)
 {
@@ -6883,7 +6935,7 @@ int hisi_dss_prev_module_set_regs(struct hisi_fb_data_type *hisifd,
 		//clear prev chn cmdlist reg default
 	#if defined (CONFIG_HISI_FB_3650) || defined (CONFIG_HISI_FB_6250)
 		ret = hisi_cmdlist_add_new_node(hisifd, cmdlist_pre_idxs, 0, 0, 0, 0, 0);
-	#elif defined (CONFIG_HISI_FB_3660) || defined(CONFIG_HISI_FB_970)
+	#elif defined (CONFIG_HISI_FB_3660) || defined(CONFIG_HISI_FB_970) || defined (CONFIG_HISI_FB_660)
 		if (pov_req->wb_enable) {
 			ret = hisi_cmdlist_add_new_node(hisifd, cmdlist_pre_idxs, 0, 1, 1, 1, 0);
 		} else {
@@ -6940,7 +6992,7 @@ int hisi_dss_prev_module_set_regs(struct hisi_fb_data_type *hisifd,
 				}
 			}
 
-			if (chn_idx == DSS_RCHN_V2) {  //chicago copybit
+			if (chn_idx == DSS_RCHN_V2) {
 				tmp = (0x1 << DSS_CMDLIST_V2);
 				hisifd->cmdlist_idx = DSS_CMDLIST_V2;
 			} else {
@@ -6968,11 +7020,11 @@ int hisi_dss_prev_module_set_regs(struct hisi_fb_data_type *hisifd,
 
 			/* MCTL */
 			dss_module->mctl_ch[chn_idx].chn_mutex =
-				set_bits32(dss_module->mctl_ch[chn_idx].chn_mutex, 0x1, 1, 0);
+				set_bits32(dss_module->mctl_ch[chn_idx].chn_mutex, 1, 1, 0);
 			dss_module->mctl_ch[chn_idx].chn_flush_en =
-				set_bits32(dss_module->mctl_ch[chn_idx].chn_flush_en, 0x1, 1, 0);
+				set_bits32(dss_module->mctl_ch[chn_idx].chn_flush_en, 1, 1, 0);
 			dss_module->mctl_ch[chn_idx].chn_ov_oen =
-				set_bits32(dss_module->mctl_ch[chn_idx].chn_ov_oen, 0x0, 32, 0);
+				set_bits32(dss_module->mctl_ch[chn_idx].chn_ov_oen, 0, 32, 0);
 			dss_module->mctl_ch_used[chn_idx] = 1;
 
 			hisi_dss_mctl_sys_ch_set_reg(hisifd, &(dss_module->mctl_ch_base[chn_idx]),
@@ -7000,8 +7052,9 @@ int hisi_dss_prev_module_set_regs(struct hisi_fb_data_type *hisifd,
 		for (k = 0; k < pov_req->wb_layer_nums; k++) {
 			wb_layer = &(pov_req->wb_layer_infos[k]);
 			chn_idx = wb_layer->chn_idx;
-			if (wb_layer->transform & HISI_FB_TRANSFORM_ROT_90)
+			if (wb_layer->transform & HISI_FB_TRANSFORM_ROT_90) {
 				has_rot = true;
+			}
 
 			if (chn_idx == DSS_WCHN_W2) {  //chicago copybit
 				hisifd->cmdlist_idx = DSS_CMDLIST_W2;
@@ -7056,7 +7109,7 @@ int hisi_dss_prev_module_set_regs(struct hisi_fb_data_type *hisifd,
 
 		for (i = 0; i < DSS_CHN_MAX_DEFINE; i++) {
 			if (dss_module->mctl_ch_used[i] == 1) {
-				if (i == DSS_RCHN_V2) {    //chicago copybit
+				if (i == DSS_RCHN_V2) {
 					hisifd->cmdlist_idx = DSS_CMDLIST_V2;
 				} else if (i == DSS_WCHN_W2) {
 					hisifd->cmdlist_idx = DSS_CMDLIST_W2;
@@ -7066,7 +7119,11 @@ int hisi_dss_prev_module_set_regs(struct hisi_fb_data_type *hisifd,
 
 				chn_mutex_base = dss_module->mctl_ch_base[i].chn_mutex_base +
 					g_dss_module_ovl_base[mctl_idx][MODULE_MCTL_BASE];
-				BUG_ON(chn_mutex_base == NULL);
+
+				if (chn_mutex_base == NULL) {
+					HISI_FB_DEBUG("chn_mutex_base is NULL!\n");
+					return -1;
+				}
 
 				hisifd->set_reg(hisifd, chn_mutex_base, 0, 32, 0);
 			}
@@ -7110,6 +7167,7 @@ int hisi_dss_prev_module_set_regs(struct hisi_fb_data_type *hisifd,
 err_return:
 	return ret;
 }
+/*lint +e438 +e550*/
 
 void hisi_dss_unflow_handler(struct hisi_fb_data_type *hisifd,
 	dss_overlay_t *pov_req, bool unmask)
@@ -7139,7 +7197,7 @@ void hisi_dss_unflow_handler(struct hisi_fb_data_type *hisifd,
 	} else {
 		; /* do nothing */
 	}
-#elif defined(CONFIG_HISI_FB_3660) || defined(CONFIG_HISI_FB_970)
+#elif defined(CONFIG_HISI_FB_3660) || defined(CONFIG_HISI_FB_970) || defined (CONFIG_HISI_FB_660)
 	if (pov_req->ovl_idx == DSS_OVL0) {
 		tmp = inp32(hisifd->dss_base + DSS_LDI0_OFFSET + LDI_CPU_ITF_INT_MSK);
 		if (unmask) {
@@ -7315,7 +7373,7 @@ int hisi_ov_compose_handler(struct hisi_fb_data_type *hisifd,
 		HISI_FB_ERR("hisi_dss_sharpness_config failed! ret = %d\n", ret);
 		goto err_return;
 	}
-#elif defined(CONFIG_HISI_FB_3660) || defined(CONFIG_HISI_FB_970)
+#elif defined(CONFIG_HISI_FB_3660) || defined(CONFIG_HISI_FB_970) || defined(CONFIG_HISI_FB_660)
 	ret = hisi_dss_arsr2p_config(hisifd, layer, aligned_rect, *rdma_stretch_enable);
 	if (ret != 0) {
 		HISI_FB_ERR("hisi_dss_arsr2p_config failed! ret = %d\n", ret);
@@ -7395,8 +7453,15 @@ int hisi_wb_compose_handler(struct hisi_fb_data_type *hisifd,
 	int32_t mctl_idx = 0;
 	dss_rect_t aligned_rect;
 
-	BUG_ON(hisifd == NULL);
-	BUG_ON(pov_req == NULL);
+	if (hisifd == NULL) {
+		HISI_FB_ERR("hisifd is NULL Point!");
+		return -EINVAL;
+	}
+
+	if (pov_req == NULL) {
+		HISI_FB_ERR("pov_req is NULL Point!");
+		return -EINVAL;
+	}
 
 	if (csc_needed) {
 		ret = hisi_dss_csc_config(hisifd, NULL, wb_layer);
@@ -7521,7 +7586,7 @@ static void hisifb_dss_on(struct hisi_fb_data_type *hisifd, int enable_cmdlist)
 		// smmu on
 		hisi_dss_smmu_on(hisifd);
 		// scl coef load
-		hisi_dss_scl_coef_on(hisifd, false, SCL_COEF_YUV_IDX);
+		hisi_dss_scl_coef_on(hisifd, false, SCL_COEF_YUV_IDX);//lint !e747
 
 		if (enable_cmdlist) {
 			hisi_dss_cmdlist_qos_on(hisifd);
@@ -7834,7 +7899,7 @@ void hisi_dss_mmbuf_on(struct hisi_fb_data_type *hisifd)
 		outp32(hisifd->sctrl_base + SCPEREN1, 0x3c00000);  //crg clock enable
 		outp32(hisifd->sctrl_base + SCPERRSTDIS1, 0x00001800);  //exit soft reset
 		outp32(hisifd->sctrl_base + SCISODIS, 0x8);   //iso enable
-    #elif defined(CONFIG_HISI_FB_3660) || defined(CONFIG_HISI_FB_970)
+    #elif defined(CONFIG_HISI_FB_3660) || defined(CONFIG_HISI_FB_970) || defined (CONFIG_HISI_FB_660)
 	       //step 1: module mtcmos on
 		outp32(hisifd->sctrl_base + 0x60, 0x8);  //mmbuf regulator enable
 		udelay(200);     //at least 100us
@@ -8011,7 +8076,7 @@ int hisi_overlay_on(struct hisi_fb_data_type *hisifd, bool fastboot_enable)
 			mctl_idx = DSS_MCTL1;
 		}
 
-		if ((hisifd->index == EXTERNAL_PANEL_IDX) && hisifd->panel_info.fake_hdmi)
+		if ((hisifd->index == EXTERNAL_PANEL_IDX) && hisifd->panel_info.fake_external)
 			enable_cmdlist = 0;
 
 		ldi_data_gate(hisifd, true);
@@ -8095,7 +8160,9 @@ int hisi_overlay_on(struct hisi_fb_data_type *hisifd, bool fastboot_enable)
 		enable_cmdlist = g_enable_ovl_cmdlist_offline;
 
 		hisi_dss_mctl_on(hisifd, DSS_MCTL2, enable_cmdlist, 0);
+	#if !defined(CONFIG_HISI_FB_660)
 		hisi_dss_mctl_on(hisifd, DSS_MCTL3, enable_cmdlist, 0);
+	#endif
 	#if defined (CONFIG_HISI_FB_3660) || defined(CONFIG_HISI_FB_970)
 		hisi_dss_mctl_on(hisifd, DSS_MCTL5, enable_cmdlist, 0);
 	#endif
@@ -8145,7 +8212,7 @@ int hisi_overlay_off(struct hisi_fb_data_type *hisifd)
 		}
 
 		enable_cmdlist = g_enable_ovl_cmdlist_online;
-		if ((hisifd->index == EXTERNAL_PANEL_IDX) && hisifd->panel_info.fake_hdmi)
+		if ((hisifd->index == EXTERNAL_PANEL_IDX) && hisifd->panel_info.fake_external)
 			enable_cmdlist = 0;
 
 		ret = hisi_dss_module_init(hisifd);
@@ -8275,10 +8342,10 @@ int hisi_overlay_off(struct hisi_fb_data_type *hisifd)
 	memset(&hisifd->ov_req_prev_prev, 0, sizeof(dss_overlay_t));
 	memset(&(hisifd->ov_block_infos_prev), 0,
 		HISI_DSS_OV_BLOCK_NUMS * sizeof(dss_overlay_block_t));
-	memset(&hisifd->ov_req_prev, 0, sizeof(dss_overlay_t));
 	memset(&(hisifd->ov_block_infos), 0,
 		HISI_DSS_OV_BLOCK_NUMS * sizeof(dss_overlay_block_t));
 	memset(&hisifd->ov_req, 0, sizeof(dss_overlay_t));
+	memset(&hisifd->ov_req_prev, 0, sizeof(dss_overlay_t));
 
 	HISI_FB_DEBUG("fb%d, -\n", hisifd->index);
 
@@ -8291,7 +8358,7 @@ int hisi_overlay_on_lp(struct hisi_fb_data_type *hisifd)
 	int enable_cmdlist = 0;
 
 	enable_cmdlist = g_enable_ovl_cmdlist_online;
-	if ((hisifd->index == EXTERNAL_PANEL_IDX) && hisifd->panel_info.fake_hdmi)
+	if ((hisifd->index == EXTERNAL_PANEL_IDX) && hisifd->panel_info.fake_external)
 		enable_cmdlist = 0;
 
 	if (hisifd->index == PRIMARY_PANEL_IDX) {
@@ -8317,7 +8384,7 @@ int hisi_overlay_off_lp(struct hisi_fb_data_type *hisifd)
 	int enable_cmdlist = 0;
 
 	enable_cmdlist = g_enable_ovl_cmdlist_online;
-	if ((hisifd->index == EXTERNAL_PANEL_IDX) && hisifd->panel_info.fake_hdmi)
+	if ((hisifd->index == EXTERNAL_PANEL_IDX) && hisifd->panel_info.fake_external)
 		enable_cmdlist = 0;
 
 	if (hisifd->index == PRIMARY_PANEL_IDX) {
@@ -8381,6 +8448,7 @@ bool hisi_dss_check_crg_sctrl_status(struct hisi_fb_data_type *hisifd)
 	return true;
 }
 
+/*lint -e30 -e142 -e438 -e550*/
 int hisi_overlay_ioctl_handler(struct hisi_fb_data_type *hisifd,
 	uint32_t cmd, void __user *argp)
 {
@@ -8448,8 +8516,9 @@ int hisi_overlay_ioctl_handler(struct hisi_fb_data_type *hisifd,
 		break;
 	}
 
-	return ret; //lint !e438
-} //lint !e550
+	return ret;
+}
+/*lint +e30 +e142 +e438 +e550*/
 
 int hisi_overlay_init(struct hisi_fb_data_type *hisifd)
 {
@@ -8492,12 +8561,12 @@ int hisi_overlay_init(struct hisi_fb_data_type *hisifd)
 	hisifd->rch2_ce_end_wq = NULL;
 	hisifd->rch4_ce_end_wq = NULL;
 	hisifd->dpp_ce_end_wq = NULL;
-#ifdef CONFIG_HISI_FB_3660
+#if defined(CONFIG_HISI_FB_3660) || defined(CONFIG_HISI_FB_970)
 	hisifd->hiace_end_wq = NULL;
 #endif
 
 	if ((hisifd->index == PRIMARY_PANEL_IDX) ||
-		(hisifd->index == EXTERNAL_PANEL_IDX && !hisifd->panel_info.fake_hdmi)) {
+		(hisifd->index == EXTERNAL_PANEL_IDX && !hisifd->panel_info.fake_external) ){
 		snprintf(wq_name, 128, "fb%d_dss_debug", hisifd->index);
 		hisifd->dss_debug_wq = create_singlethread_workqueue(wq_name);
 		if (!hisifd->dss_debug_wq) {
@@ -8524,7 +8593,7 @@ int hisi_overlay_init(struct hisi_fb_data_type *hisifd)
 			INIT_WORK(&hisifd->dpp_ce_end_work, hisi_dpp_ace_end_handle_func);
 		}
 
-#if defined(CONFIG_HISI_FB_3660) || defined(CONFIG_HISI_FB_970)
+#if defined(CONFIG_HISI_FB_3660) || defined(CONFIG_HISI_FB_970) || defined (CONFIG_HISI_FB_660)
 		if (hisifd->panel_info.hiace_support) {
 			snprintf(wq_name, 128, "fb%d_hiace_end", hisifd->index);
 			hisifd->hiace_end_wq = create_singlethread_workqueue(wq_name);
@@ -8624,7 +8693,7 @@ int hisi_overlay_deinit(struct hisi_fb_data_type *hisifd)
 		hisifd->dpp_ce_end_wq = NULL;
 	}
 
-#ifdef CONFIG_HISI_FB_3660
+#if defined(CONFIG_HISI_FB_3660) || defined(CONFIG_HISI_FB_970)
 	if (hisifd->hiace_end_wq) {
 		destroy_workqueue(hisifd->hiace_end_wq);
 		hisifd->hiace_end_wq = NULL;
@@ -8768,7 +8837,7 @@ int hisi_vactive0_start_config(struct hisi_fb_data_type *hisifd,
 				}
 
 				cmdlist_idxs = cmdlist_idxs_prev | cmdlist_idxs_prev_prev;
-
+				// cppcheck-suppress *
 				HISI_FB_ERR("fb%d, 1wait_for vactive0_start_flag timeout!ret=%d, "
 					"vactive0_start_flag=%d, pre_pre_frame_no=%u, frame_no=%u, TIMESTAMP_DIFF is %u us, "
 					"cmdlist_idxs_prev=0x%x, cmdlist_idxs_prev_prev=0x%x, cmdlist_idxs=0x%x, itf0_ints=0x%x\n",
@@ -8777,7 +8846,7 @@ int hisi_vactive0_start_config(struct hisi_fb_data_type *hisifd,
 					cmdlist_idxs_prev, cmdlist_idxs_prev_prev, cmdlist_idxs,
 				#if defined(CONFIG_HISI_FB_3650) || defined(CONFIG_HISI_FB_6250)
 					inp32(hisifd->dss_base + GLB_GLB_CPU_ITF0_INTS)
-				#elif defined (CONFIG_HISI_FB_3660) || defined(CONFIG_HISI_FB_970)
+				#elif defined (CONFIG_HISI_FB_3660) || defined(CONFIG_HISI_FB_970) || defined (CONFIG_HISI_FB_660)
   					inp32(hisifd->dss_base + DSS_LDI0_OFFSET + LDI_CPU_ITF_INTS)
 				#endif
 					);
@@ -8999,7 +9068,7 @@ int hisi_vactive0_start_config(struct hisi_fb_data_type *hisifd,
 		#if defined(CONFIG_HISI_FB_3650) || defined(CONFIG_HISI_FB_6250)
 			isr_s2_mask = inp32(hisifd->dss_base + GLB_GLB_CPU_ITF0_INT_MSK);
 			isr_s2 = inp32(hisifd->dss_base + GLB_GLB_CPU_ITF0_INTS);
-		#elif defined (CONFIG_HISI_FB_3660) || defined(CONFIG_HISI_FB_970)
+		#elif defined (CONFIG_HISI_FB_3660) || defined(CONFIG_HISI_FB_970) || defined (CONFIG_HISI_FB_660)
 			isr_s2_mask = inp32(hisifd->dss_base + DSS_LDI0_OFFSET + LDI_CPU_ITF_INT_MSK);
 			isr_s2 = inp32(hisifd->dss_base + DSS_LDI0_OFFSET + LDI_CPU_ITF_INTS);
 		#endif
@@ -9046,7 +9115,7 @@ int hisi_crc_enable(struct hisi_fb_data_type *hisifd,
 	if (hisifd->index == PRIMARY_PANEL_IDX) {
 	#if defined(CONFIG_HISI_FB_3650) || defined(CONFIG_HISI_FB_6250)
 		tmp = inp32(hisifd->dss_base + GLB_INT_MSK);
-	#elif defined (CONFIG_HISI_FB_3660) || defined(CONFIG_HISI_FB_970)
+	#elif defined (CONFIG_HISI_FB_3660) || defined(CONFIG_HISI_FB_970) || defined (CONFIG_HISI_FB_660)
 		tmp = inp32(hisifd->dss_base + DSS_DPP_OFFSET + DPP_INT_MSK);
 	#endif
 
@@ -9066,13 +9135,13 @@ int hisi_crc_enable(struct hisi_fb_data_type *hisifd,
 
 	#if defined(CONFIG_HISI_FB_3650) || defined(CONFIG_HISI_FB_6250)
 		outp32(hisifd->dss_base + GLB_INT_MSK, tmp);
-	#elif defined (CONFIG_HISI_FB_3660) || defined(CONFIG_HISI_FB_970)
+	#elif defined (CONFIG_HISI_FB_3660) || defined(CONFIG_HISI_FB_970) || defined (CONFIG_HISI_FB_660)
 		outp32(hisifd->dss_base + DSS_DPP_OFFSET + DPP_INT_MSK, tmp);
 	#endif
 	} else if (hisifd->index == EXTERNAL_PANEL_IDX) {
 	#if defined(CONFIG_HISI_FB_3650) || defined(CONFIG_HISI_FB_6250)
 		tmp = inp32(hisifd->dss_base + GLB_INT_MSK);
-	#elif defined (CONFIG_HISI_FB_3660) || defined(CONFIG_HISI_FB_970)
+	#elif defined (CONFIG_HISI_FB_3660) || defined(CONFIG_HISI_FB_970) || defined (CONFIG_HISI_FB_660)
 		tmp = inp32(hisifd->dss_base + DSS_DPP_OFFSET + DPP_INT_MSK);
 	#endif
 
@@ -9092,7 +9161,7 @@ int hisi_crc_enable(struct hisi_fb_data_type *hisifd,
 
 	#if defined(CONFIG_HISI_FB_3650) || defined(CONFIG_HISI_FB_6250)
 		outp32(hisifd->dss_base + GLB_INT_MSK, tmp);
-	#elif defined (CONFIG_HISI_FB_3660) || defined(CONFIG_HISI_FB_970)
+	#elif defined (CONFIG_HISI_FB_3660) || defined(CONFIG_HISI_FB_970) || defined (CONFIG_HISI_FB_660)
 		outp32(hisifd->dss_base + DSS_DPP_OFFSET + DPP_INT_MSK, tmp);
 	#endif
 	} else {
@@ -9118,7 +9187,7 @@ static int hisi_crc_disable(struct hisi_fb_data_type *hisifd)
 		tmp = inp32(hisifd->dss_base + GLB_INT_MSK);
 		tmp |= (BIT_CRC_OV0_INT | BIT_CRC_ITF0_INT | BIT_CRC_SUM_INT);
 		outp32(hisifd->dss_base + GLB_INT_MSK, tmp);
-	#elif defined (CONFIG_HISI_FB_3660) || defined(CONFIG_HISI_FB_970)
+	#elif defined (CONFIG_HISI_FB_3660) || defined(CONFIG_HISI_FB_970) || defined (CONFIG_HISI_FB_660)
 		tmp = inp32(hisifd->dss_base + DSS_DPP_OFFSET + DPP_INT_MSK);
 		tmp |= (BIT_CRC_OV0_INT | BIT_CRC_ITF0_INT | BIT_CRC_SUM_INT);
 		outp32(hisifd->dss_base + DSS_DPP_OFFSET + DPP_INT_MSK, tmp);
@@ -9132,7 +9201,7 @@ static int hisi_crc_disable(struct hisi_fb_data_type *hisifd)
 		tmp = inp32(hisifd->dss_base + GLB_INT_MSK);
 		tmp |= (BIT_CRC_OV1_INT | BIT_CRC_ITF1_INT | BIT_CRC_SUM_INT);
 		outp32(hisifd->dss_base + GLB_INT_MSK, tmp);
-	#elif defined (CONFIG_HISI_FB_3660) || defined(CONFIG_HISI_FB_970)
+	#elif defined (CONFIG_HISI_FB_3660) || defined(CONFIG_HISI_FB_970) || defined (CONFIG_HISI_FB_660)
 		tmp = inp32(hisifd->dss_base + DSS_DPP_OFFSET + DPP_INT_MSK);
 		tmp |= (BIT_CRC_OV1_INT | BIT_CRC_ITF1_INT | BIT_CRC_SUM_INT);
 		outp32(hisifd->dss_base + DSS_DPP_OFFSET + DPP_INT_MSK, tmp);
@@ -9302,7 +9371,7 @@ void hisi_ldi_underflow_handle_func(struct work_struct *work)
 	tmp = inp32(hisifd->dss_base + GLB_GLB_CPU_ITF0_INT_MSK);
 	tmp &= ~ BIT_LDI_UNFLOW;
 	outp32(hisifd->dss_base + GLB_GLB_CPU_ITF0_INT_MSK, tmp);
-#elif defined (CONFIG_HISI_FB_3660) || defined(CONFIG_HISI_FB_970)
+#elif defined (CONFIG_HISI_FB_3660) || defined(CONFIG_HISI_FB_970) || defined (CONFIG_HISI_FB_660)
 	isr_s1 = inp32(hisifd->dss_base + GLB_CPU_PDP_INTS);
 	isr_s2 = inp32(hisifd->dss_base + DSS_LDI0_OFFSET + LDI_CPU_ITF_INTS);
 	outp32(hisifd->dss_base + DSS_LDI0_OFFSET + LDI_CPU_ITF_INTS, isr_s2);

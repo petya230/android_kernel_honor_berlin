@@ -200,7 +200,10 @@ void hisi_cmdlist_set_reg(struct hisi_fb_data_type *hisifd, char __iomem *addr,
 		}
 	}
 
-	BUG_ON(index >= MAX_ITEM_INDEX);
+	if (index >= MAX_ITEM_INDEX) {
+		HISI_FB_ERR("index=%d is too large(1k)!\n", index);
+		return;
+	}
 
 	node->item_index = index;
 	node->list_header->total_items.bits.count = node->item_index + 1;
@@ -540,7 +543,6 @@ int hisi_cmdlist_add_nop_node(struct hisi_fb_data_type *hisifd, uint32_t cmdlist
 int hisi_cmdlist_add_new_node(struct hisi_fb_data_type *hisifd,
 	uint32_t cmdlist_idxs, int pending, int task_end, int remove, int last, uint32_t wb_type)
 {
-	char __iomem *cmdlist_base = NULL;
 	dss_cmdlist_node_t *node = NULL;
 	uint32_t cmdlist_idxs_temp = 0;
 	int i = 0;
@@ -548,7 +550,6 @@ int hisi_cmdlist_add_new_node(struct hisi_fb_data_type *hisifd,
 
 	BUG_ON(hisifd == NULL);
 
-	cmdlist_base = hisifd->dss_base + DSS_CMDLIST_OFFSET;
 	cmdlist_idxs_temp = cmdlist_idxs;
 
 	for (i = 0; i < HISI_DSS_CMDLIST_MAX; i++) {
@@ -576,7 +577,7 @@ int hisi_cmdlist_add_new_node(struct hisi_fb_data_type *hisifd,
 				node->list_header->flag.bits.event_list = remove ? 0x8 : (0x16 + i);
 			#endif
 		#if defined(CONFIG_HISI_FB_3660) || defined(CONFIG_HISI_FB_970)
-			} else if (i == DSS_CMDLIST_V2) {  //chicago copybit
+			} else if (i == DSS_CMDLIST_V2) {
 				node->list_header->flag.bits.event_list = remove ? 0x8 : 0x16;
 			} else if (i == DSS_CMDLIST_W2) {
 				node->list_header->flag.bits.event_list = remove ? 0x8 : 0x20;
@@ -732,10 +733,10 @@ int hisi_cmdlist_exec(struct hisi_fb_data_type *hisifd, uint32_t cmdlist_idxs)
 			}
 
 			if (is_timeout) {
-			#ifdef CONFIG_HISI_DSS_CMDLIST_LAST_USED
-				HISI_FB_ERR("cmdlist_ch%d not in idle state,ints=0x%x !\n", i, tmp);
-			#else
+			#ifndef CONFIG_HISI_DSS_CMDLIST_LAST_USED
 				HISI_FB_ERR("cmdlist_ch%d not in pending state,ints=0x%x !\n", i, tmp);
+			#else
+				HISI_FB_ERR("cmdlist_ch%d not in idle state,ints=0x%x !\n", i, tmp);
 			#endif
 
 				if (g_debug_ovl_cmdlist) {
@@ -853,7 +854,7 @@ int hisi_cmdlist_config_start(struct hisi_fb_data_type *hisifd, int mctl_idx, ui
 
 	return 0;
 }
-#elif defined(CONFIG_HISI_FB_3660) || defined(CONFIG_HISI_FB_970)
+#elif defined(CONFIG_HISI_FB_3660) || defined(CONFIG_HISI_FB_970) || defined (CONFIG_HISI_FB_660)
 extern uint32_t g_dss_module_ovl_base[DSS_MCTL_IDX_MAX][MODULE_OVL_MAX];
 int hisi_cmdlist_config_start(struct hisi_fb_data_type *hisifd, int mctl_idx, uint32_t cmdlist_idxs, uint32_t wb_compose_type)
 {
@@ -863,8 +864,8 @@ int hisi_cmdlist_config_start(struct hisi_fb_data_type *hisifd, int mctl_idx, ui
 	uint32_t offset = 0;
 	uint32_t list_addr = 0;
 	uint32_t cmdlist_idxs_temp = 0;
-	int i = 0;
 	int temp = 0;
+	int i = 0;
 	int status_temp = 0;
 	int ints_temp = 0;
 
@@ -899,16 +900,16 @@ int hisi_cmdlist_config_start(struct hisi_fb_data_type *hisifd, int mctl_idx, ui
 					cmdlist_base + CMDLIST_ADDR_MASK_EN, BIT(i));
 			}
 
-			set_reg(cmdlist_base + CMDLIST_CH0_CTRL + i * offset, mctl_idx, 3, 2); //start sel
+			set_reg(cmdlist_base + CMDLIST_CH0_CTRL + i * offset, mctl_idx, 3, 2);
 			if (mctl_idx <= DSS_MCTL1) {
-				set_reg(cmdlist_base + CMDLIST_CH0_CTRL + i * offset, 0x1, 1, 6); //scene sel online
+				set_reg(cmdlist_base + CMDLIST_CH0_CTRL + i * offset, 0x1, 1, 6);
 			} else {
-				set_reg(cmdlist_base + CMDLIST_CH0_CTRL + i * offset, 0x0, 1, 6); //scene sel offline
+				set_reg(cmdlist_base + CMDLIST_CH0_CTRL + i * offset, 0x0, 1, 6);
 			}
 
-			set_reg(cmdlist_base + CMDLIST_CH0_STAAD + i * offset, list_addr, 32, 0);  //addr
+			set_reg(cmdlist_base + CMDLIST_CH0_STAAD + i * offset, list_addr, 32, 0);
 
-			set_reg(cmdlist_base + CMDLIST_CH0_CTRL + i * offset, 0x1, 1, 0); //enable
+			set_reg(cmdlist_base + CMDLIST_CH0_CTRL + i * offset, 0x1, 1, 0);
 			if ((mctl_idx <= DSS_MCTL1) && ((ints_temp & 0x2) == 0x2)) {
 				set_reg(cmdlist_base + CMDLIST_SWRST, 0x1, 1, i);
 			}
@@ -951,7 +952,7 @@ void hisi_cmdlist_config_mif_reset(struct hisi_fb_data_type *hisifd,
 	bool is_timeout = true;
 	int i = 0;
 	int j = 0;
-	int mif_sub_ch_nums = 4; //MIF SUBCHANNEL NUM
+	int mif_sub_ch_nums = 4;
 	int tmp = 0;
 	int mif_nums_max = 0;
 
@@ -977,7 +978,7 @@ void hisi_cmdlist_config_mif_reset(struct hisi_fb_data_type *hisifd,
 					tmp |= inp32(dss_base + DSS_MIF_OFFSET + MIF_STAT1 + 0x10 * (i * mif_sub_ch_nums+ j));
 				}
 
-				if (((tmp & 0x1f) == 0x0) || delay_count > 500) {
+				if (delay_count > 500 || ((tmp & 0x1f) == 0x0)) {
 					is_timeout = (delay_count > 500) ? true : false;
 					delay_count = 0;
 					break;
@@ -1072,7 +1073,7 @@ void hisi_cmdlist_config_mif_reset(struct hisi_fb_data_type *hisifd,
 	}
 }
 
-
+/*lint -e679 -e527*/
 void hisi_cmdlist_config_reset(struct hisi_fb_data_type *hisifd,
 	dss_overlay_t *pov_req, uint32_t cmdlist_idxs)
 {
@@ -1115,8 +1116,8 @@ void hisi_cmdlist_config_reset(struct hisi_fb_data_type *hisifd,
 
 	mctl_idx = ovl_idx;
 
-#if defined(CONFIG_HISI_FB_3660) || defined(CONFIG_HISI_FB_970)
-	if (pov_req->wb_compose_type == DSS_WB_COMPOSE_COPYBIT) {  //chicago copybit
+#if defined(CONFIG_HISI_FB_3660) || defined(CONFIG_HISI_FB_970) || defined(CONFIG_HISI_FB_660)
+	if (pov_req->wb_compose_type == DSS_WB_COMPOSE_COPYBIT) {
 		mctl_idx = DSS_MCTL5;
 	}
 
@@ -1128,7 +1129,7 @@ void hisi_cmdlist_config_reset(struct hisi_fb_data_type *hisifd,
 			start_sel = inp32(cmdlist_base + CMDLIST_CH0_CTRL + i * offset);
 
 			if (((ints_temp & 0x2) == 0x2) && ((start_sel & 0x1c) == 0)) {
-				set_reg(cmdlist_base + CMDLIST_CH0_CTRL + i * offset, 0x6, 3, 2); //start sel
+				set_reg(cmdlist_base + CMDLIST_CH0_CTRL + i * offset, 0x6, 3, 2);
 				start_sel_temp |= (1 << i);
 			}
 		}
@@ -1147,7 +1148,7 @@ void hisi_cmdlist_config_reset(struct hisi_fb_data_type *hisifd,
 	cmdlist_idxs_temp = start_sel_temp;
 	for (i = 0; i < HISI_DSS_CMDLIST_MAX; i++) {
 		if ((cmdlist_idxs_temp & 0x1) == 0x1) {
-			set_reg(cmdlist_base + CMDLIST_CH0_CTRL + i * offset, mctl_idx, 3, 2); //start sel
+			set_reg(cmdlist_base + CMDLIST_CH0_CTRL + i * offset, mctl_idx, 3, 2);
 		}
 
 		cmdlist_idxs_temp = cmdlist_idxs_temp >> 1;
@@ -1279,7 +1280,6 @@ void hisi_cmdlist_config_reset(struct hisi_fb_data_type *hisifd,
 		tmp = inp32(hisifd->dss_base + GLB_MODULE1_CLK_SEL);
 		tmp &= ~(1 << 6);
 		set_reg(hisifd->dss_base + GLB_MODULE1_CLK_SEL, tmp, 32, 0);
-
 	#else
 		if (ovl_idx == DSS_OVL0) {
 			if (is_mipi_video_panel(hisifd) || (g_ldi_data_gate_en == 0)) {
@@ -1317,7 +1317,7 @@ void hisi_cmdlist_config_reset(struct hisi_fb_data_type *hisifd,
 			set_reg(tmp_base + MCTL_CTL_CLEAR, 0x1, 1, 0);
 		}
 
-	#if defined(CONFIG_HISI_FB_3650) || defined(CONFIG_HISI_FB_6250)
+	#if defined(CONFIG_HISI_FB_6250) || defined(CONFIG_HISI_FB_3650)
 		// prefix ce cancle
 		if (pinfo->prefix_ce_support == 1) {
 			if ((cmdlist_idxs & 0x4) == 0x4) {
@@ -1354,7 +1354,7 @@ void hisi_cmdlist_config_reset(struct hisi_fb_data_type *hisifd,
 
 	HISI_FB_DEBUG("fb%d, -.\n", hisifd->index);
 }
-
+/*lint +e679 +e527*/
 int hisi_cmdlist_config_stop(struct hisi_fb_data_type *hisifd, uint32_t cmdlist_pre_idxs)
 {
 	dss_overlay_t *pov_req = NULL;
@@ -1392,8 +1392,8 @@ int hisi_cmdlist_config_stop(struct hisi_fb_data_type *hisifd, uint32_t cmdlist_
 		if ((cmdlist_pre_idxs & tmp) == tmp){
 			hisifd->set_reg(hisifd, hisifd->dss_module.mctl_base[pov_req->ovl_idx] +
 				MCTL_CTL_MUTEX_RCH0 + i * 0x4, 0, 32, 0);
-		#if defined(CONFIG_HISI_FB_3660) || defined(CONFIG_HISI_FB_970)
-			hisifd->set_reg(hisifd, cmdlist_base + CMDLIST_CH0_CTRL + i * offset, 0x6, 3, 2); //start sel
+		#if defined(CONFIG_HISI_FB_3660) || defined(CONFIG_HISI_FB_970) || defined (CONFIG_HISI_FB_660)
+			hisifd->set_reg(hisifd, cmdlist_base + CMDLIST_CH0_CTRL + i * offset, 0x6, 3, 2);
 		#endif
 		}
 	}
@@ -1486,19 +1486,6 @@ static void hisi_dump_cmdlist_one_node (struct list_head *cmdlist_head, uint32_t
 			hisi_dump_cmdlist_content(cmdlist_head, filename, node->header_phys);
 		}
 
-#if 0
-		if ((node->list_header->next_list != 0x0) &&
-			(node->list_header->next_list != 0xFFFFFFFF)) {
-			snprintf(filename, 256, "/data/dssdump/next_list_0x%x.txt", node->list_header->next_list);
-			hisi_dump_cmdlist_content(cmdlist_head, filename, node->list_header->next_list);
-		}
-
-		if ((node->list_header->list_addr != 0x0) &&
-			(node->list_header->list_addr != 0xFFFFFFFF)) {
-			snprintf(filename, 256, "/data/dssdump/list_addr_0x%x.txt", node->list_header->list_addr);
-			hisi_dump_cmdlist_content(cmdlist_head, filename, node->list_header->list_addr);
-		}
-#endif
 		count = node->list_header->total_items.bits.count;
 		hisi_dump_cmdlist_node_items(node->list_item, count);
 
@@ -1719,8 +1706,8 @@ static int hisi_cmdlist_pool_init(struct hisi_fb_data_type *hisifd)
 	if (hisifd->index == AUXILIARY_PANEL_IDX) {
 		hisifd->sum_cmdlist_pool_size = 2 * one_cmdlist_pool_size;
 	} else {
-		if (hisifd->index == PRIMARY_PANEL_IDX || (hisifd->index == EXTERNAL_PANEL_IDX &&
-				!hisifd->panel_info.fake_hdmi)) {
+		if (hisifd->index == PRIMARY_PANEL_IDX ||
+			(hisifd->index == EXTERNAL_PANEL_IDX && !hisifd->panel_info.fake_external)) {
 			for (i = 0; i < HISI_DSS_CMDLIST_DATA_MAX; i++) {
 				hisifd->sum_cmdlist_pool_size += one_cmdlist_pool_size;
 			}
@@ -1847,8 +1834,8 @@ int hisi_cmdlist_init(struct hisi_fb_data_type *hisifd)
 		hisifd->copybit_info = hisi_copybit_info_alloc(hisifd);
 	#endif
 	} else {
-		if (hisifd->index == PRIMARY_PANEL_IDX || (hisifd->index == EXTERNAL_PANEL_IDX &&
-				!hisifd->panel_info.fake_hdmi)) {
+		if (hisifd->index == PRIMARY_PANEL_IDX ||
+			(hisifd->index == EXTERNAL_PANEL_IDX && !hisifd->panel_info.fake_external)) {
 			for (i = 0; i < HISI_DSS_CMDLIST_DATA_MAX; i++) {
 				hisifd->cmdlist_data_tmp[i] = hisi_cmdlist_data_alloc(hisifd);
 			}

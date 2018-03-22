@@ -13,7 +13,7 @@
 #ifndef HISI_FB_H
 #define HISI_FB_H
 
-
+/*lint -e551 -e551*/
 #include <linux/console.h>
 #include <linux/uaccess.h>
 #include <linux/leds.h>
@@ -65,7 +65,7 @@
 #include <linux/dma-buf.h>
 #include <linux/genalloc.h>
 #include <linux/hisi/hisi-iommu.h>
-
+/*lint +e551 +e551*/
 //#include <linux/huawei/hisi_irq_affinity.h>
 
 #include "hisi_fb_def.h"
@@ -85,6 +85,8 @@
 #include "hisi_overlay_utils_hi3660.h"
 #elif defined(CONFIG_HISI_FB_970)
 #include "hisi_overlay_utils_kirin970.h"
+#elif defined(CONFIG_HISI_FB_660)
+#include "hisi_overlay_utils_kirin660.h"
 #endif
 
 #include "hisi_dpe_utils.h"
@@ -197,7 +199,12 @@ struct hisifb_secure {
 	void (*secure_layer_deconfig) (struct hisi_fb_data_type *hisifd, int32_t chn_idx);
 	void (*notify_secure_switch) (struct hisi_fb_data_type *hisifd);
 	void (*set_reg) (uint32_t addr, uint32_t val, uint8_t bw, uint8_t bs);
-
+#if defined(CONFIG_HISI_FB_970)
+	void (*hdcp13_enable)(uint32_t en);
+	void (*hdcp22_enable)(uint32_t en);
+	void (*hdcp13_encrypt_enable)(uint32_t en);
+	void (*hdcp_dpc_sec_en)(void);
+#endif
 	struct hisi_fb_data_type *hisifd;
 };
 
@@ -263,7 +270,6 @@ struct hisifb_backlight {
 	struct workqueue_struct *sbl_queue;
 	struct work_struct sbl_work;
 };
-
 
 struct hisi_fb_data_type {
 	uint32_t index;
@@ -510,7 +516,7 @@ struct hisi_fb_data_type {
 	struct work_struct rch4_ce_end_work;
 	struct workqueue_struct *dpp_ce_end_wq;
 	struct work_struct dpp_ce_end_work;
-#if defined(CONFIG_HISI_FB_3660) || defined (CONFIG_HISI_FB_970)
+#if defined(CONFIG_HISI_FB_3660) || defined (CONFIG_HISI_FB_970) || defined (CONFIG_HISI_FB_660)
 	struct workqueue_struct *hiace_end_wq;
 	struct work_struct hiace_end_work;
 #endif
@@ -561,6 +567,8 @@ extern uint32_t g_underflow_stop_perf_stat;
 extern uint32_t g_fastboot_already_set;
 
 extern int g_debug_online_vactive;
+
+extern struct gen_pool *g_mmbuf_gen_pool;
 
 extern struct fb_info *fbi_list[HISI_FB_MAX_FBI_LIST];
 extern struct hisi_fb_data_type *hisifd_list[HISI_FB_MAX_FBI_LIST];

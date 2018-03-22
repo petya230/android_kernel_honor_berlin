@@ -174,8 +174,239 @@ void lcdkit_info_init(void* pdata)
         }
         /* IFBC Setting end */
     }
+    if (pinfo->ifbc_type == IFBC_TYPE_VESA3_75X_DUAL) {
+        //pinfo->bpp = LCD_RGB101010;
+        //pinfo->mipi.color_mode = DSI_30BITS_1;
+        pinfo->vesa_dsc.bits_per_component = 10;
+        pinfo->vesa_dsc.linebuf_depth = 11;
+        pinfo->vesa_dsc.bits_per_pixel = 8;
+        pinfo->vesa_dsc.initial_xmit_delay = 512;
 
+        pinfo->vesa_dsc.slice_width = 719;//1439
+        pinfo->vesa_dsc.slice_height = 7;//31;
 
+        pinfo->vesa_dsc.first_line_bpg_offset = 12;
+        pinfo->vesa_dsc.mux_word_size = 48;
+
+        /* DSC_CTRL */
+        pinfo->vesa_dsc.block_pred_enable = 1;//0;
+
+        /* RC_PARAM3 */
+        pinfo->vesa_dsc.initial_offset = 6144;
+
+        /* FLATNESS_QP_TH */
+        pinfo->vesa_dsc.flatness_min_qp = 7;
+        pinfo->vesa_dsc.flatness_max_qp = 16;
+
+        /* DSC_PARAM4 */
+        pinfo->vesa_dsc.rc_edge_factor= 0x6;
+        pinfo->vesa_dsc.rc_model_size = 8192;
+
+        /* DSC_RC_PARAM5: 0x330f0f */
+        pinfo->vesa_dsc.rc_tgt_offset_lo = (0x330f0f >> 20) & 0xF;
+        pinfo->vesa_dsc.rc_tgt_offset_hi = (0x330f0f >> 16) & 0xF;
+        pinfo->vesa_dsc.rc_quant_incr_limit1 = (0x330f0f >> 8) & 0x1F;
+        pinfo->vesa_dsc.rc_quant_incr_limit0 = (0x330f0f >> 0) & 0x1F;
+
+        /* DSC_RC_BUF_THRESH0: 0xe1c2a38 */
+        pinfo->vesa_dsc.rc_buf_thresh0 = (0xe1c2a38 >> 24) & 0xFF;
+        pinfo->vesa_dsc.rc_buf_thresh1 = (0xe1c2a38 >> 16) & 0xFF;
+        pinfo->vesa_dsc.rc_buf_thresh2 = (0xe1c2a38 >> 8) & 0xFF;
+        pinfo->vesa_dsc.rc_buf_thresh3 = (0xe1c2a38 >> 0) & 0xFF;
+
+        /* DSC_RC_BUF_THRESH1: 0x46546269 */
+        pinfo->vesa_dsc.rc_buf_thresh4 = (0x46546269 >> 24) & 0xFF;
+        pinfo->vesa_dsc.rc_buf_thresh5 = (0x46546269 >> 16) & 0xFF;
+        pinfo->vesa_dsc.rc_buf_thresh6 = (0x46546269 >> 8) & 0xFF;
+        pinfo->vesa_dsc.rc_buf_thresh7 = (0x46546269 >> 0) & 0xFF;
+
+        /* DSC_RC_BUF_THRESH2: 0x7077797b */
+        pinfo->vesa_dsc.rc_buf_thresh8 = (0x7077797b >> 24) & 0xFF;
+        pinfo->vesa_dsc.rc_buf_thresh9 = (0x7077797b >> 16) & 0xFF;
+        pinfo->vesa_dsc.rc_buf_thresh10 = (0x7077797b >> 8) & 0xFF;
+        pinfo->vesa_dsc.rc_buf_thresh11 = (0x7077797b >> 0) & 0xFF;
+
+        /* DSC_RC_BUF_THRESH3: 0x7d7e0000 */
+        pinfo->vesa_dsc.rc_buf_thresh12 = (0x7d7e0000 >> 24) & 0xFF;
+        pinfo->vesa_dsc.rc_buf_thresh13 = (0x7d7e0000 >> 16) & 0xFF;
+
+        /* DSC_RC_RANGE_PARAM0: 0x2022200 */
+        pinfo->vesa_dsc.range_min_qp0 = (0x2022200 >> 27) & 0x1F;
+        pinfo->vesa_dsc.range_max_qp0 = (0x2022200 >> 22) & 0x1F;
+        pinfo->vesa_dsc.range_bpg_offset0 = (0x2022200 >> 16) & 0x3F;
+        pinfo->vesa_dsc.range_min_qp1 = (0x2022200 >> 11) & 0x1F;
+        pinfo->vesa_dsc.range_max_qp1 = (0x2022200 >> 6) & 0x1F;
+        pinfo->vesa_dsc.range_bpg_offset1 = (0x2022200 >> 0) & 0x3F;
+
+        /* DSC_RC_RANGE_PARAM1: 0x94009be */
+        pinfo->vesa_dsc.range_min_qp2 = 5;//(0x94009be >> 27) & 0x1F;
+        pinfo->vesa_dsc.range_max_qp2 = 9;//(0x94009be >> 22) & 0x1F;
+        pinfo->vesa_dsc.range_bpg_offset2 = (0x94009be >> 16) & 0x3F;
+        pinfo->vesa_dsc.range_min_qp3 = 5;//(0x94009be >> 11) & 0x1F;
+        pinfo->vesa_dsc.range_max_qp3 = 10;//(0x94009be >> 6) & 0x1F;
+        pinfo->vesa_dsc.range_bpg_offset3 = (0x94009be >> 0) & 0x3F;
+
+        /* DSC_RC_RANGE_PARAM2, 0x19fc19fa */
+        pinfo->vesa_dsc.range_min_qp4 = 7;//(0x19fc19fa >> 27) & 0x1F;
+        pinfo->vesa_dsc.range_max_qp4 = 11;//(0x19fc19fa >> 22) & 0x1F;
+        pinfo->vesa_dsc.range_bpg_offset4 = (0x19fc19fa >> 16) & 0x3F;
+        pinfo->vesa_dsc.range_min_qp5 = 7;//(0x19fc19fa >> 11) & 0x1F;
+        pinfo->vesa_dsc.range_max_qp5 = 11;//(0x19fc19fa >> 6) & 0x1F;
+        pinfo->vesa_dsc.range_bpg_offset5 = (0x19fc19fa >> 0) & 0x3F;
+
+        /* DSC_RC_RANGE_PARAM3, 0x19f81a38 */
+        pinfo->vesa_dsc.range_min_qp6 = 7;//(0x19f81a38 >> 27) & 0x1F;
+        pinfo->vesa_dsc.range_max_qp6 = 11;//(0x19f81a38 >> 22) & 0x1F;
+        pinfo->vesa_dsc.range_bpg_offset6 = (0x19f81a38 >> 16) & 0x3F;
+        pinfo->vesa_dsc.range_min_qp7 = 7;//(0x19f81a38 >> 11) & 0x1F;
+        pinfo->vesa_dsc.range_max_qp7 = 12;//(0x19f81a38 >> 6) & 0x1F;
+        pinfo->vesa_dsc.range_bpg_offset7 = (0x19f81a38 >> 0) & 0x3F;
+
+        /* DSC_RC_RANGE_PARAM4, 0x1a781ab6 */
+        pinfo->vesa_dsc.range_min_qp8 = 7;//(0x1a781ab6 >> 27) & 0x1F;
+        pinfo->vesa_dsc.range_max_qp8 = 13;//(0x1a781ab6 >> 22) & 0x1F;
+        pinfo->vesa_dsc.range_bpg_offset8 = (0x1a781ab6 >> 16) & 0x3F;
+        pinfo->vesa_dsc.range_min_qp9 = 7;//(0x1a781ab6 >> 11) & 0x1F;
+        pinfo->vesa_dsc.range_max_qp9 = 14;//(0x1a781ab6 >> 6) & 0x1F;
+        pinfo->vesa_dsc.range_bpg_offset9 = (0x1a781ab6 >> 0) & 0x3F;
+
+        /* DSC_RC_RANGE_PARAM5, 0x2af62b34 */
+        pinfo->vesa_dsc.range_min_qp10 = 9;//(0x2af62b34 >> 27) & 0x1F;
+        pinfo->vesa_dsc.range_max_qp10 = 15;//(0x2af62b34 >> 22) & 0x1F;
+        pinfo->vesa_dsc.range_bpg_offset10 = (0x2af62b34 >> 16) & 0x3F;
+        pinfo->vesa_dsc.range_min_qp11 = 9;//(0x2af62b34 >> 11) & 0x1F;
+        pinfo->vesa_dsc.range_max_qp11 = 16;//(0x2af62b34 >> 6) & 0x1F;
+        pinfo->vesa_dsc.range_bpg_offset11 = (0x2af62b34 >> 0) & 0x3F;
+
+        /* DSC_RC_RANGE_PARAM6, 0x2b743b74 */
+        pinfo->vesa_dsc.range_min_qp12 = 9;//(0x2b743b74 >> 27) & 0x1F;
+        pinfo->vesa_dsc.range_max_qp12 = 17;//(0x2b743b74 >> 22) & 0x1F;
+        pinfo->vesa_dsc.range_bpg_offset12 = (0x2b743b74 >> 16) & 0x3F;
+        pinfo->vesa_dsc.range_min_qp13 = 11;//(0x2b743b74 >> 11) & 0x1F;
+        pinfo->vesa_dsc.range_max_qp13 = 17;//(0x2b743b74 >> 6) & 0x1F;
+        pinfo->vesa_dsc.range_bpg_offset13 = (0x2b743b74 >> 0) & 0x3F;
+
+        /* DSC_RC_RANGE_PARAM7, 0x6bf40000 */
+        pinfo->vesa_dsc.range_min_qp14 = 17;//(0x6bf40000 >> 27) & 0x1F;
+        pinfo->vesa_dsc.range_max_qp14 = 19;//(0x6bf40000 >> 22) & 0x1F;
+        pinfo->vesa_dsc.range_bpg_offset14 = (0x6bf40000 >> 16) & 0x3F;
+    }
+
+	if (pinfo->ifbc_type == IFBC_TYPE_VESA3X_DUAL) {
+		pinfo->vesa_dsc.bits_per_component = 8;
+		pinfo->vesa_dsc.linebuf_depth = 9;
+		pinfo->vesa_dsc.bits_per_pixel = 8;
+		pinfo->vesa_dsc.initial_xmit_delay = 512;
+
+		pinfo->vesa_dsc.slice_width = 719;//1439
+		pinfo->vesa_dsc.slice_height = 7;//31;
+
+		pinfo->vesa_dsc.first_line_bpg_offset = 12;
+		pinfo->vesa_dsc.mux_word_size = 48;
+
+		/* DSC_CTRL */
+		pinfo->vesa_dsc.block_pred_enable = 1;//0;
+
+		/* RC_PARAM3 */
+		pinfo->vesa_dsc.initial_offset = 6144;
+
+		/* FLATNESS_QP_TH */
+		pinfo->vesa_dsc.flatness_min_qp = 3;
+		pinfo->vesa_dsc.flatness_max_qp = 12;
+
+		/* DSC_PARAM4 */
+		pinfo->vesa_dsc.rc_edge_factor= 0x6;
+		pinfo->vesa_dsc.rc_model_size = 8192;
+
+		/* DSC_RC_PARAM5: 0x330b0b */
+		pinfo->vesa_dsc.rc_tgt_offset_lo = (0x330b0b >> 20) & 0xF;
+		pinfo->vesa_dsc.rc_tgt_offset_hi = (0x330b0b >> 16) & 0xF;
+		pinfo->vesa_dsc.rc_quant_incr_limit1 = (0x330b0b >> 8) & 0x1F;
+		pinfo->vesa_dsc.rc_quant_incr_limit0 = (0x330b0b >> 0) & 0x1F;
+
+		/* DSC_RC_BUF_THRESH0: 0xe1c2a38 */
+		pinfo->vesa_dsc.rc_buf_thresh0 = (0xe1c2a38 >> 24) & 0xFF;
+		pinfo->vesa_dsc.rc_buf_thresh1 = (0xe1c2a38 >> 16) & 0xFF;
+		pinfo->vesa_dsc.rc_buf_thresh2 = (0xe1c2a38 >> 8) & 0xFF;
+		pinfo->vesa_dsc.rc_buf_thresh3 = (0xe1c2a38 >> 0) & 0xFF;
+
+		/* DSC_RC_BUF_THRESH1: 0x46546269 */
+		pinfo->vesa_dsc.rc_buf_thresh4 = (0x46546269 >> 24) & 0xFF;
+		pinfo->vesa_dsc.rc_buf_thresh5 = (0x46546269 >> 16) & 0xFF;
+		pinfo->vesa_dsc.rc_buf_thresh6 = (0x46546269 >> 8) & 0xFF;
+		pinfo->vesa_dsc.rc_buf_thresh7 = (0x46546269 >> 0) & 0xFF;
+
+		/* DSC_RC_BUF_THRESH2: 0x7077797b */
+		pinfo->vesa_dsc.rc_buf_thresh8 = (0x7077797b >> 24) & 0xFF;
+		pinfo->vesa_dsc.rc_buf_thresh9 = (0x7077797b >> 16) & 0xFF;
+		pinfo->vesa_dsc.rc_buf_thresh10 = (0x7077797b >> 8) & 0xFF;
+		pinfo->vesa_dsc.rc_buf_thresh11 = (0x7077797b >> 0) & 0xFF;
+
+		/* DSC_RC_BUF_THRESH3: 0x7d7e0000 */
+		pinfo->vesa_dsc.rc_buf_thresh12 = (0x7d7e0000 >> 24) & 0xFF;
+		pinfo->vesa_dsc.rc_buf_thresh13 = (0x7d7e0000 >> 16) & 0xFF;
+
+		/* DSC_RC_RANGE_PARAM0: 0x1020100 */
+		pinfo->vesa_dsc.range_min_qp0 = (0x1020100 >> 27) & 0x1F; //lint !e572
+		pinfo->vesa_dsc.range_max_qp0 = (0x1020100 >> 22) & 0x1F;
+		pinfo->vesa_dsc.range_bpg_offset0 = (0x1020100 >> 16) & 0x3F;
+		pinfo->vesa_dsc.range_min_qp1 = (0x1020100 >> 11) & 0x1F;
+		pinfo->vesa_dsc.range_max_qp1 = (0x1020100 >> 6) & 0x1F;
+		pinfo->vesa_dsc.range_bpg_offset1 = (0x1020100 >> 0) & 0x3F;
+
+		/* DSC_RC_RANGE_PARAM1: 0x94009be */
+		pinfo->vesa_dsc.range_min_qp2 = (0x94009be >> 27) & 0x1F;
+		pinfo->vesa_dsc.range_max_qp2 = (0x94009be >> 22) & 0x1F;
+		pinfo->vesa_dsc.range_bpg_offset2 = (0x94009be >> 16) & 0x3F;
+		pinfo->vesa_dsc.range_min_qp3 = (0x94009be >> 11) & 0x1F;
+		pinfo->vesa_dsc.range_max_qp3 = (0x94009be >> 6) & 0x1F;
+		pinfo->vesa_dsc.range_bpg_offset3 = (0x94009be >> 0) & 0x3F;
+
+		/* DSC_RC_RANGE_PARAM2, 0x19fc19fa */
+		pinfo->vesa_dsc.range_min_qp4 = (0x19fc19fa >> 27) & 0x1F;
+		pinfo->vesa_dsc.range_max_qp4 = (0x19fc19fa >> 22) & 0x1F;
+		pinfo->vesa_dsc.range_bpg_offset4 = (0x19fc19fa >> 16) & 0x3F;
+		pinfo->vesa_dsc.range_min_qp5 = (0x19fc19fa >> 11) & 0x1F;
+		pinfo->vesa_dsc.range_max_qp5 = (0x19fc19fa >> 6) & 0x1F;
+		pinfo->vesa_dsc.range_bpg_offset5 = (0x19fc19fa >> 0) & 0x3F;
+
+		/* DSC_RC_RANGE_PARAM3, 0x19f81a38 */
+		pinfo->vesa_dsc.range_min_qp6 = (0x19f81a38 >> 27) & 0x1F;
+		pinfo->vesa_dsc.range_max_qp6 = (0x19f81a38 >> 22) & 0x1F;
+		pinfo->vesa_dsc.range_bpg_offset6 = (0x19f81a38 >> 16) & 0x3F;
+		pinfo->vesa_dsc.range_min_qp7 = (0x19f81a38 >> 11) & 0x1F;
+		pinfo->vesa_dsc.range_max_qp7 = (0x19f81a38 >> 6) & 0x1F;
+		pinfo->vesa_dsc.range_bpg_offset7 = (0x19f81a38 >> 0) & 0x3F;
+
+		/* DSC_RC_RANGE_PARAM4, 0x1a781ab6 */
+		pinfo->vesa_dsc.range_min_qp8 = (0x1a781ab6 >> 27) & 0x1F;
+		pinfo->vesa_dsc.range_max_qp8 = (0x1a781ab6 >> 22) & 0x1F;
+		pinfo->vesa_dsc.range_bpg_offset8 = (0x1a781ab6 >> 16) & 0x3F;
+		pinfo->vesa_dsc.range_min_qp9 = (0x1a781ab6 >> 11) & 0x1F;
+		pinfo->vesa_dsc.range_max_qp9 = (0x1a781ab6 >> 6) & 0x1F;
+		pinfo->vesa_dsc.range_bpg_offset9 = (0x1a781ab6 >> 0) & 0x3F;
+
+		/* DSC_RC_RANGE_PARAM5, 0x2af62b34 */
+		pinfo->vesa_dsc.range_min_qp10 = (0x2af62b34 >> 27) & 0x1F;
+		pinfo->vesa_dsc.range_max_qp10 = (0x2af62b34 >> 22) & 0x1F;
+		pinfo->vesa_dsc.range_bpg_offset10 = (0x2af62b34 >> 16) & 0x3F;
+		pinfo->vesa_dsc.range_min_qp11 = (0x2af62b34 >> 11) & 0x1F;
+		pinfo->vesa_dsc.range_max_qp11 = (0x2af62b34 >> 6) & 0x1F;
+		pinfo->vesa_dsc.range_bpg_offset11 = (0x2af62b34 >> 0) & 0x3F;
+
+		/* DSC_RC_RANGE_PARAM6, 0x2b743b74 */
+		pinfo->vesa_dsc.range_min_qp12 = (0x2b743b74 >> 27) & 0x1F;
+		pinfo->vesa_dsc.range_max_qp12 = (0x2b743b74 >> 22) & 0x1F;
+		pinfo->vesa_dsc.range_bpg_offset12 = (0x2b743b74 >> 16) & 0x3F;
+		pinfo->vesa_dsc.range_min_qp13 = (0x2b743b74 >> 11) & 0x1F;
+		pinfo->vesa_dsc.range_max_qp13 = (0x2b743b74 >> 6) & 0x1F;
+		pinfo->vesa_dsc.range_bpg_offset13 = (0x2b743b74 >> 0) & 0x3F;
+
+		/* DSC_RC_RANGE_PARAM7, 0x6bf40000 */
+		pinfo->vesa_dsc.range_min_qp14 = (0x6bf40000 >> 27) & 0x1F;
+		pinfo->vesa_dsc.range_max_qp14 = (0x6bf40000 >> 22) & 0x1F;
+		pinfo->vesa_dsc.range_bpg_offset14 = (0x6bf40000 >> 16) & 0x3F;
+	}
     /*ce rely on acm*/
     if (pinfo->acm_support == 0)
     {
@@ -633,10 +864,12 @@ int lcdkit_fake_update_bl(void *pdata, uint32_t bl_level)
 {
     int ret = 0;
     struct hisi_fb_data_type *hisifd = NULL;
+//	struct platform_device lcdkit_pdev = {0};
 
     hisifd = (struct hisi_fb_data_type *)pdata;
 
     BUG_ON(hisifd == NULL);
+//	platform_set_drvdata(&lcdkit_pdev, hisifd);
 
     if (bl_level > 0) {
         /*enable bl gpio*/

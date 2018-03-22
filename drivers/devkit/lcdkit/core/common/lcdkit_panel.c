@@ -1359,6 +1359,26 @@ static ssize_t lcdkit_reg_read_store(void* pdata, const char *buf)
     LCDKIT_INFO("cmd page:0x%x, reg addr:0x%x, reg length:%d\n", lcdkit_info.panel_infos.gama_cmd_page, lcdkit_info.panel_infos.gama_reg_addr, lcdkit_info.panel_infos.gama_reg_length);
     return ret;
 }
+static ssize_t lcdkit_oem_info_show(void* pdata, char* buf)
+{
+    if (lcdkit_info.panel_infos.is_hostprocessing == 1) {
+        return host_panel_oem_info_show(pdata, buf);
+    } else {
+        LCDKIT_INFO("It is normal panel!\n");
+    }
+    return 0;
+}
+
+static ssize_t lcdkit_oem_info_store(void* pdata, const char* buf)
+{
+    if (lcdkit_info.panel_infos.is_hostprocessing == 1) {
+        return host_panel_oem_info_store(pdata, buf);
+    } else {
+        LCDKIT_INFO("It is normal panel!\n");
+    }
+    return 0;
+}
+
 struct lcdkit_panel_data lcdkit_info =
 {
     .lcdkit_init = lcdkit_init,

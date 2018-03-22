@@ -46,7 +46,7 @@
  *
  */
 
-/*lint --e{537} */
+/*lint --e{528,537,715} */
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
@@ -103,13 +103,13 @@ int bsp_start_mode_get(void)
 *****************************************************************************/
 static void bsp_power_icc_send_state(void)
 {
-    int ret = 0;
-    int mode = 0;
+    int ret;
+    int mode;
     u32 icc_channel_id = ICC_CHN_IFC << 16 | IFC_RECV_FUNC_ONOFF;
 
     mode = bsp_start_mode_get();
 
-    ret = bsp_icc_send(ICC_CPU_MODEM, icc_channel_id, (u8*)&mode, sizeof(mode));
+    ret = bsp_icc_send(ICC_CPU_MODEM, icc_channel_id, (u8*)&mode, (u32)sizeof(mode));
     if (ret != (int)sizeof(mode))
     {
         pr_dbg("send len(%x) != expected len(%lu)\n", ret, (unsigned long)sizeof(mode));
@@ -125,14 +125,14 @@ static void bsp_power_icc_send_state(void)
  调用函数  :
  被调函数  :
 *****************************************************************************/
-static s32 bsp_power_ctrl_read_cb( void )
+static s32 bsp_power_ctrl_read_cb(void)
 {
     int rt = 0;
-    int read_len = 0;
+    int read_len;
     stCtrlMsg msg;
     u32 channel_id = ICC_CHN_IFC << 16 | IFC_RECV_FUNC_ONOFF;
 
-	read_len = bsp_icc_read(channel_id, (u8*)&msg, sizeof(stCtrlMsg));
+	read_len = bsp_icc_read(channel_id, (u8*)&msg, (u32)sizeof(stCtrlMsg));
 	if(read_len != (int)sizeof(stCtrlMsg))
 	{
 		pr_dbg("read len(%x) != expected len(%lu)\n", read_len, (unsigned long)sizeof(stCtrlMsg));
@@ -190,39 +190,38 @@ static struct platform_device his_boot_dev = {
     .id = 0,
     .dev = {
     .init_name = "his_boot",
-    },
-};
+    },/*lint !e785*/
+};/*lint !e785*/
 
 static struct platform_driver his_boot_drv = {
     .probe      = his_boot_probe,
 	.driver		= {
 		.name	= "his_boot",
 		.owner	= THIS_MODULE,/*lint !e64*/
-	},
-};
+	},/*lint !e785*/
+};/*lint !e785*/
 
 static int __init his_boot_init(void)
 {
-    ssize_t ret = 0;
+    int ret;
 
-    pr_dbg(KERN_DEBUG "his_boot_init.\r\n");
+    pr_dbg(KERN_DEBUG "his_boot_init.\n");
 
     ret = platform_device_register(&his_boot_dev);
     if(ret)
     {
-        pr_dbg("register his_boot device failed. \r\n");
+        pr_dbg("register his_boot device failed.\n");
         return ret;
     }
 
     ret = platform_driver_register(&his_boot_drv);/*lint !e64*/
     if(ret)
     {
-        pr_dbg("register his_boot driver failed. \r\n");
+        pr_dbg("register his_boot driver failed.\n");
         platform_device_unregister(&his_boot_dev);
     }
 
     return ret;
-
 }
 
 late_initcall(his_boot_init);

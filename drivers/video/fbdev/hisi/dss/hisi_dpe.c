@@ -2120,11 +2120,11 @@ static int dpe_regulator_clk_irq_setup(struct platform_device *pdev)
 				HISI_FB_INFO("dss_pxl0_clk:[%llu]->[%llu].\n",
 					pinfo->pxl_clk_rate, (uint64_t)clk_get_rate(hisifd->dss_pxl0_clk));
 			}
-		} else if ((hisifd->index == EXTERNAL_PANEL_IDX) && !hisifd->panel_info.fake_hdmi) {
+		} else if ((hisifd->index == EXTERNAL_PANEL_IDX) && !hisifd->panel_info.fake_external) {
 			hisifd->dss_pxl1_clk = devm_clk_get(&pdev->dev, hisifd->dss_pxl1_clk_name);
 			if (IS_ERR(hisifd->dss_pxl1_clk)) {
 				ret = PTR_ERR(hisifd->dss_pxl1_clk);
-				HISI_FB_ERR("dss_pxl1_clk error, ret = %d, hisifd->dss_pxl1_clk_name=%s, hisifd->panel_info.fake_hdmi=%d", ret, hisifd->dss_pxl1_clk_name, hisifd->panel_info.fake_hdmi);
+				HISI_FB_ERR("dss_pxl1_clk error, ret = %d, hisifd->dss_pxl1_clk_name=%s, hisifd->panel_info.fake_external=%d", ret, hisifd->dss_pxl1_clk_name, hisifd->panel_info.fake_external);
 				return ret;
 			} else {
 				ret = clk_set_rate(hisifd->dss_pxl1_clk, pinfo->pxl_clk_rate);

@@ -83,7 +83,7 @@ static int hdmi_fake_panel_probe(struct platform_device *pdev)
 
 
 	pinfo->ifbc_type = IFBC_TYPE_NONE;
-	pinfo->fake_hdmi = is_fake_hdmi;
+	pinfo->fake_external = is_fake_hdmi;
 
 	pinfo->vsync_ctrl_type = 0;
 	pinfo->frc_enable = 0;

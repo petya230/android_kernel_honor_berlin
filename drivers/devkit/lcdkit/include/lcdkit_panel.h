@@ -715,6 +715,9 @@ struct lcdkit_panel_infos
     /*esd set backlight*/
     int esd_set_bl;
 
+    /* Hostprocessing : 0--No; 1--Yes */
+    u8 is_hostprocessing;
+
     /*for delay ctrl*/
     uint32_t delay_af_vci_on;
     uint32_t delay_af_iovcc_on;
@@ -773,6 +776,8 @@ struct lcdkit_panel_data
     ssize_t (*lcdkit_amoled_vr_mode_store)(void* pdata, const char* buf);
     ssize_t (*lcdkit_amoled_hbm_ctrl_show)(char* buf);
     ssize_t (*lcdkit_amoled_hbm_ctrl_store)(void* pdata, const char* buf);
+    ssize_t (*lcdkit_oem_info_show)(void* pdata, char* buf);
+    ssize_t (*lcdkit_oem_info_store)(void* pdata, const char* buf);
     ssize_t (*lcdkit_support_mode_show)(char* buf);
     ssize_t (*lcdkit_support_mode_store)(const char* buf);
     ssize_t (*lcdkit_support_checkmode_show)(char* buf);
@@ -825,6 +830,8 @@ void lcdkit_fps_scence_adaptor_handle(struct platform_device* pdev, uint32_t sce
 void lcdkit_fps_updt_adaptor_handle(void* pdata);
 void lcdkit_fps_timer_adaptor_init(void);
 int lcdkit_lread_reg(void *pdata, uint32_t *out, struct lcdkit_dsi_cmd_desc* cmds, uint32_t len);
+ssize_t host_panel_oem_info_show(void* pdata, char *buf);
+ssize_t host_panel_oem_info_store(void* pdata, char *buf);
 void lcdkit_fps_adaptor_ts_callback(void);
 
 static __maybe_unused inline int lcdkit_bias_is_gpio_ctrl_power(void)

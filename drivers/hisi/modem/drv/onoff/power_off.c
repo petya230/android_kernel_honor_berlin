@@ -46,7 +46,7 @@
  *
  */
 
-/*lint --e{537} */
+/*lint --e{537,559,715} */
 #include <hi_gpio.h>
 #include <linux/gpio.h>
 #include <linux/kernel.h>
@@ -85,9 +85,10 @@ struct bsp_onoff_callback {
     void (*fn)(void);
 };
 
+/*lint -save -e* */
 static LIST_HEAD(list_callback);
-static DEFINE_SPINLOCK(list_spinlock); //lint !e43 !e64 !e120
-
+static DEFINE_SPINLOCK(list_spinlock);
+/*lint -restore */
 
 
 void bsp_reboot_callback_register(void (*hook)(void))
@@ -125,8 +126,8 @@ void bsp_reboot_callback_register(void (*hook)(void))
 ********************************************************************************/
 void drv_shut_down( DRV_SHUTDOWN_REASON_E enReason )
 {
-    printk(KERN_ERR"%s is called from 0x%p (%pF) ...\n",
-        __FUNCTION__, __builtin_return_address(0U), __builtin_return_address(0U));
+    printk(KERN_ERR"%s is called from (%pF) ...\n",
+        __FUNCTION__, __builtin_return_address(0U));
 
     if (DRV_SHUTDOWN_RESET == enReason)
     {
@@ -150,8 +151,8 @@ void drv_shut_down( DRV_SHUTDOWN_REASON_E enReason )
 ********************************************************************************/
 void bsp_drv_power_off( void )
 {
-    printk(KERN_ERR"%s is called from 0x%p (%pF) ...\n",
-        __FUNCTION__, __builtin_return_address(0U), __builtin_return_address(0U));
+    printk(KERN_ERR"%s is called from (%pF) ...\n",
+        __FUNCTION__, __builtin_return_address(0U));
 
     printk(KERN_ERR"we will do nothing...\n");
 }
@@ -176,8 +177,8 @@ void bsp_drv_power_reboot( void )
 
 void mdrv_sysboot_restart(void)
 {
-    printk(KERN_ERR"%s is called from 0x%p (%pF) ...\n",
-        __FUNCTION__, __builtin_return_address(0U), __builtin_return_address(0U));
+    printk(KERN_ERR"%s is called from (%pF) ...\n",
+        __FUNCTION__, __builtin_return_address(0U));
 
 	bsp_drv_power_reboot();
 }
@@ -196,8 +197,8 @@ void mdrv_sysboot_restart(void)
 ********************************************************************************/
 void bsp_drv_power_reboot_direct( void )
 {
-    printk(KERN_ERR"%s is called from 0x%p (%pF) ...\n",
-        __FUNCTION__, __builtin_return_address(0U), __builtin_return_address(0U));
+    printk(KERN_ERR"%s is called from (%pF) ...\n",
+        __FUNCTION__, __builtin_return_address(0U));
 
     system_error(DRV_ERROR_USER_RESET, 0, 0, NULL, 0);
 }
@@ -216,8 +217,8 @@ void bsp_drv_power_reboot_direct( void )
 /*lint -save -e958 */
 void balong_power_restart(char mode, const char *cmd)
 {
-    printk(KERN_ERR"%s is called from 0x%p (%pF) ...\n",
-        __FUNCTION__, __builtin_return_address(0U), __builtin_return_address(0U));
+    printk(KERN_ERR"%s is called from (%pF) ...\n",
+        __FUNCTION__, __builtin_return_address(0U));
 
     bsp_drv_power_reboot();
 }
@@ -237,8 +238,8 @@ EXPORT_SYMBOL_GPL(balong_power_restart);
 ********************************************************************************/
 void balong_power_off( void )
 {
-    printk(KERN_ERR"%s is called from 0x%p (%pF) ...\n",
-        __FUNCTION__, __builtin_return_address(0U), __builtin_return_address(0U));
+    printk(KERN_ERR"%s is called from (%pF) ...\n",
+        __FUNCTION__, __builtin_return_address(0U));
 
 	bsp_drv_power_off();
 }
@@ -248,8 +249,8 @@ EXPORT_SYMBOL_GPL(balong_power_off);
 
 void mdrv_sysboot_shutdown(void)
 {
-    printk(KERN_ERR"%s is called from 0x%p (%pF) ...\n",
-        __FUNCTION__, __builtin_return_address(0U), __builtin_return_address(0U));
+    printk(KERN_ERR"%s is called from (%pF) ...\n",
+        __FUNCTION__, __builtin_return_address(0U));
 
 	drv_shut_down(DRV_SHUTDOWN_TEMPERATURE_PROTECT);
 }

@@ -537,6 +537,8 @@ void lcdkit_parse_panel_dts(struct device_node* np)
         OF_PROPERTY_READ_U8_DEFAULT(np, "hw,lcdkit-pcd-gpio", &lcdkit_info.panel_infos.gpio_pcd, 0);
         OF_PROPERTY_READ_U8_DEFAULT(np, "hw,lcdkit-err-flag-gpio", &lcdkit_info.panel_infos.gpio_err_flag, 0);
     }
+    /* Hostprocessing : 0--No; 1--Yes */
+    OF_PROPERTY_READ_U8_DEFAULT(np, "hw,lcdkit-is-hostprocessing", &lcdkit_info.panel_infos.is_hostprocessing, 0);
     /*for vcc and bias setting*/
     OF_PROPERTY_READ_U32_DEFAULT(np, "hw,lcdkit-lcdanalog-vcc", &lcdkit_info.panel_infos.lcdanalog_vcc, 0);
     OF_PROPERTY_READ_U32_DEFAULT(np, "hw,lcdkit-lcdio-vcc", &lcdkit_info.panel_infos.lcdio_vcc, 0);

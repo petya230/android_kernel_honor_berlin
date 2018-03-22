@@ -126,7 +126,7 @@ int hisi_overlay_pan_display(struct hisi_fb_data_type *hisifd)
 	}
 
 	enable_cmdlist = g_enable_ovl_cmdlist_online;
-	if ((hisifd->index == EXTERNAL_PANEL_IDX) && hisifd->panel_info.fake_hdmi)
+	if ((hisifd->index == EXTERNAL_PANEL_IDX) && hisifd->panel_info.fake_external)
 		enable_cmdlist = 0;
 
 	hisifb_activate_vsync(hisifd);
@@ -398,7 +398,7 @@ int hisi_ov_online_play(struct hisi_fb_data_type *hisifd, void __user *argp)
 	}
 
 	enable_cmdlist = g_enable_ovl_cmdlist_online;
-	if ((hisifd->index == EXTERNAL_PANEL_IDX) && hisifd->panel_info.fake_hdmi) {
+	if ((hisifd->index == EXTERNAL_PANEL_IDX) && hisifd->panel_info.fake_external) {
 		enable_cmdlist = 0;
 	}
 
@@ -446,11 +446,11 @@ int hisi_ov_online_play(struct hisi_fb_data_type *hisifd, void __user *argp)
 		dumpDssOverlay(hisifd, pov_req, false);
 	}
 
-	ret = hisifb_layerbuf_lock(hisifd, pov_req, &lock_list);
-	if (ret != 0) {
-		HISI_FB_ERR("fb%d, hisifb_layerbuf_lock failed! ret=%d\n", hisifd->index, ret);
-		goto err_return;
-	}
+ 	ret = hisifb_layerbuf_lock(hisifd, pov_req, &lock_list);
+ 	if (ret != 0) {
+ 		HISI_FB_ERR("fb%d, hisifb_layerbuf_lock failed! ret=%d\n", hisifd->index, ret);
+ 		goto err_return;
+ 	}
 
 	hisi_dss_handle_cur_ovl_req(hisifd, pov_req);
 
@@ -667,7 +667,7 @@ int hisi_ov_online_play(struct hisi_fb_data_type *hisifd, void __user *argp)
 	if (g_debug_ovl_online_composer_timediff & 0x2) {
 		hisifb_get_timestamp(&tv1);
 		timediff = hisifb_timestamp_diff(&tv0, &tv1);
-		if (timediff >= g_debug_ovl_online_composer_time_threshold)
+		if (timediff >= g_debug_ovl_online_composer_time_threshold)  /*lint !e737*/
 			HISI_FB_ERR("ONLINE_TIMEDIFF is %u us!\n", timediff);
 	}
 	up(&hisifd->blank_sem0);
