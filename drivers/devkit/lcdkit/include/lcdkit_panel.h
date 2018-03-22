@@ -543,6 +543,11 @@ struct lcdkit_panel_infos
     struct lcdkit_array_data fps_55_porch_param;
     struct lcdkit_array_data fps_60_porch_param;
     u8 fps_func_switch;
+    u8 fps_tscall_support;
+    struct timer_list fps_scence_timer;
+    struct workqueue_struct *fps_scence_wq;
+    struct work_struct fps_scence_work;
+    u8 panel_chip_esd_disable;
 
     /*lp2hs mipi test*/
     struct lcdkit_dsi_panel_cmds lp2hs_mipi_check_write_cmds;
@@ -736,6 +741,7 @@ struct lcdkit_panel_data
     void (*lcdkit_init)(struct device_node* np, void* pdata);
     void (*lcdkit_on_cmd)(void* pdata, struct lcdkit_dsi_panel_cmds* cmds);
     void (*lcdkit_off_cmd)(void* pdata, struct lcdkit_dsi_panel_cmds* cmds);
+    void (*lcdkit_fps_timer_init)(void);
     ssize_t (*lcdkit_model_show)(char* buf);
     ssize_t (*lcdkit_panel_info_show)(char* buf);
     ssize_t (*lcdkit_cabc_mode_show)(char* buf);
@@ -774,6 +780,8 @@ struct lcdkit_panel_data
     ssize_t (*lcdkit_test_config_store)(const char* buf);
     ssize_t (*lcdkit_ce_mode_show)(void* pdata, char* buf);
     ssize_t (*lcdkit_ce_mode_store)(void* pdata, const char* buf, size_t count);
+    ssize_t (*lcdkit_reg_read_show)(void* pdata, char* buf);
+    ssize_t (*lcdkit_reg_read_store)(void* pdata, const char *buf);
 
     ssize_t (*lcdkit_check_esd)(void* pdata);
     ssize_t (*lcdkit_set_display_region)(void* pdata, void* dirty);
@@ -786,11 +794,13 @@ struct lcdkit_panel_data
 
 struct lcdkit_adapt_func
 {
-    int enable;
+    char *name;
     ssize_t (*lcdkit_gram_check_show)(void* pdata, char* buf);
+    ssize_t (*lcdkit_reg_read_show)(void* pdata, char* buf);
 };
 
 ssize_t lcdkit_jdi_nt35696_5p5_gram_check_show(void* pdata, char* buf);
+ssize_t lcdkit_jdi_nt35696_5p5_reg_read_show(void* pdata, char* buf);
 
 extern struct lcdkit_panel_data lcdkit_info;
 
@@ -813,6 +823,9 @@ void dfr_ctrl(struct platform_device* pdev, bool enable);
 int lcdkit_fake_update_bl(void *pdata, uint32_t bl_level);
 void lcdkit_fps_scence_adaptor_handle(struct platform_device* pdev, uint32_t scence);
 void lcdkit_fps_updt_adaptor_handle(void* pdata);
+void lcdkit_fps_timer_adaptor_init(void);
+int lcdkit_lread_reg(void *pdata, uint32_t *out, struct lcdkit_dsi_cmd_desc* cmds, uint32_t len);
+void lcdkit_fps_adaptor_ts_callback(void);
 
 static __maybe_unused inline int lcdkit_bias_is_gpio_ctrl_power(void)
 {

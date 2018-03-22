@@ -30,6 +30,9 @@
 #include <dsm/dsm_pub.h>
 extern struct dsm_client *ts_dclient;
 #endif
+extern void lcdkit_fps_ts_callback(void);
+extern int lcdkit_fps_support_query(void);
+extern int lcdkit_fps_tscall_support_query(void);
 extern struct ts_kit_platform_data g_ts_kit_platform_data;
 atomic_t g_ts_kit_data_report_over = ATOMIC_INIT(1);
 /*lint -save -e* */
@@ -217,6 +220,8 @@ void ts_report_input(struct ts_cmd_node* in_cmd, struct ts_cmd_node* out_cmd)
         }
         if (finger->fingers[id].status == TS_FINGER_PRESS)
         {
+            if (lcdkit_fps_support_query() && lcdkit_fps_tscall_support_query())
+                lcdkit_fps_ts_callback();
             TS_LOG_DEBUG("down: id is %d, finger->fingers[id].pressure = %d, finger->fingers[id].x = %d, finger->fingers[id].y = %d\n",
                          id, finger->fingers[id].pressure, finger->fingers[id].x, finger->fingers[id].y);
             finger_num++;

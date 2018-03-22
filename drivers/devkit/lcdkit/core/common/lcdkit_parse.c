@@ -246,6 +246,8 @@ void lcdkit_parse_panel_dts(struct device_node* np)
     OF_PROPERTY_READ_U8_DEFAULT(np, "hw,lcdkit-panel-mipi-detect-support", &lcdkit_info.panel_infos.mipi_detect_support, 0);
     OF_PROPERTY_READ_U8_DEFAULT(np, "hw,lcdkit-panel-lptohs-mipi-check-support", &lcdkit_info.panel_infos.lp2hs_mipi_check_support, 0);
     OF_PROPERTY_READ_U8_DEFAULT(np, "hw,lcdkit-panel-fps-func-switch", &lcdkit_info.panel_infos.fps_func_switch, 0);
+    OF_PROPERTY_READ_U8_DEFAULT(np, "hw,lcdkit-panel-chip-esd-disable", &lcdkit_info.panel_infos.panel_chip_esd_disable, 0);
+    OF_PROPERTY_READ_U8_DEFAULT(np, "hw,lcdkit-panel-fps-tscall-support", &lcdkit_info.panel_infos.fps_tscall_support, 0);
     OF_PROPERTY_READ_U8_DEFAULT(np, "hw,lcdkit-panel-current-detect-support", &lcdkit_info.panel_infos.current_detect_support, 0);
     OF_PROPERTY_READ_U8_DEFAULT(np, "hw,lcdkit-panel-lv-detect-support", &lcdkit_info.panel_infos.lv_detect_support, 0);
     OF_PROPERTY_READ_U8_DEFAULT(np, "hw,lcdkit-panel-pt-test-support", &lcdkit_info.panel_infos.PT_test_support, 0);
@@ -256,6 +258,7 @@ void lcdkit_parse_panel_dts(struct device_node* np)
     OF_PROPERTY_READ_U8_DEFAULT(np, "hw,lcdkit-panel-shutdown-sleep-support", &lcdkit_info.panel_infos.shutdown_sleep_support, 0);
     OF_PROPERTY_READ_U8_DEFAULT(np, "hw,lcdkit-panel-ce-support", &lcdkit_info.panel_infos.ce_support, 0);
     OF_PROPERTY_READ_U8_DEFAULT(np, "hw,lcdkit-panel-display-on-effect-support",&lcdkit_info.panel_infos.display_effect_on_support,0);
+    OF_PROPERTY_READ_U8_DEFAULT(np, "hw,lcdkit-panel-dynamic-gamma-support",&lcdkit_info.panel_infos.dynamic_gamma_support,0);
 
     /*Parse panel on cmds*/
     ret = lcdkit_parse_dcs_cmds(np, "hw,lcdkit-panel-on-command", "hw,lcdkit-panel-on-command-state",

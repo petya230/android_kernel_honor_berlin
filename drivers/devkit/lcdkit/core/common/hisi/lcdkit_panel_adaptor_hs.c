@@ -9,6 +9,7 @@
 *function:lcd_panel_info init
 *@pinfo:lcd panel info
 */
+int lcdkit_check_mipi_fifo_empty(char __iomem *dsi_base);
 //lint -save -e144 -e578 -e647
 void lcdkit_info_init(void* pdata)
 {
@@ -272,8 +273,14 @@ int lcdkit_dsi_rx(void* pdata, uint32_t* out, int len, struct lcdkit_dsi_panel_c
 
     hisifd = (struct hisi_fb_data_type*) pdata;
     mipi_dsi0_base = hisifd->mipi_dsi0_base;
-
-    ret = mipi_dsi_cmds_rx(out, cmd, cmds->cmd_cnt, mipi_dsi0_base);
+    if(lcdkit_check_mipi_fifo_empty(mipi_dsi0_base))
+    {
+        ret = -1;
+    }
+    else
+    {
+        ret = mipi_dsi_cmds_rx(out, cmd, cmds->cmd_cnt, mipi_dsi0_base);
+    }
     if(ret)
     {
         LCDKIT_INFO("lcdkit_dsi_rx failed!\n");
@@ -689,6 +696,37 @@ int buf_trans(const char* inbuf, int inlen, char** outbuf, int* outlen)
     return 0;
 }
 
+int lcdkit_check_mipi_fifo_empty(char __iomem *dsi_base)
+{
+    unsigned long dw_jiffies = 0;
+    uint32_t pkg_status = 0;
+    uint32_t phy_status = 0;
+    int is_timeout = 1;
+
+    /*read status register*/
+    dw_jiffies = jiffies + HZ;
+    do {
+        pkg_status = inp32(dsi_base + MIPIDSI_CMD_PKT_STATUS_OFFSET);
+        phy_status = inp32(dsi_base + MIPIDSI_PHY_STATUS_OFFSET);
+        if ((pkg_status & 0x1) == 0x1 && !(phy_status & 0x2)){
+            is_timeout = 0;
+            break;
+        }
+    } while (time_after(dw_jiffies, jiffies));
+
+    if (is_timeout) {
+        HISI_FB_ERR("mipi check empty fail: \n \
+            MIPIDSI_CMD_PKT_STATUS = 0x%x \n \
+            MIPIDSI_PHY_STATUS = 0x%x \n \
+            MIPIDSI_INT_ST1_OFFSET = 0x%x \n",
+            inp32(dsi_base + MIPIDSI_CMD_PKT_STATUS_OFFSET),
+            inp32(dsi_base + MIPIDSI_PHY_STATUS_OFFSET),
+            inp32(dsi_base + MIPIDSI_INT_ST1_OFFSET));
+        return -1;
+    }
+    return 0;
+}
+
 void lcdkit_fps_scence_adaptor_handle(struct platform_device* pdev, uint32_t scence)
 {
     struct hisi_fb_data_type *hisifd = NULL;
@@ -762,6 +800,169 @@ void lcdkit_fps_scence_adaptor_handle(struct platform_device* pdev, uint32_t sce
     return;
 }
 
+void lcdkit_fps_scence_switch_immediately(struct platform_device *pdev, uint32_t scence)
+{
+    struct hisi_fb_data_type* hisifd = NULL;
+    struct hisi_panel_info *pinfo = NULL;
+
+    LCDKIT_DEBUG("+.\n");
+    if (NULL == pdev)
+    {
+        LCDKIT_ERR("pdev NULL Pointer!\n");
+        return;
+    }
+
+    hisifd = platform_get_drvdata(pdev);
+    if (NULL == hisifd){
+        LCDKIT_ERR("hisifd NULL Pointer!\n");
+        return;
+    }
+    pinfo = &(hisifd->panel_info);
+
+    down(&hisifd->blank_sem);
+    hisifb_activate_vsync(hisifd);
+    if (lcdkit_check_mipi_fifo_empty(hisifd->mipi_dsi0_base))
+        goto out;
+    if (LCDKIT_DSI_LP_MODE
+        == lcdkit_info.panel_infos.dfr_enable_cmds.link_state)
+        lcdkit_hs_lp_switch(hisifd, LCDKIT_DSI_LP_MODE);
+    switch (scence)
+    {
+        case LCD_FPS_SCENCE_FUNC_DEFAULT_ENABLE:
+            lcdkit_dsi_tx(hisifd, &lcdkit_info.panel_infos.dfr_enable_cmds);
+            pinfo->fps_updt_support = 1;
+            pinfo->fps_scence = LCD_FPS_SCENCE_FUNC_DEFAULT_ENABLE;
+            break;
+        case LCD_FPS_SCENCE_FUNC_DEFAULT_DISABLE:
+            lcdkit_dsi_tx(hisifd, &lcdkit_info.panel_infos.fps_to_60_cmds);
+            pinfo->fps_updt_support = 0;
+            pinfo->fps_scence = LCD_FPS_SCENCE_FUNC_DEFAULT_DISABLE;
+            break;
+        default:
+            break;
+    }
+    if (LCDKIT_DSI_LP_MODE
+        == lcdkit_info.panel_infos.dfr_enable_cmds.link_state)
+        lcdkit_hs_lp_switch(hisifd, LCDKIT_DSI_HS_MODE);
+
+    pinfo->fps_updt_panel_only = 0;
+    pinfo->fps_updt = LCD_FPS_60;
+
+    if (lcdkit_check_mipi_fifo_empty(hisifd->mipi_dsi0_base))
+        goto out;
+    LCDKIT_DEBUG("switch to scence %d immediately\n", scence);
+out:
+    hisifb_deactivate_vsync(hisifd);
+    up(&hisifd->blank_sem);
+    LCDKIT_DEBUG("-.\n");
+    return ;
+}
+
+static void lcdkit_fps_work_handler(struct work_struct *data)
+{
+    struct platform_device *pdev = NULL;
+    struct hisi_fb_data_type* hisifd = NULL;
+    struct hisi_panel_info *pinfo = NULL;
+
+    LCDKIT_DEBUG("+.\n");
+    lcdkit_get_pdev(&pdev);
+    if (NULL == pdev)
+    {
+        LCDKIT_ERR("pdev NULL Pointer!\n");
+        return;
+    }
+
+    hisifd = platform_get_drvdata(pdev);
+    if (NULL == hisifd){
+        LCDKIT_ERR("hisifd NULL Pointer!\n");
+        return;
+    }
+    pinfo = &(hisifd->panel_info);
+    if (!hisifd->panel_power_on)
+    {
+        LCDKIT_ERR("panel power off!\n");
+        return ;
+    }
+    if (LCD_FPS_SCENCE_FUNC_DEFAULT_ENABLE == pinfo->fps_scence)
+    {
+        LCDKIT_DEBUG("panel not disable dfr, no need to switch\n");
+        return  ;
+    }
+
+    LCDKIT_DEBUG("%s fps to 60 and enable dfr\n", __func__);
+    lcdkit_fps_scence_switch_immediately(pdev, LCD_FPS_SCENCE_FUNC_DEFAULT_ENABLE);
+    LCDKIT_DEBUG("-.\n");
+}
+
+void lcdkit_fps_timer_adaptor_handler(unsigned long data)
+{
+    LCDKIT_DEBUG("+.\n");
+    if (lcdkit_info.panel_infos.fps_scence_wq)
+        queue_work(lcdkit_info.panel_infos.fps_scence_wq,
+            &lcdkit_info.panel_infos.fps_scence_work);
+    LCDKIT_DEBUG("-.\n");
+    return ;
+}
+
+void lcdkit_fps_timer_adaptor_init(void)
+{
+        init_timer(&lcdkit_info.panel_infos.fps_scence_timer);
+        lcdkit_info.panel_infos.fps_scence_timer.data = 0;
+        lcdkit_info.panel_infos.fps_scence_timer.expires = jiffies + HZ;
+        lcdkit_info.panel_infos.fps_scence_timer.function = lcdkit_fps_timer_adaptor_handler;
+
+        lcdkit_info.panel_infos.fps_scence_wq = create_singlethread_workqueue("fps_wq");
+        if (!lcdkit_info.panel_infos.fps_scence_wq)
+        {
+            LCDKIT_ERR("fps workqueue create fail!!\n");
+        }
+        else
+        {
+            INIT_WORK(&lcdkit_info.panel_infos.fps_scence_work, lcdkit_fps_work_handler);
+        }
+        return ;
+}
+
+void lcdkit_fps_adaptor_ts_callback(void)
+{
+    struct platform_device *pdev = NULL;
+    struct hisi_fb_data_type* hisifd = NULL;
+    struct hisi_panel_info *pinfo = NULL;
+
+    LCDKIT_DEBUG("%s+\n", __func__);
+    lcdkit_get_pdev(&pdev);
+    if (NULL == pdev)
+    {
+        LCDKIT_ERR("pdev NULL Pointer!\n");
+        return;
+    }
+
+    hisifd = platform_get_drvdata(pdev);
+    if (NULL == hisifd){
+        LCDKIT_ERR("hisifd NULL Pointer!\n");
+        return;
+    }
+    pinfo = &(hisifd->panel_info);
+    if (!hisifd->panel_power_on)
+    {
+        LCDKIT_ERR("panel power off!\n");
+        return ;
+    }
+    if (LCD_FPS_SCENCE_FUNC_DEFAULT_ENABLE != pinfo->fps_scence)
+    {
+        LCDKIT_DEBUG("panel not enable dfr, no need to switch\n");
+        mod_timer(&lcdkit_info.panel_infos.fps_scence_timer, jiffies + HZ);
+        return ;
+    }
+
+    LCDKIT_DEBUG("%s fps to 60 and disable dfr\n", __func__);
+    lcdkit_fps_scence_switch_immediately(pdev, LCD_FPS_SCENCE_FUNC_DEFAULT_DISABLE);
+
+    mod_timer(&lcdkit_info.panel_infos.fps_scence_timer, jiffies + HZ);
+    LCDKIT_DEBUG("%s-\n", __func__);
+    return ;
+}
+
 void lcdkit_fps_updt_adaptor_handle(void* pdata)
 {
     struct hisi_fb_data_type* hisifd = NULL;
@@ -831,6 +1032,25 @@ void lcdkit_fps_updt_adaptor_handle(void* pdata)
         pinfo->fps_updt_force_update = 0;
     }
     return;
+}
+int lcdkit_lread_reg(void *pdata, uint32_t *out, struct lcdkit_dsi_cmd_desc* cmds, uint32_t len)
+{
+	int ret = 0;
+	struct dsi_cmd_desc lcd_reg_cmd;
+	struct hisi_fb_data_type* hisifd = NULL;
+	hisifd = (struct hisi_fb_data_type*) pdata;
+	lcd_reg_cmd.dtype = cmds->dtype;
+	lcd_reg_cmd.vc = cmds->vc;
+	lcd_reg_cmd.wait = cmds->wait;
+	lcd_reg_cmd.waittype = cmds->waittype;
+	lcd_reg_cmd.dlen = cmds->dlen;
+	lcd_reg_cmd.payload = cmds->payload;
+	ret = mipi_dsi_lread_reg(out, &lcd_reg_cmd, len, hisifd->mipi_dsi0_base);
+	if (ret) {
+		LCDKIT_INFO("read error, ret=%d\n", ret);
+		return ret;
+	}
+	return ret;
 }
 
 /*for lcd btb check*/

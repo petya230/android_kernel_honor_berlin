@@ -4,15 +4,9 @@
 #include <huawei_ts_kit.h>
 
 struct lcdkit_adapt_func lcdkit_adapt_func_array[] = {
-    {0, lcdkit_jdi_nt35696_5p5_gram_check_show},//checksum show
+    {"JDI_NT35696 5.1' CMD TFT 1920 x 1080", lcdkit_jdi_nt35696_5p5_gram_check_show, lcdkit_jdi_nt35696_5p5_reg_read_show},//checksum show
 };
 uint32_t checksum_start = LCDKIT_CHECKSUM_END;
-void lcdkit_diff_func_init(struct device_node* np, void* pdata)
-{
-    if (!strncmp(lcdkit_info.panel_infos.panel_name, "JDI_NT35696 5.5' CMD TFT 1920 x 1080", strlen(lcdkit_info.panel_infos.panel_name))) {
-        lcdkit_adapt_func_array[0].enable = 1;//checksum enable
-    }
-}
 
 /***********************************************************
   *function: LCD resoure init, include gpio,regulator,xml parse and so on.
@@ -25,7 +19,6 @@ void lcdkit_init(struct device_node* np, void* pdata)
     lcdkit_parse_panel_dts(np);
     lcdkit_parse_platform_dts(np, pdata);
     lcdkit_info_init(pdata);
-    lcdkit_diff_func_init(np, pdata);
 
     lcdkit_info.panel_infos.display_on_need_send = false;
 }
@@ -342,6 +335,12 @@ static ssize_t lcdkit_check_esd(void* pdata)
         return -EINVAL;
     }
 
+    if (lcdkit_info.panel_infos.panel_chip_esd_disable)
+    {
+        LCDKIT_DEBUG("panel esd is disable\n");
+        return 0;
+    }
+
     expect_ptr = lcdkit_info.panel_infos.esd_value.buf;
 
     ret = lcdkit_dsi_rx(pdata, read_value, 1, &lcdkit_info.panel_infos.esd_cmds);
@@ -376,10 +375,14 @@ static ssize_t lcdkit_gram_check_show(void* pdata, char* buf)
     return 0;
     LCDKIT_INFO("enter \n");
 
-    if (lcdkit_adapt_func_array[0].enable) {
-        ret = lcdkit_adapt_func_array[0].lcdkit_gram_check_show(pdata, buf);
-        LCDKIT_INFO("%s\n", buf);
-        return ret;
+    for (i = 0; i < sizeof(lcdkit_adapt_func_array)/sizeof(lcdkit_adapt_func_array[0]); i++) {
+        if (!strncmp(lcdkit_info.panel_infos.panel_name, lcdkit_adapt_func_array[i].name, strlen(lcdkit_adapt_func_array[i].name))) {
+            if (lcdkit_adapt_func_array[i].lcdkit_gram_check_show) {
+                ret = lcdkit_adapt_func_array[i].lcdkit_gram_check_show(pdata, buf);
+                LCDKIT_INFO("%s\n", buf);
+                return ret;
+            }
+        }
     }
 
     lcdkit_mipi_dsi_max_return_packet_size(pdata, &packet_size_set_cmd);
@@ -1060,6 +1063,33 @@ static ssize_t lcdkit_fps_updt_handle(void* pdata)
     return 0;
 }
 
+int lcdkit_fps_support_query(void)
+{
+    return lcdkit_info.panel_infos.fps_func_switch;
+}
+
+int lcdkit_fps_tscall_support_query(void)
+{
+    return lcdkit_info.panel_infos.fps_tscall_support;
+}
+
+/*function: this function is used to called by ts thread to let lcd driver
+  *known that there is a tp touch event report in tp ic driver
+  *input:void
+  *@callback_type: callback_type use to tell lcd driver what to do.
+*/
+void lcdkit_fps_ts_callback(void)
+{
+    lcdkit_fps_adaptor_ts_callback();
+    return ;
+}
+
+void lcdkit_fps_timer_init(void)
+{
+    lcdkit_fps_timer_adaptor_init();
+    return ;
+}
+
 /*function: this function is used to set the Partial  display of LCD
   *input:
   *@pdata: this void point is used to converte to fb data struct.
@@ -1211,6 +1241,124 @@ static ssize_t  lcdkit_voltage_enable_store(void *pdata, const char* buf)
     return ret;
 }
 
+static ssize_t lcdkit_reg_read_show(void* pdata, char *buf)
+{
+    char lcd_reg_buf[LCD_REG_LENGTH_MAX] = {0};
+    uint32_t read_value[LCD_REG_LENGTH_MAX] = {0};
+    unsigned char str_tmp[LCD_REG_LENGTH_MAX] = {0};
+    char lcd_reg[] = {0x00};
+    int i = 0;
+    int ret = 0;
+    struct lcdkit_dsi_cmd_desc lcd_reg_cmd[] = {
+        {DTYPE_GEN_READ1, 0, 0, 0, 10, LCDKIT_WAIT_TYPE_US,
+        sizeof(lcd_reg), lcd_reg},
+    };
+    for (i = 0; i < lcdkit_info.panel_infos.gama_correct_reg.cnt; i++) {
+        if ((lcdkit_info.panel_infos.gama_reg_addr == lcdkit_info.panel_infos.gama_correct_reg.buf[i]) &&
+                lcdkit_info.panel_infos.gama_reg_length == lcdkit_info.panel_infos.gama_reg_len.buf[i]) {
+            break;
+        }
+    }
+    if (i == lcdkit_info.panel_infos.gama_correct_reg.cnt) {
+        LCDKIT_ERR("reg is not expect, reg:0x%x\n", lcdkit_info.panel_infos.gama_reg_addr);
+        goto error_out;
+    }
+    for (i = 0; i < (int)(sizeof(lcdkit_adapt_func_array)/sizeof(lcdkit_adapt_func_array[0])); i++) {
+        if (!strncmp(lcdkit_info.panel_infos.panel_name, lcdkit_adapt_func_array[i].name, strlen(lcdkit_adapt_func_array[i].name))) {
+            if (lcdkit_adapt_func_array[i].lcdkit_reg_read_show) {
+                ret = lcdkit_adapt_func_array[i].lcdkit_reg_read_show(pdata, buf);
+                return ret;
+            }
+        }
+    }
+
+    memset(lcd_reg_buf, 0, sizeof(lcd_reg_buf));
+    memset(read_value, 0, sizeof(read_value));
+    lcd_reg[0] = lcdkit_info.panel_infos.gama_reg_addr;
+    if (lcdkit_info.panel_infos.gama_cmd_page != 0) {
+        lcdkit_info.panel_infos.lcd_reg_check_enter_cmds.cmds->payload[1] = lcdkit_info.panel_infos.gama_cmd_page & 0xFF;
+        lcdkit_dsi_tx(pdata, &lcdkit_info.panel_infos.lcd_reg_check_enter_cmds);
+    }
+
+    ret = lcdkit_lread_reg(pdata, read_value, lcd_reg_cmd, lcdkit_info.panel_infos.gama_reg_length);
+    if (ret) {
+        LCDKIT_INFO("read error, ret=%d\n", ret);
+        goto error_out;
+    }
+    if (lcdkit_info.panel_infos.gama_cmd_page != 0) {
+        lcdkit_dsi_tx(pdata, &lcdkit_info.panel_infos.lcd_reg_check_exit_cmds);
+    }
+    for (i = 0; i < (lcdkit_info.panel_infos.gama_reg_length + 3) / 4; i++) {
+        LCDKIT_INFO("0x%8x\n", read_value[i]);
+    }
+    snprintf(lcd_reg_buf, sizeof(lcd_reg_buf), "1,");
+    for (i = 0; i < lcdkit_info.panel_infos.gama_reg_length; i++) {
+        switch (i % 4) {
+        case 0:
+            if (i == lcdkit_info.panel_infos.gama_reg_length - 1) {
+                snprintf(str_tmp, sizeof(str_tmp), "%d", read_value[i / 4] & 0xFF);
+            } else {
+                snprintf(str_tmp, sizeof(str_tmp), "%d,", read_value[i / 4] & 0xFF);
+            }
+            break;
+        case 1:
+            if (i == lcdkit_info.panel_infos.gama_reg_length - 1) {
+                snprintf(str_tmp, sizeof(str_tmp), "%d", (read_value[i / 4] >> 8) & 0xFF);
+            } else {
+                snprintf(str_tmp, sizeof(str_tmp), "%d,", (read_value[i / 4] >> 8) & 0xFF);
+            }
+            break;
+        case 2:
+            if (i == lcdkit_info.panel_infos.gama_reg_length - 1) {
+                snprintf(str_tmp, sizeof(str_tmp), "%d", (read_value[i / 4] >> 16) & 0xFF);
+            } else {
+                snprintf(str_tmp, sizeof(str_tmp), "%d,", (read_value[i / 4] >> 16) & 0xFF);
+            }
+            break;
+        case 3:
+            if (i == lcdkit_info.panel_infos.gama_reg_length - 1) {
+                snprintf(str_tmp, sizeof(str_tmp), "%d", (read_value[i / 4] >> 24) & 0xFF);
+            } else {
+                snprintf(str_tmp, sizeof(str_tmp), "%d,", (read_value[i / 4] >> 24) & 0xFF);
+            }
+            break;
+        default:
+            break;
+        }
+        strncat(lcd_reg_buf, str_tmp, strlen(str_tmp));
+    }
+    LCDKIT_INFO("%s\n", lcd_reg_buf);
+    ret = snprintf(buf, sizeof(lcd_reg_buf), "%s\n", lcd_reg_buf);
+    return ret;
+error_out:
+    LCDKIT_INFO("error out, reg addr=%d, reg length=%d\n", lcdkit_info.panel_infos.gama_reg_addr, lcdkit_info.panel_infos.gama_reg_length);
+    ret = snprintf(buf, PAGE_SIZE, "0,%d,%d\n", (int)lcdkit_info.panel_infos.gama_reg_addr, lcdkit_info.panel_infos.gama_reg_length);
+    return ret;
+}
+static ssize_t lcdkit_reg_read_store(void* pdata, const char *buf)
+{
+    int ret = 0;
+    unsigned int reg_value[100];
+    char *cur;
+    char *token;
+    int i = 0;
+    cur = (char*)buf;
+    token = strsep(&cur, ",");
+    while (token) {
+        reg_value[i++] = simple_strtol(token, NULL, 0);
+        token = strsep(&cur, ",");
+        if (i >= 100)
+        {
+            LCDKIT_INFO("count is too long\n");
+            return -1;
+        }
+    }
+    lcdkit_info.panel_infos.gama_cmd_page = ((reg_value[0] >> 8) & 0xFF);
+    lcdkit_info.panel_infos.gama_reg_addr = (unsigned char)(reg_value[0] & 0xFF);
+    lcdkit_info.panel_infos.gama_reg_length = reg_value[1];
+    LCDKIT_INFO("cmd page:0x%x, reg addr:0x%x, reg length:%d\n", lcdkit_info.panel_infos.gama_cmd_page, lcdkit_info.panel_infos.gama_reg_addr, lcdkit_info.panel_infos.gama_reg_length);
+    return ret;
+}
 struct lcdkit_panel_data lcdkit_info =
 {
     .lcdkit_init = lcdkit_init,
@@ -1258,4 +1406,7 @@ struct lcdkit_panel_data lcdkit_info =
     .lcdkit_lv_detect = lcdkit_lv_detect,
     .lcdkit_ce_mode_show = lcdkit_ce_mode_show,
     .lcdkit_ce_mode_store = lcdkit_ce_mode_store,
+    .lcdkit_reg_read_show = lcdkit_reg_read_show,
+    .lcdkit_reg_read_store = lcdkit_reg_read_store,
+    .lcdkit_fps_timer_init = lcdkit_fps_timer_init,
 };

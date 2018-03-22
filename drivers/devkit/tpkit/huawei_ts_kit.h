@@ -1028,6 +1028,9 @@ int test_dbg_cmd_test(struct ts_cmd_node* in_cmd, struct ts_cmd_node* out_cmd);
 void ts_kit_tui_secos_init(void);
 void ts_kit_tui_secos_exit(void);
 #endif
+void lcdkit_fps_ts_callback(void);
+int lcdkit_fps_support_query(void);
+int lcdkit_fps_tscall_support_query(void);
 void ts_kit_rotate_rawdata_abcd2cbad(int row, int column, int *data_start, int rotate_type);
 int ts_kit_parse_csvfile(int columns, int rows, struct ts_rawdata_limit_tab* limit_tab, char *file_path);
 #endif

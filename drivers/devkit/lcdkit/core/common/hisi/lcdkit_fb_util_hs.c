@@ -2883,7 +2883,8 @@ ssize_t lcd_func_switch_show(struct device* dev,
         "color_temp_rectify_support=%d\n"
         "hiace=%d\n"
         "effect_enable=%d\n"
-        "effect_debug=%d\n",
+        "effect_debug=%d\n"
+        "fps_func_switch=%d\n",
         pinfo->sbl_support,
         pinfo->xcc_support,
         pinfo->dsi_bit_clk_upt_support,
@@ -2898,7 +2899,8 @@ ssize_t lcd_func_switch_show(struct device* dev,
         pinfo->color_temp_rectify_support,
         pinfo->hiace_support,
         g_enable_effect,
-        g_debug_effect);
+        g_debug_effect,
+        lcdkit_info.panel_infos.fps_func_switch);
 
     return ret;
 }
@@ -3093,6 +3095,16 @@ ssize_t lcd_func_switch_store(struct device* dev,
                 HISI_FB_INFO("fps_updt_support enable\n");
             }
         }
+
+    if (!strncmp("fps_func_switch:", command, strlen("fps_func_switch:"))) {
+        if('0' == command[strlen("fps_func_switch:")]) {
+            lcdkit_info.panel_infos.fps_func_switch = 0;
+            HISI_FB_INFO("fps_func_switch disable\n");
+        } else {
+            lcdkit_info.panel_infos.fps_func_switch = 1;
+            HISI_FB_INFO("fps_func_switch enable\n");
+        }
+    }
 
     if (!strncmp("blpwm_input_ena:", command, strlen("blpwm_input_ena:")))
     {
@@ -3365,5 +3377,76 @@ err_out:
     up(&hisifd->blank_sem);
 
     return ret;
+}
+
+ssize_t lcd_reg_read_show(struct device* dev, struct lcdkit_panel_data* lcdkit_info, char* buf)
+{
+    ssize_t ret = 0;
+    struct hisi_fb_data_type* hisifd = NULL;
+    if (NULL == dev)
+    {
+        LCDKIT_ERR("dev is NULL Point!\n");
+        return -ENXIO;
+    }
+    hisifd = get_fb_data(dev);
+    if (NULL == hisifd)
+    {
+        LCDKIT_ERR("hisifd is NULL Point!\n");
+        return -EINVAL;
+    }
+    if (NULL == lcdkit_info)
+    {
+        LCDKIT_ERR("lcdkit_info is NULL Point!\n");
+        return -EINVAL;
+    }
+	down(&hisifd->blank_sem);
+	if (!hisifd->panel_power_on) {
+		HISI_FB_INFO("fb%d, panel power off!\n", hisifd->index);
+		goto err_out;
+	}
+    if (lcdkit_info->lcdkit_reg_read_show)
+    {
+        hisifb_activate_vsync(hisifd);
+        ret = lcdkit_info->lcdkit_reg_read_show(hisifd, buf);
+        hisifb_deactivate_vsync(hisifd);
+    }
+err_out:
+	up(&hisifd->blank_sem);
+	return ret;
+}
+ssize_t lcd_reg_read_store(struct device* dev, struct lcdkit_panel_data* lcdkit_info, const char* buf)
+{
+    ssize_t ret = 0;
+    struct hisi_fb_data_type* hisifd = NULL;
+    if (NULL == dev)
+    {
+        LCDKIT_ERR("dev is NULL Point!\n");
+        return -ENXIO;
+    }
+    hisifd = get_fb_data(dev);
+    if (NULL == hisifd)
+    {
+        LCDKIT_ERR("hisifd is NULL Point!\n");
+        return -EINVAL;
+    }
+    if (NULL == lcdkit_info)
+    {
+        LCDKIT_ERR("lcdkit_info is NULL Point!\n");
+        return -EINVAL;
+    }
+	down(&hisifd->blank_sem);
+	if (!hisifd->panel_power_on) {
+		HISI_FB_INFO("fb%d, panel power off!\n", hisifd->index);
+		goto err_out;
+	}
+    if (lcdkit_info->lcdkit_reg_read_store)
+    {
+        hisifb_activate_vsync(hisifd);
+        ret = lcdkit_info->lcdkit_reg_read_store(hisifd, buf);
+        hisifb_deactivate_vsync(hisifd);
+    }
+err_out:
+	up(&hisifd->blank_sem);
+	return ret;
 }
 

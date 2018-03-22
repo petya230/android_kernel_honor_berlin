@@ -1181,6 +1181,10 @@ static int __init lcdkit_probe(struct platform_device* pdev)
         }
     }
 
+    if (lcdkit_info.panel_infos.fps_func_switch){
+        lcdkit_info.lcdkit_fps_timer_init();
+    }
+
     lcdkit_info.panel_infos.lcd_id = lcdkit_get_id(pdev);
     /*effect init*/
     lcdkit_effect_get_data(lcdkit_panel_init(lcdkit_info.panel_infos.lcd_id, lcdkit_info.panel_infos.product_id), pinfo);
