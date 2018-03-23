@@ -10,4 +10,3 @@ config MODEMID_HI3650
 	default n
 	help
 	  This driver supports HiSilicon GET MODEM ID
-

@@ -85,7 +85,7 @@ struct softtimer_ctrl
 	slice_value   get_slice_value;
 	struct     wake_lock     wake_lock;
 };
-/*lint --e{64}*/
+/*lint --e{64,456}*/
 static struct softtimer_ctrl timer_control[2];	/*timer_control[0] wake, timer_control[1] normal*/
 u32 check_softtimer_support_type(enum wakeup type){
 	return timer_control[(u32)type].support;
@@ -377,7 +377,7 @@ int  softtimer_task_func(void* data)
 			stop_hard_timer(ptimer_control);
 		}
 		if(ACORE_SOFTTIMER_ID==ptimer_control->hard_timer_id)
-			wake_unlock(&ptimer_control->wake_lock);
+			wake_unlock(&ptimer_control->wake_lock); /*lint !e455*/
 		if(debug_wakeup_timer.wakeup_flag)
 		{
 			softtimer_print("wakeup timer name:%s,wakeup_timer_id:%d",debug_wakeup_timer.wakeup_timer_name,debug_wakeup_timer.wakeup_timer_id);
@@ -432,10 +432,10 @@ OSL_IRQ_FUNC(static irqreturn_t,softtimer_interrupt_call_back,irq,dev)
 		}
 		spin_unlock_irqrestore(&ptimer_control->timer_list_lock,flags); /*lint !e550*/
 		if(ACORE_SOFTTIMER_ID==ptimer_control->hard_timer_id)
-			wake_lock(&ptimer_control->wake_lock);
-		osl_sem_up(&ptimer_control->soft_timer_sem);
+			wake_lock(&ptimer_control->wake_lock);  /*lint !e454*/
+		osl_sem_up(&ptimer_control->soft_timer_sem);  /*lint !e456*/
 	}
-	return IRQ_HANDLED;
+	return IRQ_HANDLED; /*lint !e454*/ /*lint !e456*/
 }
 static int get_softtimer_int_stat(int arg)
 {
@@ -494,7 +494,7 @@ int  bsp_softtimer_init(void)
 	}
 	if (timer_control[SOFTTIMER_WAKE].support)
 	{
-		if(ERROR == osl_task_init("softtimer_wake", TIMER_TASK_WAKE_PRI, TIMER_TASK_STK_SIZE ,(void *)softtimer_task_func, (void*)&timer_control[SOFTTIMER_WAKE],
+		if(ERROR == osl_task_init("softtimer_wake", TIMER_TASK_WAKE_PRI, TIMER_TASK_STK_SIZE ,(void *)softtimer_task_func, (void*)&timer_control[SOFTTIMER_WAKE], /*lint !e611*/
 			&timer_control[SOFTTIMER_WAKE].softtimer_task))
 		{
 			softtimer_print("softtimer_wake task create failed\n");
@@ -516,7 +516,7 @@ int  bsp_softtimer_init(void)
 	}
 	 if (timer_control[SOFTTIMER_NOWAKE].support)
 	 {
-		 if(ERROR == osl_task_init("softtimer_nowake", TIMER_TASK_NOWAKE_PRI, TIMER_TASK_STK_SIZE ,(void *)softtimer_task_func, (void*)&timer_control[SOFTTIMER_NOWAKE],
+		 if(ERROR == osl_task_init("softtimer_nowake", TIMER_TASK_NOWAKE_PRI, TIMER_TASK_STK_SIZE ,(void *)softtimer_task_func, (void*)&timer_control[SOFTTIMER_NOWAKE], /*lint !e611*/
 			&timer_control[SOFTTIMER_NOWAKE].softtimer_task))
 			{
 				softtimer_print("softtimer_normal task create failed\n");

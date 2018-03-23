@@ -11,5 +11,3 @@ config HISI_KERNELDUMP
 	help
 	  This driver supports HiSilicon HiXXX KERNELDUMP,
 	  including hisilicon kerneldump driver.
-	  
-

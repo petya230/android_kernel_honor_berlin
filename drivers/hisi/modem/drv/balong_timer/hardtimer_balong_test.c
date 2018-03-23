@@ -104,7 +104,7 @@ s32 hardtimer_test_case01(void)
 {
 	s32 ret = 0;
 	osl_sem_init(SEM_EMPTY,&sem);/*lint !e40*/
-	ret = mdrv_timer_start(TIMER_ACPU_OSA_ID,func,0,32768,0,TIMER_UNIT_NONE);
+	ret = mdrv_timer_start(TIMER_ACPU_OSA_ID,func,0,32768,(DRV_TIMER_MODE_E)0,TIMER_UNIT_NONE);
 	if(ret!=0)
 	{
 		bsp_trace(BSP_LOG_LEVEL_ERROR,BSP_MODU_HARDTIMER,"mdrv_timer_start fail\n");
@@ -133,7 +133,7 @@ s32 hardtimer_test_case02(void)
 {
 	s32 ret = 0;
 	osl_sem_init(SEM_EMPTY,&sem);/*lint !e40*/
-	ret = mdrv_timer_start(TIMER_ACPU_OSA_ID,func,0,100000,0,TIMER_UNIT_US);
+	ret = mdrv_timer_start(TIMER_ACPU_OSA_ID,func,0,100000,(DRV_TIMER_MODE_E)0,TIMER_UNIT_US);
 	if(ret!=0)
 	{
 		bsp_trace(BSP_LOG_LEVEL_ERROR,BSP_MODU_HARDTIMER,"mdrv_timer_start fail\n");
@@ -163,7 +163,7 @@ s32 hardtimer_test_case03(void)
 {
 	s32 ret = 0;
 	osl_sem_init(SEM_EMPTY,&sem);/*lint !e40*/
-	ret = mdrv_timer_start(TIMER_ACPU_OSA_ID,func,0,1000,0,TIMER_UNIT_MS);
+	ret = mdrv_timer_start(TIMER_ACPU_OSA_ID,func,0,1000,(DRV_TIMER_MODE_E)0,TIMER_UNIT_MS);
 	if(ret!=0)
 	{
 		bsp_trace(BSP_LOG_LEVEL_ERROR,BSP_MODU_HARDTIMER,"mdrv_timer_start fail\n");
@@ -193,7 +193,7 @@ s32 hardtimer_test_case04(void)
 {
 	s32 ret = 0;
 	osl_sem_init(SEM_EMPTY,&sem);/*lint !e40*/
-	ret = mdrv_timer_start(TIMER_ACPU_OSA_ID,func,0,0,0,TIMER_UNIT_NONE);
+	ret = mdrv_timer_start(TIMER_ACPU_OSA_ID,func,0,0,(DRV_TIMER_MODE_E)0,TIMER_UNIT_NONE);
 	if(ret!=0)
 	{
 		bsp_trace(BSP_LOG_LEVEL_ERROR,BSP_MODU_HARDTIMER,"mdrv_timer_start fail\n");
@@ -222,7 +222,7 @@ s32 hardtimer_test_case05(void)
 {
 	s32 ret = 0;
 	osl_sem_init(SEM_EMPTY,&sem);/*lint !e40*/
-	ret = mdrv_timer_start(TIMER_ACPU_OSA_ID,func,0,0,0,TIMER_UNIT_US);
+	ret = mdrv_timer_start(TIMER_ACPU_OSA_ID,func,0,0,(DRV_TIMER_MODE_E)0,TIMER_UNIT_US);
 	if(ret!=0)
 	{
 		bsp_trace(BSP_LOG_LEVEL_ERROR,BSP_MODU_HARDTIMER,"mdrv_timer_start fail\n");
@@ -252,7 +252,7 @@ s32 hardtimer_test_case06(void)
 {
 	s32 ret = 0;
 	osl_sem_init(SEM_EMPTY,&sem);/*lint !e40*/
-	ret = mdrv_timer_start(TIMER_ACPU_OSA_ID,func,0,0,0,TIMER_UNIT_MS);
+	ret = mdrv_timer_start(TIMER_ACPU_OSA_ID,func,0,0,(DRV_TIMER_MODE_E)0,TIMER_UNIT_MS);
 	if(ret!=0)
 	{
 		bsp_trace(BSP_LOG_LEVEL_ERROR,BSP_MODU_HARDTIMER,"mdrv_timer_start fail\n");
@@ -282,7 +282,7 @@ s32 hardtimer_test_case07(void)
 {
 	s32 ret = 0;
 	osl_sem_init(SEM_EMPTY,&sem);/*lint !e40*/
-	ret = mdrv_timer_start(TIMER_ACPU_OM_TCXO_ID,func,0,1000,0,TIMER_UNIT_MS);
+	ret = mdrv_timer_start(TIMER_ACPU_OM_TCXO_ID,func,0,1000,(DRV_TIMER_MODE_E)0,TIMER_UNIT_MS);
 	if(ret!=0)
 	{
 		bsp_trace(BSP_LOG_LEVEL_ERROR,BSP_MODU_HARDTIMER,"mdrv_timer_start fail\n");

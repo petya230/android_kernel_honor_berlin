@@ -95,6 +95,16 @@ void slice_set_judgetime(u64 time_s)
 	else
 		return;
 }
+u32 bsp_get_slice_value(void){
+	if(timeslice_ctrl.is_inited_flag ){
+		if(timeslice_ctrl.slice_is_increase)
+			return readl(timeslice_ctrl.timerslice_base_addr+timeslice_ctrl.slice_offset[0]);
+		else
+			return 0xFFFFFFFF - readl(timeslice_ctrl.timerslice_base_addr+timeslice_ctrl.slice_offset[0]);
+	}
+	else
+		return 0;
+}
 
 /*****************************************************************************
 * º¯Êý  : bbp_get_curtime
@@ -109,24 +119,31 @@ u32 bsp_slice_getcurtime(u64 *pcurtime)
 	u64  timervalue[4];
 	/*lint -restore*/
 	if(timeslice_ctrl.is_inited_flag){
-		timervalue[0] = (u64)readl(timeslice_ctrl.timerslice_base_addr+timeslice_ctrl.slice_offset[0]);
-		timervalue[1] = (u64)readl(timeslice_ctrl.timerslice_base_addr+timeslice_ctrl.slice_offset[1]);
-		if(timervalue[0]>=(0xffffffff-timeslice_ctrl.slice_judgetime))
+		if(!timeslice_ctrl.slice_is_increase)
 		{
-			timervalue[2] = (u64)readl(timeslice_ctrl.timerslice_base_addr+timeslice_ctrl.slice_offset[0]);
-			timervalue[3] = (u64)readl(timeslice_ctrl.timerslice_base_addr+timeslice_ctrl.slice_offset[1]);
-
-			if(timervalue[2] < timervalue[0])
-			{
-				(*pcurtime) = ((timervalue[3] - 1) << 32) | timervalue[0];
-			}
-			else
-			{
-				(*pcurtime) = (timervalue[1] << 32) | timervalue[0];
-			}
+			*pcurtime = (u64)bsp_get_slice_value();
 		}
 		else
-			(*pcurtime) = (timervalue[1] << 32) | timervalue[0];
+		{
+			timervalue[0] = (u64)readl(timeslice_ctrl.timerslice_base_addr+timeslice_ctrl.slice_offset[0]);
+			timervalue[1] = (u64)readl(timeslice_ctrl.timerslice_base_addr+timeslice_ctrl.slice_offset[1]);
+			if(timervalue[0]>=(0xffffffff-timeslice_ctrl.slice_judgetime))
+			{
+				timervalue[2] = (u64)readl(timeslice_ctrl.timerslice_base_addr+timeslice_ctrl.slice_offset[0]);
+				timervalue[3] = (u64)readl(timeslice_ctrl.timerslice_base_addr+timeslice_ctrl.slice_offset[1]);
+
+				if(timervalue[2] < timervalue[0])
+				{
+					(*pcurtime) = ((timervalue[3] - 1) << 32) | timervalue[0];
+				}
+				else
+				{
+					(*pcurtime) = (timervalue[1] << 32) | timervalue[0];
+				}
+			}
+			else
+				(*pcurtime) = (timervalue[1] << 32) | timervalue[0];
+		}
 	}
 	return 0;
 }
@@ -167,16 +184,6 @@ u32 bsp_get_slice_value_hrt(void){
 			else{
 				return (0xFFFFFFFF - readl(timeslice_ctrl.timerslice_hrt_base_addr+timeslice_ctrl.hrt_slice_offset[0]));
 			}
-	}
-	else
-		return 0;
-}
-u32 bsp_get_slice_value(void){
-	if(timeslice_ctrl.is_inited_flag ){
-		if(timeslice_ctrl.slice_is_increase)
-			return readl(timeslice_ctrl.timerslice_base_addr+timeslice_ctrl.slice_offset[0]);
-		else
-			return 0xFFFFFFFF - readl(timeslice_ctrl.timerslice_base_addr+timeslice_ctrl.slice_offset[0]);
 	}
 	else
 		return 0;

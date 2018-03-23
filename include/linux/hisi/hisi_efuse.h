@@ -88,6 +88,15 @@ typedef struct tag_efusec_data{
 #define EFUSE_BUF_SIZE                     (256)
 #define EFUSE_MAILBOX_TIMEOUT_1000MS       (1000)
 #define EFUSE_MODULE_INIT_SUCCESS_FLG      (0x12345678)
+#define EFUSE_KCE_LENGTH_BYTES             (16)
+#define EFUSE_HISEE_LENGTH_BYTES           (8)
+#define EFUSE_DIEID_LENGTH_BYTES           (20)
+#define EFUSE_CHIPID_LENGTH_BYTES          (8)
+#define EFUSE_AUTHKEY_LENGTH_BYTES         (8)
+#define EFUSE_SECDBG_LENGTH_BYTES          (4)
+#define EFUSE_THERMAL_LENGTH_BYTES         (8)
+#define EFUSE_FREQ_LENGTH_BYTES            (4)
+
 
 extern int get_efuse_dieid_value(unsigned char *pu8Buffer, unsigned int u32Lenght, unsigned int timeout);
 extern int get_efuse_chipid_value(unsigned char *pu8Buffer, unsigned int u32Lenght, unsigned int timeout);

@@ -6,7 +6,7 @@
  * apply:
  *
  * * This program is free software; you can redistribute it and/or modify
- * * it under the terms of the GNU General Public License version 2 and 
+ * * it under the terms of the GNU General Public License version 2 and
  * * only version 2 as published by the Free Software Foundation.
  * *
  * * This program is distributed in the hope that it will be useful,
@@ -28,10 +28,10 @@
  * * 2) Redistributions in binary form must reproduce the above copyright
  * *    notice, this list of conditions and the following disclaimer in the
  * *    documentation and/or other materials provided with the distribution.
- * * 3) Neither the name of Huawei nor the names of its contributors may 
- * *    be used to endorse or promote products derived from this software 
+ * * 3) Neither the name of Huawei nor the names of its contributors may
+ * *    be used to endorse or promote products derived from this software
  * *    without specific prior written permission.
- * 
+ *
  * * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
  * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
  * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
@@ -71,9 +71,9 @@ struct timercore_ctrl_s{
 	spinlock_t list_lock;
 }core_timer_control;
 static inline u32 check_timer_valid(u32 timer_id) {
-	if(core_timer_control.timer[timer_id].clk) 
+	if(core_timer_control.timer[timer_id].clk)
 		return 1;
-	else 
+	else
 		return 0;
 }
 
@@ -220,7 +220,7 @@ static s32 timer_start_us(struct bsp_hardtimer_control  *timer_ctrl)
 	{
 		if(timer_ctrl->timeout > TIMER_32K_US_BOUNDARY)
 			timer_ctrl->timeout= timer_clk*timer_ctrl->timeout/1000000;
-		
+
 		else/* 对于不大于31us的定时，直接往load寄存器写1 */
 			timer_ctrl->timeout=1;
 	}
@@ -299,9 +299,9 @@ s32 bsp_hardtimer_free(u32 timer_id)
 }
 
 /*获取唤醒源timer的下一个最近到时时间，供低功耗模块使用*/
-u32 get_next_schedule_time(void)
+u32 get_next_schedule_time(u32 *min_timer_id)
 {
-	u32 i=0,min = 0xffffffff,ret = 0,request_id = 0;/*lint !e123*/
+	u32 i=0,min = 0xffffffff,ret = 0,request_id = 0,tmp = 0;/*lint !e123*/
 	for(i=0;i<core_timer_control.wakeup_timer.count;i++)
 	{
 		request_id = core_timer_control.wakeup_timer.request_id[i];
@@ -314,8 +314,12 @@ u32 get_next_schedule_time(void)
 			(void)bsp_get_timer_rest_time(request_id,TIMER_UNIT_MS,(unsigned int*)&ret);
 		}
 		if(ret<min)/*lint !e123*/
+		{
 			min = ret;/*lint !e123*/
+			tmp = request_id;
+		}
 	}
+	*min_timer_id = tmp;
  	return min;/*lint !e123*/
 }
 
@@ -377,11 +381,11 @@ static int timer_device_init(void){
 				hardtimer_print_error("timer request_id %d iomap failed.\n",index);
 				return BSP_ERROR;
 			}
-			
+
 			core_timer_control.timer[index].irq = irq_of_parse_and_map(child_node, 0);
 			ret_value = of_property_read_u32(child_node, "clock-frequency", &core_timer_control.timer[index].clk);
 			ret_value |= of_property_read_u32(child_node, "sr_flag", &core_timer_control.timer[index].sr_flag);
-			ret_value |= of_property_read_string(child_node, "timer_name", (const char**)&core_timer_control.timer[index].name);	    	
+			ret_value |= of_property_read_string(child_node, "timer_name", (const char**)&core_timer_control.timer[index].name);
 			ret_value |= of_property_read_u32(child_node, "periphid", &core_timer_control.timer[index].periphid);
 			if(ret_value){
 				hardtimer_print_error("timer %d get properity failed.\n",index);

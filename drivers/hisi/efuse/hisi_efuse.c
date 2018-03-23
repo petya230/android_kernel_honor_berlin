@@ -68,7 +68,7 @@ static char* g_efusec_attributions[]={
         printk(KERN_ERR fmt, ##__VA_ARGS__); \
     } \
 } while (0)
-
+// cppcheck-suppress *
 #define check_efuse_module_ready() \
 ({ if (EFUSE_MODULE_INIT_SUCCESS_FLG != g_efusec_data.is_init_success) { \
 	efuse_print_info(log_level_error, "%s: efuse module is not ready now.\n", __func__);\
@@ -89,7 +89,6 @@ static char* g_efusec_attributions[]={
 /*lint -e750 +esym(750,*)*/
 #define EFUSE_FN_GET_KCE                                         0xc500000B
 #define EFUSE_FN_SET_KCE                                         0xc500000C
-#define EFUSE_FN_GET_CARRIERID                                   0xc500000D
 #define EFUSE_FN_GET_FREQ                                        0xc500000E
 #define EFUSE_FN_SET_HISEE                                0xc5000013
 #define EFUSE_FN_GET_HISEE                                0xc5000014
@@ -113,7 +112,7 @@ int get_efuse_hisee_value(unsigned char *pu8Buffer, unsigned int u32Length, unsi
 {
 	int ret;
 
-	if (NULL == pu8Buffer)
+	if (NULL == pu8Buffer || (u32Length > EFUSE_HISEE_LENGTH_BYTES))
 	{
 		efuse_print_info(log_level_error, "%s: %d: pu8Buffer is NULL.\n", __func__, __LINE__);
 		return -EFAULT;
@@ -136,7 +135,7 @@ int set_efuse_hisee_value(unsigned char *pu8Buffer, unsigned int u32Length, unsi
 {
 	int ret;
 
-	if (NULL == pu8Buffer)
+	if (NULL == pu8Buffer || (u32Length > EFUSE_HISEE_LENGTH_BYTES))
 	{
 		efuse_print_info(log_level_error, "%s: %d: pu8Buffer is NULL.\n", __func__, __LINE__);
 		return -EFAULT;
@@ -155,7 +154,7 @@ int get_efuse_dieid_value(unsigned char *pu8Buffer, unsigned int u32Length, unsi
 {
     int ret;
 
-    if (NULL == pu8Buffer)
+    if (NULL == pu8Buffer || (u32Length > EFUSE_DIEID_LENGTH_BYTES))
     {
         efuse_print_info(log_level_error, "%s: %d: pu8Buffer is NULL.\n", __func__, __LINE__);
        return -EFAULT;
@@ -176,7 +175,7 @@ int get_efuse_chipid_value(unsigned char *pu8Buffer, unsigned int u32Length, uns
 {
     int ret;
 
-    if (NULL == pu8Buffer)
+    if (NULL == pu8Buffer || (u32Length > EFUSE_CHIPID_LENGTH_BYTES))
     {
         efuse_print_info(log_level_error, "%s: %d: pu8Buffer is NULL.\n", __func__, __LINE__);
         return -EFAULT;
@@ -197,7 +196,7 @@ int set_efuse_chipid_value(unsigned char *pu8Buffer, unsigned int u32Length, uns
 {
     int ret;
 
-    if (NULL == pu8Buffer)
+    if (NULL == pu8Buffer || (u32Length > EFUSE_CHIPID_LENGTH_BYTES))
     {
         efuse_print_info(log_level_error, "%s: %d: pu8Buffer is NULL.\n", __func__, __LINE__);
 		return -EFAULT;
@@ -215,7 +214,7 @@ int get_efuse_authkey_value(unsigned char *pu8Buffer, unsigned int u32Length, un
 {
     int ret;
 
-    if (NULL == pu8Buffer)
+    if (NULL == pu8Buffer || (u32Length > EFUSE_AUTHKEY_LENGTH_BYTES))
     {
         efuse_print_info(log_level_error, "%s: %d: pu8Buffer is NULL.\n", __func__, __LINE__);
        return -EFAULT;
@@ -236,7 +235,7 @@ int set_efuse_authkey_value(unsigned char *pu8Buffer, unsigned int u32Length, un
 {
     int ret;
 
-    if (NULL == pu8Buffer)
+    if (NULL == pu8Buffer || (u32Length > EFUSE_AUTHKEY_LENGTH_BYTES))
     {
         efuse_print_info(log_level_error, "%s: %d: pu8Buffer is NULL.\n", __func__, __LINE__);
        return -EFAULT;
@@ -254,7 +253,7 @@ int get_efuse_securitydebug_value(unsigned char *pu8Buffer, unsigned int u32Leng
 {
     int ret;
 
-    if (NULL == pu8Buffer)
+    if (NULL == pu8Buffer || (u32Length > EFUSE_SECDBG_LENGTH_BYTES))
     {
         efuse_print_info(log_level_error, "%s: %d: pu8Buffer is NULL.\n", __func__, __LINE__);
        return -EFAULT;
@@ -294,7 +293,7 @@ int get_efuse_thermal_value(unsigned char *pu8Buffer, unsigned int u32Length, un
 {
     int ret;
 
-    if (NULL == pu8Buffer)
+    if (NULL == pu8Buffer || (u32Length > EFUSE_THERMAL_LENGTH_BYTES))
     {
         efuse_print_info(log_level_error, "%s: %d: pu8Buffer is NULL.\n", __func__, __LINE__);
        return -EFAULT;
@@ -316,7 +315,7 @@ int get_efuse_freq_value(unsigned char *pu8Buffer, unsigned int u32Length)
 {
     int ret;
 
-    if (NULL == pu8Buffer)
+    if (NULL == pu8Buffer || (u32Length > EFUSE_FREQ_LENGTH_BYTES))
     {
         efuse_print_info(log_level_error, "%s: %d: pu8Buffer is NULL.\n", __func__, __LINE__);
        return -EFAULT;
@@ -349,7 +348,7 @@ int set_efuse_kce_value(unsigned char *pu8Buffer, unsigned int u32Length, unsign
 {
     int ret;
 
-    if (NULL == pu8Buffer)
+    if (NULL == pu8Buffer || (u32Length != EFUSE_KCE_LENGTH_BYTES))
     {
         efuse_print_info(log_level_error, "%s: %d: pu8Buffer is NULL.\n", __func__, __LINE__);
         return -EFAULT;
@@ -360,28 +359,6 @@ int set_efuse_kce_value(unsigned char *pu8Buffer, unsigned int u32Length, unsign
     memmove((void *)g_efusec_data.buf_virt_addr, (void *)pu8Buffer, u32Length);
     ret = g_efusec_data.invoke_efuse_fn(EFUSE_FN_SET_KCE, (u64)g_efusec_data.buf_phy_addr, (u64)u32Length, (u64)timeout);
     mutex_unlock(&g_efusec_data.efuse_mutex);
-	efuse_print_info(log_level_error, "%s: ret=%d.\n", __func__, ret);
-    return ret;
-}
-
-int get_efuse_carrierid_value(unsigned char *pu8Buffer, unsigned int u32Length, unsigned int timeout)
-{
-    int ret;
-
-    if (NULL == pu8Buffer)
-    {
-        efuse_print_info(log_level_error, "%s: %d: pu8Buffer is NULL.\n", __func__, __LINE__);
-       return -EFAULT;
-    }
-	check_efuse_module_ready();
-	BUG_ON(in_interrupt());
-    mutex_lock(&g_efusec_data.efuse_mutex);
-    ret = g_efusec_data.invoke_efuse_fn(EFUSE_FN_GET_CARRIERID, (u64)g_efusec_data.buf_phy_addr, u32Length, timeout);
-    if (OK == ret)
-    {
-        memmove((void *)pu8Buffer, (void *)g_efusec_data.buf_virt_addr, u32Length);
-    }
-	mutex_unlock(&g_efusec_data.efuse_mutex);
 	efuse_print_info(log_level_error, "%s: ret=%d.\n", __func__, ret);
     return ret;
 }
@@ -507,13 +484,6 @@ int bsp_efuse_write(unsigned int *pBuf, const unsigned int group, const unsigned
     return ret;
 }
 
-int test_efuse_display(unsigned char *pu8Buffer, unsigned int u32Length, unsigned int timeout)
-{
-    int ret = OK;
-
-	printk(KERN_ERR "%s success.\n", __func__);
-	return ret;
-}
 
 
 
@@ -528,8 +498,12 @@ static long efusec_ioctl(struct file *file, u_int cmd, u_long arg)
 {
 	int ret = OK;
 	void __user *argp = (void __user *)arg;
-	int i;
+	unsigned int i;
 	unsigned int bits_width, bytes;
+	/*20 bytes be enough for these efuse field now, need to make larger if
+	 *the length of efuse field more than 20!
+	 */
+	unsigned char buffer[20] = {0};
 
     efuse_print_info(log_level_error, "%s: %d: cmd=0x%x.\n", __func__, __LINE__, cmd);
 	if (!arg) {
@@ -540,7 +514,7 @@ static long efusec_ioctl(struct file *file, u_int cmd, u_long arg)
 	case HISI_EFUSE_READ_CHIPID:
 	    GET_BITS_WIDTH(bits_width, efuse_mem_attr_chipid);
 		bytes = GET_BYTE_NUM(bits_width);
-		ret = get_efuse_chipid_value(g_efusec_data.buf_virt_addr, bytes, EFUSE_MAILBOX_TIMEOUT_1000MS);
+		ret = get_efuse_chipid_value(&buffer[0], bytes, EFUSE_MAILBOX_TIMEOUT_1000MS);
 		if (OK != ret )
 		{
 			efuse_print_info(log_level_error, "%s: %d: get_efuse_chipid_value failed,ret=%d\n", __func__, __LINE__, ret);
@@ -549,11 +523,11 @@ static long efusec_ioctl(struct file *file, u_int cmd, u_long arg)
 
 		for (i = 0; i < bytes; i++)
 		{
-			efuse_print_info(log_level_error, "line%d, get_efuse_chipid_value[%d] = %2x.\n", __LINE__, i, g_efusec_data.buf_virt_addr[i]);
+			efuse_print_info(log_level_error, "line%d, get_efuse_chipid_value[%d] = %2x.\n", __LINE__, i, buffer[i]);
 		}
 
 		/*send back to user*/
-		if (copy_to_user(argp, g_efusec_data.buf_virt_addr, bytes))
+		if (copy_to_user(argp, &buffer[0], bytes))
 		{
 			ret = -EFAULT;
 		}
@@ -563,16 +537,16 @@ static long efusec_ioctl(struct file *file, u_int cmd, u_long arg)
 		GET_BITS_WIDTH(bits_width, efuse_mem_attr_chipid);
 		bytes = GET_BYTE_NUM(bits_width);
         /*get data from user*/
-		if (copy_from_user(g_efusec_data.buf_virt_addr, argp, bytes))
+		if (copy_from_user(&buffer[0], argp, bytes))
 		{
 			ret = -EFAULT;
 			break;
 		}
 		for (i = 0; i < bytes; i++)
 		{
-			efuse_print_info(log_level_error, "line%d, set_efuse_chipid_value[%d] = %2x.\n", __LINE__, i, g_efusec_data.buf_virt_addr[i]);
+			efuse_print_info(log_level_error, "line%d, set_efuse_chipid_value[%d] = %2x.\n", __LINE__, i, buffer[i]);
 		}
-		ret = set_efuse_chipid_value(g_efusec_data.buf_virt_addr, bytes, EFUSE_MAILBOX_TIMEOUT_1000MS);
+		ret = set_efuse_chipid_value(&buffer[0], bytes, EFUSE_MAILBOX_TIMEOUT_1000MS);
 		if (OK != ret )
 		{
 			efuse_print_info(log_level_error, "%s: %d: efuse_set_chipID failed,ret=%d\n", __func__, __LINE__, ret);
@@ -592,7 +566,7 @@ static long efusec_ioctl(struct file *file, u_int cmd, u_long arg)
 	case HISI_EFUSE_READ_AUTHKEY:
 	    GET_BITS_WIDTH(bits_width, efuse_mem_attr_authkey);
 		bytes = GET_BYTE_NUM(bits_width);
-		ret = get_efuse_authkey_value(g_efusec_data.buf_virt_addr, bytes, EFUSE_MAILBOX_TIMEOUT_1000MS);
+		ret = get_efuse_authkey_value(&buffer[0], bytes, EFUSE_MAILBOX_TIMEOUT_1000MS);
 		if (OK != ret)
 		{
             efuse_print_info(log_level_error, "%s: %d: get_efuse_authkey_value failed,ret=%d\n", __func__, __LINE__, ret);
@@ -601,11 +575,11 @@ static long efusec_ioctl(struct file *file, u_int cmd, u_long arg)
 
         for (i = 0; i < bytes; i++)
         {
-            efuse_print_info(log_level_error, "line%d, get_efuse_authkey_value[%d] = %2x.\n", __LINE__, i, g_efusec_data.buf_virt_addr[i]);
+            efuse_print_info(log_level_error, "line%d, get_efuse_authkey_value[%d] = %2x.\n", __LINE__, i, buffer[i]);
         }
 
 		/*send back to user*/
-        if (copy_to_user(argp, g_efusec_data.buf_virt_addr, bytes))
+        if (copy_to_user(argp, &buffer[0], bytes))
 		{
             ret = -EFAULT;
         }
@@ -615,16 +589,16 @@ static long efusec_ioctl(struct file *file, u_int cmd, u_long arg)
         GET_BITS_WIDTH(bits_width, efuse_mem_attr_authkey);
 		bytes = GET_BYTE_NUM(bits_width);
         /*get data from user*/
-		if (copy_from_user(g_efusec_data.buf_virt_addr, argp, bytes)) {
+		if (copy_from_user(&buffer[0], argp, bytes)) {
 			ret = -EFAULT;
 			break;
 		}
 		for (i = 0; i < bytes; i++)
 		{
-			efuse_print_info(log_level_error, "line%d, set_efuse_authkey_value[%d] = %2x.\n", __LINE__, i, g_efusec_data.buf_virt_addr[i]);
+			efuse_print_info(log_level_error, "line%d, set_efuse_authkey_value[%d] = %2x.\n", __LINE__, i, buffer[i]);
 		}
 
-		ret = set_efuse_authkey_value(g_efusec_data.buf_virt_addr, bytes, EFUSE_MAILBOX_TIMEOUT_1000MS);
+		ret = set_efuse_authkey_value(&buffer[0], bytes, EFUSE_MAILBOX_TIMEOUT_1000MS);
 		if (OK != ret)
 		{
 			efuse_print_info(log_level_error, "%s: %d: set_efuse_authkey_value failed,ret=%d\n", __func__, __LINE__, ret);
@@ -633,17 +607,17 @@ static long efusec_ioctl(struct file *file, u_int cmd, u_long arg)
 	case HISI_EFUSE_READ_DEBUGMODE:
 	    GET_BITS_WIDTH(bits_width, efuse_mem_attr_huk_rd_disable);
 		bytes = GET_BYTE_NUM(bits_width);
-		ret = get_efuse_securitydebug_value(g_efusec_data.buf_virt_addr, bytes, EFUSE_MAILBOX_TIMEOUT_1000MS);
+		ret = get_efuse_securitydebug_value(&buffer[0], bytes, EFUSE_MAILBOX_TIMEOUT_1000MS);
 		if (OK != ret)
 		{
             efuse_print_info(log_level_error, "%s: %d: efuse_get_SecureDebugMode failed,ret=%d\n", __func__, __LINE__, ret);
             break;
         }
 
-        efuse_print_info(log_level_info, "line%d: get_efuse_securitydebug_value = %2x.\n", __LINE__, *((int *)g_efusec_data.buf_virt_addr));
+        efuse_print_info(log_level_info, "line%d: get_efuse_securitydebug_value = %2x.\n", __LINE__, *((int *)&buffer[0]));
 
 		/*send back to user*/
-		if (copy_to_user(argp, g_efusec_data.buf_virt_addr, bytes))
+		if (copy_to_user(argp, &buffer[0], bytes))
 		{
 			ret = -EFAULT;
 			break;
@@ -654,15 +628,15 @@ static long efusec_ioctl(struct file *file, u_int cmd, u_long arg)
 	    GET_BITS_WIDTH(bits_width, efuse_mem_attr_huk_rd_disable);
 	    bytes = GET_BYTE_NUM(bits_width);
 		/*get data from user*/
-		if (copy_from_user(g_efusec_data.buf_virt_addr, argp, bytes))
+		if (copy_from_user(&buffer[0], argp, bytes))
 		{
 			ret = -EFAULT;
 			break;
 		}
 
-		efuse_print_info(log_level_debug, "line%d: set_efuse_securitydebug_value = %2x.\n", __LINE__, *((int *)g_efusec_data.buf_virt_addr));
+		efuse_print_info(log_level_debug, "line%d: set_efuse_securitydebug_value = %2x.\n", __LINE__, *((int *)&buffer[0]));
 
-		ret = set_efuse_securitydebug_value(g_efusec_data.buf_virt_addr, EFUSE_MAILBOX_TIMEOUT_1000MS);
+		ret = set_efuse_securitydebug_value(&buffer[0], EFUSE_MAILBOX_TIMEOUT_1000MS);
 		if (OK != ret)
 		{
 			efuse_print_info(log_level_error, "%s: %d: efuse_set_SecureDebugMode failed,ret=%d\n", __func__, __LINE__, ret);
@@ -672,7 +646,7 @@ static long efusec_ioctl(struct file *file, u_int cmd, u_long arg)
     case HISI_EFUSE_READ_DIEID:
 	    GET_BITS_WIDTH(bits_width, efuse_mem_attr_dieid);
 		bytes = GET_BYTE_NUM(bits_width);
-        ret = get_efuse_dieid_value(g_efusec_data.buf_virt_addr, bytes, EFUSE_MAILBOX_TIMEOUT_1000MS);
+        ret = get_efuse_dieid_value(&buffer[0], bytes, EFUSE_MAILBOX_TIMEOUT_1000MS);
         if (OK != ret)
 		{
             efuse_print_info(log_level_error, "%s: %d: get_efuse_dieid_value failed,ret=%d\n", __func__, __LINE__, ret);
@@ -681,36 +655,18 @@ static long efusec_ioctl(struct file *file, u_int cmd, u_long arg)
 
         for (i = 0; i < bytes; i++)
         {
-            efuse_print_info(log_level_debug, "line%d, get_efuse_dieid_vlaue[%d] = %2x.\n", __LINE__, i, g_efusec_data.buf_virt_addr[i]);
+            efuse_print_info(log_level_debug, "line%d, get_efuse_dieid_vlaue[%d] = %2x.\n", __LINE__, i, buffer[i]);
         }
 
         /*send back to user*/
-        if (copy_to_user(argp, g_efusec_data.buf_virt_addr, bytes))
+        if (copy_to_user(argp, &buffer[0], bytes))
 		{
             ret = -EFAULT;
         }
 
         break;
 
-    case HISI_EFUSE_TEST_DISPLAY:
-        bytes = g_efusec_data.efuse_group_max << 2;
-        ret = test_efuse_display(g_efusec_data.buf_virt_addr, bytes, EFUSE_MAILBOX_TIMEOUT_1000MS);
-        if (OK != ret)
-        {
-             efuse_print_info(log_level_error, "%s: test_efuse_display failed, max groups count = %d,ret=%d\n", __func__, g_efusec_data.efuse_group_max, ret);
-             break;
-        }
-        efuse_print_info(log_level_debug, "print the Efuse IP memory layout, max groups count=%d\n", g_efusec_data.efuse_group_max);
-        for (i = 0; i < g_efusec_data.efuse_group_max; i++)
-        {
-            efuse_print_info(log_level_debug, "%4d: %4x\n", i, *((unsigned int *)(g_efusec_data.buf_virt_addr+i*4)));
-        }
-        /*send back to user*/
-        if (copy_to_user(argp, g_efusec_data.buf_virt_addr, bytes))
-        {
-            ret = -EFAULT;
-        }
-        break;
+
 
 	default:
 	    efuse_print_info(log_level_error, "[EFUSE][%s] Unknow command!\n", __func__);

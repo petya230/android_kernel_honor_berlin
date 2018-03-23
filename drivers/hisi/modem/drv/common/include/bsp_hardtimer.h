@@ -6,7 +6,7 @@
  * apply:
  *
  * * This program is free software; you can redistribute it and/or modify
- * * it under the terms of the GNU General Public License version 2 and 
+ * * it under the terms of the GNU General Public License version 2 and
  * * only version 2 as published by the Free Software Foundation.
  * *
  * * This program is distributed in the hope that it will be useful,
@@ -28,10 +28,10 @@
  * * 2) Redistributions in binary form must reproduce the above copyright
  * *    notice, this list of conditions and the following disclaimer in the
  * *    documentation and/or other materials provided with the distribution.
- * * 3) Neither the name of Huawei nor the names of its contributors may 
- * *    be used to endorse or promote products derived from this software 
+ * * 3) Neither the name of Huawei nor the names of its contributors may
+ * *    be used to endorse or promote products derived from this software
  * *    without specific prior written permission.
- * 
+ *
  * * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
  * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
  * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
@@ -261,7 +261,7 @@ u32 bsp_get_timer_current_value(u32 timer_id);
 
 int bsp_get_timer_rest_time(u32 timer_id, DRV_TIMER_UNIT_E unit,unsigned int *rest);
 
-u32 get_next_schedule_time(void);
+u32 get_next_schedule_time(u32 *min_timer_id);
 
 
 #else
@@ -277,7 +277,7 @@ static inline void bsp_hardtimer_int_unmask(u32 timer_id) {}
 static inline u32 bsp_hardtimer_int_status(u32 timer_id) {return 0;}
 static inline u32 bsp_get_timer_current_value(u32 timer_id) {return 0;}
 static inline int bsp_get_timer_rest_time(u32 timer_id, DRV_TIMER_UNIT_E unit,unsigned int *rest) {return 0;}
-static inline u32 get_next_schedule_time(void){return 0;}
+static inline u32 get_next_schedule_time(u32 *min_timer_id){return 0;}
 static inline void bsp_timer_init(void){return;}
 #endif/*CONFIG_MODULE_TIMER*/
 
