@@ -13,7 +13,9 @@
 #include <linux/delay.h>
 #include <linux/highmem.h>
 #include <linux/io.h>
+#ifdef CMDQ_QUIRK_CHECK_BUSY_DT_CONTROLLED
 #include <linux/of.h>
+#endif
 #include <linux/module.h>
 #include <linux/dma-mapping.h>
 #include <linux/slab.h>
@@ -40,6 +42,8 @@
 #define CMDQ_TASK_TIMEOUT_MS 29000
 
 #define DRV_NAME "cmdq-host"
+/*fix the soc bug that the qbr task can't be cleared*/
+#define CMDQ_FIX_CLEAR_QBRTASK
 
 #ifdef CONFIG_HUAWEI_EMMC_DSM
 extern void sdhci_cmdq_dsm_set_host_status(struct sdhci_host *host, u32 error_bits);
@@ -1429,6 +1433,7 @@ static const struct mmc_cmdq_host_ops cmdq_host_ops = {
 
 static void cmdq_populate_dt(struct platform_device *pdev, struct cmdq_host *cq_host)
 {
+#ifdef CMDQ_QUIRK_CHECK_BUSY_DT_CONTROLLED
 	struct device_node *np = pdev->dev.of_node;
 	if (!np) {
 		dev_err(&pdev->dev, "can not find device node\n");
@@ -1436,9 +1441,12 @@ static void cmdq_populate_dt(struct platform_device *pdev, struct cmdq_host *cq_
 	}
 
 	if (of_get_property(np, "cmdq_check_busy", NULL)) {
+#endif
 		cq_host->quirks |= CMDQ_QUIRK_CHECK_BUSY;
 		pr_info("cmdq check busy enable\n");
-	}
+#ifdef CMDQ_QUIRK_CHECK_BUSY_DT_CONTROLLED
+	} 
+#endif
 }
 
 
