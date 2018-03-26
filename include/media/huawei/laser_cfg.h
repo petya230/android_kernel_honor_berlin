@@ -122,6 +122,7 @@ typedef struct _tag_hwlaser_event
 }hwlaser_event_t;
 
 #define HWLASER_IOCTL_GET_INFO                 _IOR('S', BASE_VIDIOC_PRIVATE + 1, hwlaser_info_t)
+
 #define HWLASER_IOCTL_CONFIG               	_IOWR('A', BASE_VIDIOC_PRIVATE + 2, hwlaser_config_data_t)
 
 #endif // __HW_ALAN_KERNEL_HWCAM_LASER_CFG_H__

@@ -1,11 +1,11 @@
 /*
- *  Hisilicon K3 SOC camera driver source file
+ * cvdr_config.h
  *
- *  Copyright (C) Huawei Technology Co., Ltd.
+ * provide interface for config cvdr.
  *
- * Author:
- * Email:
- * Date:
+ * Copyright (c) 2001-2021, Huawei Tech. Co., Ltd. All rights reserved.
+ *
+ * lixiuhua <aimee.li@hisilicon.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,70 +17,46 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
 
-#ifndef _INCLUDE_HJPEG160_H
-#define _INCLUDE_HJPEG160_H
+#ifndef _INCLUDE_CVDR_CFG_H
+#define _INCLUDE_CVDR_CFG_H
 
-#define MASK0(name)  (((unsigned int)1<<(name##_LEN))-1)
-#define MASK1(name)  ((((unsigned int)1<<(name##_LEN))-1) << (name##_OFFSET))
+#include "hjpeg_common.h"
+#include <media/huawei/hjpeg_cfg.h>
 
-/* operation on the field of a variable */
-#define REG_GET_FIELD(reg, name) \
-        (((reg) >> (name##_OFFSET)) & MASK0(name))
-
-#define REG_SET_FIELD(reg, name, val) \
-        (reg = ((reg) & ~MASK1(name)) | (((val) & MASK0(name)) << (name##_OFFSET)))
-
-static inline
-void REG_SET(void __iomem *addr, u32 value)
-{
-    iowrite32(value, addr);
-}
-static inline
-u32 REG_GET(void __iomem *addr)
-{
-    return ioread32(addr);
-}
-
-
-#define SET_FIELD_TO_VAL(reg, field, value) REG_SET_FIELD(reg, field, value)
-
-#define SET_FIELD_TO_REG(reg, field, value) \
-    do { \
-        unsigned int v = REG_GET(reg); \
-        SET_FIELD_TO_VAL(v, field, value); \
-        REG_SET(reg, v); \
-    } while(0)
-
-
-#define CHECK_ALIGN(value,align) (value%align == 0)
-#define ALIGN_DOWN(value, al) ((unsigned int )(value) & ~((al) - 1))
-
-/** jpgenc head offset need write in the first 4 bytes of input buffer
-if JPGENC_HEAD_OFFSET small than 4, func jpgenc_add_header must be modify */
-
-#define JPGENC_HEAD_SIZE                     640
-#define JPGENC_HEAD_OFFSET                   11
-
-#define JPGENC_RESTART_INTERVAL              0
-#define JPGENC_RESTART_INTERVAL_ON           1
-#define JPGENC_INIT_QUALITY                  95
-#define JPGENC_RESET_REG                     0xE8420060
-#define JPGENC_RESET_LEN                     1
-#define JPGENC_RESET_OFFSET                  3
-#define ISP_CORE_CTRL_1_REG                  0xE8583700
-#define WAIT_ENCODE_TIMEOUT                  10000
+extern void hjpeg_config_cvdr(hjpeg_hw_ctl_t *hw_ctl, jpgenc_config_t* config);
 
 #define EXP_PIX                              1
 #define ACCESS_LIMITER                       7
 #define ALLOCATED_DU                         8
-#define CVDR_SRT_BASE                        0xE842E000
-#define SMMU_BASE_ADDR                       0xE8406000
+
+#define ACCESS_LIMITER_VP_WR_0                      0x2
+#define ACCESS_LIMITER_NR_RD_0                      0x4
+#define ALLOCATED_DU_NR_RD_0                        0x7
+
+#define CVDR_AXI_JPEG_CVDR_CFG                      0x0
+#define AXI_JPEG_CVDR_CFG_max_axiwrite_id_OFFSET    24
+#define AXI_JPEG_CVDR_CFG_max_axiwrite_id_LEN       5
+#define AXI_JPEG_CVDR_CFG_max_axiread_id_OFFSET     16
+#define AXI_JPEG_CVDR_CFG_max_axiread_id_LEN        5
+
+#define CVDR_AXI_JPEG_CVDR_WR_QOS_CFG               0xC
+#define CVDR_AXI_JPEG_CVDR_RD_QOS_CFG               0x10
+#define CVDR_AXI_JPEG_VP_WR_CFG_0_OFFSET            0x1C
+#define CVDR_AXI_JPEG_VP_WR_AXI_FS_0_OFFSET         0x20
+#define CVDR_AXI_JPEG_VP_WR_AXI_LINE_0_OFFSET       0x24
+#define CVDR_AXI_JPEG_VP_WR_IF_CFG_0_OFFSET         0x28
+#define CVDR_AXI_JPEG_LIMITER_VP_WR_0_OFFSET        0x400
+#define CVDR_AXI_JPEG_NR_RD_CFG_0_OFFSET            0xA00
+#define CVDR_AXI_JPEG_NR_RD_DEBUG_0_OFFSET          0xA04
+#define CVDR_AXI_JPEG_LIMITER_NR_RD_0_OFFSET        0xA08
+#define CVDR_AXI_JPEG_DEBUG_0_OFFSET                0xB00
+#define CVDR_AXI_JPEG_DEBUG_1_OFFSET                0xB04
+#define CVDR_AXI_JPEG_DEBUG_2_OFFSET                0xB08
+#define CVDR_AXI_JPEG_DEBUG_3_OFFSET                0xB0C
+#define CVDR_AXI_JPEG_VP_WR_DEBUG_0_OFFSET          0xF00
 
 #define CVDR_SRT_VP_WR_CFG_25_OFFSET         0x1AC
 #define CVDR_SRT_VP_WR_AXI_FS_25_OFFSET      0x1B0
@@ -90,19 +66,6 @@ if JPGENC_HEAD_OFFSET small than 4, func jpgenc_add_header must be modify */
 #define CVDR_SRT_LIMITER_NR_RD_1_OFFSET      0xA18
 #define CVDR_SRT_LIMITER_VP_WR_25_OFFSET     0x464
 
-#define SMMU_GLOBAL_BYPASS                   0x00
-#define SMMU_BYPASS_VPWR                     0xBC
-#define SMMU_BYPASS_NRRD1                    0x114
-#define SMMU_BYPASS_NRRD2                    0x118
-#define SMMU_SCRS                            0x710
-#define MICROSECOND_PER_SECOND              (1000000)
-
-typedef enum _format_e
-{
-    JPGENC_FORMAT_YUV422 = 0x0,
-    JPGENC_FORMAT_YUV420 = 0x10,
-    JPGENC_FORMAT_BIT    = 0xF0,
-}format_e;
 typedef enum _cvdr_pix_fmt_e
 {
     DF_1PF8 = 0x0,
@@ -123,21 +86,91 @@ typedef enum _cvdr_pix_fmt_e
     DF_FMT_INVALID,
 } cvdr_pix_fmt_e;
 
-typedef enum _phyaddr_access_e
+typedef enum _cvdr_rd_port
 {
-    JPEGENC_INDEX = 0,
-    CVDR_INDEX,
-    SMMU_INDEX,
+    RD_PORT_0  = 0,
+    RD_PORT_1  = 1,
+}cvdr_rd_port;
 
-    MAX_INDEX,
-}phyaddr_access_e;
+typedef enum _cvdr_wr_port
+{
+    WR_PORT_0 = 0,
+    WR_PORT_25 = 25,
+}cvdr_wr_port;
+
+/* Define the union U_CVDR_SRT_LIMITER_NR_RD_1 */
+typedef union
+{
+    /* Define the struct bits */
+    struct
+    {
+        uint32_t vpwr_access_limiter_0_0 : 4 ; /* [3..0] */
+        uint32_t vpwr_access_limiter_1_0 : 4 ; /* [7..4] */
+        uint32_t vpwr_access_limiter_2_0 : 4 ; /* [11..8] */
+        uint32_t vpwr_access_limiter_3_0 : 4 ; /* [15..12] */
+        uint32_t reserved_0              : 8 ; /* [23..16] */
+        uint32_t vpwr_access_limiter_reload_0 : 4 ; /* [27..24] */
+        uint32_t reserved_1              : 4 ; /* [31..28] */
+    } bits;
+
+    /* Define an unsigned member */
+    uint32_t reg32;
+
+} U_CVDR_SRT_LIMITER_VP_WR_0;
+
+
+/* Define the union U_CVDR_WR_QOS_CFG */
+typedef union
+{
+    /* Define the struct bits */
+    struct
+    {
+        uint32_t wr_qos_threshold_01_stop  : 4 ; /* [3..0] */
+        uint32_t wr_qos_threshold_01_start : 4 ; /* [7..4] */
+        uint32_t wr_qos_threshold_10_stop  : 4 ; /* [11..8] */
+        uint32_t wr_qos_threshold_10_start : 4 ; /* [15..12] */
+        uint32_t wr_qos_threshold_11_stop  : 4 ; /* [19..16] */
+        uint32_t wr_qos_threshold_11_start : 4 ; /* [23..20] */
+        uint32_t reserved                  : 2 ; /* [25..24] */
+        uint32_t wr_qos_min                : 2 ; /* [27..26] */
+        uint32_t wr_qos_max                : 2 ; /* [29..28] */
+        uint32_t wr_qos_sr                 : 2 ; /* [31..30] */
+    } bits;
+
+    /* Define an unsigned member */
+    uint32_t reg32;
+
+} U_CVDR_WR_QOS_CFG;
+
+/* Define the union U_CVDR_RD_QOS_CFG */
+typedef union
+{
+    /* Define the struct bits */
+    struct
+    {
+        uint32_t rd_qos_threshold_01_stop  : 4 ; /* [3..0] */
+        uint32_t rd_qos_threshold_01_start : 4 ; /* [7..4] */
+        uint32_t rd_qos_threshold_10_stop  : 4 ; /* [11..8] */
+        uint32_t rd_qos_threshold_10_start : 4 ; /* [15..12] */
+        uint32_t rd_qos_threshold_11_stop  : 4 ; /* [19..16] */
+        uint32_t rd_qos_threshold_11_start : 4 ; /* [23..20] */
+        uint32_t reserved                  : 2 ; /* [25..24] */
+        uint32_t rd_qos_min                : 2 ; /* [27..26] */
+        uint32_t rd_qos_max                : 2 ; /* [29..28] */
+        uint32_t rd_qos_sr                 : 2 ; /* [31..30] */
+    } bits;
+
+    /* Define an unsigned member */
+    uint32_t reg32;
+} U_CVDR_RD_QOS_CFG;
+
 
 typedef struct _cvdr_wr_fmt_desc_t
 {
     cvdr_pix_fmt_e      pix_fmt;
     unsigned char       pix_expan;
     unsigned char       access_limiter;
-    uint32_t              last_page;
+    uint32_t            last_page;
     unsigned short      line_stride;
     unsigned short      line_wrap;
 } cvdr_wr_fmt_desc_t;
@@ -236,5 +269,4 @@ typedef union
 } U_CVDR_SRT_LIMITER_NR_RD_1;
 
 
-#endif /* _INCLUDE_HJPEG160_H */
-
+#endif  // _INCLUDE_CVDR_CFG_H

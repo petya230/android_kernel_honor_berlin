@@ -106,19 +106,19 @@ typedef enum
 
 typedef enum _ucfg_ext_e
 {
-    NO_USE               = 0 << 0,
-    H_VIDEO_720P_120     = 1 << 1,
-    H_VIDEO_1080P_60     = 1 << 2,
-    MIRROR_MODE          = 1 << 3,
-    LONG_EXPOSURE_MODE   = 1 << 4,
-    HDR_MOVIE            = 1 << 5,
-    DARK_RAIDER_MODE     = 1 << 6,
-    H_VIDEO_720P_60      = 1 << 7,
-    H_VIDEO_VGA_120      = 1 << 8,
-    TUNING_PRE_MODE      = 1 << 9,
-    H_VIDEO_720P_240     = 1 << 10,
-    H_VIDEO_1080P_120    = 1 << 11,
-    RESERVED             = 1 << 12,
+    NO_USE                       = 0 << 0,
+    H_VIDEO_720P_120             = 1 << 1,
+    H_VIDEO_1080P_60             = 1 << 2,
+    MIRROR_MODE                  = 1 << 3,
+    LONG_EXPOSURE_MODE           = 1 << 4,
+    HDR_MOVIE                    = 1 << 5,
+    DARK_RAIDER_MODE             = 1 << 6,
+    H_VIDEO_720P_60              = 1 << 7,
+    H_VIDEO_VGA_120              = 1 << 8,
+    TUNING_PRE_MODE              = 1 << 9,
+    H_VIDEO_720P_240             = 1 << 10,
+    H_VIDEO_1080P_120            = 1 << 11,
+    RESERVED                     = 1 << 12,
 } ucfg_ext_e;
 
 typedef enum _ucfg_scene_e

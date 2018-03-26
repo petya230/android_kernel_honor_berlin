@@ -1,4 +1,14 @@
-
+/* Copyright (c) 2011-2013, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
 
 #include "hw_subdev.h"
 #include "hw_flash.h"
@@ -205,7 +215,7 @@ static int hw_flash_register_attribute(struct hw_flash_ctrl_t *flash_ctrl, struc
 
 int hw_flash_get_dt_data(struct hw_flash_ctrl_t *flash_ctrl)
 {
-    struct device_node *of_node;
+    struct device_node *dev_node;
     struct hw_flash_info *flash_info;
     int rc = -1;
 
@@ -216,19 +226,19 @@ int hw_flash_get_dt_data(struct hw_flash_ctrl_t *flash_ctrl)
         return rc;
     }
 
-    of_node = flash_ctrl->dev->of_node;
+    dev_node = flash_ctrl->dev->of_node;
 
     flash_info = &flash_ctrl->flash_info;
 
-    rc = of_property_read_string(of_node, "huawei,flash-name", &flash_info->name);
+    rc = of_property_read_string(dev_node, "huawei,flash-name", &flash_info->name);
     cam_info("%s huawei,flash-name %s, rc %d\n", __func__, flash_info->name, rc);
     if (rc < 0) {
         cam_err("%s failed %d\n", __func__, __LINE__);
         goto fail;
     }
 
-    rc = of_property_read_u32(of_node, "huawei,flash-index",
-        &flash_info->index);
+    rc = of_property_read_u32(dev_node, "huawei,flash-index",
+        (u32 *)&flash_info->index);
     cam_info("%s huawei,flash-index %d, rc %d\n", __func__,
         flash_info->index, rc);
     if (rc < 0) {
@@ -236,8 +246,8 @@ int hw_flash_get_dt_data(struct hw_flash_ctrl_t *flash_ctrl)
         goto fail;
     }
 
-    rc = of_property_read_u32(of_node, "huawei,flash-type",
-        &flash_info->type);
+    rc = of_property_read_u32(dev_node, "huawei,flash-type",
+        (u32 *)&flash_info->type);
     cam_info("%s huawei,flash-type %d, rc %d\n", __func__,
         flash_info->type, rc);
     if (rc < 0) {
@@ -245,7 +255,7 @@ int hw_flash_get_dt_data(struct hw_flash_ctrl_t *flash_ctrl)
         goto fail;
     }
 
-    rc = of_property_read_u32(of_node, "huawei,slave-address",
+    rc = of_property_read_u32(dev_node, "huawei,slave-address",
         &flash_info->slave_address);
     cam_info("%s slave-address %d, rc %d\n", __func__,
         flash_info->slave_address, rc);
@@ -302,7 +312,7 @@ int hw_flash_config(struct hw_flash_ctrl_t *flash_ctrl, void *arg)
         break;
     case CFG_FLASH_GET_FLASH_STATE:
         mutex_lock(flash_ctrl->hw_flash_mutex);
-        cdata->mode = flash_ctrl->state.mode;
+        cdata->mode = (flash_mode)flash_ctrl->state.mode;
         cdata->data = flash_ctrl->state.data;
         mutex_unlock(flash_ctrl->hw_flash_mutex);
         break;
@@ -364,6 +374,7 @@ static struct v4l2_subdev_internal_ops hw_flash_subdev_internal_ops = {
     .close = &hw_flash_subdev_internal_close,
 };
 
+/*Add for CLT Camera, begin*/
 static int hw_simulate_init(struct hw_flash_ctrl_t *flash_ctrl)
 {
     cam_info("%s simulated function for CLT Camera\n", __func__);
@@ -420,6 +431,7 @@ static int hw_simulate_match(struct hw_flash_ctrl_t *flash_ctrl)
     return 0;
 }
 
+/*Add for CLT Camera, end*/
 
 int32_t hw_flash_platform_probe(struct platform_device *pdev,
     void *data)

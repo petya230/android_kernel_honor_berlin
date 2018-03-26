@@ -79,8 +79,7 @@ struct work_struct	dump_csi_err_work;//for csi error by wind
 #ifdef CONFIG_HUAWEI_CAMERA_USE_EXTISP
 extern void misp_dump_default_reg(struct work_struct *work);
 #else
-void misp_dump_default_reg(struct work_struct *wrok)
-{}
+void misp_dump_default_reg(struct work_struct *wrok) {} //lint !e715
 #endif
 
 struct hw_csi_pad hw_csi_pad;

@@ -1335,4 +1335,5 @@ typedef struct _isp_msg_t
 void msg_init_req(hisp_msg_t* req, unsigned int api_name, unsigned int msg_id);
 void msg_init_ack(hisp_msg_t* req, hisp_msg_t* ack);
 
+
 #endif /* HISP150_MSG_H_INCLUDED */

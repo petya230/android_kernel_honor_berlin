@@ -1,11 +1,11 @@
 /*
- *  Hisilicon K3 SOC camera driver source file
+ * hjpeg_reg_offset.h
  *
- *  Copyright (C) Huawei Technology Co., Ltd.
+ * define jpeg reg address offset.
  *
- * Author:
- * Email:
- * Date:
+ * Copyright (c) 2001-2021, Huawei Tech. Co., Ltd. All rights reserved.
+ *
+ * lixiuhua <aimee.li@hisilicon.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,14 +17,11 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
 
-#ifndef __HJPG160_REG_OFFSET_H__
-#define __HJPG160_REG_OFFSET_H__
+#ifndef __HJPG_REG_OFFSET_H__
+#define __HJPG_REG_OFFSET_H__
 
 /******************************************************************************/
 /*                      HiStarISP JPGENC Registers' Definitions                            */
@@ -89,4 +86,4 @@
 #define JPGENC_DBG_12_REG                0x230
 #define JPGENC_DBG_13_REG                0x234
 
-#endif // __HJPG160_REG_OFFSET_H__
+#endif // __HJPG_REG_OFFSET_H__

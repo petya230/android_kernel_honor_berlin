@@ -19,6 +19,7 @@
 #define RES_ERF			2
 #define RES_CRF			3
 #define RES_ERT_THR		2
+#define SET_TO_NEGATIVE_NUM       (-1)
 #define SENCOND_TO_MILLISECOND      1000
 #define SENCOND_TO_NANOSECOND       1000000
 
@@ -58,7 +59,7 @@ static int finger_stop_y[TS_MAX_FINGER] = {0};
 
 static int left_res_point[4] = {0};		//0 point addr /1 error times /2 error flag /3 correct flag
 static int right_res_point[4] = {0};
-static int ts_algo_filter_anti_false_touch_edge(int x,int finger_id,  struct anti_false_touch_param *param){
+/*static int ts_algo_filter_anti_false_touch_edge(int x,int finger_id,  struct anti_false_touch_param *param){
 	int drv_limit_x_left = 0, drv_limit_x_right = 0;
 	if (!param || !param->feature_all){
 		return NOT_AFT_EDGE;
@@ -78,7 +79,7 @@ static int ts_algo_filter_anti_false_touch_edge(int x,int finger_id,  struct ant
        }
 	return NOT_AFT_EDGE;
 }
-
+*/
 struct ghost_finger_touch{
 	struct timeval finger_press_tv[TS_MAX_FINGER];
 	struct timeval finger_release_tv;
@@ -92,6 +93,17 @@ static struct ghost_finger_touch pre_finger_touch;
 
 static int ghost_num_record_per_second[TS_MAX_FINGER] = {0};
 static unsigned long ghost_time_record[TS_MAX_FINGER] = {0};
+static int ghost_num_record_x[TS_MAX_FINGER] = {0};
+static int ghost_num_record_y[TS_MAX_FINGER] = {0};
+
+static int delta_x_0 = 0;
+static int delta_y_0 = 0;
+static int delta_x_1 = 0;
+static int delta_y_1 = 0;
+static int target_x = 0;
+static int target_y = 0;
+static int ghost_algo3_num = 0;
+
 void ts_kit_algo_det_ght_init(void){
 	TS_LOG_INFO("%s:%s init ghost resource\n",
 		__func__, GHOST_LOG_TAG);
@@ -136,93 +148,196 @@ static void ts_algo_det_ght_finger_press(int index, int x, int y){
 	return ;
 }
 
-static void ts_algo_detect_ghost(void){
-	int index;
+/* If we detect user down/up interval time less than FINGER_PRESS_TIME_MIN,
+ * we consider this is a Non human being operation.
+ * and the user operate FINGER_PRESS_TIMES_IN_MIN_TIME times in one second
+ * this operation, we think this should not a human being operate
+ **/
+static int ts_detect_ghost_algo1(int index) {
 	unsigned long delta_time = 0;
-	int delta_x = 0, delta_y = 0;
-	struct ts_kit_device_data *dev = g_ts_kit_platform_data.chip_data;
 
+	if((index > GHOST_OPERATE_MAX_FINGER_NUM)||(index < 0)) {
+		TS_LOG_ERR("%s:%s Input parameter error\n",
+				__func__, GHOST_LOG_TAG);
+		return 0;
+	}
+
+	delta_time = (finger_touch.finger_release_tv.tv_sec - finger_touch.finger_press_tv[index].tv_sec)*GHOST_MIL_SECOND_TIME
+		+ finger_touch.finger_release_tv.tv_usec - finger_touch.finger_press_tv[index].tv_usec;
+	if (delta_time > 0 && delta_time < FINGER_PRESS_TIME_MIN_ALGO1){
+		TS_LOG_DEBUG("%s:%s suspicious ghost press finger_release_tv.tv_sec:%lu,finger_release_tv.tv_usec:%lu,"
+			"finger_press_tv[%d].tv_sec:%lu,finger_press_tv[%d].tv_usec:%lu,delta time:%lu\n",__func__, GHOST_LOG_TAG,
+			finger_touch.finger_release_tv.tv_sec, finger_touch.finger_release_tv.tv_usec,
+			index, finger_touch.finger_press_tv[index].tv_sec, index, finger_touch.finger_press_tv[index].tv_usec, delta_time);
+		if (!ghost_time_record[index]){
+			ghost_time_record[index] = finger_touch.finger_release_tv.tv_sec;
+			ghost_num_record_per_second[index]++;
+		}else if ((ghost_time_record[index] == finger_touch.finger_release_tv.tv_sec)
+				||(ghost_time_record[index] == (finger_touch.finger_release_tv.tv_sec - GHOST_OPERATE_ONE_SECOND))){
+			ghost_num_record_per_second[index]++;
+		}else{
+			ghost_num_record_per_second[index] = 0;
+			ghost_time_record[index] = 0;
+		}
+		TS_LOG_DEBUG("%s:%s ghost_num_record_per_second:%d\n",
+			__func__, GHOST_LOG_TAG, ghost_num_record_per_second[index]);
+
+		if (ghost_num_record_per_second[index] > FINGER_PRESS_TIMES_IN_MIN_TIME_ALGO1){
+			ghost_num_record_per_second[index] = 0;
+			ghost_time_record[index] = 0;
+			TS_LOG_INFO("%s:%s DETECT:%s\n",
+				__func__, GHOST_LOG_TAG, GHOST_REASON_OPERATE_TOO_FAST);
+			return GHOST_OPERATE_TOO_FAST;
+		}else{
+			return 0;
+		}
+	}
+	return 0;
+}
+
+/*If there are FINGER_PRESS_TIMES_IN_MIN_TIME_ALGO2 consecutive down/up operations,
+ * the distance of x or y axis coordinate between each operation is less than GHOST_OPER_DISTANCE_ALGO2 pixe,
+ *we think this should not a human being operate
+ **/
+static int ts_detect_ghost_algo2(int index) {
+	int delta_x = 0;
+	int delta_y = 0;
+
+	if((index > GHOST_OPERATE_MAX_FINGER_NUM)||(index < 0)) {
+		TS_LOG_ERR("%s:%s Input parameter error\n",
+				__func__, GHOST_LOG_TAG);
+		return 0;
+	}
+
+	delta_x = finger_touch.x[index] - pre_finger_touch.x[index];
+	delta_y = finger_touch.y[index] - pre_finger_touch.y[index];
+	if ((delta_x < GHOST_OPER_DISTANCE_ALGO2) && (delta_x > SET_TO_NEGATIVE_NUM * GHOST_OPER_DISTANCE_ALGO2)){
+		ghost_num_record_x[index] ++;
+	}else{
+		ghost_num_record_x[index] = 0;
+	}
+	if((delta_y < GHOST_OPER_DISTANCE_ALGO2) && (delta_y > SET_TO_NEGATIVE_NUM * GHOST_OPER_DISTANCE_ALGO2)){
+		ghost_num_record_y[index] ++;
+	}else{
+		ghost_num_record_y[index] = 0;
+	}
+	TS_LOG_DEBUG("%s:%s ghost_num_record_x[%d] :%d ghost_num_record_y[%d]:%d\n",
+		__func__, GHOST_LOG_TAG, index,ghost_num_record_x[index],index,ghost_num_record_y[index]);
+
+	if((ghost_num_record_x[index] > FINGER_PRESS_TIMES_IN_MIN_TIME_ALGO2)
+		||(ghost_num_record_y[index] >  FINGER_PRESS_TIMES_IN_MIN_TIME_ALGO2)){
+		TS_LOG_INFO("%s:%s DETECT:%s\n",__func__, GHOST_LOG_TAG, GHOST_OPERATE_IN_XY_AXIS);
+		ghost_num_record_x[index] = 0;
+		ghost_num_record_y[index] = 0;
+		return GHOST_OPERATE_IN_XY_AXIS;
+	}
+	return 0;
+}
+
+/*If we detect two fingers down,the interval time is less than FINGER_PRESS_TIME_MIN_ALGO3,
+ *One of the fingers is always in the same position(the distance is less than GHOST_OPER_DISTANCE_ALGO3)
+ *and the user operate consecutive FINGER_PRESS_TIMES_IN_MIN_TIME_ALGO3 times,
+ *we think this should not a human being operate.
+ **/
+static int ts_detect_ghost_algo3(int finger_num) {
+	unsigned long delta_time = 0;
+	int i = 0;
+	int j = 0;
+	int delta_x = 0;
+	int delta_y = 0;
+
+	if ((finger_num == GHOST_OPERATE_TWO_FINGERS)&&(pre_finger_touch.finger_num_flag > GHOST_OPERATE_ONE_FINGERS)){
+		if(target_x == 0){
+			delta_time = (finger_touch.finger_press_tv[1].tv_sec - finger_touch.finger_press_tv[0].tv_sec)*GHOST_MIL_SECOND_TIME
+				+ finger_touch.finger_press_tv[1].tv_sec -finger_touch.finger_press_tv[0].tv_sec;
+			if(delta_time < FINGER_PRESS_TIME_MIN_ALGO3) {
+				for(i=0;i<GHOST_OPERATE_TWO_FINGERS;i++)
+					for(j=0;j<GHOST_OPERATE_TWO_FINGERS;j++){
+						delta_x = finger_touch.x[i] - pre_finger_touch.x[j];
+						delta_y = finger_touch.y[i] - pre_finger_touch.y[j];
+						if ((delta_x < GHOST_OPER_DISTANCE_ALGO3) && (delta_x > SET_TO_NEGATIVE_NUM * GHOST_OPER_DISTANCE_ALGO3)
+						 &&(delta_y < GHOST_OPER_DISTANCE_ALGO3) && (delta_y > SET_TO_NEGATIVE_NUM * GHOST_OPER_DISTANCE_ALGO3) ) {
+							target_x = finger_touch.x[i];
+							target_y = finger_touch.y[i];
+							i = GHOST_OPERATE_TWO_FINGERS;
+							break;
+						}
+					}
+				}
+			}else{
+				/*Calculate the distance between the first point and the target point*/
+				delta_x_0 = finger_touch.x[0] - target_x;
+				delta_y_0 = finger_touch.y[0] - target_y;
+				/*Calculate the distance between the second point and the target point*/
+				delta_x_1 = finger_touch.x[1] - target_x;
+				delta_y_1 = finger_touch.y[1] - target_y;
+				delta_time = (finger_touch.finger_press_tv[1].tv_sec - finger_touch.finger_press_tv[0].tv_sec)*GHOST_MIL_SECOND_TIME
+						+ finger_touch.finger_press_tv[1].tv_sec -finger_touch.finger_press_tv[0].tv_sec;
+				if ((delta_x_0 < GHOST_OPER_DISTANCE_ALGO3) && (delta_x_0 > SET_TO_NEGATIVE_NUM * GHOST_OPER_DISTANCE_ALGO3)&&(delta_time < FINGER_PRESS_TIME_MIN_ALGO3)
+					&&(delta_y_0 < GHOST_OPER_DISTANCE_ALGO3) && (delta_y_0 > SET_TO_NEGATIVE_NUM * GHOST_OPER_DISTANCE_ALGO3) ) {
+					ghost_algo3_num++;
+				}else if((delta_x_1 < GHOST_OPER_DISTANCE_ALGO3) && (delta_x_1 > SET_TO_NEGATIVE_NUM*GHOST_OPER_DISTANCE_ALGO3)&&(delta_time < FINGER_PRESS_TIME_MIN_ALGO3)
+					&&(delta_y_1 < GHOST_OPER_DISTANCE_ALGO3) && (delta_y_1 > SET_TO_NEGATIVE_NUM * GHOST_OPER_DISTANCE_ALGO3)) {
+					ghost_algo3_num++;
+				}else{
+					ghost_algo3_num = 0;
+					target_x = 0;
+					target_y = 0;
+				}
+
+				TS_LOG_DEBUG("%s:%s ghost_algo3_num:%d\n",__func__, GHOST_LOG_TAG,ghost_algo3_num);
+				if(FINGER_PRESS_TIMES_IN_MIN_TIME_ALGO3 == ghost_algo3_num) {
+					TS_LOG_INFO("%s:%s DETECT:%s\n",
+						__func__, GHOST_LOG_TAG, GHOST_OPERATE_IN_SAME_POSITION);
+					target_x = 0;
+					target_y = 0;
+					ghost_algo3_num = 0;
+					return GHOST_OPERATE_IN_SAME_POSITION;
+				}
+			}
+	}else{
+		target_x = 0;
+		target_y = 0;
+		ghost_algo3_num = 0;
+	}
+	return 0;
+}
+
+static void ts_algo_detect_ghost(int finger_cnt){
+	int index = 0;
+	int ghost_detect_flag = 0;
+	static int finger_num = 0;
+	struct ts_kit_device_data *dev = g_ts_kit_platform_data.chip_data;
 	if (TS_FINGER_RELEASE != finger_touch.finger_event){
+		if(finger_num < finger_cnt){
+			finger_num = finger_cnt;
+		}
 		TS_LOG_DEBUG("%s:%s fingers not release, do not analyse\n", __func__, GHOST_LOG_TAG);
 		return ;
 	}
 
-	TS_LOG_DEBUG("%s:%s finger_num_flag:%d\n",
-		__func__, GHOST_LOG_TAG, finger_touch.finger_num_flag);
+	TS_LOG_DEBUG("%s:%s finger_num_flag:%d finger_num:%d\n",
+		__func__, GHOST_LOG_TAG, finger_touch.finger_num_flag,finger_num);
 	/* If detect some down/up operate, start to analyse */
 	if (finger_touch.finger_num_flag){
 		for (index = 0; index < TS_MAX_FINGER; index++){
 			/* Find the finger which down/up operate happened */
 			if (finger_touch.finger_num_flag & (1 << index)){
-				delta_time = (finger_touch.finger_release_tv.tv_sec - finger_touch.finger_press_tv[index].tv_sec)*GHOST_MIL_SECOND_TIME
-							+ finger_touch.finger_release_tv.tv_usec - finger_touch.finger_press_tv[index].tv_usec;
-				/* If we detect user down/up interval time less than FINGER_PRESS_TIME_MIN,
-				 * we consider this is a Non human being operation.
-				 * and the user operate FINGER_PRESS_TIMES_IN_MIN_TIME times in one second
-				 * this operation, we think this should not a human being operate
-				 **/
-				if (delta_time > 0 && delta_time < FINGER_PRESS_TIME_MIN){
-					TS_LOG_DEBUG("%s:%s suspicious ghost press finger_release_tv.tv_sec:%lu,finger_release_tv.tv_usec:%lu,"
-						"finger_press_tv[%d].tv_sec:%lu,finger_press_tv[%d].tv_usec:%lu,delta time:%lu\n",
-						__func__, GHOST_LOG_TAG,
-						finger_touch.finger_release_tv.tv_sec, finger_touch.finger_release_tv.tv_usec,
-						index, finger_touch.finger_press_tv[index].tv_sec, index, finger_touch.finger_press_tv[index].tv_usec, delta_time);
-					if (!ghost_time_record[index]){
-						ghost_time_record[index] = finger_touch.finger_release_tv.tv_sec;
-						ghost_num_record_per_second[index]++;
-					}else if (ghost_time_record[index] == finger_touch.finger_release_tv.tv_sec){
-						ghost_num_record_per_second[index]++;
-					}else{
-						ghost_num_record_per_second[index] = 0;
-						ghost_time_record[index] = 0;
-					}
-
-					TS_LOG_DEBUG("%s:%s ghost_num_record_per_second:%d\n",
-						__func__, GHOST_LOG_TAG, ghost_num_record_per_second[index]);
-					if (ghost_num_record_per_second[index] > FINGER_PRESS_TIMES_IN_MIN_TIME){
-						ghost_num_record_per_second[index] = 0;
-						ghost_time_record[index] = 0;
-						TS_LOG_DEBUG("%s:%s DETECT:%s\n",
-							__func__, GHOST_LOG_TAG, GHOST_REASON_OPERATE_TOO_FAST);
-						if (dev->ops->chip_ghost_detect)
-							dev->ops->chip_ghost_detect(GHOST_OPERATE_TOO_FAST);
-						else
-							TS_LOG_INFO("chip_ghost_detect is null\n");
-					}
-				}
-
-				/* If current finger operate down/up, and the pre finger operate alse down/up,
-				 * and the operate time less than FINGER_PRESS_TIME_MIN(Non human can operate),
-				 * and the distance between 2 point lager than 200 pixel, then we think this should not
-				 * a human being operate
-				 **/
+				ghost_detect_flag |= ts_detect_ghost_algo1(index);
 				if (pre_finger_touch.finger_num_flag & (1 << index)){
-					delta_time = (finger_touch.finger_press_tv[index].tv_sec - pre_finger_touch.finger_press_tv[index].tv_sec)*GHOST_MIL_SECOND_TIME
-								+ finger_touch.finger_press_tv[index].tv_usec - pre_finger_touch.finger_press_tv[index].tv_usec;
-					if (delta_time > 0 && delta_time < FINGER_PRESS_TIME_MIN){
-						TS_LOG_DEBUG("%s:%s suspicious ghost press finger_press_tv[%d].tv_sec:%lu,finger_press_tv[%d].tv_usec:%lu,"
-							"pre_finger_touch[%d].tv_sec:%lu,pre_finger_touch[%d].tv_usec:%lu,delta time:%lu\n",
-							__func__, GHOST_LOG_TAG,
-							index, finger_touch.finger_release_tv.tv_sec, index, finger_touch.finger_release_tv.tv_usec,
-							index, pre_finger_touch.finger_press_tv[index].tv_sec, index, pre_finger_touch.finger_press_tv[index].tv_usec, delta_time);
-
-						delta_x = finger_touch.x[index] - pre_finger_touch.x[index];
-						delta_y = finger_touch.y[index] - pre_finger_touch.y[index];
-						if (delta_x > GHOST_OPER_DISTANCE || delta_x < -1*GHOST_OPER_DISTANCE
-							|| delta_y > GHOST_OPER_DISTANCE || delta_y < -1*GHOST_OPER_DISTANCE){
-							TS_LOG_DEBUG("%s:%s DETECT:delta_x=%d, delta_y=%d %s\n",
-								__func__, GHOST_LOG_TAG, delta_x, delta_y,
-								GHOST_REASON_TWO_POINT_OPER_TOO_FAST);
-							if (dev->ops->chip_ghost_detect)
-								dev->ops->chip_ghost_detect(GHOST_OPERATE_TWO_POINT_OPER_TOO_FAST);
-							else
-								TS_LOG_INFO("chip_ghost_detect is null\n");
-						}
-					}
+					ghost_detect_flag |= ts_detect_ghost_algo2(index);
 				}
 			}
 		}
-
+		ghost_detect_flag |= ts_detect_ghost_algo3(finger_num);
+		if(ghost_detect_flag) {
+			if (dev->ops->chip_ghost_detect){
+				dev->ops->chip_ghost_detect(ghost_detect_flag);
+			}else{
+				TS_LOG_INFO("chip_ghost_detect is null\n");
+			}
+		}
+		finger_num = 0;
 		/* Save current finger message as last finger message */
 		memcpy(&pre_finger_touch, &finger_touch, sizeof(struct ghost_finger_touch));
 		memset(&finger_touch, 0, sizeof(struct ghost_finger_touch));
@@ -324,7 +439,8 @@ int ts_kit_algo_t2(struct ts_kit_device_data *dev_data, struct ts_fingers *in_in
 			}
 		} else {
 			if (((in_info->fingers[index].x != 0) ||(in_info->fingers[index].y != 0))
-				&& (NOT_AFT_EDGE == ts_algo_filter_anti_false_touch_edge(in_info->fingers[index].x, id,local_param))) {
+// ?				&& (NOT_AFT_EDGE == ts_algo_filter_anti_false_touch_edge(in_info->fingers[index].x, id,local_param))
+) {
 				out_info->fingers[id].x = in_info->fingers[index].x;
 				out_info->fingers[id].y = in_info->fingers[index].y;
 				out_info->fingers[id].pressure = in_info->fingers[index].pressure;
@@ -348,7 +464,7 @@ int ts_kit_algo_t2(struct ts_kit_device_data *dev_data, struct ts_fingers *in_in
 	}
 
 	if (dev_data && dev_data->ghost_detect_support){
-		ts_algo_detect_ghost();
+		ts_algo_detect_ghost(in_info->cur_finger_number);
 	}
 
 	out_info->cur_finger_number = in_info->cur_finger_number;
@@ -398,7 +514,8 @@ int ts_kit_algo_t1(struct ts_kit_device_data *dev_data, struct ts_fingers *in_in
 			}
 		} else {
 			if (((in_info->fingers[index].x != 0) ||(in_info->fingers[index].y != 0))
-				&& (NOT_AFT_EDGE == ts_algo_filter_anti_false_touch_edge(in_info->fingers[index].x,id, local_param))) {
+//				&& (NOT_AFT_EDGE == ts_algo_filter_anti_false_touch_edge(in_info->fingers[index].x,id, local_param))
+) {
 				if (index < FILTER_GLOVE_NUMBER) {
 					if (filter_illegal_glove(index, in_info) == 0) {
 						out_info->fingers[id].status = 0;
@@ -444,7 +561,7 @@ int ts_kit_algo_t1(struct ts_kit_device_data *dev_data, struct ts_fingers *in_in
 	}
 
 	if (dev_data && dev_data->ghost_detect_support){
-		ts_algo_detect_ghost();
+		ts_algo_detect_ghost(finger_cnt);
 	}
 	out_info->cur_finger_number = finger_cnt;
 	out_info->gesture_wakeup_value = in_info->gesture_wakeup_value;
@@ -518,6 +635,7 @@ static int update_restrain_area(int y, int *point)
 			point[RES_ERF] = 1;											//error flag
 		}
 	}
+	return 0;
 }
 
 int ts_kit_algo_t3(struct ts_kit_device_data *dev_data, struct ts_fingers *in_info, struct ts_fingers *out_info)

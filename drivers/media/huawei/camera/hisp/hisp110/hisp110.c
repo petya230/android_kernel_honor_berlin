@@ -276,7 +276,7 @@ static void hisp110_save_rpmsg_data(void *data, int len)
 {
 	struct rpmsg_hisp110_service *hisi_serv = rpmsg_local.hisi_isp_serv;
 	struct sk_buff *skb = NULL;
-	char *skbdata = NULL;
+	unsigned char *skbdata = NULL;
 
 	cam_debug("Enter %s\n", __func__);
 	if (NULL == hisi_serv){
@@ -506,11 +506,11 @@ static int hisp110_dependent_clock_disable(hisp110_t *hi)
 
 	return 0;
 }
-
+//lint -save -e454 -e455 -e456
 static int hisp110_power_on(hisp_intf_t *i)
 {
 	int rc = 0;
-	bool rproc_enable = false;
+	bool rproc_enabled = false;
 	bool hi_opened = false;
 	bool clock_enable = false;
 	hisp110_t *hi = NULL;
@@ -551,7 +551,7 @@ static int hisp110_power_on(hisp_intf_t *i)
 			HiLOGE(HILOG_CAMERA_MODULE_NAME, HILOG_CAMERA_SUBMODULE_NAME, "Failed: hisi_isp_rproc_enable.%d!\n", rc);
 			goto FAILED_RET;
 		}
-		rproc_enable = true;
+		rproc_enabled = true;
 
 		rc  = wait_for_completion_timeout(&channel_sync, msecs_to_jiffies(15000));
 		if (0 == rc ) {
@@ -603,7 +603,7 @@ FAILED_RET:
 	if(hi_opened){
 		atomic_dec(&hi->opened);
 	}
-	if (rproc_enable) {
+	if (rproc_enabled) {
 		hisi_isp_rproc_disable();
         rproc_set_sync_flag(true);
 	}
@@ -926,6 +926,7 @@ UNLOCK_RET:
 RET:
 	return rc;
 }
+//lint -restore
 #ifdef DEBUG_HISI_CAMERA
 static void hisp110_set_ddrfreq(int ddr_bandwidth)
 {

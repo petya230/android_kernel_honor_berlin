@@ -373,6 +373,7 @@ typedef enum isp_metadata_vendor_tag {
     // add for shake algo result
     ANDROID_HW_SHAKE_ALGO_RESULT,
     ANDROID_HW_FRAME_SHAKE_INFO,
+    // add for shake algo result end
 
     ANDROID_HW_FOCUS_AREAS,
     ANDROID_HW_METERING_AREAS,
@@ -522,6 +523,7 @@ typedef enum isp_metadata_vendor_tag {
         ANDROID_HW_ARSR_EXIF_INFO,
         ANDROID_HW_RAWNF_EXIF_INFO,
         ANDROID_HW_PDAF_EXIF_INFO,
+    /****** histarISP metadata add start ******/
     ANDROID_HISTAR_COMMON_SENSOR_INFO,
     ANDROID_HISTAR_COMMON_SENSOR_RESOLUTION,
     ANDROID_HISTAR_COMMON_OTPINFO,
@@ -606,8 +608,11 @@ typedef enum isp_metadata_vendor_tag {
 
     ANDROID_HISTAR_VIDEO_STABILIZATION_MODE,
 
+    //histarISP raw2yuv metadata add start
         // ANDROID_HISTAR_BUFFER_METADATA,
+    //histarISP metadata add end
 
+    /****** histarISP metadata add end ******/
         ANDROID_HW_IS_CAPTURE_PREVIEW,
         ANDROID_HW_PREVIEW_STATE,
         ANDROID_HW_RECORDING_ONLY_REQUEST,
