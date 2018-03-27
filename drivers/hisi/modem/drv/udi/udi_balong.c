@@ -55,7 +55,6 @@
 #include "BSP_UDI.h"
 #include "BSP_UDI_DRV.h"
 */
-/*lint --e{750} */
 #include <linux/string.h>
 #include <linux/kernel.h>
 #include <linux/semaphore.h>
@@ -554,8 +553,8 @@ int mdrv_udi_ioctl(UDI_HANDLE handle, unsigned int u32Cmd, void* pParam)
     /*lint +e58*/
 	return s32Ret;
 }
-EXPORT_SYMBOL(mdrv_udi_ioctl);
 
+EXPORT_SYMBOL(mdrv_udi_ioctl);
 
 arch_initcall(bsp_udi_init);
 

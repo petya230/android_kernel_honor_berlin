@@ -59,17 +59,16 @@ PRODUCT_INFO_NV_STRU huawei_product_info = {0};
 NV_SW_VER_STRU nv_sw_ver={0};
 
 /*****************************************************************************
-* 函 数 名  	: bsp_version_productinfo_init
+* 函 数 名  : bsp_version_productinfo_init
 *
 * 功能描述  : 读NV(0xD115)的值到huawei_product_info
 *
 * 参数说明  : 无
 *
-*返回值 : VER_ERROR表示读取异常
-*                   VER_OK表示读取正常
+* 返回值    : VER_ERROR表示读取异常;VER_OK表示读取正常
 *****************************************************************************/
 static __inline__ int bsp_version_productinfo_init(void)
-{
+{   /*lint -save -e838*/
     u32 ret = 0;
     u32 hw_ver = bsp_get_version_info()->board_id;
 
@@ -91,13 +90,13 @@ static __inline__ int bsp_version_productinfo_init(void)
 }
 
 /*****************************************************************************
-* 函 数 名  	: bsp_version_acore_init
+* 函 数 名  : bsp_version_acore_init
 *
 * 功能描述  : acore版本号初始化
 *
 * 参数说明  : 无
 *
-*返回值 : 无
+* 返回值    : 无
 *****************************************************************************/
 int bsp_version_acore_init(void)
 {
@@ -117,9 +116,9 @@ int bsp_version_acore_init(void)
 
 
 /*****************************************************************************
-*                                                                                                                               *
-*            以下接口提供给mdrv接口调用                                                  *
-*                                                                                                                               *
+*                                                                            *
+*            以下接口提供给mdrv接口调用                                      *
+*                                                                            *
 ******************************************************************************/
 
 
@@ -204,9 +203,9 @@ char * bsp_version_get_product_out_name(void)
 
 
 /*****************************************************************************
-*                                                                                                                               *
-*            以下接口提供给dump模块调用                                                 *
-*                                                                                                                               *
+*                                                                            *
+*            以下接口提供给dump模块调用                                      *
+*                                                                            *
 ******************************************************************************/
 
 
@@ -266,13 +265,13 @@ char * bsp_version_get_release(void)
 
 
 /*****************************************************************************
-* 函 数 名  	: bsp_get_version_info
+* 函 数 名  : bsp_get_version_info
 *
 * 功能描述  : 为其他模块提供各种版本号信息
 *
 * 参数说明  : 无
 *
-*返回值 : version的共享内存数据结构体的地址
+*返回值     : version的共享内存数据结构体的地址
 *****************************************************************************/
 const BSP_VERSION_INFO_S* bsp_get_version_info(void)
 {
@@ -283,6 +282,7 @@ const BSP_VERSION_INFO_S* bsp_get_version_info(void)
 * 函 数	: bsp_version_debug
 * 功 能	: 用于调试查看版本号相关信息
 *****************************************************************************/
+/*lint -save -e613*/
 int bsp_version_debug(void)
 {
     if(huawei_product_info.index == HW_VER_INVALID){
@@ -326,7 +326,7 @@ int bsp_version_debug(void)
 
     return VER_OK;
 }
-
+/*lint -restore*/
 /*注意:需在nv模块初始化之后*/
 module_init(bsp_version_acore_init);
 

@@ -72,13 +72,13 @@ static unsigned long reg_node_info_get(struct device_node *np, unsigned int sc_i
 
 	spec = of_get_property(np, "reg", &len);
 
-	if (!spec || len < (na + ns) * sizeof(*spec))
+	if (!spec || (unsigned int)len < (unsigned int)(na + ns) * sizeof(*spec))
 	{
 		sc_pr_err("index = %d is out of range\n", sc_index);
 		return 0;
 	}
 
-	return (unsigned long)of_read_number(spec + sc_index *(na + ns), na);
+	return (unsigned long)of_read_number(spec + sc_index * (unsigned int)(na + ns), na); /*lint !e679 */
 }
 
 static void* virt_addr_lookup(unsigned long phy_addr)

@@ -9,7 +9,11 @@
 *
 *	修改记录 :	2016年6月10日  v1.00  l00354607  创建
 *************************************************************************/
+#ifdef __cplusplus
+		extern "C" {
+#endif
 
+#include <linux/module.h>
 #include "dlock_balong.h"
 #include "drv_nv_def.h"
 #include "drv_nv_id.h"
@@ -19,6 +23,7 @@
 #include "bsp_nvim.h"
 #include <osl_common.h>
 #include <linux/delay.h>
+#include <linux/module.h>
 #include "bsp_dump.h"
 #include <osl_bio.h>
 #include <of.h>
@@ -204,11 +209,11 @@ void dlock_get_axi_fbp_master(u32 mst_port,u32 i,char *mst_name)
 *************************************************************************/
 void dlock_master_match(char *bus_name, u32 mst_port, u32 i, char *mst_name)
 {
-    if ((0 == strcmp(bus_name, "AXI_GLB"))||(0 == strcmp(bus_name, "AXI_MDM")))
+    if ((0 == strncmp(bus_name, "AXI_GLB", strlen("AXI_GLB")))||(0 == strncmp(bus_name, "AXI_MDM", strlen("AXI_MDM"))))
     {
         dlock_get_axi_gm_master(mst_port, i, mst_name);
     }
-    else if ((0 == strcmp(bus_name, "AXI_FAST"))||(0 == strcmp(bus_name, "AXI_BBPHY"))||(0 == strcmp(bus_name, "AXI_PCIE")))
+    else if ((0 == strncmp(bus_name, "AXI_FAST", strlen("AXI_FAST")))||(0 == strncmp(bus_name, "AXI_BBPHY", strlen("AXI_BBPHY")))||(0 == strncmp(bus_name, "AXI_PCIE", strlen("AXI_PCIE"))))
     {
         dlock_get_axi_fbp_master(mst_port, i, mst_name);
     }
@@ -231,7 +236,7 @@ void dlock_master_match(char *bus_name, u32 mst_port, u32 i, char *mst_name)
 *************************************************************************/
 void dlock_sysctrl_reset(void)
 {
-    if (0 == strcmp(g_reset_info.version, "v7r22"))
+    if (0 == strncmp(g_reset_info.version, "v7r22", strlen("v7r22")))
     {
         hi_dlock_set_reg(1, g_reset_info.pd_vir_addr, g_reset_info.pd_reset_reg);
         hi_dlock_set_reg(1, g_reset_info.pcie_vir_addr, g_reset_info.pcie_reset_reg);
@@ -252,7 +257,7 @@ void dlock_sysctrl_reset(void)
 *************************************************************************/
 void dlock_sysctrl_unreset(void)
 {
-    if (0 == strcmp(g_reset_info.version, "v7r22"))
+    if (0 == strncmp(g_reset_info.version, "v7r22", strlen("v7r22")))
     {
         hi_dlock_set_reg(0, g_reset_info.pd_vir_addr, g_reset_info.pd_reset_reg);
         hi_dlock_set_reg(0, g_reset_info.pcie_vir_addr, g_reset_info.pcie_reset_reg);
@@ -293,7 +298,7 @@ s32 dlock_get_reset_reg(void)
     }
     strncpy(g_reset_info.version, cur_ver, 32);
 
-    if (0 == strcmp(cur_ver, "v7r22"))
+    if (0 == strncmp(cur_ver, "v7r22", strlen("v7r22")))
     {
         ret = of_property_read_u32_array(dev, "dlock_pd_reset_reg", g_reset_info.pd_reset_reg, 3);
         if(ret)
@@ -356,11 +361,11 @@ s32 dlock_get_reset_reg(void)
         dlock_print("Read cnt_clk_div_num_reg failed!\n");
         return dlock_error;
     }
-    if (0 == strcmp(cur_ver, "v7r22"))
+    if (0 == strncmp(cur_ver, "v7r22", strlen("v7r22")))
     {
         hi_dlock_set_reg(2, g_reset_info.mdm_vir_addr, g_reset_info.cnt_div_num_reg);
     }
-    else if (0 == strcmp(cur_ver, "chicago"))
+    else if (0 == strncmp(cur_ver, "chicago", strlen("chicago")))
     {
         hi_dlock_set_reg(15, g_reset_info.mdm_vir_addr, g_reset_info.cnt_div_num_reg);
     }
@@ -558,6 +563,16 @@ s32 dlock_axi_fbp_info(const char *node_name,u32 i)
         goto error_free;
     }
 
+    #if 0
+    /*获取clear irq reg信息*/
+    ret = of_property_read_u32_array(dev, "dlock_clear_reg", g_bus_info.bus_state_info[i].bus_state.clear_irq_reg, 3);
+    if(ret)
+    {
+        dlock_print("Read fbp_clear_reg failed!\n");
+        goto error_free0;
+    }
+    hi_dlock_set_reg(1, g_bus_info.bus_state_info[i].bus_state.bus_vir_addr, g_bus_info.bus_state_info[i].bus_state.clear_irq_reg);
+    #endif
 
     ret = of_property_read_u32_array(dev, "dlock_mst_port_num", &mst_port_num, 1);
     if(ret)
@@ -608,23 +623,23 @@ error_free:
 *************************************************************************/
 void dlock_bus_match(const char *bus_name, u32 i)
 {
-    if (0 == strcmp(bus_name, "AXI_GLB"))
+    if (0 == strncmp(bus_name, "AXI_GLB", strlen("AXI_GLB")))
     {
         dlock_axi_gm_info("hisilicon,dlock_axi_glb_balong", i);
     }
-    else if (0 == strcmp(bus_name, "AXI_FAST"))
+    else if (0 == strncmp(bus_name, "AXI_FAST", strlen("AXI_FAST")))
     {
         dlock_axi_fbp_info("hisilicon,dlock_axi_fast_balong", i);
     }
-    else if (0 == strcmp(bus_name, "AXI_MDM"))
+    else if (0 == strncmp(bus_name, "AXI_MDM", strlen("AXI_MDM")))
     {
         dlock_axi_gm_info("hisilicon,dlock_axi_mdm_balong", i);
     }
-    else if (0 == strcmp(bus_name, "AXI_BBPHY"))
+    else if (0 == strncmp(bus_name, "AXI_BBPHY", strlen("AXI_BBPHY")))
     {
         dlock_axi_fbp_info("hisilicon,dlock_axi_bbphy_balong", i);
     }
-    else if (0 == strcmp(bus_name, "AXI_PCIE"))
+    else if (0 == strncmp(bus_name, "AXI_PCIE", strlen("AXI_PCIE")))
     {
         dlock_axi_fbp_info("hisilicon,dlock_axi_pcie_balong", i);
     }
@@ -817,7 +832,7 @@ static irqreturn_t dlock_int_handler(void)
     else
     {
         enable_irq(g_dlock_int_no);
-        printk(KERN_ERR"not real bus error!\n");
+        printk(KERN_ERR"dlock nv disable or not real bus error!\n");
     }
 
     return IRQ_HANDLED;
@@ -843,6 +858,12 @@ s32 bsp_dlock_init(void)
     DRV_DLOCK_CFG_STRU cfg = {0,0};
 
     /*若为MBB产品，且TEEOS编译宏打开，则认为A核为非安全区，不能解析安全区的系统控制器，此时不做解析*/
+#ifndef BSP_CONFIG_PHONE_TYPE
+#ifdef CONFIG_TRUSTZONE
+    dlock_print("acore nonsecure,do not operate secure sysctrl!\n");
+    return dlock_ok;
+#endif
+#endif
 
     if(BSP_OK != bsp_nvm_read(NV_ID_DRV_DLOCK, (u8 *)&cfg, sizeof(DRV_DLOCK_CFG_STRU)))
 	{
@@ -915,5 +936,8 @@ static void __exit bsp_dlock_exit(void)
 module_init(bsp_dlock_init);
 module_exit(bsp_dlock_exit);
 
+#ifdef __cplusplus
+}
+#endif
 
 

@@ -111,8 +111,8 @@ modid_info_t *g_p_modid_table = NULL;
 *****************************************************************************/
 s32 dump_apr_init(void)
 {
-    struct device_node *dev_node = NULL;
-    struct device_node *child = NULL;
+    struct device_node *dev_node;
+    struct device_node *child ;
     struct property *prop = NULL;
     const __be32 *p = NULL;
     char * module_name = NULL;
@@ -185,7 +185,6 @@ s32 dump_apr_init(void)
     }
     memset(g_cp_task_table, 0, alloc_size);
 
-    child = NULL;
     for_each_child_of_node(dev_node,child)
     {
         /*如果本次读取组件名称失败则不再读取其他信息*/

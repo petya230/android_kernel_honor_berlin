@@ -43,7 +43,7 @@ static void send_fiq(fiq_num fiq_num_t)
 }
 static void check_fiq_send(void)
 {
-	pr_err("[fiq]fiq status regval[%p]=0x%x[bit %d]\n", (g_fiq_ctrl.sysctrl_fiq_status_reg), readl((volatile const void *)(g_fiq_ctrl.sysctrl_fiq_status_reg)), g_fiq_ctrl.sysctrl_fiq_status_bit);
+	pr_err("[fiq]fiq status regval[%pK]=0x%x[bit %d]\n", (g_fiq_ctrl.sysctrl_fiq_status_reg), readl((volatile const void *)(g_fiq_ctrl.sysctrl_fiq_status_reg)), g_fiq_ctrl.sysctrl_fiq_status_bit);
 	if(readl((volatile const void *)g_fiq_ctrl.smem_send_cnt_addr) != readl((volatile const void *)g_fiq_ctrl.smem_recive_cnt_addr))
 	{
 		pr_err("[fiq]fiq send cnt != fiq receive cnt, lost modem fiq respond error\n");
