@@ -59,3 +59,11 @@ config CLUSTER_PLUG
 	  The mod version adds display on off notification usage support
 	  to go to a low power mode (only little clusters enabled)
 	  while the screen is suspended.
+
+config OVERCLOCK_AS_KIRIN_655
+	bool "Enable overclock for Kirin 650 to 655 max frequency
+	depends on ARCH_HISI_MAXFREQ
+	default n
+	help
+	  Enables overclock by setting the target_cpu to Kirin 655 which
+	  enables 2362 MHz CPU frequency

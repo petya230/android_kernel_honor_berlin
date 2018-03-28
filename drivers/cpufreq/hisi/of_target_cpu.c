@@ -114,6 +114,12 @@ int dt_target_cpu(unsigned long *freq)
 
 	pr_debug("%s: target_cpu:%s.\n", __func__, target_cpu);
 
+#ifdef CONFIG_OVERCLOCK_AS_KIRIN_655
+        pr_err("%s: target_cpu from dt:%s.\n", __func__, target_cpu);
+        target_cpu = "Kirin 655";
+        pr_err("%s: target_cpu set to:%s.\n", __func__, target_cpu);
+#endif
+
 	np = of_find_compatible_node(NULL, NULL, "hisi,supportedtarget");
 	if (!np)
 		return -ENODEV;
