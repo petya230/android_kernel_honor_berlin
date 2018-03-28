@@ -1349,6 +1349,82 @@ static ssize_t lcdkit_reg_read_store(struct device* dev,
     return count;
 }
 
+static ssize_t lcdkit_bl_mode_store(struct device* dev, struct device_attribute* attr, const char* buf, size_t count)
+{
+    ssize_t ret;
+    struct lcdkit_panel_data* lcdkit_info_temp;
+    lcdkit_info_temp = lcdkit_get_panel_info();
+
+    if (NULL == lcdkit_info_temp)
+    {
+        LCDKIT_ERR("lcdkit_info is NULL Point!\n");
+        return -EINVAL;
+    }
+
+
+    if (NULL == buf)
+    {
+        LCDKIT_ERR("NULL Pointer\n");
+        return -EINVAL;
+    }
+
+    ret = lcd_bl_mode_store(dev, lcdkit_info_temp, buf);
+    if (ret)
+    {
+        LCDKIT_ERR("lcd_bl_mode_store return fail\n");
+        return -EINVAL;
+    }
+
+    return count;
+}
+static ssize_t lcdkit_bl_mode_show(struct device* dev, struct device_attribute* attr, char* buf)
+{
+    ssize_t ret;
+    struct lcdkit_panel_data* lcdkit_info_temp;
+    lcdkit_info_temp = lcdkit_get_panel_info();
+
+    if (NULL == lcdkit_info_temp)
+    {
+        LCDKIT_ERR("lcdkit_info is NULL Point!\n");
+        return -EINVAL;
+    }
+
+    if (NULL == buf)
+    {
+        LCDKIT_ERR("buf is NULL Point!\n");
+        return -EINVAL;
+    }
+
+    ret = lcd_bl_mode_show(dev, lcdkit_info_temp, buf);
+    return ret;
+}
+/* not support the function*/
+static ssize_t lcdkit_support_bl_mode_store(struct device* dev, struct device_attribute* attr, const char* buf, size_t count)
+{
+    return count;
+}
+static ssize_t lcdkit_support_bl_mode_show(struct device* dev, struct device_attribute* attr, char* buf)
+{
+    ssize_t ret;
+    struct lcdkit_panel_data* lcdkit_info_temp;
+    lcdkit_info_temp = lcdkit_get_panel_info();
+
+    if (NULL == lcdkit_info_temp)
+    {
+        LCDKIT_ERR("lcdkit_info is NULL Point!\n");
+        return -EINVAL;
+    }
+
+    if (NULL == buf)
+    {
+        LCDKIT_ERR("buf is NULL Point!\n");
+        return -EINVAL;
+    }
+
+    ret = lcd_support_bl_mode_show(dev, lcdkit_info_temp, buf);
+    return ret;
+}
+
 static DEVICE_ATTR(lcd_model, 0644, lcdkit_lcd_model_show, NULL);
 static DEVICE_ATTR(panel_info, 0600, lcdkit_lcd_panel_info_show, NULL);
 static DEVICE_ATTR(lcd_cabc_mode, S_IRUGO | S_IWUSR, lcdkit_lcd_cabc_mode_show, lcdkit_lcd_cabc_mode_store);
@@ -1399,6 +1475,8 @@ static DEVICE_ATTR(lcd_test_config, 0640, lcdkit_test_config_show, lcdkit_test_c
 static DEVICE_ATTR(lv_detect, 0640, lcdkit_lv_detect_show, NULL);
 static DEVICE_ATTR(current_detect, 0640, lcdkit_current_detect_show, NULL);
 static DEVICE_ATTR(lcd_reg_read, 0600, lcdkit_reg_read_show, lcdkit_reg_read_store);
+static DEVICE_ATTR(lcd_bl_mode, S_IRUGO | S_IWUSR, lcdkit_bl_mode_show, lcdkit_bl_mode_store);
+static DEVICE_ATTR(lcd_bl_support_mode, S_IRUGO | S_IWUSR, lcdkit_support_bl_mode_show, lcdkit_support_bl_mode_store);
 
 static struct attribute* lcdkit_fb_attrs[] =
 {
@@ -1451,6 +1529,9 @@ static struct attribute* lcdkit_fb_attrs[] =
     &dev_attr_lcd_test_config.attr,
     &dev_attr_lv_detect.attr,
     &dev_attr_current_detect.attr,
+    &dev_attr_lcd_reg_read.attr,
+    &dev_attr_lcd_bl_mode.attr,
+    &dev_attr_lcd_bl_support_mode.attr,
     NULL,
 };
 

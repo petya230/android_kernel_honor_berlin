@@ -117,6 +117,11 @@
 #define	TEST_PIC_1	1
 #define	TEST_PIC_2	2
 
+#define	CHECKSUM_CHECKCOUNT	5
+
+#define LCDKIT_BL_NORMAL_MODE 1
+#define LCDKIT_BL_ENHANCE_MODE 2
+
 enum
 {
     LCDKIT_CHECKSUM_START = 0,
@@ -468,6 +473,10 @@ struct lcdkit_panel_infos
     int bl_level_max;
     int bl_level_min;
 
+    /* bl work mode */
+    u32 bl_support_mode;
+    u32 bl_work_mode;
+
     /*lcd on command*/
     struct lcdkit_dsi_panel_cmds display_on_cmds;
     /*for lcd initcode debug*/
@@ -810,7 +819,9 @@ struct lcdkit_panel_data
     ssize_t (*lcdkit_fps_updt_handle)(void* pdata);
     ssize_t (*lcdkit_current_detect)(void* pdata);
     ssize_t (*lcdkit_lv_detect)(void* pdata);
-
+    ssize_t (*lcdkit_bl_mode_show)(char* buf);
+    ssize_t (*lcdkit_bl_mode_store)(void* pdata, const char* buf);
+    ssize_t (*lcdkit_support_bl_mode_show)(char* buf);
 };
 
 struct lcdkit_adapt_func
@@ -849,6 +860,8 @@ int lcdkit_lread_reg(void *pdata, uint32_t *out, struct lcdkit_dsi_cmd_desc* cmd
 ssize_t host_panel_oem_info_show(void* pdata, char *buf);
 ssize_t host_panel_oem_info_store(void* pdata, char *buf);
 void lcdkit_fps_adaptor_ts_callback(void);
+ssize_t lcdkit_set_bl_normal_mode_reg(void* pdata);
+ssize_t lcdkit_set_bl_enhance_mode_reg(void* pdata);
 
 static __maybe_unused inline int lcdkit_bias_is_gpio_ctrl_power(void)
 {

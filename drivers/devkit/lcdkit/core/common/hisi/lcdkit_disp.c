@@ -351,8 +351,13 @@ static int lcdkit_on(struct platform_device* pdev)
     struct hisi_fb_data_type* hisifd = NULL;
     struct hisi_panel_info* pinfo = NULL;
     char __iomem* mipi_dsi0_base = NULL;
-    ssize_t ret = 0;
-
+    ssize_t ret = 0, i = 0;
+    ssize_t esd_recovery_times = 0;
+#if defined (CONFIG_HUAWEI_DSM)
+    static struct lcd_reg_read_t lcd_status_reg[] = {
+        {0x0A, 0x9C, 0xFF, "lcd power state"},
+    };
+#endif
     LCDKIT_INFO("enter!\n");
 
     if (NULL == pdev)

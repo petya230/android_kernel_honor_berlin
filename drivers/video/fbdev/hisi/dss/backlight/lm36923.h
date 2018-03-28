@@ -19,6 +19,7 @@
 #define TI_LM36923_LED_NUM "lm36923-led-num"
 #define TI_LM36923_DISABLE_OVP "disable-ovp"
 #define TI_LM36923_BOOST_CTRL_1 "lm36923-boost-ctrl-1"
+#define TI_LM36923_FAULT_CTRL "lm36923-fault-ctrl"
 
 #define TI_LM36923_LED_TWO 2
 #define TI_LM36923_LED_THREE 3
@@ -178,6 +179,7 @@ enum lm36923_ramp_rate{
 #define OVP_OCP_SHUTDOWN_ENABLE 0x04
 #define OVP_OCP_SHUTDOWN_DISABLE 0x07
 #define OCP_SHUTDOWN_OVP_DISABLE 0x05
+#define OVP_OCP_FOR_DBC_TEST 0x74
 
 struct lm36923_chip_data {
 	struct device *dev;

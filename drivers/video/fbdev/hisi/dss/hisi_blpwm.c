@@ -12,9 +12,11 @@
 */
 
 #include "hisi_fb.h"
-#if defined(CONFIG_HISI_FB_3650) || defined(CONFIG_HISI_FB_3660) || defined (CONFIG_HISI_FB_970)
+#if defined(CONFIG_HISI_FB_3650) || defined(CONFIG_HISI_FB_3660) || defined (CONFIG_HISI_FB_970) || defined (CONFIG_HISI_FB_6250) || defined (CONFIG_HISI_FB_660)
 #include "backlight_linear_to_exponential.h"
 #include "backlight/lm36923.h"
+#include "backlight/lm36274.h"
+#include "backlight/lp8556.h"
 #endif
 
 #include <linux/timer.h>
@@ -23,7 +25,7 @@
 /* default pwm clk */
 #if defined (CONFIG_HISI_FB_3650) || defined (CONFIG_HISI_FB_6250)
 #define DEFAULT_PWM_CLK_RATE	(120 * 1000000L)
-#elif defined (CONFIG_HISI_FB_3660) || defined (CONFIG_HISI_FB_970)
+#elif defined (CONFIG_HISI_FB_3660) || defined (CONFIG_HISI_FB_970) || defined (CONFIG_HISI_FB_660)
 #define DEFAULT_PWM_CLK_RATE	(114 * 1000000L)
 #endif
 static char __iomem *hisifd_blpwm_base;
@@ -83,8 +85,9 @@ struct bl_info{
 	int32_t current_cabc_pwm;
 	int32_t cabc_pwm_in;
 	int32_t last_bl_level;
-#if defined(CONFIG_HISI_FB_3650) || defined(CONFIG_HISI_FB_3660) || defined(CONFIG_HISI_FB_970)
+#if defined(CONFIG_HISI_FB_3650) || defined(CONFIG_HISI_FB_3660) || defined(CONFIG_HISI_FB_970) || defined (CONFIG_HISI_FB_6250) || defined (CONFIG_HISI_FB_660)
 	int32_t bl_ic_ctrl_mode;
+
 #endif
 	uint32_t blpwm_input_precision;
 	uint32_t blpwm_out_precision;
@@ -93,7 +96,7 @@ struct bl_info{
 
 static struct bl_info g_bl_info;
 
-#if defined(CONFIG_HISI_FB_3650) || defined(CONFIG_HISI_FB_3660) || defined(CONFIG_HISI_FB_970)
+#if defined(CONFIG_HISI_FB_3650) || defined(CONFIG_HISI_FB_3660) || defined(CONFIG_HISI_FB_970) || defined (CONFIG_HISI_FB_6250) || defined (CONFIG_HISI_FB_660)
 #define BL_LVL_MAP_SIZE	(2047)
 static int bl_lvl_map(int level)
 {
@@ -153,7 +156,7 @@ static void init_bl_info(struct hisi_panel_info *pinfo)
 	g_bl_info.current_cabc_pwm = g_bl_info.blpwm_input_precision;
 	g_bl_info.cabc_pwm_in = g_bl_info.blpwm_input_precision;
 	sema_init(&g_bl_info.bl_semaphore, 1);
-#if defined(CONFIG_HISI_FB_3650) || defined(CONFIG_HISI_FB_3660) || defined (CONFIG_HISI_FB_970)
+#if defined(CONFIG_HISI_FB_3650) || defined(CONFIG_HISI_FB_3660) || defined (CONFIG_HISI_FB_970) || defined (CONFIG_HISI_FB_6250) || defined (CONFIG_HISI_FB_660)
 	g_bl_info.bl_ic_ctrl_mode = pinfo->bl_ic_ctrl_mode;
 #endif
 	return ;
@@ -172,13 +175,17 @@ static void update_backlight(uint32_t backlight)
 		return;
 	}
 
-#if defined(CONFIG_HISI_FB_3650) || defined(CONFIG_HISI_FB_3660) || defined(CONFIG_HISI_FB_970)
-	if (REG_ONLY_MODE == g_bl_info.bl_ic_ctrl_mode) {
+#if defined(CONFIG_HISI_FB_3650) || defined(CONFIG_HISI_FB_3660) || defined(CONFIG_HISI_FB_970) || defined (CONFIG_HISI_FB_6250) || defined (CONFIG_HISI_FB_660)
+	if ((g_bl_info.bl_ic_ctrl_mode >= REG_ONLY_MODE ) && (g_bl_info.bl_ic_ctrl_mode <= I2C_ONLY_MODE)) {
 		bl_level = backlight;
 		bl_level = bl_lvl_map(bl_level);
 		HISI_FB_DEBUG("cabc9:bl_level=%d\n",bl_level);
 		/* lm36923_ramp_brightness(bl_level); */
-		lm36923_set_backlight_reg(bl_level);
+		if (REG_ONLY_MODE == g_bl_info.bl_ic_ctrl_mode) {
+			lm36923_set_backlight_reg(bl_level);
+		} else if (I2C_ONLY_MODE == g_bl_info.bl_ic_ctrl_mode) {
+			lm36274_set_backlight_reg(bl_level);
+		}
 		return;
 	}
 #endif
@@ -447,14 +454,20 @@ int hisi_blpwm_set_backlight(struct hisi_fb_data_type *hisifd, uint32_t bl_level
 				pinfo->blpwm_input_precision, bl_level);
 	}
 
-#if defined(CONFIG_HISI_FB_3650) || defined(CONFIG_HISI_FB_3660) || defined(CONFIG_HISI_FB_970)
-	if (REG_ONLY_MODE == pinfo->bl_ic_ctrl_mode) {
+#if defined(CONFIG_HISI_FB_3650) || defined(CONFIG_HISI_FB_3660) || defined(CONFIG_HISI_FB_970) ||  defined(CONFIG_HISI_FB_6250) || defined (CONFIG_HISI_FB_660)
+	if ((g_bl_info.bl_ic_ctrl_mode >= REG_ONLY_MODE ) && (g_bl_info.bl_ic_ctrl_mode <= I2C_ONLY_MODE)) {
 		bl_level = bl_lvl_map(bl_level);
 		HISI_FB_DEBUG("cabc:bl_level=%d\n",bl_level);
 		/* lm36923_ramp_brightness(bl_level); */
-		lm36923_set_backlight_reg(bl_level);
+		if (REG_ONLY_MODE == pinfo->bl_ic_ctrl_mode) {
+			lm36923_set_backlight_reg(bl_level);
+		} else if (I2C_ONLY_MODE == pinfo->bl_ic_ctrl_mode) {
+			lm36274_set_backlight_reg(bl_level);
+		}
 		up(&g_bl_info.bl_semaphore);
 		return 0;
+	} else if (BLPWM_AND_CABC_MODE == g_bl_info.bl_ic_ctrl_mode) {
+		lp8556_set_backlight_init(bl_level);
 	}
 #endif
 

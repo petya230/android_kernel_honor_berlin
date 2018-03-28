@@ -79,5 +79,7 @@ ssize_t current_detect_show(struct device* dev, struct lcdkit_panel_data* lcdkit
 ssize_t lcd_reg_read_show(struct device* dev, struct lcdkit_panel_data* lcdkit_info, char* buf);
 ssize_t lcd_reg_read_store(struct device* dev, struct lcdkit_panel_data* lcdkit_info, const char* buf);
 ssize_t get_lcdkit_support(void);
-
+ssize_t lcd_bl_mode_show(struct device* dev, struct lcdkit_panel_data* lcdkit_info, char* buf);
+ssize_t lcd_bl_mode_store(struct device* dev, struct lcdkit_panel_data* lcdkit_info, const char* buf);
+ssize_t lcd_support_bl_mode_show(struct device* dev, struct lcdkit_panel_data* lcdkit_info, char* buf);
 #endif

@@ -3450,3 +3450,137 @@ err_out:
 	return ret;
 }
 
+ssize_t lcd_bl_mode_show(struct device* dev, struct lcdkit_panel_data* lcdkit_inf, char* buf)
+{
+    ssize_t ret = -1;
+    struct hisi_fb_data_type* hisifd;
+
+    if (NULL == dev)
+    {
+        LCDKIT_ERR("dev is NULL Point!\n");
+        return -ENXIO;
+    }
+
+    hisifd = get_fb_data(dev);
+    if (NULL == hisifd)
+    {
+        LCDKIT_ERR("NULL Pointer!\n");
+        return -EINVAL;
+    }
+
+    if (NULL == lcdkit_inf)
+    {
+        LCDKIT_ERR("lcdkit_info is NULL Point!\n");
+        return -EINVAL;
+    }
+
+    down(&hisifd->blank_sem);
+
+    if (!hisifd->panel_power_on)
+    {
+        LCDKIT_ERR("fb%d, panel power off!\n", hisifd->index);
+        goto err_out;
+    }
+
+    if (lcdkit_inf->lcdkit_bl_mode_show)
+    {
+        hisifb_activate_vsync(hisifd);
+        ret = lcdkit_inf->lcdkit_bl_mode_show(buf);
+        hisifb_deactivate_vsync(hisifd);
+    }
+
+err_out:
+    up(&hisifd->blank_sem);
+
+    return ret;
+}
+
+ssize_t lcd_bl_mode_store(struct device* dev, struct lcdkit_panel_data* lcdkit_inf, const char* buf)
+{
+    ssize_t ret = -1;
+    struct hisi_fb_data_type* hisifd;
+
+    if (NULL == dev)
+    {
+        LCDKIT_ERR("dev is NULL Point!\n");
+        return -ENXIO;
+    }
+
+    hisifd = get_fb_data(dev);
+    if (NULL == hisifd)
+    {
+        LCDKIT_ERR("hisifd is NULL Pointer!\n");
+        return -EINVAL;
+    }
+
+    if (NULL == buf)
+    {
+        LCDKIT_ERR("buf is NULL Pointer!\n");
+        return -EINVAL;
+    }
+
+    down(&hisifd->blank_sem);
+
+    if (!hisifd->panel_power_on)
+    {
+        LCDKIT_ERR("fb%d, panel power off!\n", hisifd->index);
+        ret = -EINVAL;
+        goto err_out;
+    }
+
+    if (lcdkit_inf->lcdkit_bl_mode_store)
+    {
+        hisifb_activate_vsync(hisifd);
+        ret = lcdkit_inf->lcdkit_bl_mode_store(hisifd, buf);
+        hisifb_deactivate_vsync(hisifd);
+    }
+
+err_out:
+    up(&hisifd->blank_sem);
+    return ret;
+}
+
+ssize_t lcd_support_bl_mode_show(struct device* dev, struct lcdkit_panel_data* lcdkit_inf, char* buf)
+{
+    ssize_t ret = -1;
+    struct hisi_fb_data_type* hisifd;
+
+    if (NULL == dev)
+    {
+        LCDKIT_ERR("dev is NULL Point!\n");
+        return -ENXIO;
+    }
+
+    hisifd = get_fb_data(dev);
+    if (NULL == hisifd)
+    {
+        LCDKIT_ERR("NULL Pointer!\n");
+        return -EINVAL;
+    }
+
+    if (NULL == lcdkit_inf)
+    {
+        LCDKIT_ERR("lcdkit_info is NULL Point!\n");
+        return -EINVAL;
+    }
+
+    down(&hisifd->blank_sem);
+
+    if (!hisifd->panel_power_on)
+    {
+        LCDKIT_ERR("fb%d, panel power off!\n", hisifd->index);
+        goto err_out;
+    }
+
+    if (lcdkit_inf->lcdkit_support_bl_mode_show)
+    {
+        hisifb_activate_vsync(hisifd);
+        ret = lcdkit_inf->lcdkit_support_bl_mode_show(buf);
+        hisifb_deactivate_vsync(hisifd);
+    }
+
+err_out:
+    up(&hisifd->blank_sem);
+
+    return ret;
+}

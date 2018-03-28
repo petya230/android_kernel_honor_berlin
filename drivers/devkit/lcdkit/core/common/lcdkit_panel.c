@@ -446,6 +446,9 @@ static ssize_t lcdkit_gram_check_store(void* pdata, const char* buf)
 {
     ssize_t ret = 0;
     unsigned long val = 0;
+    static int pic_4_check_count = 0;
+    int pic_index = 0;
+
     return 0;
     ret = strict_strtoul(buf, 0, &val);
     if (ret)
@@ -454,36 +457,41 @@ static ssize_t lcdkit_gram_check_store(void* pdata, const char* buf)
     }
     LCDKIT_INFO("val=%ld\n", val);
 
-    if (1 == val)
-    {
-        lcdkit_info.panel_infos.checksum_support = true;
-    }
-    else if (0 == val)
-    {
-        lcdkit_info.panel_infos.checksum_support = false;
-    }
-    else if (val > 0 && val < 6)
-    {
-        lcdkit_info.panel_infos.checksum_pic_num = val - 3;
-        LCDKIT_INFO("checksum_pic_num is %d\n", lcdkit_info.panel_infos.checksum_pic_num);
-        return 0;
-    }
-    else
-    {
-        LCDKIT_INFO("val is invaild\n");
+    pic_index = val - 2;
+    if (LCDKIT_CHECKSUM_END == checksum_start){
+        /* The first pic num 2 used to instruct that checksum start */
+        if (TEST_PIC_0 == pic_index){
+            LCDKIT_INFO("start gram checksum...\n");
+            checksum_start = LCDKIT_CHECKSUM_START;
+            lcdkit_dsi_tx(pdata, &lcdkit_info.panel_infos.checksum_enable_cmds);
+            lcdkit_effect_switch_ctrl(pdata, 1);
+            lcdkit_info.panel_infos.checksum_pic_num = 0xff;
+            LCDKIT_INFO("Enable checksum\n");
+            return ret;
+        }else{
+            LCDKIT_INFO("gram checksum not start, and first cmd not start:2\n");
+            return -1;
+        }
+    }else{
+        if (TEST_PIC_2 == pic_index) pic_4_check_count++;
+        if (CHECKSUM_CHECKCOUNT == pic_4_check_count){
+            LCDKIT_INFO("gram checksum pic %ld test 5 times, set checkout end\n", val);
+            checksum_start = LCDKIT_CHECKSUM_END;
+            pic_4_check_count = 0;
+        }
     }
 
-    if (lcdkit_info.panel_infos.checksum_support == true)
-    {
-        lcdkit_dsi_tx(pdata, &lcdkit_info.panel_infos.checksum_enable_cmds);
-        LCDKIT_INFO("Enable checksum\n");
-        lcdkit_effect_switch_ctrl(pdata, 1);
-    }
-    else
-    {
-        lcdkit_dsi_tx(pdata, &lcdkit_info.panel_infos.checksum_disable_cmds);
-        LCDKIT_INFO("Disable checksum\n");
-        lcdkit_effect_switch_ctrl(pdata, 0);
+    switch(pic_index){
+        case TEST_PIC_0:
+        case TEST_PIC_1:
+        case TEST_PIC_2:
+            LCDKIT_INFO("gram checksum set pic [%d]\n", pic_index);
+            lcdkit_info.panel_infos.checksum_pic_num = pic_index;
+            break;
+        default:
+            LCDKIT_INFO("gram checksum set pic [%d] unknown\n", pic_index);
+            lcdkit_info.panel_infos.checksum_pic_num = 0xff;
+            break;
     }
 
     return ret;
@@ -1140,12 +1148,12 @@ static ssize_t lcdkit_set_display_region(void* pdata, void* dirty)
 
     lcdkit_dump_cmds(&lcdkit_info.panel_infos.display_region_cmds);
 
-    lcdkit_info.panel_infos.display_region_cmds.cmds[0].payload[1] = (dirty_region->x >> 8) & 0xff;
-    lcdkit_info.panel_infos.display_region_cmds.cmds[0].payload[2] = dirty_region->x & 0xff;
+    lcdkit_info.panel_infos.display_region_cmds.cmds[0].payload[1] = ((uint32_t)(dirty_region->x) >> 8) & 0xff;
+    lcdkit_info.panel_infos.display_region_cmds.cmds[0].payload[2] = ((uint32_t)(dirty_region->x)) & 0xff;
     lcdkit_info.panel_infos.display_region_cmds.cmds[0].payload[3] = ((dirty_region->x + dirty_region->w - 1) >> 8) & 0xff;
     lcdkit_info.panel_infos.display_region_cmds.cmds[0].payload[4] = (dirty_region->x + dirty_region->w - 1) & 0xff;
-    lcdkit_info.panel_infos.display_region_cmds.cmds[1].payload[1] = (dirty_region->y >> 8) & 0xff;
-    lcdkit_info.panel_infos.display_region_cmds.cmds[1].payload[2] = dirty_region->y & 0xff;
+    lcdkit_info.panel_infos.display_region_cmds.cmds[1].payload[1] = ((uint32_t)(dirty_region->y) >> 8) & 0xff;
+    lcdkit_info.panel_infos.display_region_cmds.cmds[1].payload[2] = ((uint32_t)(dirty_region->y)) & 0xff;
     lcdkit_info.panel_infos.display_region_cmds.cmds[1].payload[3] = ((dirty_region->y + dirty_region->h - 1) >> 8) & 0xff;
     lcdkit_info.panel_infos.display_region_cmds.cmds[1].payload[4] = (dirty_region->y + dirty_region->h - 1) & 0xff;
 
@@ -1389,6 +1397,72 @@ static ssize_t lcdkit_reg_read_store(void* pdata, const char *buf)
     LCDKIT_INFO("cmd page:0x%x, reg addr:0x%x, reg length:%d\n", lcdkit_info.panel_infos.gama_cmd_page, lcdkit_info.panel_infos.gama_reg_addr, lcdkit_info.panel_infos.gama_reg_length);
     return ret;
 }
+static ssize_t lcdkit_bl_mode_store(void* pdata, const char *buf)
+{
+    ssize_t ret = -1;
+    unsigned long val = 0;
+    unsigned int bl_work_mode = 0;
+
+    if (NULL == buf)
+    {
+        return ret;
+    }
+
+    if (lcdkit_info.panel_infos.bl_support_mode)
+    {
+        ret = strict_strtoul(buf, 0, &val);
+        if (ret)
+        {
+            LCDKIT_ERR("get bl mode fail!\n");
+            return ret;
+        }
+
+        bl_work_mode = (unsigned int)val;
+
+        LCDKIT_INFO("lcdkit_info.bl_work_mode=%u, val=%ld, bl_work_mode=%u\n", lcdkit_info.panel_infos.bl_work_mode, val,bl_work_mode);
+        if (lcdkit_info.panel_infos.bl_work_mode == bl_work_mode)
+        {
+            LCDKIT_INFO("It is same bl mode!\n");
+        }
+
+        switch (val)
+        {
+            case LCDKIT_BL_NORMAL_MODE:
+                ret = lcdkit_set_bl_normal_mode_reg(pdata);
+                break;
+            case LCDKIT_BL_ENHANCE_MODE:
+                ret = lcdkit_set_bl_enhance_mode_reg(pdata);
+                break;
+            default:
+                return 0;
+        }
+		if (!ret) {
+			lcdkit_info.panel_infos.bl_work_mode = bl_work_mode;
+		}
+    }
+    return ret;
+}
+
+static ssize_t lcdkit_bl_mode_show(char *buf)
+{
+    if (NULL == buf)
+    {
+        return -1;
+    }
+
+    return snprintf(buf, PAGE_SIZE, "%d\n", lcdkit_info.panel_infos.bl_work_mode);
+}
+
+static ssize_t lcdkit_support_bl_mode_show(char* buf)
+{
+    if (NULL == buf)
+    {
+        return -1;
+    }
+
+    return snprintf(buf, PAGE_SIZE, "%d\n", lcdkit_info.panel_infos.bl_support_mode);
+}
+
 static ssize_t lcdkit_oem_info_show(void* pdata, char* buf)
 {
     if (lcdkit_info.panel_infos.is_hostprocessing == 1) {
@@ -1459,4 +1533,7 @@ struct lcdkit_panel_data lcdkit_info =
     .lcdkit_reg_read_show = lcdkit_reg_read_show,
     .lcdkit_reg_read_store = lcdkit_reg_read_store,
     .lcdkit_fps_timer_init = lcdkit_fps_timer_init,
+    .lcdkit_bl_mode_show   = lcdkit_bl_mode_show,
+    .lcdkit_bl_mode_store  = lcdkit_bl_mode_store,
+    .lcdkit_support_bl_mode_show = lcdkit_support_bl_mode_show,
 };

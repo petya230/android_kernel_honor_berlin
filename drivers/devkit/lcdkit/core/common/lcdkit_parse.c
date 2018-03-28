@@ -588,5 +588,11 @@ void lcdkit_parse_panel_dts(struct device_node* np)
     OF_PROPERTY_READ_U8_DEFAULT(np, "hw,lcdkit-panel-display-on-in-backlight", &lcdkit_info.panel_infos.display_on_in_backlight, 0);
     OF_PROPERTY_READ_U32_DEFAULT(np, "hw,lcdkit-effect-support-mode", &lcdkit_info.panel_infos.effect_support_mode, 0);
 
+    OF_PROPERTY_READ_U32_DEFAULT(np, "hw,lcdkit-bl-support-mode", &lcdkit_info.panel_infos.bl_support_mode, 0);
+
+    if (lcdkit_info.panel_infos.bl_support_mode)
+    {
+        lcdkit_info.panel_infos.bl_work_mode = LCDKIT_BL_NORMAL_MODE;
+    }
     return;
 }

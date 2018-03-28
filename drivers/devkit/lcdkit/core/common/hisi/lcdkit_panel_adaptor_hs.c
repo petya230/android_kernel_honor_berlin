@@ -1388,4 +1388,51 @@ int lcdkit_gpio_pullup(void * btb_vir_addr)
 	return NORMAL;
 }
 //lint -restore
+extern ssize_t blkit_set_normal_work_mode(void);
+extern ssize_t blkit_set_enhance_work_mode(void);
 
+ssize_t lcdkit_set_bl_normal_mode_reg(void* pdata)
+{
+    ssize_t error = -1;
+    struct hisi_fb_data_type *hisifd;
+
+    hisifd = (struct hisi_fb_data_type*) pdata;
+    if (I2C_ONLY_MODE == hisifd->panel_info.bl_ic_ctrl_mode)
+    {
+        error = blkit_set_normal_work_mode();
+        if (error)
+        {
+            LCDKIT_ERR("blkit_set_normal_work_mode return error: %d \n", error);
+        }
+    }
+    else
+    {
+        LCDKIT_INFO("not support \n");
+    }
+
+    LCDKIT_INFO("End error %d \n", error);
+    return error;
+}
+
+ssize_t lcdkit_set_bl_enhance_mode_reg(void* pdata)
+{
+    ssize_t error = -1;
+    struct hisi_fb_data_type *hisifd;
+
+    hisifd = (struct hisi_fb_data_type*) pdata;
+    if (I2C_ONLY_MODE == hisifd->panel_info.bl_ic_ctrl_mode)
+    {
+        error = blkit_set_enhance_work_mode();
+        if (error)
+        {
+            LCDKIT_ERR("blkit_set_normal_work_mode return error: %d \n", error);
+        }
+    }
+    else
+    {
+        LCDKIT_INFO("not support \n");
+    }
+
+    LCDKIT_INFO("End error %d \n", error);
+    return error;
+}
