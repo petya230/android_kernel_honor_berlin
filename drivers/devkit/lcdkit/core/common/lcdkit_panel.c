@@ -369,12 +369,30 @@ static ssize_t lcdkit_check_esd(void* pdata)
 */
 static ssize_t lcdkit_gram_check_show(void* pdata, char* buf)
 {
-    int ret = 0, i = 0, checksum_result = 1;
+    int ret = 0, i = 0, checksum_result = 0;
     uint32_t rd[LCDKIT_CHECKSUM_SIZE] = {0};
+    char checksum_read[] = {0x00};
     struct lcdkit_dsi_cmd_desc packet_size_set_cmd = {LCDKIT_DTYPE_MAX_PKTSIZE, 1, 0, 0, 10, LCDKIT_WAIT_TYPE_US, 1, NULL};
+    struct lcdkit_dsi_cmd_desc check_reg_dsi_cmd = {DTYPE_DCS_READ, 1, 0, 0, 10, LCDKIT_WAIT_TYPE_US, 1, checksum_read};
+    struct lcdkit_dsi_panel_cmds lcd_check_reg = {NULL, 0, &check_reg_dsi_cmd, 1, 0, 0};
+    char read_reg = 0;
+    int reg_count = 0;
+
     return 0;
     LCDKIT_INFO("enter \n");
 
+    switch (lcdkit_info.panel_infos.checksum_pic_num){
+        case TEST_PIC_0:
+        case TEST_PIC_1:
+        case TEST_PIC_2:
+            LCDKIT_INFO("start check gram checksum:[%d]\n", lcdkit_info.panel_infos.checksum_pic_num);
+            break;
+        default:
+            LCDKIT_ERR("gram checksum pic num unknown(%d)\n", lcdkit_info.panel_infos.checksum_pic_num);
+            //unknown pic, return fail
+            ret = snprintf(buf, PAGE_SIZE, "1\n");
+            return ret;
+    }
     for (i = 0; i < sizeof(lcdkit_adapt_func_array)/sizeof(lcdkit_adapt_func_array[0]); i++) {
         if (!strncmp(lcdkit_info.panel_infos.panel_name, lcdkit_adapt_func_array[i].name, strlen(lcdkit_adapt_func_array[i].name))) {
             if (lcdkit_adapt_func_array[i].lcdkit_gram_check_show) {
@@ -387,27 +405,39 @@ static ssize_t lcdkit_gram_check_show(void* pdata, char* buf)
 
     lcdkit_mipi_dsi_max_return_packet_size(pdata, &packet_size_set_cmd);
     lcdkit_dsi_tx(pdata, &lcdkit_info.panel_infos.checksum_enter_cmds);
-
+    reg_count = lcdkit_info.panel_infos.checksum_cmds.cmd_cnt;
+    read_reg = lcdkit_info.panel_infos.checksum_cmds.cmds[reg_count - 1].payload[0];
     for (i = 0; i < LCDKIT_CHECKSUM_SIZE; i++)
     {
-        char* data = lcdkit_info.panel_infos.checksum_cmds.cmds[i].payload;
-        *data = 0x73 + i;
+        char *data = lcd_check_reg.cmds->payload;
+        *data = read_reg + i;
 
-        lcdkit_dsi_rx(pdata, (rd + i), 0, &lcdkit_info.panel_infos.checksum_cmds);
-
+        lcdkit_dsi_rx(pdata, (rd + i), 0, &lcd_check_reg);
         if (rd[i] != lcdkit_info.panel_infos.checksum_value.arry_data[lcdkit_info.panel_infos.checksum_pic_num].buf[i])
         {
-            LCDKIT_ERR("rd[%d] = 0x%x, expect checksum_value[%d]= 0x%x\n", i, rd[i], i, lcdkit_info.panel_infos.checksum_value.arry_data[lcdkit_info.panel_infos.checksum_pic_num].buf[i]);
-            checksum_result = 0;
-            break;
+            checksum_result++;
         }
     }
 
-    ret = snprintf(buf, PAGE_SIZE, "%d\n", checksum_result);
-    LCDKIT_INFO("%d %d %d %d %d %d %d %d\n", \
-                rd[0], rd[1], rd[2], rd[3], rd[4], rd[5], rd[6], rd[7]);
-
     lcdkit_dsi_tx(pdata, &lcdkit_info.panel_infos.checksum_exit_cmds);
+
+    if (checksum_result){
+        LCDKIT_ERR("checksum_result:%d\n", checksum_result);
+        checksum_result = 1;
+    }
+
+    ret = snprintf(buf, PAGE_SIZE, "%d\n", checksum_result);
+    LCDKIT_INFO("0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x,\n", \
+                rd[0], rd[1], rd[2], rd[3], rd[4], rd[5], rd[6], rd[7]);
+    if (checksum_result && 2 == lcdkit_info.panel_infos.checksum_pic_num){
+        checksum_start = LCDKIT_CHECKSUM_END;
+    }
+
+    if (LCDKIT_CHECKSUM_END == checksum_start){
+        lcdkit_dsi_tx(pdata, &lcdkit_info.panel_infos.checksum_disable_cmds);
+        lcdkit_effect_switch_ctrl(pdata, 0);
+        LCDKIT_INFO("gram checksum end, disable checksum.\n");
+    }
 
     return ret;
 }

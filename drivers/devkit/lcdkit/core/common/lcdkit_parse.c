@@ -118,7 +118,7 @@ static int lcdkit_parse_dcs_cmds(struct device_node* np, char* cmd_key,
     const char* data = NULL;
     int blen = 0, len = 0, buflen = 0, ret = 0;
     char* buf = NULL, *bp = NULL;
-    struct lcdkit_dsi_cmd_desc* dchdr = NULL;
+    struct lcdkit_dsi_cmd_desc_header* dchdr = NULL;
     int i = 0, cnt = 0;
 
     memset(pcmds, 0, sizeof(struct lcdkit_dsi_panel_cmds));
@@ -142,12 +142,12 @@ static int lcdkit_parse_dcs_cmds(struct device_node* np, char* cmd_key,
     bp = buf;
     len = buflen;
 
-    while (len >= (sizeof(*dchdr) - sizeof(dchdr->payload)))
+    while (len >= (int)sizeof(struct lcdkit_dsi_cmd_desc_header))
     {
-        dchdr = (struct lcdkit_dsi_cmd_desc*)bp;
+        dchdr = (struct lcdkit_dsi_cmd_desc_header*)bp;
         //dchdr->dlen = ntohs(dchdr->dlen);
-        bp += (sizeof(*dchdr) - sizeof(dchdr->payload));
-        len -= (sizeof(*dchdr) - sizeof(dchdr->payload));
+        bp += sizeof(struct lcdkit_dsi_cmd_desc_header);
+        len -= (int)sizeof(struct lcdkit_dsi_cmd_desc_header);
 
         if (dchdr->dlen > len)
         {
@@ -182,11 +182,22 @@ static int lcdkit_parse_dcs_cmds(struct device_node* np, char* cmd_key,
 
     for (i = 0; i < cnt; i++)
     {
-        dchdr = (struct lcdkit_dsi_cmd_desc*)bp;
-        len -= (sizeof(*dchdr) - sizeof(dchdr->payload));
-        bp += (sizeof(*dchdr) - sizeof(dchdr->payload));
-        pcmds->cmds[i] = *dchdr;
-        pcmds->cmds[i].payload = bp;
+        dchdr = (struct lcdkit_dsi_cmd_desc_header*)bp;
+                
+        len -= (int)sizeof(struct lcdkit_dsi_cmd_desc_header);
+        bp += sizeof(struct lcdkit_dsi_cmd_desc_header);
+        
+        //pcmds->cmds[i] = *dchdr;
+        
+        pcmds->cmds[i].dtype    = dchdr->dtype;
+        pcmds->cmds[i].last     = dchdr->last;
+        pcmds->cmds[i].vc       = dchdr->vc;
+        pcmds->cmds[i].ack      = dchdr->ack;
+        pcmds->cmds[i].wait     = dchdr->wait;
+        pcmds->cmds[i].waittype = dchdr->waittype;
+        pcmds->cmds[i].dlen     = dchdr->dlen;
+        pcmds->cmds[i].payload  = bp;
+
         bp += dchdr->dlen;
         len -= dchdr->dlen;
     }

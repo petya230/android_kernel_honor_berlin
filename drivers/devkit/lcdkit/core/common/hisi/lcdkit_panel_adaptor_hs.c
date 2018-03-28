@@ -878,14 +878,14 @@ int lcdkit_fake_update_bl(void *pdata, uint32_t bl_level)
 //        }
         mdelay(2);
         /* backlight on */
-//        hisi_lcd_backlight_on(pdev);
+//        hisi_lcd_backlight_on(lcdkit_pdev);
 
         HISI_FB_INFO("set backlight to %d\n", bl_level);
         ret = hisi_blpwm_set_backlight(hisifd, bl_level);
     } else {
         ret = hisi_blpwm_set_backlight(hisifd, 0);
         /* backlight off */
-//        hisi_lcd_backlight_off(pdev);
+//        hisi_lcd_backlight_off(lcdkit_pdev);
         /*disable bl gpio*/
 //        if (bl_enable_flag) {
 //            gpio_direction_output(gpio_lcd_bl_enable, 0);

@@ -113,6 +113,10 @@
 #define LCD_REG_LENGTH_MAX 200
 #define LCD_REG_NUM 50
 
+#define	TEST_PIC_0	0
+#define	TEST_PIC_1	1
+#define	TEST_PIC_2	2
+
 enum
 {
     LCDKIT_CHECKSUM_START = 0,
@@ -293,6 +297,18 @@ struct lcdkit_dsi_cmd_desc
     char dlen;/* 8 bits */
     char* payload;
 } __packed;
+
+struct lcdkit_dsi_cmd_desc_header
+{
+    char dtype;/* data type */
+    char last;/* last in chain */
+    char vc;/* virtual chan */
+    char ack;/* ask ACK from peripheral */
+    char wait;/* ms */
+    char waittype;
+    char dlen;/* 8 bits */
+};
+
 
 //dsi_panel_cmds
 /*dsi cmd struct*/
