@@ -397,7 +397,7 @@ static int lcdkit_on(struct platform_device* pdev)
     if (pinfo->lcd_init_step == LCD_INIT_POWER_ON)
     {
 
-      LOG_JANK_D(JLID_KERNEL_LCD_POWER_ON, "%s", "JL_KERNEL_LCD_POWER_ON");
+      LOG_JANK_D(JLID_KERNEL_LCD_POWER_ON, "%s", "LCD_POWER_ON");
       if(!lcdkit_is_enter_sleep_mode())
       {
         /*for incell panel, lcd ctrl tp VCI power*/
@@ -609,7 +609,7 @@ static int lcdkit_off(struct platform_device* pdev)
 
     if (pinfo->lcd_uninit_step == LCD_UNINIT_MIPI_HS_SEND_SEQUENCE)
     {
-        LOG_JANK_D(JLID_KERNEL_LCD_POWER_OFF, "%s", "JL_KERNEL_LCD_POWER_OFF");
+        LOG_JANK_D(JLID_KERNEL_LCD_POWER_OFF, "%s", "LCD_POWER_OFF");
         // backlight off
         hisi_lcd_backlight_off(pdev);
         lcdkit_info.lcdkit_off_cmd(hisifd, &lcdkit_info.panel_infos.display_off_cmds);
@@ -804,8 +804,8 @@ static int lcdkit_set_backlight(struct platform_device* pdev, uint32_t bl_level)
 {
     int ret = 0;
     struct hisi_fb_data_type* hisifd = NULL;
-    static char last_bl_level = 0;
-    static uint32_t jank_last_bl_level = 255;
+    static uint32_t last_bl_level = 255;
+    static uint32_t jank_last_bl_level = 0;
 
     if (NULL == pdev)
     {
@@ -833,9 +833,14 @@ static int lcdkit_set_backlight(struct platform_device* pdev, uint32_t bl_level)
     }
 
     LCDKIT_DEBUG("fb%d, bl_level=%d.\n", hisifd->index, bl_level);
-    if((bl_level == 0 && jank_last_bl_level !=0) || (jank_last_bl_level == 0 && bl_level != 0))
+    if(jank_last_bl_level == 0 && bl_level != 0)
     {
-        LOG_JANK_D(JLID_KERNEL_LCD_BACKLIGHT_ON, "JL_KERNEL_LCD_BACKLIGHT_ON,%u", bl_level);
+        LOG_JANK_D(JLID_KERNEL_LCD_BACKLIGHT_ON, "LCD_BACKLIGHT_ON,%u", bl_level);
+        jank_last_bl_level = bl_level;
+    }
+    else if (bl_level == 0 && jank_last_bl_level != 0)
+    {
+        LOG_JANK_D(JLID_KERNEL_LCD_BACKLIGHT_OFF, "LCD_BACKLIGHT_OFF");
         jank_last_bl_level = bl_level;
     }
 

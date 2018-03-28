@@ -165,6 +165,9 @@ int is_lcdkit_initcode_enable(void);
 int is_lcdkit_mipiclk_enable(void);
 int is_lcdkit_vsp_vsn_enable(void);
 int get_lcdkit_mipiclk_dbg(void);
+void *lcdkit_get_dsi_ctrl_pdata(void);
+int lcdkit_lock(void *pdata);
+void lcdkit_release(void *pdata);
 void lcdkit_debug_set_vsp_vsn(void* vcc_cmds, int cnt);
 int lcdkit_esd_debug(void* pdata);
 

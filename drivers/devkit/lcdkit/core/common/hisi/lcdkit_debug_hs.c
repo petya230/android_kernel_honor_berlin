@@ -1,6 +1,38 @@
 #include "hisi_fb.h"
 #include "lcdkit_dbg.h"
 
+extern struct platform_device *g_hisi_pdev;
+void *lcdkit_get_dsi_ctrl_pdata(void)
+{
+    return platform_get_drvdata(g_hisi_pdev);
+}
+
+int lcdkit_lock(void *pdata)
+{
+    struct hisi_fb_data_type* hisifd = pdata;
+
+    down(&hisifd->blank_sem);
+
+    if (!hisifd->panel_power_on)
+    {
+        LCDKIT_ERR("fb%d, panel power off!\n", hisifd->index);
+        goto err_out;
+    }
+
+    return 0;
+
+err_out:
+    up(&hisifd->blank_sem);
+    return -EFAULT;
+
+}
+void lcdkit_release(void *pdata)
+{
+    struct hisi_fb_data_type* hisifd = pdata;
+
+    up(&hisifd->blank_sem);
+}
+
 void lcdkit_debug_set_vsp_vsn(void* vcc_cmds, int cnt)
 {
     int i = 0;
