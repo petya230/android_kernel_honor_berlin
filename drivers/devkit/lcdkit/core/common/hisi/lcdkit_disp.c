@@ -824,10 +824,8 @@ static int lcdkit_set_backlight(struct platform_device* pdev, uint32_t bl_level)
     if(lcdkit_info.panel_infos.display_on_in_backlight && lcdkit_info.panel_infos.display_on_need_send)
     { 
         LCDKIT_INFO("Set display on before backlight set\n");
-        hisifb_set_vsync_activate_state(hisifd, true);
         hisifb_activate_vsync(hisifd);
         lcdkit_dsi_tx(hisifd, &lcdkit_info.panel_infos.display_on_in_backlight_cmds);
-        hisifb_set_vsync_activate_state(hisifd, false);
         hisifb_deactivate_vsync(hisifd);
         lcdkit_info.panel_infos.display_on_need_send = false;
     }
@@ -1085,6 +1083,7 @@ static int lcdkit_ce_mode_show(void* pdata, char* buf)
 static int lcdkit_ce_mode_store(void* pdata, const char* buf, size_t count)
 {
     int ret = 0;
+    unsigned long val = 0;
     struct hisi_fb_data_type *hisifd = NULL;
     struct platform_device *pdev = NULL;
 
@@ -1097,6 +1096,12 @@ static int lcdkit_ce_mode_store(void* pdata, const char* buf, size_t count)
         LCDKIT_ERR("NULL Pointer!\n");
         return -1;
     }
+
+    ret = strict_strtoul(buf, 0, &val);
+    if (ret)
+        return ret;
+
+    hisifd->user_scene_mode = (int)val;
 
     if (lcdkit_info.panel_infos.ce_support)
     {
