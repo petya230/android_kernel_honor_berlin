@@ -26,6 +26,9 @@
 #include <linux/cpu.h>
 #include <linux/kthread.h>
 
+#ifdef CONFIG_HISI_THERMAL_SPM
+#include <linux/string.h>
+#endif
 #define IPA_SENSOR "tsens_max"
 #define IPA_SENSOR_SYSTEM_H "system_h"
 #define IPA_SENSOR_MAXID    255
@@ -43,11 +46,12 @@ int cpufreq_update_policies(void);
 
 typedef int (*ipa_get_sensor_id_t)(const char *);
 
+/*lint -e749 -esym(749,*)*/
 enum cluster_type {
 	CLUSTER_LITTLE = 0,
 	CLUSTER_BIG
 };
-
+/*lint -e749 +esym(749,*)*/
 #ifdef CONFIG_HISI_THERMAL_SPM
 struct spm_t {
 	struct device *device;
@@ -78,7 +82,7 @@ struct ipa_sensor {
 struct ipa_thermal {
 	struct ipa_sensor ipa_sensor;
 	struct thermal_zone_device *tzd;
-	unsigned int cdevs_num;
+	int cdevs_num;
 	struct thermal_cooling_device **cdevs;
 	struct capacitances *caps;
 	int init_flag;
@@ -110,7 +114,9 @@ struct hotplug_t {
 #endif
 
 struct thermal {
+#if defined(CONFIG_HISI_THERMAL_SPM) || defined(CONFIG_HISI_THERMAL_HOTPLUG)
 	struct class *hisi_thermal_class;
+#endif
 	struct ipa_thermal ipa_thermal[NUM_TZD];
 #ifdef CONFIG_HISI_THERMAL_SPM
 	struct spm_t spm;
@@ -231,7 +237,7 @@ int get_sensor_id_by_name(const char *name) {
 	unsigned long i;
 
 	for (i = 0; i < sizeof(ipa_sensor_info) / sizeof(struct ipa_sensor_info); i++) {
-		if (!strcmp(name, ipa_sensor_info[i].ipa_sensor_name))
+		if (!strncmp(name, ipa_sensor_info[i].ipa_sensor_name, strlen(ipa_sensor_info[i].ipa_sensor_name)))
 			break;
 	}
 
@@ -247,9 +253,52 @@ int get_sensor_id_by_name(const char *name) {
 }
 
 #ifdef CONFIG_HISI_THERMAL_SPM
-#define MAX_POWERHAL_ACTOR	3UL
-unsigned int powerhal_profiles[2][MAX_POWERHAL_ACTOR];
+extern struct cpufreq_frequency_table *cpufreq_frequency_get_table(unsigned int cpu);
+static void update_cpufreqs(void)
+{
+	cpufreq_update_policy(0);
+	cpufreq_update_policy(4);
+}
 
+static bool setfreq_available(unsigned int idx , u32 freq) {
+	struct cpufreq_frequency_table *pos, *table = NULL;
+	int ret = false;
+
+	switch (idx) {
+		case 0: //Little core
+			table = cpufreq_frequency_get_table(0);
+			if (!table) {
+				pr_err("%s: Unable to find freq table(0)\n", __func__);
+				return false;
+			}
+			break;
+		case 1: //Big core
+			table = cpufreq_frequency_get_table(4);
+			if (!table) {
+				pr_err("%s: Unable to find freq table(4)\n", __func__);
+				return false;
+			}
+			break;
+		case 2: //GPU
+			ret = true;
+			break;
+		default:
+			break;
+	}
+
+	if (idx == 0 || idx == 1){
+		cpufreq_for_each_valid_entry(pos, table) {
+		if(freq == pos->frequency)
+			ret = true;
+		}
+	}
+
+	return ret;
+}
+#define MAX_POWERHAL_ACTOR	3UL
+unsigned int powerhal_profiles[3][MAX_POWERHAL_ACTOR];
+
+// cppcheck-suppress *
 #define SHOW_MODE(mode_name)					\
 static ssize_t show_##mode_name					\
 (struct device *dev, struct device_attribute *attr, char *buf) 			\
@@ -264,6 +313,7 @@ static ssize_t show_##mode_name					\
 SHOW_MODE(vr_mode);
 SHOW_MODE(spm_mode);
 
+// cppcheck-suppress *
 #define STORE_MODE(mode_name)					\
 static ssize_t store_##mode_name				\
 (struct device *dev, struct device_attribute *attr, 		\
@@ -295,6 +345,147 @@ static DEVICE_ATTR(mode_name, S_IWUSR | S_IRUGO,	\
 MODE_ATTR_RW(vr_mode);
 MODE_ATTR_RW(spm_mode);
 /*lint -e84 -e846 -e514 -e778 -e866 +esym(84,846,514,778,866,*)*/
+
+static ssize_t
+vr_freq_store(struct device *dev, struct device_attribute *attr,
+		     const char *buf, size_t count)
+{
+	u32 freq;
+	unsigned int i = 0;
+	char *token;
+	char temp_buf[40]={0};
+	char *s;
+
+	if (dev == NULL || attr == NULL)
+		return 0;
+
+	strncpy(temp_buf, buf, sizeof(temp_buf) - 1);
+	s = temp_buf;
+
+	for(token = strsep(&s, ","); (token != NULL) && (i < MAX_POWERHAL_ACTOR); token = strsep(&s, ","),i++) {
+		if (kstrtouint(token, 10, &freq))
+			return -EINVAL;
+		else {
+			if(setfreq_available(i,freq)) {
+				powerhal_profiles[1][i]=freq;
+			}
+		}
+	}
+	update_cpufreqs();
+	return (ssize_t)count;
+}
+
+static ssize_t
+vr_freq_show(struct device *dev, struct device_attribute *devattr,
+		       char *buf)
+{
+	unsigned int i;
+	ssize_t ret = 0;
+
+	if (dev == NULL || devattr == NULL)
+		return 0;
+
+	for (i = 0; i < MAX_POWERHAL_ACTOR; i++)
+		ret += snprintf(buf + ret, 12UL, "%u%s", powerhal_profiles[1][i],",");
+
+	ret += snprintf(buf + ret - 1, 2UL, "\n");
+	return ret;
+}
+static DEVICE_ATTR(vr_freq, S_IWUSR | S_IRUGO, vr_freq_show, vr_freq_store);
+
+static ssize_t
+spm_freq_store(struct device *dev, struct device_attribute *attr,
+		     const char *buf, size_t count)
+{
+	u32 freq;
+	unsigned int i = 0;
+	char *token;
+	char temp_buf[40]={0};
+	char *s;
+
+	if (dev == NULL || attr == NULL)
+		return 0;
+
+	strncpy(temp_buf, buf, sizeof(temp_buf) - 1);
+	s = temp_buf;
+
+	for(token = strsep(&s, ","); (token != NULL) && (i < MAX_POWERHAL_ACTOR); token = strsep(&s, ","), i++) {
+		if (kstrtouint(token, 10, &freq))
+			return -EINVAL;
+		else {
+			if(setfreq_available(i,freq)) {
+				powerhal_profiles[0][i]=freq;
+			}
+		}
+	}
+	update_cpufreqs();
+	return (ssize_t)count;
+}
+
+static ssize_t
+spm_freq_show(struct device *dev, struct device_attribute *devattr,
+		       char *buf)
+{
+	unsigned int i;
+	ssize_t ret = 0;
+
+	if (dev == NULL || devattr == NULL)
+		return 0;
+
+	for (i = 0; i < MAX_POWERHAL_ACTOR; i++)
+		ret += snprintf(buf + ret, 12UL, "%u%s", powerhal_profiles[0][i],",");
+
+	ret += snprintf(buf + ret - 1, 2UL, "\n");
+	return ret;
+}
+static DEVICE_ATTR(spm_freq, S_IWUSR | S_IRUGO, spm_freq_show, spm_freq_store);
+
+static ssize_t
+min_freq_store(struct device *dev, struct device_attribute *attr,
+		     const char *buf, size_t count)
+{
+	u32 freq;
+	unsigned int i = 0;
+	char *token;
+	char temp_buf[40]={0};
+	char *s;
+
+	if (dev == NULL || attr == NULL)
+		return 0;
+
+	strncpy(temp_buf, buf, sizeof(temp_buf) - 1);
+	s = temp_buf;
+
+	for(token = strsep(&s, ","); (token != NULL) && (i < MAX_POWERHAL_ACTOR); token = strsep(&s, ","),i++) {
+		if (kstrtouint(token, 10, &freq))
+			return -EINVAL;
+		else {
+			if(setfreq_available(i,freq)) {
+				powerhal_profiles[2][i]=freq;
+			}
+		}
+	}
+	update_cpufreqs();
+	return (ssize_t)count;
+}
+
+static ssize_t
+min_freq_show(struct device *dev, struct device_attribute *devattr,
+		       char *buf)
+{
+	unsigned int i;
+	ssize_t ret = 0;
+
+	if (dev == NULL || devattr == NULL)
+		return 0;
+
+	for (i = 0; i < MAX_POWERHAL_ACTOR; i++)
+		ret += snprintf(buf + ret, 12UL, "%u%s", powerhal_profiles[2][i],",");
+
+	ret += snprintf(buf + ret - 1, 2UL, "\n");
+	return ret;
+}
+static DEVICE_ATTR(min_freq, S_IWUSR | S_IRUGO, min_freq_show, min_freq_store);
 
 bool is_spm_mode_enabled(void)
 {
@@ -330,6 +521,17 @@ extern unsigned int get_profile_gpu_freq(void);
 	return freq;
 }
 EXPORT_SYMBOL(get_powerhal_profile);
+
+unsigned int get_minfreq_profile(enum ipa_actor actor)
+{
+	unsigned int freq = 0;
+
+	if (actor <= IPA_GPU)
+		freq = powerhal_profiles[2][actor];
+
+	return freq;
+}
+EXPORT_SYMBOL(get_minfreq_profile);
 #endif
 
 unsigned long get_soc_temp(void)
@@ -337,7 +539,7 @@ unsigned long get_soc_temp(void)
 	if ((IPA_INIT_OK == thermal_info.ipa_thermal[SOC].init_flag) && thermal_info.ipa_thermal[SOC].tzd) {
 		if (thermal_info.ipa_thermal[SOC].tzd->temperature < 0)
 			return 0;
-		return (unsigned long)thermal_info.ipa_thermal[SOC].tzd->temperature;
+		return thermal_info.ipa_thermal[SOC].tzd->temperature; /*lint !e571*/
 	}
 
 	return  IPA_SOC_INIT_TEMP;
@@ -385,7 +587,7 @@ static unsigned long get_temperature_scale(unsigned long temp)
 	ret = kstrtoint(caps->temperature_scale_capacitance[4], 10, &capacitance[4]);
 	if (ret)
 		pr_warning("%s kstortoint is failed \n", __func__);
-	return (unsigned long)(t_scale / capacitance[4]);
+	return (unsigned long)(t_scale / capacitance[4]); /*lint !e571*/
 }
 
 static unsigned long get_voltage_scale(unsigned long u_volt)
@@ -397,12 +599,14 @@ static unsigned long get_voltage_scale(unsigned long u_volt)
 }
 
 /* voltage in uV and temperature in mC */
+/*lint -e715 -esym(715,*)*/
 static int hisi_cluster_get_static_power(cpumask_t *cpumask, int interval,
 			    unsigned long u_volt, u32 *static_power)
 {
-	unsigned long temperature, t_scale, v_scale;
+	unsigned long temperature;
+	unsigned long t_scale, v_scale;
 	u32 cpu_coeff;
-	int nr_cpus = cpumask_weight(cpumask);
+	u32 nr_cpus = cpumask_weight(cpumask);
 	enum cluster_type cluster =
 		topology_physical_package_id(cpumask_any(cpumask));
 
@@ -413,16 +617,16 @@ static int hisi_cluster_get_static_power(cpumask_t *cpumask, int interval,
 
 	t_scale = get_temperature_scale(temperature);
 	v_scale = get_voltage_scale(u_volt);
-	*static_power = nr_cpus * (cpu_coeff * t_scale * v_scale) / 1000000;
+	*static_power = (u32)(nr_cpus * (cpu_coeff * t_scale * v_scale) / 1000000UL);
 
 	if (nr_cpus) {
 		u32 cache_coeff = get_cache_static_power_coeff(cluster);
-		*static_power += (cache_coeff * v_scale * t_scale) / 1000000; /* cache leakage */
+		*static_power += (u32)((cache_coeff * v_scale * t_scale) / 1000000UL); /* cache leakage */
 	}
 
 	return 0;
 }
-
+/*lint -e715 -esym(715,*)*/
 #ifdef CONFIG_HISI_THERMAL_SPM
 int hisi_calc_static_power(const struct cpumask *cpumask, unsigned long temp,
 				unsigned long u_volt, u32 *static_power)
@@ -529,11 +733,12 @@ static int thermal_hotplug_task(void *data)
  * Return: the result of multiplying two fixed-point numbers.  The
  * result is also a fixed-point number.
  */
+ /*lint -e702*/
 static inline s64 mul_frac(s64 x, s64 y)
 {
 	return (x * y) >> FRAC_BITS;
 }
-
+/*lint +e702*/
 #ifdef CONFIG_HISI_THERMAL_HOTPLUG
 void hisi_thermal_hotplug_check(long *temp)
 {
@@ -572,18 +777,18 @@ void hisi_thermal_hotplug_check(long *temp)
 
 static int get_temp_value(void *data, long *temp)
 {
-	long sensor_val[IPA_SENSOR_NUM] = {0};
+	int sensor_val[IPA_SENSOR_NUM] = {0};
 	struct ipa_sensor *sensor = (struct ipa_sensor *)data;
-	long val = 0;
-	long val_max = 0;
+	int val = 0;
+	int val_max = 0;
 	int ret = -EINVAL;
 	int id = 0;
-	long est_temp = 0;
+	int est_temp;
 
 	if (IPA_SENSOR_MAXID == sensor->sensor_id) {
 		/*read all sensor*/
 		for (id = 0; id < IPA_SENSOR_NUM; id++) {
-			ret = ipa_get_sensor_value(id, &val);
+			ret = ipa_get_sensor_value((u32)id, &val);
 			sensor_val[id] = val;
 			if (ret)
 				return ret;
@@ -601,21 +806,22 @@ static int get_temp_value(void *data, long *temp)
 
 		trace_IPA_get_tsens_value(sensor_val[0], sensor_val[1], sensor_val[2], val_max);
 
-	} else if (sensor->sensor_id < IPA_PERIPH_NUM) {
+ 	} else if (sensor->sensor_id < IPA_PERIPH_NUM) {
 		ret = ipa_get_periph_value(sensor->sensor_id, &val);
-		trace_IPA_get_tsens_value((unsigned long)0, (unsigned long)0, (unsigned long)0, (unsigned long)val);
+		trace_IPA_get_tsens_value(0, 0, 0, val);
 		if (ret)
 			return ret;
+		val = val < 0 ? 0 : val;
 	} else {
 		return ret;
 	}
 
 	if (!sensor->prev_temp)
 		sensor->prev_temp = val;
-
+	 /*lint -e776*/
 	est_temp = mul_frac(sensor->alpha, val) +
-		mul_frac((int_to_frac(1) - sensor->alpha), sensor->prev_temp);
-
+		mul_frac(int_to_frac(1) - sensor->alpha, sensor->prev_temp);
+	 /*lint +e776*/
 	sensor->prev_temp = est_temp;
 	*temp = est_temp;
 
@@ -646,9 +852,11 @@ static void update_debugfs(struct ipa_sensor *sensor_data)
 }
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 15)
+/*lint -e785*/
 static const struct thermal_zone_of_device_ops hisi_ipa_thermal_ops = {
 	.get_temp = get_temp_value,
 };
+/*lint +e785*/
 #endif
 
 #ifdef CONFIG_HISI_THERMAL_HOTPLUG
@@ -656,6 +864,7 @@ static int thermal_hotplug_init(void)
 {
 	struct device_node *hotplug_np;
 	int ret;
+	struct sched_param param = { .sched_priority = MAX_RT_PRIO - 1 };
 
 	if (!thermal_info.hotplug.initialized) {
 		hotplug_np = of_find_node_by_name(NULL, "cpu_temp_threshold");
@@ -683,6 +892,11 @@ static int thermal_hotplug_init(void)
 			thermal_info.hotplug.hotplug_task = NULL;
 			goto node_put;
 		}
+
+		sched_setscheduler_nocheck(thermal_info.hotplug.hotplug_task, SCHED_FIFO, &param);
+		get_task_struct(thermal_info.hotplug.hotplug_task);
+
+		wake_up_process(thermal_info.hotplug.hotplug_task);
 
 		thermal_info.hotplug.initialized = true;
 		of_node_put(hotplug_np);
@@ -760,16 +974,16 @@ static int ipa_register_soc_cdev(struct ipa_thermal *thermal_data, struct platfo
 
 
 	memset(cpu_masks, 0, sizeof(struct cpumask) * NUM_CLUSTERS);
-	for_each_possible_cpu(cpu) {
+	for_each_online_cpu(cpu) { /*lint !e713*/
 		int cluster_id = topology_physical_package_id(cpu);
 		if (cluster_id > NUM_CLUSTERS) {
 			pr_warn("IPA:Cluster id: %d > %d\n", cluster_id, NUM_CLUSTERS);
 			return -ENODEV;
 		}
-		cpumask_set_cpu(cpu, &cpu_masks[cluster_id]);
+		cpumask_set_cpu((u32)cpu, &cpu_masks[cluster_id]);
 	}
 
-	thermal_data->cdevs = kcalloc(NUM_CLUSTERS, sizeof(struct thermal_cooling_device *), GFP_KERNEL);
+	thermal_data->cdevs = kcalloc((size_t)NUM_CLUSTERS, sizeof(struct thermal_cooling_device *), GFP_KERNEL); /*lint !e433*/
 	if (!thermal_data->cdevs) {
 		ret = -ENOMEM;
 		goto end;
@@ -811,7 +1025,9 @@ cdevs_unregister:
 	for (i = 0; i < thermal_data->cdevs_num; i++) {  /*lint !e574*/
 		cpufreq_cooling_unregister(thermal_data->cdevs[i]);
 	}
+	thermal_data->cdevs_num = 0;
 	kfree(thermal_data->cdevs);
+	thermal_data->cdevs = NULL;
 end:
 	return ret;
 }
@@ -836,7 +1052,7 @@ static int ipa_register_board_cdev(struct ipa_thermal *thermal_data, struct plat
 		goto end;
 	}
 
-	thermal_data->cdevs = kzalloc(sizeof(struct thermal_cooling_device *) * (unsigned long)ret, GFP_KERNEL);
+	thermal_data->cdevs = kzalloc(sizeof(struct thermal_cooling_device *) * (unsigned long)ret, GFP_KERNEL); /*lint !e571*/
 	if (!thermal_data->cdevs) {
 		ret = -ENOMEM;
 		goto end;
@@ -847,7 +1063,7 @@ static int ipa_register_board_cdev(struct ipa_thermal *thermal_data, struct plat
 			board_power_cooling_register(child, get_board_power[thermal_data->cdevs_num]);
 		if (IS_ERR(thermal_data->cdevs[thermal_data->cdevs_num])) {
 			of_node_put(board_np);
-			ret = PTR_ERR(thermal_data->cdevs[thermal_data->cdevs_num]);
+			ret = PTR_ERR(thermal_data->cdevs[thermal_data->cdevs_num]); /*lint !e712*/
 			dev_err(&pdev->dev,
 				"IPA:Error registering board power actor: ERROR_ID [%lld]\n",
 				(long long)thermal_data->cdevs[thermal_data->cdevs_num]);
@@ -863,7 +1079,9 @@ cdevs_unregister:
 	for (i = 0; i < thermal_data->cdevs_num; i++) { /*lint !e574*/
 		board_cooling_unregister(thermal_data->cdevs[i]);
 	}
+	thermal_data->cdevs_num = 0;
 	kfree(thermal_data->cdevs);
+	thermal_data->cdevs = NULL;
 end:
 	return ret;
 }
@@ -872,7 +1090,10 @@ static inline void cooling_device_unregister(struct ipa_thermal *thermal_data)
 {
 	int i;
 
-	for (i = 0; i < (int)thermal_data->cdevs_num; i++) {
+	if (!thermal_data->cdevs)
+		return;
+
+	for (i = 0; i < thermal_data->cdevs_num; i++) {
 		if (strstr(thermal_data->cdevs[i]->type, "thermal-board"))
 			board_cooling_unregister(thermal_data->cdevs[i]);
 		else
@@ -888,7 +1109,7 @@ static int ipa_thermal_probe(struct platform_device *pdev)
 	int sensor;
 	struct device *dev = &pdev->dev;
 	struct device_node *dev_node = dev->of_node;
-	int ret = 0;
+	int ret;
 	const char *ch;
 
 	if (!of_device_is_available(dev_node)) {
@@ -956,7 +1177,7 @@ static int ipa_thermal_probe(struct platform_device *pdev)
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 15)
 	thermal_data->tzd = thermal_zone_of_sensor_register(&pdev->dev,
-									thermal_data->ipa_sensor.sensor_id,
+									(int)thermal_data->ipa_sensor.sensor_id,
 									&thermal_data->ipa_sensor,
 									&hisi_ipa_thermal_ops);
 #else
@@ -967,8 +1188,8 @@ static int ipa_thermal_probe(struct platform_device *pdev)
 #endif
 
 	if (IS_ERR(thermal_data->tzd)) {
-		dev_err(&pdev->dev, "IPA ERR:registering sensor tzd[%p]\n", thermal_data->tzd);
-		ret = PTR_ERR(thermal_data->tzd);
+		dev_err(&pdev->dev, "IPA ERR:registering sensor tzd error.\n");
+		ret = PTR_ERR(thermal_data->tzd); /*lint !e712*/
 		goto cdevs_unregister;
 	}
 
@@ -993,6 +1214,7 @@ static int ipa_thermal_remove(struct platform_device *pdev)
 #ifdef CONFIG_HISI_THERMAL_HOTPLUG
 	if (thermal_info.hotplug.hotplug_task) {
 		kthread_stop(thermal_info.hotplug.hotplug_task);
+		put_task_struct(thermal_info.hotplug.hotplug_task);
 		thermal_info.hotplug.hotplug_task = NULL;
 	}
 #endif
@@ -1016,20 +1238,23 @@ static struct of_device_id ipa_thermal_of_match[] = {
 	{ .compatible = "arm,ipa-thermal1" },
 	{},
 };
-/*lint -e785 -esym(785,*)*/
+/*lint -e785 +esym(785,*)*/
 
 MODULE_DEVICE_TABLE(of, ipa_thermal_of_match);
 
 static struct platform_driver ipa_thermal_platdrv = {
 	.driver = {
 		.name		= "ipa-thermal",
-		.owner		= THIS_MODULE,
+		.owner		= THIS_MODULE, //lint !e64
 		.of_match_table = ipa_thermal_of_match
 	},
 	.probe	= ipa_thermal_probe,
 	.remove	= ipa_thermal_remove,
 };
+
+/*lint -e64 -e528 -esym(64,528,*)*/
 module_platform_driver(ipa_thermal_platdrv);
+/*lint -e64 -e528 +esym(64,528,*)*/
 
 #ifdef CONFIG_HISI_THERMAL_SPM
 static int powerhal_cfg_init(void)
@@ -1058,6 +1283,13 @@ static int powerhal_cfg_init(void)
 	}
 	memcpy(powerhal_profiles[1], data, sizeof(data));
 
+	ret = of_property_read_u32_array(node, "hisi,powerhal-min-cfg", data, MAX_POWERHAL_ACTOR);
+	if (ret) {
+		pr_err("%s cannot find hisi,powerhal-spm-cfg.\n", __func__);
+		return -ENODEV;
+	}
+
+	memcpy(powerhal_profiles[2], data, sizeof(data));
 	return 0;
 
 }
@@ -1096,15 +1328,28 @@ static int hisi_thermal_init(void)
 		goto device_destroy;
 	}
 
+	ret = device_create_file(thermal_info.spm.device, &dev_attr_spm_freq);
+	if (ret) {
+		goto device_destroy;
+	}
 	ret = device_create_file(thermal_info.spm.device, &dev_attr_vr_mode);
 	if (ret) {
 		pr_err("VR mode create error\n");
 		goto device_destroy;
 	}
+
+	ret = device_create_file(thermal_info.spm.device, &dev_attr_vr_freq);
+	if (ret) {
+		goto device_destroy;
+	}
+
+	ret = device_create_file(thermal_info.spm.device, &dev_attr_min_freq);
+	if (ret) {
+		goto device_destroy;
+	}
 #endif
 
 #ifdef CONFIG_HISI_THERMAL_HOTPLUG
-#ifdef CONFIG_HISI_HOTPLUG_EMULATION
 	thermal_info.hotplug.device =
 	    device_create(thermal_info.hisi_thermal_class, NULL, 0, NULL,
 			  "hotplug");
@@ -1118,6 +1363,7 @@ static int hisi_thermal_init(void)
 #endif
 	}
 
+#ifdef CONFIG_HISI_HOTPLUG_EMULATION
 	ret = device_create_file(thermal_info.hotplug.device, &dev_attr_hotplug_emul_temp);
 	if (ret) {
 		pr_err("Hotplug emulation temp create error\n");
