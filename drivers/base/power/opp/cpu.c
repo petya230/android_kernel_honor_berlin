@@ -78,12 +78,19 @@ int dev_pm_opp_init_cpufreq_table(struct device *dev,
 			ret = PTR_ERR(opp);
 			goto out;
 		}
-		freq_table[i].driver_data = i;
-		freq_table[i].frequency = rate / 1000;
 
-		/* Is Boost/turbo opp ? */
-		if (dev_pm_opp_is_turbo(opp))
-			freq_table[i].flags = CPUFREQ_BOOST_FREQ;
+		if (rate == 2016000000) {
+			// skip current entry, do not care for extra empty entry because we close at max_opps-1 instead
+			i--;
+			max_opps--;
+		} else {
+			freq_table[i].driver_data = i;
+			freq_table[i].frequency = rate / 1000;
+
+			/* Is Boost/turbo opp ? */
+			if (dev_pm_opp_is_turbo(opp))
+				freq_table[i].flags = CPUFREQ_BOOST_FREQ;
+		}
 	}
 
 	freq_table[i].driver_data = i;

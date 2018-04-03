@@ -153,15 +153,8 @@ static void dbs_freq_increase(struct cpufreq_policy *policy, unsigned int freq)
 		return;
 #endif
 
-	pr_err("ONDEMAND freq %u \n", freq);
-	if (freq > 1805000 && freq <= 2016000) {
-	pr_err("ONDEMAND OVERRIDE\n");
-	__cpufreq_driver_target(policy, 2112000, od_tuners->powersave_bias ?
-			CPUFREQ_RELATION_L : CPUFREQ_RELATION_H);
-	} else {
 	__cpufreq_driver_target(policy, freq, od_tuners->powersave_bias ?
 			CPUFREQ_RELATION_L : CPUFREQ_RELATION_H);
-	}
 }
 
 /*
@@ -197,27 +190,14 @@ static void od_check_cpu(int cpu, unsigned int load)
 		dbs_info->rate_mult = 1;
 
 		if (!od_tuners->powersave_bias) {
-			pr_err("ONDEMAND min_f: %u max_f %u freq_next %u \n", min_f, max_f, freq_next);
-			if (freq_next > 1805000 && freq_next <= 2016000) {
-			pr_err("ONDEMAND OVERRIDE\n");
-			__cpufreq_driver_target(policy, 2112000,
-					CPUFREQ_RELATION_C);
-			} else {			
 			__cpufreq_driver_target(policy, freq_next,
 					CPUFREQ_RELATION_C);
-			}
 			return;
 		}
 
 		freq_next = od_ops.powersave_bias_target(policy, freq_next,
 					CPUFREQ_RELATION_L);
-		pr_err("ONDEMAND  min_f: %u max_f %u freq_next %u \n", min_f, max_f, freq_next);
-		if (freq_next > 1805000 && freq_next <= 2016000) {
-		pr_err("ONDEMAND OVERRIDE\n");
-		__cpufreq_driver_target(policy, 2112000, CPUFREQ_RELATION_C);
-		} else {			
 		__cpufreq_driver_target(policy, freq_next, CPUFREQ_RELATION_C);
-		}
 	}
 }
 
@@ -243,7 +223,6 @@ static void od_dbs_timer(struct work_struct *work)
 	core_dbs_info->sample_type = OD_NORMAL_SAMPLE;
 	if (sample_type == OD_SUB_SAMPLE) {
 		delay = core_dbs_info->freq_lo_jiffies;
-		pr_err("ONDEMAND freq_lo %u \n", core_dbs_info->freq_lo);
 		__cpufreq_driver_target(core_dbs_info->cdbs.cur_policy,
 				core_dbs_info->freq_lo, CPUFREQ_RELATION_H);
 	} else {
