@@ -63,6 +63,21 @@ static DEFINE_PER_CPU(char[CPUFREQ_NAME_LEN], cpufreq_cpu_governor);
 /* Flag to suspend/resume CPUFreq governors */
 static bool cpufreq_suspended;
 
+#ifdef CONFIG_OVERCLOCK_AS_KIRIN_655
+/* Flag to disable/enable overclocking and force 2362000 as scaling_max_freq for big cluster cpus */
+static bool cpu_overclock_enabled = false;
+
+bool cpufreq_get_cpu_overclock(void) {
+	return cpu_overclock_enabled;
+}
+EXPORT_SYMBOL_GPL(cpufreq_get_cpu_overclock);
+
+void cpufreq_set_cpu_overclock(bool enable) {
+	cpu_overclock_enabled = enable;
+}
+EXPORT_SYMBOL_GPL(cpufreq_set_cpu_overclock);
+#endif
+
 static inline bool has_target(void)
 {
 	return cpufreq_driver->target_index || cpufreq_driver->target;
@@ -619,7 +634,49 @@ static ssize_t store_##file_name					\
 }
 
 store_one(scaling_min_freq, min);
+#ifdef CONFIG_OVERCLOCK_AS_KIRIN_655
+static ssize_t store_scaling_max_freq
+(struct cpufreq_policy *policy, const char *buf, size_t count)
+{
+	int ret, temp;
+	struct cpufreq_policy new_policy;
+
+	ret = cpufreq_get_policy(&new_policy, policy->cpu);
+	if (ret)
+		return -EINVAL;
+
+	ret = sscanf(buf, "%u", &new_policy.max);
+	if (ret != 1)
+		return -EINVAL;
+
+	temp = new_policy.max;
+
+	// set the new policy
+	if (policy->cpu > 3 // only big cluster
+		&& new_policy.max < 2362000
+		&& cpu_overclock_enabled) {
+		pr_err("%s: fixing low max frequency: %d current: %d \n", __func__, new_policy.max, policy->max);
+		new_policy.max = 2362000;
+		temp = 2362000;
+	}
+	if (policy->cpu > 3 // only big cluster
+		&& new_policy.max == 2362000
+		&& !cpu_overclock_enabled) {
+		pr_err("%s: fixing high max frequency: %d current: %d \n", __func__, new_policy.max, policy->max);
+		new_policy.max = 2112000;
+		temp = 2112000;
+	}
+	ret = cpufreq_set_policy(policy, &new_policy);
+	if (!ret)
+		policy->user_policy.max = temp;
+
+	trace_cpufreq_policy_update(current, policy->min, policy->max);
+
+	return ret ? ret : count;
+}
+#else
 store_one(scaling_max_freq, max);
+#endif
 
 /**
  * show_cpuinfo_cur_freq - current CPU frequency as detected by hardware
@@ -2256,6 +2313,22 @@ static int cpufreq_set_policy(struct cpufreq_policy *policy,
 		 new_policy->cpu, new_policy->min, new_policy->max);
 
 	memcpy(&new_policy->cpuinfo, &policy->cpuinfo, sizeof(policy->cpuinfo));
+
+#ifdef CONFIG_OVERCLOCK_AS_KIRIN_655
+	// should never happen because frequencies are fixed in caller
+	if (policy->cpu > 3 // only big cluster
+		&& new_policy->max < 2362000
+		&& cpu_overclock_enabled) {
+		pr_err("%s: fixing low max frequency: %d current: %d \n", __func__, new_policy->max, policy->max);
+		new_policy->max = 2362000;
+	}
+	if (policy->cpu > 3 // only big cluster
+		&& new_policy->max == 2362000
+		&& !cpu_overclock_enabled) {
+		pr_err("%s: fixing high max frequency: %d current: %d \n", __func__, new_policy->max, policy->max);
+		new_policy->max = 2112000;
+	}
+#endif
 
 #ifdef CONFIG_HISI_CPUFREQ
 	/*

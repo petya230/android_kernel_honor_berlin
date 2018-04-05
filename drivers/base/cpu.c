@@ -240,6 +240,35 @@ static ssize_t print_cpus_kernel_max(struct device *dev,
 }
 static DEVICE_ATTR(kernel_max, 0444, print_cpus_kernel_max, NULL);
 
+#ifdef CONFIG_OVERCLOCK_AS_KIRIN_655
+extern bool cpufreq_get_cpu_overclock(void);
+extern void cpufreq_set_cpu_overclock(bool enable);
+
+static ssize_t show_overclock(struct device *dev,
+				  struct device_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%d\n", cpufreq_get_cpu_overclock());
+}
+
+static ssize_t store_overclock(struct device *dev, struct device_attribute *attr,
+				  const char *buf, size_t count)
+{
+	int ret, enable;
+
+	ret = sscanf(buf, "%d", &enable);
+	if (ret != 1 || enable < 0 || enable > 1)
+		return -EINVAL;
+
+    cpufreq_set_cpu_overclock(enable);
+
+	pr_debug("%s: cpufreq OVERCLOCK %s\n",
+		 __func__, enable ? "enabled" : "disabled");
+
+	return count;
+}
+static DEVICE_ATTR(overclock, 0644, show_overclock, store_overclock);
+#endif
+
 /* arch-optional setting to enable display of offline cpus >= nr_cpu_ids */
 unsigned int total_cpus;
 
@@ -441,6 +470,9 @@ static struct attribute *cpu_root_attrs[] = {
 	&dev_attr_offline.attr,
 #ifdef CONFIG_GENERIC_CPU_AUTOPROBE
 	&dev_attr_modalias.attr,
+#endif
+#ifdef CONFIG_OVERCLOCK_AS_KIRIN_655
+	&dev_attr_overclock.attr,
 #endif
 	NULL
 };
